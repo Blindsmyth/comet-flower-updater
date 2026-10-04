@@ -1,3 +1,8 @@
+> **Superseded (2026-10-04):** this was the May 2026 brief. Two of its premises are
+> wrong. A `.ZD2` *does* carry DSP: the `DATA` block is compiled C6000 code. And
+> the goal is now writing new effects for the G1X Four. See
+> `recon/02_g1x4_abi_comparison.md` and `docs/TOOLCHAIN.md`.
+
 # Project Handoff: Open-Source Zoom .ZD2 Patch Editor
 
 ## Context

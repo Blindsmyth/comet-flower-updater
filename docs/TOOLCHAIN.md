@@ -1,0 +1,48 @@
+# Toolchain setup (Windows)
+
+Building custom effects uses [thammer/stomphacks](https://github.com/thammer/stomphacks)
+(MIT). It compiles a C kernel with TI's C6000 compiler and packs it into a
+ZD2. It is hardware-proven on the MS Plus series, not yet on the G1 Four (see
+`recon/02_g1x4_abi_comparison.md`).
+
+## Layout
+
+The stomphacks build scripts break on paths with spaces, so the toolchain
+lives outside this project:
+
+```
+C:\Users\z\ti\ti-cgt-c6000_8.5.0.LTS\   TI CGT 8.5.0 (free, signed TI installer)
+C:\Users\z\zoomlab\stomphacks\          clone of thammer/stomphacks, with its own .venv
+C:\Users\z\zoomlab\stomphacks\zoom-zt2\ clone of mungewell/zoom-zt2 (required at this path)
+```
+
+## Install from scratch
+
+```bash
+# TI compiler (unattended, no admin)
+ti_cgt_c6000_8.5.0.LTS_windows-x64_installer.exe --mode unattended --prefix C:\Users\z\ti
+
+mkdir -p /c/Users/z/zoomlab && cd /c/Users/z/zoomlab
+git clone https://github.com/thammer/stomphacks
+git clone https://github.com/mungewell/zoom-zt2 stomphacks/zoom-zt2
+cd stomphacks && python -m venv .venv && .venv/Scripts/python.exe -m pip install -r requirements.txt
+```
+
+## Build the reference effect
+
+```bash
+cd /c/Users/z/zoomlab/stomphacks
+export ZOOM_TI_CGT="C:/Users/z/ti/ti-cgt-c6000_8.5.0.LTS"
+.venv/Scripts/python.exe tools/zd2_make_effect.py effects/gain/manifest.json
+# -> effects/gain/build/DIYGAIN.ZD2 + REPORT.md (all checks must pass)
+```
+
+This output targets the **MS Plus** (target bit 0x80, colour icon). It is not
+yet suitable for the G1X Four. Do not upload it to the G1X Four.
+
+## Inspect / compare
+
+```bash
+.venv/Scripts/zd2 inspect file.ZD2   # this project's CLI
+.venv/Scripts/zd2 audit some_dir/    # one line per effect, for finding invariants
+```
