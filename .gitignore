@@ -1,0 +1,18 @@
+# Zoom-owned binaries: never commit (see HANDOFF.md)
+*.ZD2
+*.zd2
+*.ZT2
+*.zt2
+*.ZIC
+*.elf
+samples/
+extracted/
+backup/
+third_party/
+build/
+# Python
+__pycache__/
+.pytest_cache/
+*.egg-info/
+.venv/
+recon/hexdump_full.txt
