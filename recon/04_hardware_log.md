@@ -22,3 +22,8 @@ referencing it will work again.
 **Result: first self-compiled DSP effect confirmed running on a G1X Four.** The
 stomphacks ABI holds on the G1 Four family once the container is retargeted
 (recon/02, recon/03).
+| 2026-10-04 | patch backup (read-only) | all 50 patches (760 B each, 0x46 read) | OK. Patch 40 uses UK30A_1U (shipped uninstalled); the owner selected it: loads, missing effect simply skipped, no fault. No patch used ORG120. |
+| 2026-10-04 | wipe | 86 stock effects (all but G1GAIN) | **PASSED**: one FLST rewrite (86 installed bytes → 0, verified, 0 retries), then 86 files deleted and verified absent; FLST re-verified after. Free flash 2,433,550 of 3,087,950 B. Copy: `build/pedal-logs/FLST_after_wipe.ZT2`. |
+
+Restore: every effect file is in `backup/2026-10-04/files/`, the original list is
+`FLST_SEQ.ZT2` there, and the patches are in `backup/2026-10-04/patches/`.
