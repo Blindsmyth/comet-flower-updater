@@ -73,3 +73,32 @@ def test_audit_lists_fixtures():
     assert result.exit_code == 0
     assert "NYC_MUFF.ZD2   030000d0" in result.output
     assert "crc=ok" in result.output
+
+
+def test_g1_retarget_matches_stock_conventions():
+    from zd2tools.g1 import G1_TARGET, icon_bmp, retarget_g1
+    src = load("THEVIBE.ZD2")
+    out = parse_zd2(retarget_g1(src, "TEST"))
+
+    assert out.crc_ok
+    assert out.header.target == G1_TARGET
+    assert out.header.unknown[0] == 0x01                 # 0x10
+    assert out.header.unknown[0x18 - 0x10] == 0x80
+    assert out.header.unknown[0x58 - 0x10] == 0x01       # slot count
+    assert out.trailer == bytes(16)
+    assert out.info.group_text == "MODMOD."
+    icon = out.get_block("ICON").data
+    assert len(icon) == 182 and icon[:2] == b"BM"
+    assert icon == icon_bmp("TEST")
+    # DATA and parameter text pass through untouched
+    orig = parse_zd2(src)
+    for tag in ("DATA", "PRMJ", "PRME", "TXE1"):
+        assert out.get_block(tag).data == orig.get_block(tag).data
+
+
+def test_icon_header_matches_stock():
+    from zd2tools.g1 import icon_bmp
+    stock = parse_zd2(load("NYC_MUFF.ZD2")).get_block("ICON").data
+    mine = icon_bmp("X", width=23)
+    assert len(mine) == len(stock)
+    assert mine[:62] == stock[:62]       # same BMP/DIB header and palette

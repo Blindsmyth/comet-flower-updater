@@ -126,5 +126,17 @@ def audit(directory: str) -> None:
     click.echo(f"{len(files)} files")
 
 
+@main.command(name="g1-retarget")
+@click.argument('src', type=click.Path(exists=True, dir_okay=False))
+@click.argument('dst', type=click.Path(dir_okay=False))
+@click.option('--label', required=True, help='Up to 5 characters drawn on the icon')
+def g1_retarget(src: str, dst: str, label: str) -> None:
+    """Convert a stomphacks DIY ZD2 into G1 Four container form."""
+    from .g1 import retarget_g1
+    out = retarget_g1(Path(src).read_bytes(), label)
+    Path(dst).write_bytes(out)
+    click.echo(_audit_row(Path(dst), parse_zd2(out)))
+
+
 if __name__ == '__main__':
     main()

@@ -1,0 +1,23 @@
+{
+  "name": "G1 Gain",
+  "filename": "G1GAIN",
+  "id": "07000f81",
+  "version": "1.00",
+  "display": "G1 GAIN",
+  "badge": "G1",
+  "description": "A level trim: one knob, stock VOL curve (80 is unity gain, 100 is +3.5 dB). First G1X Four hardware test; the stomphacks gain kernel with its code in .text like every stock G1 effect.",
+  "dspload": 8,
+  "kernel": "gain.c",
+  "kernel_section": "text",
+  "state_bytes": 16,
+  "scaffold": "cleanroom",
+  "params": [
+    {
+      "name": "Level",
+      "max": 100,
+      "default": 80,
+      "curve": "stock_vol",
+      "explanation": "Output level. 80 is unity gain, 100 is +3.5 dB."
+    }
+  ]
+}

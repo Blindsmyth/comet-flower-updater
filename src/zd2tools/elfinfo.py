@@ -75,7 +75,8 @@ class _Elf:
                 o = sec.offset + i * sec.entsize
                 n, value = struct.unpack("<II", self.data[o:o + 8])
                 name = _cstr(self.data[names + n:])
-                if name and name[0] not in "$." and value not in out:
+                if name and name[0] not in "$." and (
+                        value not in out or name.startswith("Dll_")):
                     out[value] = name
         return out
 

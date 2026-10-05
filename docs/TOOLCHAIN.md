@@ -46,3 +46,19 @@ yet suitable for the G1X Four. Do not upload it to the G1X Four.
 .venv/Scripts/zd2 inspect file.ZD2   # this project's CLI
 .venv/Scripts/zd2 audit some_dir/    # one line per effect, for finding invariants
 ```
+
+## Local change to stomphacks
+
+`tools/build_zd2_from_asm.sh` link step gets `${ZD2_EXTRA_LNK_FLAGS:-}` after
+`--retain="$ENTRY"`. It is empty unless set, so upstream behaviour is unchanged.
+`tools/build_g1.sh` sets it to `--export=Dll_<Name>`, because every stock G1
+effect exports its entry symbol and stomphacks builds do not.
+
+## Building for the G1X Four
+
+```bash
+bash tools/build_g1.sh g1gain GAIN    # effects/g1gain -> build/G1GAIN.ZD2
+```
+
+This builds with stomphacks, then runs `zd2 g1-retarget`: target 0x02,
+G1 header bytes, a 1-bpp 24x30 icon and the group INFO text.
