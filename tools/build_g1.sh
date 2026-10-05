@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Build effects/<name> with stomphacks, then retarget it for the G1 Four.
-#   tools/build_g1.sh <name> <icon-label>
+#   tools/build_g1.sh <name> <icon-label> [<slot-pic text, e.g. GREEN/808>]
 # Output: build/<FILENAME>.ZD2 (G1 form) plus the stomphacks REPORT.md.
 # stomphacks breaks on paths with spaces, so the build runs in its checkout.
 set -euo pipefail
-NAME="$1"; LABEL="$2"
+NAME="$1"; LABEL="$2"; PIC="${3:-$2}"
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
 LAB="${ZOOMLAB:-/c/Users/z/zoomlab/stomphacks}"
 export ZOOM_TI_CGT="${ZOOM_TI_CGT:-C:/Users/z/ti/ti-cgt-c6000_8.5.0.LTS}"
@@ -21,4 +21,4 @@ cp -r "$PROJ/effects/$NAME" "$LAB/effects/$NAME"
 ( cd "$LAB" && .venv/Scripts/python.exe tools/zd2_make_effect.py "effects/$NAME/manifest.json" | tail -12 )
 mkdir -p "$PROJ/build"
 cp "$LAB/effects/$NAME/build/REPORT.md" "$PROJ/build/$FILE.REPORT.md"
-"$PROJ/.venv/Scripts/zd2" g1-retarget "$LAB/effects/$NAME/build/$FILE.ZD2" "$PROJ/build/$FILE.ZD2" --label "$LABEL"
+"$PROJ/.venv/Scripts/zd2" g1-retarget "$LAB/effects/$NAME/build/$FILE.ZD2" "$PROJ/build/$FILE.ZD2" --label "$LABEL" --pic "$PIC"

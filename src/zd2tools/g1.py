@@ -92,7 +92,78 @@ def icon_bmp(label: str, width: int = 24, height: int = 30) -> bytes:
     return head + dib + palette + rows
 
 
-def retarget_g1(data: bytes, label: str) -> bytes:
+def slot_pic_pixels(lines: list, width: int = 23, height: int = 30) -> list:
+    """The slot picture the G1 draws for an unselected slot, in the style of
+    the stock ones: outlined pedal, three knobs, the name in a lower panel.
+    Rows top to bottom of 0/1 (1 = lit)."""
+    px = [[0] * width for _ in range(height)]
+    for x in range(1, width - 1):
+        px[0][x] = px[height - 1][x] = 1
+        px[13][x] = 1
+    for y in range(1, height - 1):
+        px[y][0] = px[y][width - 1] = 1
+    px[1][0] = px[1][width - 1] = px[height - 2][0] = px[height - 2][width - 1] = 1
+    for cx in (4, 11, 18):                        # three knobs
+        for dy, row in enumerate([".###.", "##.##", "#####", "#####", ".###."]):
+            for dx, c in enumerate(row):
+                if c == "#":
+                    px[5 + dy][cx - 2 + dx] = 1
+    y0 = 17 if len(lines) == 1 else 15
+    for li, text in enumerate(lines[:2]):
+        text = text.upper()[:5]
+        x0 = (width - (len(text) * 4 - 1)) // 2
+        for i, ch in enumerate(text):
+            for dy, row in enumerate(FONT.get(ch, FONT[" "])):
+                for dx, c in enumerate(row):
+                    if c == "#":
+                        px[y0 + li * 7 + dy][x0 + i * 4 + dx] = 1
+    return px
+
+
+def slot_pic_bytes(lines: list, width: int = 23, height: int = 30) -> bytes:
+    """LCD page format: 8 vertical pixels per byte, LSB at the top, pages of
+    `width` columns (decoded from stock NYC Muff / Chorus pictures)."""
+    px = slot_pic_pixels(lines, width, height)
+    out = bytearray()
+    for page in range((height + 7) // 8):
+        for x in range(width):
+            b = 0
+            for bit in range(8):
+                y = page * 8 + bit
+                if y < height and px[y][x]:
+                    b |= 1 << bit
+            out.append(b)
+    return bytes(out)
+
+
+def set_slot_picture(elf: bytes, lines: list) -> bytes:
+    """Replace the effect's first image-list entry (the slot picture) with a
+    drawn 23x30 one. The DIY scaffold reserves 92 bytes for it (blank), which
+    is exactly 4 pages x 23 columns."""
+    from .elfinfo import _Elf, parse_effect_elf
+    info = parse_effect_elf(elf)
+    e = _Elf(elf)
+    const = e.section_named(".const")
+    if not info.images or const is None:
+        raise ValueError("no image list in the effect ELF")
+    width, height, ptr = info.images[0]
+    pic = slot_pic_bytes(lines, 23, 30)
+    out = bytearray(elf)
+    # rewrite the {width, height} words of entry 0, found right before ptr
+    body = elf[const.offset:const.offset + const.size]
+    entry = struct.pack("<III", width, height, ptr)
+    at = body.find(entry)
+    if at < 0:
+        raise ValueError("image-list entry not found")
+    out[const.offset + at:const.offset + at + 8] = struct.pack("<II", 23, 30)
+    o = const.offset + ptr - const.addr
+    if o + len(pic) > const.offset + const.size:
+        raise ValueError("picture does not fit in .const")
+    out[o:o + len(pic)] = pic
+    return bytes(out)
+
+
+def retarget_g1(data: bytes, label: str, pic_lines: list = None) -> bytes:
     patch = parse_zd2(data)
     header = bytearray(data[:HEADER_SIZE])
     header[0x0C:0x10] = struct.pack("<I", G1_TARGET)
@@ -106,6 +177,8 @@ def retarget_g1(data: bytes, label: str) -> bytes:
         payload = block.data
         if block.tag == "ICON":
             payload = icon_bmp(label)
+        elif block.tag == "DATA":
+            payload = set_slot_picture(payload, pic_lines or label.split()[:2])
         elif block.tag == "INFO":
             text = GROUP_INFO_TEXT.get(patch.header.group_id, "").encode()
             payload = (payload[:4] + text.ljust(12, b"\x00")[:12] + payload[16:20])

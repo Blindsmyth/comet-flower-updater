@@ -102,3 +102,13 @@ def test_icon_header_matches_stock():
     mine = icon_bmp("X", width=23)
     assert len(mine) == len(stock)
     assert mine[:62] == stock[:62]       # same BMP/DIB header and palette
+
+
+def test_slot_picture_page_format():
+    from zd2tools.g1 import slot_pic_bytes, slot_pic_pixels
+    pic = slot_pic_bytes(["GREEN", "808"])
+    px = slot_pic_pixels(["GREEN", "808"])
+    assert len(pic) == 92                          # 4 pages x 23 columns
+    for y in (0, 5, 13, 29):
+        for x in (0, 4, 11, 22):
+            assert bool(pic[(y // 8) * 23 + x] >> (y % 8) & 1) == bool(px[y][x])

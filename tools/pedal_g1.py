@@ -401,7 +401,52 @@ def wipe_stock(keep):
             pedal.disconnect()
 
 
+def replace(path):
+    """Overwrite an installed DIY effect with a new build of it. The id and
+    version must match the effect-list entry, so the list is not written;
+    it is read before and after and must be unchanged. Run it with the
+    pedal on a patch that does NOT use the effect."""
+    import file_session as fs
+    data = Path(path).read_bytes()
+    base = os.path.basename(path).upper()
+    p = check_container(data)
+    pedal, sess = open_session()
+    try:
+        flst = sess.download(fs.FLST_NAME)
+        sess.close()
+        import zoomzt2
+        hits = [e for g in zoomzt2.ZT2.parse(flst)[1] for e in g["effects"]
+                if str(e["effect"]).upper() == base]
+        if len(hits) != 1 or int(hits[0]["id"]) != p.header.effect_id \
+                or str(hits[0]["version"]) != p.header.version:
+            refuse(f"{base} is not listed with id 0x{p.header.effect_id:08x} "
+                   f"version {p.header.version}")
+        if not sess.file_check(base):
+            refuse(f"{base} is not on the pedal")
+        sess.close()
+        try:
+            fs.verified_upload(sess, base, data)
+            back = sess.download(fs.FLST_NAME)
+            sess.close()
+            if back != flst:
+                raise fs.TransferError("effect list changed during replace")
+        except fs.TransferError as e:
+            print(f"pedal_g1: replace FAILED ({e}); the old file may be gone. "
+                  f"Re-run replace while the pedal stays powered.")
+            sess.abort()
+            return EXIT_UNRESOLVED
+        sess.pcmode_off()
+        print(f"pedal_g1: replace PASSED: {base} ({len(data)} bytes) written and "
+              f"read back identical; effect list unchanged")
+        return EXIT_OK
+    finally:
+        if pedal.is_connected():
+            pedal.disconnect()
+
+
 def main(argv):
+    if len(argv) == 2 and argv[0] == "replace":
+        return replace(argv[1])
     if len(argv) >= 2 and argv[0] == "wipe-stock" and argv[1] == "--keep":
         return wipe_stock(argv[2:])
     if len(argv) >= 2 and argv[0] == "writetest":
