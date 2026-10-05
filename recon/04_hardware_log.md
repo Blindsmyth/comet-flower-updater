@@ -32,3 +32,4 @@ Restore: every effect file is in `backup/2026-10-04/files/`, the original list i
 Empty-slot encoding: id `0x0` with the EDTB entry `01 00…` (enabled bit only).
 Id `0x1` is not empty: it is the second half of a double-width ("1U") effect.
 | 2026-10-04 | install | DRV808.ZD2 "Green 808" (14401 B, id 03000f81, DRIVE) | **PASSED**: write test (upload, readback, delete) then install; FLST rewritten and verified, 0 retries. Port of Comet Flower DriveMobileCore; host comparison vs original −117.8 dB worst case. Play test pending. |
+| 2026-10-04 | replace | DRV808.ZD2, G1GAIN.ZD2 | **PASSED**: rebuilt with a drawn 23x30 slot picture (LCD page format) in place of the blank stomphacks one; overwritten, read back identical, FLST unchanged. The owner reported the slot showing as bypassed/blank until selected (patch 41). |
