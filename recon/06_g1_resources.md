@@ -57,8 +57,9 @@ Takes: `Documents/VPBE_Takes/VPB_2026-10-05_114655_dry.wav` (Probe 10) and
   input until it is power-cycled. Audio keeps its deadline; the control/UI work
   is what starves. So the limit cannot be heard, only crossed.
 - One 0.4 s burst of broadband noise in the Probe 30 take (11.09-11.49 s) and a
-  15 ms glitch in the Probe 10 take (23.95 s); cause unknown (knob or patch
-  change?).
+  15 ms glitch in the Probe 10 take (23.95 s). The owner was turning the knob
+  and probably knocked the cable; the envelope (dropping to ~0, then jumping
+  to 3x the tone) fits an intermittent jack contact, not a DSP overrun.
 - The declared dspload is bookkeeping only: it does not limit real CPU use.
 
 Working rule: keep a DIY effect's real cost at or below ~80k cycles/block
