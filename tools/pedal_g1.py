@@ -324,7 +324,86 @@ def install(path):
             pedal.disconnect()
 
 
+def wipe_stock(keep):
+    """Uninstall every installed effect except `keep` (DIY effects).
+
+    List first, then files: one effect-list rewrite sets installed=0 on
+    every other entry (as Zoom stores uninstalled effects), then each file
+    is deleted and verified absent. An interruption after the list rewrite
+    only leaves orphan files, which nothing references. Patches that use a
+    wiped effect skip it (verified on patch 40, 2026-10-04)."""
+    import file_session as fs
+    import zoomzt2
+    keep = {k.upper() for k in keep}
+    expected = (PROJ / "build" / "pedal-logs" / "FLST_after_install.ZT2").read_bytes()
+
+    pedal, sess = open_session()
+    try:
+        flst_old = sess.download(fs.FLST_NAME)
+        sess.close()
+        if flst_old != expected:
+            refuse("the pedal's effect list is not the one our last install wrote")
+        if zoomzt2.ZT2.build(zoomzt2.ZT2.parse(flst_old)) != flst_old:
+            refuse("effect list does not round-trip through the zoom-zt2 grammar")
+        cfg = zoomzt2.ZT2.parse(flst_old)
+        victims = []
+        for g in cfg[1]:
+            for e in g["effects"]:
+                name = str(e["effect"]).upper()
+                if int(e["installed"]) and name not in keep:
+                    victims.append(name)
+                    e["installed"] = 0
+        flst_new = zoomzt2.ZT2.build(cfg)
+        changed = sum(a != b for a, b in zip(flst_old, flst_new))
+        if len(flst_new) != len(flst_old) or changed != len(victims) \
+                or not all(v.endswith(".ZD2") for v in victims):
+            refuse(f"computed list changes {changed} bytes for {len(victims)} effects")
+        print(f"pedal_g1: wipe {len(victims)} effects, keeping {sorted(keep)}; "
+              f"effect list: {changed} installed bytes set to 0")
+
+        retries = fs.replace_flst(sess, flst_old, flst_new,
+                                  log=lambda line: print(line))
+        print(f"pedal_g1: effect list rewritten and verified (retries {retries})")
+
+        for i, name in enumerate(victims, 1):
+            present = sess.file_check(name)
+            sess.close()
+            if present:
+                sess.delete(name)
+                sess.close()
+                if sess.file_check(name):
+                    raise fs.TransferError(f"{name} still present after delete")
+                sess.close()
+            print(f"  [{i}/{len(victims)}] {name} "
+                  f"{'deleted' if present else 'already absent'}", flush=True)
+
+        back = sess.download(fs.FLST_NAME)
+        sess.close()
+        if back != flst_new:
+            raise fs.PedalUnresolved("effect list changed during file deletes")
+        maximum, available = sess.disk_usage()
+        sess.pcmode_off()
+        (PROJ / "build" / "pedal-logs" / "FLST_after_wipe.ZT2").write_bytes(flst_new)
+        print(f"pedal_g1: wipe PASSED: {len(victims)} effects removed; "
+              f"flash free {available} of {maximum} bytes")
+        return EXIT_OK
+    except fs.TransferError as e:
+        print(f"pedal_g1: wipe stopped ({e}). The effect list was already "
+              f"rewritten if the message above says so; any files left are "
+              f"orphans. Re-run to continue.")
+        sess.abort()
+        return EXIT_SAFE_ABORT
+    except fs.PedalUnresolved as e:
+        print(f"pedal_g1: UNRESOLVED - keep the pedal POWERED. {e}")
+        return EXIT_UNRESOLVED
+    finally:
+        if pedal.is_connected():
+            pedal.disconnect()
+
+
 def main(argv):
+    if len(argv) >= 2 and argv[0] == "wipe-stock" and argv[1] == "--keep":
+        return wipe_stock(argv[2:])
     if len(argv) >= 2 and argv[0] == "writetest":
         return writetest(argv[1], "--dry-run" in argv[2:])
     if len(argv) == 2 and argv[0] == "uninstall-stock":
