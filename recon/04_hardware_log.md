@@ -27,3 +27,7 @@ stomphacks ABI holds on the G1 Four family once the container is retargeted
 
 Restore: every effect file is in `backup/2026-10-04/files/`, the original list is
 `FLST_SEQ.ZT2` there, and the patches are in `backup/2026-10-04/patches/`.
+| 2026-10-04 | blank patches | patch 50 (test), then 1–49 | **PASSED**: blank patch built from factory patch 30 (5 slots id 0x0, enabled; 13 bytes changed). The pedal stored it normalised: 38 bytes in the per-slot parameter area (offsets 300–436) zeroed. The owner confirmed patch 50 empty, no alerts. The pedal's stored copy (`build/BLANK_CANON.ZPTC`) was then written to 1–49, each read back byte-identical. All 50 patches blank. |
+
+Empty-slot encoding: id `0x0` with the EDTB entry `01 00…` (enabled bit only).
+Id `0x1` is not empty: it is the second half of a double-width ("1U") effect.
