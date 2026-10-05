@@ -1,0 +1,25 @@
+{
+  "name": "Green 808",
+  "filename": "DRV808",
+  "id": "03000f81",
+  "version": "1.00",
+  "display": "GREEN 808",
+  "badge": "CF",
+  "description": "TS808-style overdrive ported from Comet Flower's mobile drive core: 720 Hz split, diode clipping stage with ADAA, 2x oversampling, 723 Hz post-clip pole, pole-zero tone.",
+  "dspload": 40,
+  "allow_any_id": true,
+  "kernel": "drv808.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 168,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Drive", "max": 100, "default": 45,
+      "explanation": "Gain of the clipping stage (the TS808 drive pot, audio taper)." },
+    { "name": "Tone", "max": 100, "default": 60,
+      "explanation": "Sweeps the tone network's zero from 723 Hz to 33 kHz." },
+    { "name": "Level", "max": 100, "default": 80, "curve": "stock_vol",
+      "explanation": "Output level. 80 is the original's default level." }
+  ]
+}
