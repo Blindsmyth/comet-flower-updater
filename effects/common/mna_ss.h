@@ -47,7 +47,8 @@ typedef struct {
 
 #ifndef MNA_INLINE
 #  if defined(__TI_COMPILER_VERSION__) || defined(__GNUC__)
-#    define MNA_INLINE static inline
+     /* always inline: stomphacks rejects any CALL in the audio kernel */
+#    define MNA_INLINE static inline __attribute__((always_inline))
 #  elif defined(_MSC_VER)
 #    define MNA_INLINE static __inline
 #  else
