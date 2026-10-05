@@ -17,3 +17,8 @@ is stages 2 (install into the effect list) and 3 (play test).
 To restore ORG120: upload `backup/2026-10-04/files/ORG1201U.ZD2` and set its
 installed byte back to 1 (`pedal_g1.py` can be extended to do this). Its patches
 referencing it will work again.
+| 2026-10-04 | 3: play test | G1 Gain in an unsaved patch, AUTO SAVE off | **PASSED** (owner, by ear): pedal booted with the new effect list, G1 Gain listed and selectable, audio passes, Level lowers and raises as expected (80→20 is a much larger change than 80→100, matching the stock VOL curve: −12 dB vs +3.5 dB), no faults. |
+
+**Result: first self-compiled DSP effect confirmed running on a G1X Four.** The
+stomphacks ABI holds on the G1 Four family once the container is retargeted
+(recon/02, recon/03).

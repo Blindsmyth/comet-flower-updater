@@ -18,8 +18,8 @@ works toward bringing that to the G1 Four family.
 2. [x] Code-ABI comparison G1X Four vs MS Plus (matches; container differs)
 3. [x] Read-only pedal backup (`tools/backup_g1.py`), audit of all 87 effects (`recon/03`)
 4. [x] G1 profile: `zd2 g1-retarget` + `tools/build_g1.sh`; first test effect `effects/g1gain`
-5. [ ] G1-aware installer (stomphacks' is MS Plus-only)
-6. [ ] First hardware test: DIY gain, under stomphacks SAFETY.md rules
+5. [x] G1-aware installer: `tools/pedal_g1.py` (writetest / uninstall-stock / install)
+6. [x] First hardware test: G1 Gain runs on a G1X Four, 2026-10-04 (`recon/04_hardware_log.md`)
 7. [ ] Real effects
 
 ## Installation
