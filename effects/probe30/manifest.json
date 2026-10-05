@@ -1,0 +1,20 @@
+{
+  "name": "Probe 30",
+  "filename": "PROBE30",
+  "id": "07000f82",
+  "version": "1.00",
+  "display": "PROBE 30",
+  "badge": "DX",
+  "description": "Hardware diagnostics. Load burns a fixed number of DSP cycles per block; Tone adds a 440 Hz reference sine. Declares dspload 30 for patch-budget stacking tests.",
+  "dspload": 30,
+  "kernel": "probe.c",
+  "kernel_section": "text",
+  "state_bytes": 8,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Load", "max": 100, "default": 0,
+      "explanation": "Busy-loop size: knob x 200 dependent multiply-adds per block." },
+    { "name": "Tone", "max": 1, "default": 0,
+      "explanation": "Adds a 440 Hz reference sine (A4) for a tuner check." }
+  ]
+}
