@@ -33,8 +33,9 @@ Analysis for comparison only; nothing of Zoom's code is reused.
 ## Open
 - Signal flow inside `Fx_DRV_TS_Drive` (4.4 KB of hand-scheduled SPLOOP code): order
   of the fixed EQ stages and where Boost acts. Needs deeper disassembly.
-- Clipper parameter values p0..p7 at run time (passed by pointer; probably in the
-  coefficient table near `12.72, 1.0, 1.0, 23.93, 0, 0.225, 106.36…`).
+- Clipper parameters: resolved as Coe[40..47] (see Numbers). They are the only
+  8-value run consistent with the formula: slope 2.66 on both sides of zero,
+  continuous at 0. Not yet confirmed by tracing the main routine.
 - A sound comparison needs either a reamp (PC out → pedal in, record USB out) or a
   full Python re-implementation of Zoom's chain.
 
