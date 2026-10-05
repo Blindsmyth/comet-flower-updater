@@ -90,10 +90,14 @@ def test_g1_retarget_matches_stock_conventions():
     icon = out.get_block("ICON").data
     assert len(icon) == 182 and icon[:2] == b"BM"
     assert icon == icon_bmp("TEST")
-    # DATA and parameter text pass through untouched
+    # parameter text passes through untouched; in DATA only the slot picture
+    # (92 bytes) and its 8-byte {width, height} change
     orig = parse_zd2(src)
-    for tag in ("DATA", "PRMJ", "PRME", "TXE1"):
+    for tag in ("PRMJ", "PRME", "TXE1"):
         assert out.get_block(tag).data == orig.get_block(tag).data
+    a, b = orig.get_block("DATA").data, out.get_block("DATA").data
+    assert len(a) == len(b)
+    assert 0 < sum(x != y for x, y in zip(a, b)) <= 92 + 8
 
 
 def test_icon_header_matches_stock():
