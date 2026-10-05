@@ -27,6 +27,7 @@
 #include "os_hbiir.h"
 #include "hiwatt_nets.h"
 #include "hiwatt_cab.h"
+#include "hw_tanhtab.h"
 
 #define HW_FS_OS     176400.0f
 #define HW_IN_SCALE  1.8726591760299625f      /* 2 V full scale * 1M/(1M+68k) */
@@ -91,9 +92,12 @@ typedef struct {
     float cab[HW_CAB_N][2];         /* cab biquads, TDF-II */
 } HwState;                          /* 73 floats = 292 B (IIR), all zero = reset */
 
+#define HW_V1_SZ MNA_SS_SIZE(2, 1)
+#define HW_ST_SZ MNA_SS_SIZE(5, 1)
+#define HW_BH_SZ MNA_SS_SIZE(5, 2)
 typedef struct {
-    MnaSS v1, st, bh;
-} HwCoeffs;
+    float v1[HW_V1_SZ], st[HW_ST_SZ], bh[HW_BH_SZ];   /* packed (mna_ss.h) */
+} HwCoeffs;                                          /* 87 floats */
 
 /* knobs 0..1: Volume (Normal 470k-A), Treble, Middle, Bass, Master, Presence */
 TS_INLINE void hw_coeffs(HwCoeffs *k, float vol, float tre, float mid, float bas,
@@ -101,21 +105,32 @@ TS_INLINE void hw_coeffs(HwCoeffs *k, float vol, float tre, float mid, float bas
 {
     MnaNet n;
     float w[MNA_MAXN];
-    hw_v1net(&n, w, vol);
-    mna_derive(&n, w, HW_FS_OS, &k->v1);
-    hw_stack(&n, w, tre, mid, bas, mas);
-    mna_derive(&n, w, HW_FS_OS, &k->st);
-    hw_backhalf(&n, w, pre);
-    mna_derive(&n, w, HW_FS_OS, &k->bh);
+    int j;
+    for (j = 0; j < 3; ++j) {       /* one mna_derive site: one inlined copy */
+        if (j == 0) hw_v1net(&n, w, vol);
+        else if (j == 1) hw_stack(&n, w, tre, mid, bas, mas);
+        else hw_backhalf(&n, w, pre);
+        mna_derive(&n, w, HW_FS_OS, j == 0 ? k->v1 : (j == 1 ? k->st : k->bh));
+    }
 }
 
-TS_INLINE float hw_tanh(float u)
+/* tanh, branch-free: odd polynomial below 0.25 (relative accuracy for small
+ * signals, 8e-9), else a 256-segment cubic table on [0, 9] (abs. 4e-8).
+ * ~40 cycles of latency instead of ~110 for exp + reciprocal. */
+TS_INLINE float hw_tanh_acc(float m)
 {
-    float a = u < 0.0f ? -u : u, e, t;
-    if (a > 9.0f) a = 9.0f;
-    e = sd_expf(-2.0f * a);
-    t = (1.0f - e) * ts_rcp(1.0f + e);
-    return u < 0.0f ? -t : t;
+    float a = m < 0.0f ? -m : m, m2 = m * m, m4 = m2 * m2, p, xt, f, v;
+    const float *c;
+    int i;
+    p = m * ((1.0f - m2 * (1.0f / 3)) + m4 * ((2.0f / 15 - m2 * (17.0f / 315))
+                                              + m4 * (62.0f / 2835)));
+    xt = (a < HW_TANH_XMAX - 0.001f ? a : HW_TANH_XMAX - 0.001f) * (HW_TANH_N / HW_TANH_XMAX);
+    i = (int)xt;
+    f = xt - (float)i;
+    c = hw_tanhtab + 4 * i;
+    v = (c[0] + f * c[1]) + (f * f) * (c[2] + f * c[3]);
+    if (m < 0.0f) v = -v;
+    return a < 0.25f ? p : v;
 }
 
 /* AmpStages::tubeStage minus its idle output (the networks see AC only) */
@@ -123,7 +138,7 @@ TS_INLINE float hw_tube(float x, float bias, float kneg, float ceil, float idle)
 {
     float u = x + bias, y;
     if (u > ceil) u = ceil + (u - ceil) * HW_GRID;
-    y = hw_tanh(u);
+    y = hw_tanh_acc(u);
     if (y < 0.0f) y *= kneg;
     return y - idle;
 }
@@ -144,24 +159,6 @@ TS_INLINE float hw_tube(float x, float bias, float kneg, float ceil, float idle)
  * Steps >= HW_ADAA_BIG use the direct quotient, well conditioned there. */
 #define HW_ADAA_BIG 0.25f
 
-/* tanh with relative accuracy for small arguments (expm1 series) */
-TS_INLINE float hw_tanh_acc(float m)
-{
-    float a = m < 0.0f ? -m : m, t;
-    if (a < 0.25f) {
-        float x = -2.0f * a;
-        float em = x * (1.0f + x * (0.5f + x * (1.0f / 6 + x * (1.0f / 24 + x * (1.0f / 120
-                 + x * (1.0f / 720 + x * (1.0f / 5040 + x * (1.0f / 40320 + x * (1.0f / 362880)))))))));
-        t = -em * ts_rcp(2.0f + em);
-    } else {
-        float e;
-        if (a > 9.0f) a = 9.0f;
-        e = sd_expf(-2.0f * a);
-        t = (1.0f - e) * ts_rcp(1.0f + e);
-    }
-    return m < 0.0f ? -t : t;
-}
-
 /* mean of tanh over [p, p + 2d], |d| < HW_ADAA_BIG / 2 (times a, region 2) */
 TS_INLINE float hw_mean_tanh(float p, float d)
 {
@@ -180,25 +177,22 @@ TS_INLINE float hw_g(float t)            /* log1p(e^-2t), t >= 0 */
            + s2 * (1.0f / 9 + s2 * (1.0f / 11 + s2 * (1.0f / 13)))))));
 }
 
-/* t(u) of each region: region 0 uses -u, so that t >= 0 for hw_g */
-TS_INLINE float hw_treg(int reg, float u, float c)
-{
-    return reg == 0 ? -u : (reg == 1 ? u : HW_GRID * u + c * (1.0f - HW_GRID));
-}
-
-/* ADAA output over [ua, ua + du] inside one region */
+/* ADAA output over [ua, ua + du] inside one region. Every region's transfer
+ * is W tanh(A u + B): (k, 1, 0) below zero, (1, 1, 0) up to the ceiling,
+ * (1, a, c(1-a)) above it, so one code path serves all three (code size: the
+ * kernel must fit the G1's 30 KB code region with five stages inlined). */
 TS_INLINE float hw_q(int reg, float ua, float du, float kneg, float c)
 {
+    float W = reg == 0 ? kneg : 1.0f;
+    float A = reg == 2 ? HW_GRID : 1.0f;
+    float t1 = A * ua + (reg == 2 ? c * (1.0f - HW_GRID) : 0.0f), dt = A * du;
     float ad = du < 0.0f ? -du : du;
-    if (ad < HW_ADAA_BIG) {
-        if (reg == 0) return kneg * hw_mean_tanh(ua, 0.5f * du);
-        if (reg == 1) return hw_mean_tanh(ua, 0.5f * du);
-        return hw_mean_tanh(hw_treg(2, ua, c), 0.5f * HW_GRID * du);
-    }
-    {   /* large step: F = slope u + W g(t) per region, |g| < ln2, |du| >= 0.25 */
-        float t1 = hw_treg(reg, ua, c);
-        float dq = (hw_g(hw_treg(reg, ua + du, c)) - hw_g(t1)) * ts_rcp(du);
-        return reg == 0 ? -kneg + kneg * dq : 1.0f + (reg == 1 ? dq : dq * (1.0f / HW_GRID));
+    if (ad < HW_ADAA_BIG)
+        return W * hw_mean_tanh(t1, 0.5f * dt);
+    {   /* large step: ln cosh t = |t| + g(|t|) - ln2, t keeps its sign in a region */
+        float t2 = t1 + dt, a1 = t1 < 0.0f ? -t1 : t1, a2 = t2 < 0.0f ? -t2 : t2;
+        /* (|t2| - |t1|) / dt is exactly the sign of t inside a region */
+        return W * ((t1 < 0.0f ? -1.0f : 1.0f) + (hw_g(a2) - hw_g(a1)) * ts_rcp(dt));
     }
 }
 
@@ -225,79 +219,97 @@ TS_INLINE float hw_tube_adaa(float x, float *x1, float bias, float kneg, float c
     return acc * ts_rcp(hi - lo) - idle;
 }
 
-#if HW_ADAA
-#define HW_TUBE(i, x, b, k, c, idle) hw_tube_adaa(x, &s->ax[i], b, k, c, idle)
-#else
-#define HW_TUBE(i, x, b, k, c, idle) hw_tube(x, b, k, c, idle)
+/* HW_ADAA_MASK: which stages (bit 0 = V1 .. bit 4 = power) use ADAA */
+#ifndef HW_ADAA_MASK
+#define HW_ADAA_MASK 0x1f
 #endif
 
-/* one step of a k-state network with input u (previous input up) */
-TS_INLINE float hw_net(const MnaSS *m, float *x, int k, int col, float u, float up)
+/* one step of a k-state, one-input network (packed m), input u, previous up */
+TS_INLINE float hw_net(const float *m, float *x, int k, float u, float up)
 {
-    float su = u + up, dx[MNA_MAXK], y = m->dy[col] * u;
+    float su = u + up, dx[MNA_MAXK], y = MNA_DY(m, k, 1, 0) * u;
     int i, j;
     for (i = 0; i < k; ++i) {
-        float a = m->db[i][col] * su;
-        for (j = 0; j < k; ++j) a += m->da[i][j] * x[j];
+        float a = MNA_DB(m, k, 1, i, 0) * su;
+        for (j = 0; j < k; ++j) a += MNA_DA(m, k, 1, i, j) * x[j];
         dx[i] = a;
     }
     for (i = 0; i < k; ++i) {
         x[i] += dx[i];
-        y += m->cy[i] * x[i];
+        y += MNA_CY(m, k, 1, i) * x[i];
     }
     return y;
 }
 
-/* one 4x sample through the amp; returns 16-ohm tap volts * HW_OUT */
+/* per tube stage: input scale (to the stage's clip units), bias,
+ * negative-half scale, idle output */
+static const float hw_tube_par[5][4] = {
+    { 1.0f / HW_H1, HW_B1, HW_K1, HW_I1 },                        /* V1 */
+    { 1.0f / HW_H2, HW_B2, HW_K2, HW_I2 },                        /* V2 */
+    { 1.0f / HW_H3, HW_B3, HW_K3, HW_I3 },                        /* V3a */
+    { 1.0f / HW_HPI, HW_BPI, HW_KPI, HW_IPI },                    /* PI (LTP) */
+    /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V */
+    { -HW_APIHPI * (0.5f / HW_HPWR), HW_BPW, HW_KPW, HW_IPW },    /* EL34 pair */
+};
+
+/* one 4x sample through the amp; returns 16-ohm tap volts * HW_OUT.
+ * The five tube stages run in one loop body (one inlined copy of the ADAA
+ * code: the kernel must fit the G1 code budget); after each stage the
+ * if-chain applies what follows it in the amp. */
 TS_INLINE float hw_stage(HwState *s, const HwCoeffs *k, float in)
 {
-    float v, y, u, d, ypi, yp, tap, r, rail, pre;
-    int i;
+    float v, y, u, d = 0.0f, rail = 1.0f, pre, c;
+    int i, st;
 
     v = in * HW_IN_SCALE;
-    y = v - s->dcx + HW_DC_R * s->dcy;
+    y = v - s->dcx + HW_DC_R * s->dcy;              /* 5 Hz DC guard */
     s->dcx = v;
     s->dcy = y;
-    pre = 1.0f - 0.3f * HW_SAG_DEPTH * s->sag;   /* preamp rails: 30 % of sag */
+    pre = 1.0f - 0.3f * HW_SAG_DEPTH * s->sag;      /* preamp rails: 30 % of sag */
 
-    y = HW_TUBE(0, y * (1.0f / HW_H1), HW_B1, HW_K1, pre, HW_I1);
-    u = HW_MU3 * HW_H1 * y;
-    y = hw_net(&k->v1, s->xv1, 2, 0, u, s->uv1);
-    s->uv1 = u;
-
-    y = HW_TUBE(1, y * (1.0f / HW_H2), HW_B2, HW_K2, pre, HW_I2);
-    u = HW_MU3 * HW_H2 * y;
-    y = hw_net(&k->st, s->xst, 5, 0, u, s->ust);
-    s->ust = u;
-
-    y = HW_TUBE(2, y * (1.0f / HW_H3), HW_B3, HW_K3, pre, HW_I3);
-    {   /* back half: u0 = V3a grid volts, u1 = -residual (POL_NFB) */
-        float u0 = HW_H3 * y, u1 = -s->resid, s0 = u0 + s->ub0, s1 = u1 + s->ub1;
-        float dx[5];
-        d = k->bh.dy[0] * u0 + k->bh.dy[1] * u1;
-        for (i = 0; i < 5; ++i) {
-            float a = k->bh.db[i][0] * s0 + k->bh.db[i][1] * s1;
-            int j;
-            for (j = 0; j < 5; ++j) a += k->bh.da[i][j] * s->xbh[j];
-            dx[i] = a;
+    for (st = 0; st < 5; ++st) {
+        const float *tp = hw_tube_par[st];
+        c = st < 4 ? pre : rail;
+        y = y * tp[0];
+        y = (HW_ADAA && (HW_ADAA_MASK >> st & 1)) ? hw_tube_adaa(y, &s->ax[st], tp[1], tp[2], c, tp[3])
+                                                 : hw_tube(y, tp[1], tp[2], c, tp[3]);
+        /* if-chain, not switch: a switch compiles to a .switch jump table,
+         * a data section the blob cannot carry */
+        if (st == 0) {                              /* V1 network -> V2 grid */
+            u = HW_MU3 * HW_H1 * y;
+            y = hw_net(k->v1, s->xv1, 2, u, s->uv1);
+            s->uv1 = u;
+        } else if (st == 1) {                       /* tone stack -> master wiper */
+            u = HW_MU3 * HW_H2 * y;
+            y = hw_net(k->st, s->xst, 5, u, s->ust);
+            s->ust = u;
+        } else if (st == 2) {   /* back half: u0 = V3a grid volts, u1 = -residual (POL_NFB) */
+            float u0 = HW_H3 * y, u1 = -s->resid, s0 = u0 + s->ub0, s1 = u1 + s->ub1;
+            float dx[5];
+            d = MNA_DY(k->bh, 5, 2, 0) * u0 + MNA_DY(k->bh, 5, 2, 1) * u1;
+            for (i = 0; i < 5; ++i) {
+                float a = MNA_DB(k->bh, 5, 2, i, 0) * s0 + MNA_DB(k->bh, 5, 2, i, 1) * s1;
+                int j;
+                for (j = 0; j < 5; ++j) a += MNA_DA(k->bh, 5, 2, i, j) * s->xbh[j];
+                dx[i] = a;
+            }
+            for (i = 0; i < 5; ++i) {
+                s->xbh[i] += dx[i];
+                d += MNA_CY(k->bh, 5, 2, i) * s->xbh[i];
+            }
+            s->ub0 = u0;
+            s->ub1 = u1;
+            y = d;                                  /* PI diff grid volts */
+        } else if (st == 3) {                       /* sag from the PI output */
+            float r = y < 0.0f ? -y : y;
+            s->sag += (r - s->sag) * (r > s->sag ? HW_SAG_ATT : HW_SAG_REL);
+            rail = 1.0f - HW_SAG_DEPTH * s->sag;
+        } else {                                    /* 16-ohm tap, NFB residual */
+            y = HW_VTAP * y;
+            s->resid += HW_RESID_A * ((y - HW_KTAPLIN * d) - s->resid);
         }
-        for (i = 0; i < 5; ++i) {
-            s->xbh[i] += dx[i];
-            d += k->bh.cy[i] * s->xbh[i];
-        }
-        s->ub0 = u0;
-        s->ub1 = u1;
     }
-
-    ypi = HW_TUBE(3, d * (1.0f / HW_HPI), HW_BPI, HW_KPI, pre, HW_IPI);
-    r = ypi < 0.0f ? -ypi : ypi;
-    s->sag += (r - s->sag) * (r > s->sag ? HW_SAG_ATT : HW_SAG_REL);
-    rail = 1.0f - HW_SAG_DEPTH * s->sag;
-    /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V */
-    yp = HW_TUBE(4, -ypi * HW_APIHPI * (0.5f / HW_HPWR), HW_BPW, HW_KPW, rail, HW_IPW);
-    tap = HW_VTAP * yp;
-    s->resid += HW_RESID_A * ((tap - HW_KTAPLIN * d) - s->resid);
-    return tap * HW_OUT;
+    return y * HW_OUT;
 }
 
 TS_INLINE float hw_cabinet(HwState *s, float x)
@@ -313,30 +325,31 @@ TS_INLINE float hw_cabinet(HwState *s, float x)
     return x;
 }
 
-/* one base-rate sample: 4x amp, then the cab unless cab_on is 0 */
+/* one base-rate sample: 4x amp, then the cab unless cab_on is 0. The four
+ * 4x samples go through one loop body (one inlined copy of the stage: a
+ * smaller stack frame than four). */
 TS_INLINE float hw_process(HwState *s, const HwCoeffs *k, float x, int cab_on)
 {
-    float a1, b1, a2, b2, c2, d2;
+    float a1, b1, y4[4];
+    int i;
 #if HW_OS_IIR
     hbi_up1(&s->up1, x, &a1, &b1);
-    hbi_up2(&s->up2, a1, &a2, &b2);
-    hbi_up2(&s->up2, b1, &c2, &d2);
+    hbi_up2(&s->up2, a1, &y4[0], &y4[1]);
+    hbi_up2(&s->up2, b1, &y4[2], &y4[3]);
 #else
     tsx_up6(&s->os1, x, &a1, &b1);
-    tsx_up3(&s->os2, a1, &a2, &b2);
-    tsx_up3(&s->os2, b1, &c2, &d2);
+    tsx_up3(&s->os2, a1, &y4[0], &y4[1]);
+    tsx_up3(&s->os2, b1, &y4[2], &y4[3]);
 #endif
-    a2 = hw_stage(s, k, a2);
-    b2 = hw_stage(s, k, b2);
-    c2 = hw_stage(s, k, c2);
-    d2 = hw_stage(s, k, d2);
+    for (i = 0; i < 4; ++i)
+        y4[i] = hw_stage(s, k, y4[i]);
 #if HW_OS_IIR
-    a1 = hbi_down2(&s->dn2, a2, b2);
-    b1 = hbi_down2(&s->dn2, c2, d2);
+    a1 = hbi_down2(&s->dn2, y4[0], y4[1]);
+    b1 = hbi_down2(&s->dn2, y4[2], y4[3]);
     x = hbi_down1(&s->dn1, a1, b1);
 #else
-    a1 = tsx_down3(&s->os2, a2, b2);
-    b1 = tsx_down3(&s->os2, c2, d2);
+    a1 = tsx_down3(&s->os2, y4[0], y4[1]);
+    b1 = tsx_down3(&s->os2, y4[2], y4[3]);
     x = tsx_down6(&s->os1, a1, b1);
 #endif
     return cab_on ? hw_cabinet(s, x) : x;

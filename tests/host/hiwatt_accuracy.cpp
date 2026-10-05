@@ -150,7 +150,12 @@ int main(int argc, char** argv)
                 for (int n = 0; n < N; ++n)
                     o[n] = hw_process(&s, &k, (float)(amp * std::sin(2 * PI * f0 * n / SR)), 0);
                 // G = float ADAA, GP = plain tubes; F suffix = FIR half-bands instead of IIR
-                write(dir + "/" + std::string(HW_ADAA ? "G" : "GP") + (HW_OS_IIR ? "" : "F") + "_" + tag + ".f32", o);
+                {
+                    char pre[16];
+                    std::snprintf(pre, sizeof pre, "%s%s%s", HW_ADAA ? "G" : "GP", HW_OS_IIR ? "" : "F",
+                                  (HW_ADAA && HW_ADAA_MASK != 0x1f) ? (HW_ADAA_MASK == 0x18 ? "m18" : (HW_ADAA_MASK == 0x1c ? "m1c" : "mX")) : "");
+                    write(dir + "/" + pre + "_" + tag + ".f32", o);
+                }
             }
     std::printf("done\n");
     return 0;

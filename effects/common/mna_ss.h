@@ -22,6 +22,8 @@
  *   x[n] = x[n-1] + dA x[n-1] + dB (u[n] + u[n-1]),  y[n] = cy x[n] + dy u[n]
  *   (I - hA) [dA | dB] = [2hA | hB]
  * G must be invertible: every node needs a DC path (true for the Hiwatt nets).
+ * Layout: one shared array for the net and the scratch (see MnaNet), and a
+ * packed output, so that the derivation fits a small stack frame.
  */
 #ifndef MNA_SS_H
 #define MNA_SS_H
@@ -29,21 +31,27 @@
 #define MNA_MAXN 11
 #define MNA_MAXK 5
 #define MNA_MAXU 2
+#define MNA_W    (MNA_MAXN + MNA_MAXK + MNA_MAXU)   /* row: [G | E | B] */
 
+/* The net and all derivation scratch share one array, to keep the audio
+ * kernel's stack frame within the stock G1 precedent (<= 1.5 KB):
+ * columns 0..N-1 hold G (destroyed by the solve), N..N+K-1 the capacitor
+ * incidence E, N+K.. the inputs B; after the solve those columns hold
+ * [Zx | Zu], and rows 0..4 / 5..9 of the dead G area hold S and [S^-1 | S^-1 T]. */
 typedef struct {
-    float g[MNA_MAXN][MNA_MAXN];        /* uS */
-    float b[MNA_MAXN][MNA_MAXU];        /* uS (input volts -> injected uA) */
+    float a[MNA_MAXN][MNA_W];
     float c[MNA_MAXK];                  /* nF */
     signed char ci[MNA_MAXK], cj[MNA_MAXK];
     int n, k, nu;
 } MnaNet;
 
-typedef struct {
-    float da[MNA_MAXK][MNA_MAXK];
-    float db[MNA_MAXK][MNA_MAXU];
-    float cy[MNA_MAXK];
-    float dy[MNA_MAXU];
-} MnaSS;
+/* Packed discrete system of k states, nu inputs (mna_derive writes it):
+ *   [dA k*k][dB k*nu][cy k][dy nu] */
+#define MNA_SS_SIZE(k, nu)   ((k) * (k) + (k) * (nu) + (k) + (nu))
+#define MNA_DA(p, k, nu, i, j) ((p)[(i) * (k) + (j)])
+#define MNA_DB(p, k, nu, i, u) ((p)[(k) * (k) + (i) * (nu) + (u)])
+#define MNA_CY(p, k, nu, i)    ((p)[(k) * (k) + (k) * (nu) + (i)])
+#define MNA_DY(p, k, nu, u)    ((p)[(k) * (k) + (k) * (nu) + (k) + (u)])
 
 #ifndef MNA_INLINE
 #  if defined(__TI_COMPILER_VERSION__) || defined(__GNUC__)
@@ -59,10 +67,8 @@ typedef struct {
 MNA_INLINE void mna_init(MnaNet *m, int n, int nu)
 {
     int i, j;
-    for (i = 0; i < MNA_MAXN; ++i) {
-        for (j = 0; j < MNA_MAXN; ++j) m->g[i][j] = 0.0f;
-        for (j = 0; j < MNA_MAXU; ++j) m->b[i][j] = 0.0f;
-    }
+    for (i = 0; i < MNA_MAXN; ++i)
+        for (j = 0; j < MNA_W; ++j) m->a[i][j] = 0.0f;
     m->n = n; m->k = 0; m->nu = nu;
 }
 
@@ -84,26 +90,28 @@ MNA_INLINE float mna_rcp(float x) { return 1.0f / x; }
 MNA_INLINE void mna_r(MnaNet *m, int i, int j, float ohms)
 {
     float g = 1.0e6f * mna_rcp(ohms);
-    if (i >= 0) m->g[i][i] += g;
-    if (j >= 0) m->g[j][j] += g;
-    if (i >= 0 && j >= 0) { m->g[i][j] -= g; m->g[j][i] -= g; }
+    if (i >= 0) m->a[i][i] += g;
+    if (j >= 0) m->a[j][j] += g;
+    if (i >= 0 && j >= 0) { m->a[i][j] -= g; m->a[j][i] -= g; }
 }
 
 /* raw conductance-matrix entry (controlled sources), siemens */
 MNA_INLINE void mna_g(MnaNet *m, int row, int col, float siemens)
 {
-    m->g[row][col] += siemens * 1.0e6f;
+    m->a[row][col] += siemens * 1.0e6f;
 }
 
 /* input column: current siemens * u injected into node */
 MNA_INLINE void mna_b(MnaNet *m, int node, int col, float siemens)
 {
-    m->b[node][col] += siemens * 1.0e6f;
+    m->a[node][MNA_MAXN + MNA_MAXK + col] += siemens * 1.0e6f;
 }
 
 /* capacitor (a state) between nodes i and j (-1 = ground), farads */
 MNA_INLINE void mna_c(MnaNet *m, int i, int j, float farads)
 {
+    if (i >= 0) m->a[i][MNA_MAXN + m->k] = 1.0f;
+    if (j >= 0) m->a[j][MNA_MAXN + m->k] = -1.0f;
     m->ci[m->k] = (signed char)i;
     m->cj[m->k] = (signed char)j;
     m->c[m->k] = farads * 1.0e9f;
@@ -143,67 +151,76 @@ MNA_INLINE void mna_gauss(float *a, int la, float *r, int lr, int n, int nr)
     }
 }
 
-/* Derive the discrete system at sample rate fs. w = output weights per node
- * (y = sum w[n] v[n]). m->g is destroyed. */
-MNA_INLINE void mna_derive(MnaNet *m, const float *w, float fs, MnaSS *s)
+/* Derive the packed discrete system (MNA_SS_SIZE(k, nu) floats) at sample
+ * rate fs. w = output weights per node (y = sum w[n] v[n]). m is destroyed. */
+MNA_INLINE void mna_derive(MnaNet *m, const float *w, float fs, float *out)
 {
-    float z[MNA_MAXN][MNA_MAXK + MNA_MAXU];   /* [Zx | Zu] */
-    float sm[MNA_MAXK][MNA_MAXK];             /* S, then I - hA */
-    float q[MNA_MAXK][MNA_MAXK + MNA_MAXU];   /* [S^-1 | S^-1 T], then [dA | dB] */
-    float wz[MNA_MAXK + MNA_MAXU];            /* w^T [Zx | Zu] */
+#define Z(i, j)  m->a[i][MNA_MAXN + (j)]          /* [Zx | Zu], Zu at j >= MAXK */
+#define SM(i, j) m->a[i][j]                       /* S, then I - hA */
+#define Q(i, j)  m->a[5 + (i)][j]                 /* [S^-1 | S^-1 T], then [dA | dB] */
+    float wz[MNA_MAXK + MNA_MAXU];
     float h = 0.5f * mna_rcp(fs);
     int n = m->n, k = m->k, nu = m->nu, i, j, l;
+    const int R = MNA_MAXK + MNA_MAXU;            /* rhs width: E (padded) + B */
 
-    for (i = 0; i < n; ++i) {
-        for (j = 0; j < k; ++j)
-            z[i][j] = (m->ci[j] == i ? 1.0f : 0.0f) - (m->cj[j] == i ? 1.0f : 0.0f);
-        for (j = 0; j < nu; ++j) z[i][k + j] = m->b[i][j];
-    }
-    mna_gauss(&m->g[0][0], MNA_MAXN, &z[0][0], MNA_MAXK + MNA_MAXU, n, k + nu);
-
-    /* [S | T] = E^T [Zx | Zu]; q starts as [I | T] */
-    for (i = 0; i < k; ++i) {
-        int a = m->ci[i], c = m->cj[i];
-        for (j = 0; j < k + nu; ++j) {
-            float v = (a >= 0 ? z[a][j] : 0.0f) - (c >= 0 ? z[c][j] : 0.0f);
-            if (j < k) { sm[i][j] = v; q[i][j] = (i == j) ? 1.0f : 0.0f; }
-            else q[i][j] = v;
+    /* three solves through one mna_gauss site (code size: one inlined copy):
+     * pass 0: G [Zx | Zu] = [E | B]; pass 1: S [S^-1 | S^-1 T] = [I | T];
+     * pass 2: (I - hA) [dA | dB] = [2hA | hB] */
+    int pass;
+    for (pass = 0; pass < 3; ++pass) {
+        if (pass == 1) {
+            for (j = 0; j < R; ++j) {             /* w^T [Zx | Zu], before G area reuse */
+                float acc = 0.0f;
+                for (i = 0; i < n; ++i) acc += w[i] * Z(i, j);
+                wz[j] = acc;
+            }
+            /* S = E^T Zx, T = E^T Zu; Q starts as [I | T]. Rows 0..4 / 5..9 of
+             * the G area are dead after the solve (n >= 10 whenever k = 5; the
+             * V1 net, k = 2, n = 5, uses rows 0..1 / 5..6, inside a[MAXN]). */
+            for (i = 0; i < k; ++i) {
+                int ca = m->ci[i], cb = m->cj[i];
+                for (j = 0; j < k; ++j) {
+                    SM(i, j) = (ca >= 0 ? Z(ca, j) : 0.0f) - (cb >= 0 ? Z(cb, j) : 0.0f);
+                    Q(i, j) = (i == j) ? 1.0f : 0.0f;
+                }
+                for (j = 0; j < nu; ++j)
+                    Q(i, k + j) = (ca >= 0 ? Z(ca, MNA_MAXK + j) : 0.0f)
+                                - (cb >= 0 ? Z(cb, MNA_MAXK + j) : 0.0f);
+            }
+        } else if (pass == 2) {
+            for (j = 0; j < k; ++j) {             /* cy = w^T Zx S^-1 */
+                float acc = 0.0f;
+                for (l = 0; l < k; ++l) acc += wz[l] * Q(l, j);
+                MNA_CY(out, k, nu, j) = acc;
+            }
+            for (j = 0; j < nu; ++j) {            /* dy = w^T Zu - w^T Zx S^-1 T */
+                float acc = wz[MNA_MAXK + j];
+                for (l = 0; l < k; ++l) acc -= wz[l] * Q(l, k + j);
+                MNA_DY(out, k, nu, j) = acc;
+            }
+            /* A = -D S^-1, B = D S^-1 T, D = 1e3/C[nF] (uA/nF -> V/s) */
+            for (i = 0; i < k; ++i) {
+                float hd = h * 1.0e3f * mna_rcp(m->c[i]);
+                for (j = 0; j < k; ++j) {
+                    float ha = -hd * Q(i, j);
+                    SM(i, j) = (i == j ? 1.0f : 0.0f) - ha;
+                    Q(i, j) = 2.0f * ha;
+                }
+                for (j = 0; j < nu; ++j) Q(i, k + j) *= hd;
+            }
         }
+        if (pass == 0)
+            mna_gauss(&m->a[0][0], MNA_W, &m->a[0][MNA_MAXN], MNA_W, n, R);
+        else
+            mna_gauss(&SM(0, 0), MNA_W, &Q(0, 0), MNA_W, k, k + nu);
     }
-    mna_gauss(&sm[0][0], MNA_MAXK, &q[0][0], MNA_MAXK + MNA_MAXU, k, k + nu);
-
-    for (j = 0; j < k + nu; ++j) {
-        float acc = 0.0f;
-        for (i = 0; i < n; ++i) acc += w[i] * z[i][j];
-        wz[j] = acc;
-    }
-    for (j = 0; j < k; ++j) {               /* cy = w^T Zx S^-1 */
-        float acc = 0.0f;
-        for (l = 0; l < k; ++l) acc += wz[l] * q[l][j];
-        s->cy[j] = acc;
-    }
-    for (j = 0; j < nu; ++j) {              /* dy = w^T Zu - w^T Zx S^-1 T */
-        float acc = wz[k + j];
-        for (l = 0; l < k; ++l) acc -= wz[l] * q[l][k + j];
-        s->dy[j] = acc;
-    }
-
-    /* A = -D S^-1, B = D S^-1 T with D = 1e3/C[nF] (uA/nF -> V/s);
-     * then (I - hA) [dA | dB] = [2hA | hB] */
     for (i = 0; i < k; ++i) {
-        float hd = h * 1.0e3f * mna_rcp(m->c[i]);
-        for (j = 0; j < k; ++j) {
-            float ha = -hd * q[i][j];
-            sm[i][j] = (i == j ? 1.0f : 0.0f) - ha;
-            q[i][j] = 2.0f * ha;
-        }
-        for (j = 0; j < nu; ++j) q[i][k + j] *= hd;
+        for (j = 0; j < k; ++j) MNA_DA(out, k, nu, i, j) = Q(i, j);
+        for (j = 0; j < nu; ++j) MNA_DB(out, k, nu, i, j) = Q(i, k + j);
     }
-    mna_gauss(&sm[0][0], MNA_MAXK, &q[0][0], MNA_MAXK + MNA_MAXU, k, k + nu);
-    for (i = 0; i < k; ++i) {
-        for (j = 0; j < k; ++j) s->da[i][j] = q[i][j];
-        for (j = 0; j < nu; ++j) s->db[i][j] = q[i][k + j];
-    }
+#undef Z
+#undef SM
+#undef Q
 }
 
 #endif /* MNA_SS_H */

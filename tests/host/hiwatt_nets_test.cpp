@@ -18,6 +18,25 @@ extern "C" {
 using cd = std::complex<double>;
 static const double PI = 3.14159265358979323846;
 
+// unpacked view of mna_derive's packed output
+struct MnaSS {
+    float da[MNA_MAXK][MNA_MAXK], db[MNA_MAXK][MNA_MAXU], cy[MNA_MAXK], dy[MNA_MAXU];
+};
+static MnaSS derive(MnaNet& net, const float* wv, double fs)
+{
+    float p[MNA_SS_SIZE(MNA_MAXK, MNA_MAXU)];
+    const int k = net.k, nu = net.nu;
+    mna_derive(&net, wv, (float)fs, p);
+    MnaSS s = {};
+    for (int i = 0; i < k; ++i) {
+        for (int j = 0; j < k; ++j) s.da[i][j] = MNA_DA(p, k, nu, i, j);
+        for (int u = 0; u < nu; ++u) s.db[i][u] = MNA_DB(p, k, nu, i, u);
+        s.cy[i] = MNA_CY(p, k, nu, i);
+    }
+    for (int u = 0; u < nu; ++u) s.dy[u] = MNA_DY(p, k, nu, u);
+    return s;
+}
+
 // digital response of our system: z x = x + dA x + dB (z+1) u, y = cy x + dy u
 static cd ourH(const MnaSS& s, int k, int col, double f, double fs)
 {
@@ -99,9 +118,8 @@ template <int N, int NIN, class Ref>
 static void check(Worst& w, MnaNet& net, const float* wv, const Ref& ref, int refOut2,
                   int refOut, int col, double fs, bool diff)
 {
-    MnaSS s;
     int k = net.k;
-    mna_derive(&net, wv, (float)fs, &s);
+    MnaSS s = derive(net, wv, fs);
     double P[N][N], W[N][NIN];
     ref.discretize(fs, P, W);
     for (double f = 20; f <= 20000; f *= 1.06) {
