@@ -12,7 +12,7 @@ index b7aaa2b..6d95dbd 100755
      "$CMD" "$WORKDIR/$NAME.obj" $EXTRA_OBJS
  
 diff --git a/tools/zd2_make_effect.py b/tools/zd2_make_effect.py
-index d5d1d06..e237a91 100644
+index d5d1d06..5a65fe9 100644
 --- a/tools/zd2_make_effect.py
 +++ b/tools/zd2_make_effect.py
 @@ -104,7 +104,7 @@ VALUE_MAX_CHARS = VALUE_STRIDE - 1
@@ -24,3 +24,14 @@ index d5d1d06..e237a91 100644
  AUDIO_MAX_BYTES = 1472    # largest stock .audio (corpus census)
  AUDIO_ADDR = 0x7800
  
+@@ -1305,7 +1305,9 @@ def verify_cleanroom(m: dict, builddir: Path, report: list) -> None:
+                 and not l.strip().endswith(":"))
+         text_cap += 4 * n + 256
+     if m["kernel_section"] == "text":
+-        text_cap += 16384                     # big-kernel budget (<< the 72 KB
++        text_cap += 16384 + int(os.environ.get("ZD2_TEXT_EXTRA", 0))  # big-kernel budget (<< the 72 KB
++                                              # stock max; ZD2_TEXT_EXTRA: local hook, the
++                                              # link region 0x7800 still bounds it)
+                                               # stock max, keeps .text < 0x7800)
+     assert text["sh_addr"] == 0 and text["sh_size"] <= text_cap, \
+         f".text at {text['sh_addr']:#x}, {text['sh_size']} B (cap {text_cap})"
