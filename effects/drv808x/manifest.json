@@ -14,6 +14,7 @@
   "opt_for_space": null,
   "state_bytes": 316,
   "scaffold": "cleanroom",
+  "const_blob": { "symbol": "tsx_dtab", "words": 6912, "init": "dtab.bin" },
   "params": [
     { "name": "Drive", "max": 100, "default": 45,
       "explanation": "P1, 500k audio taper, in the clipping stage's feedback loop." },

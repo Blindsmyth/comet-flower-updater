@@ -6,15 +6,21 @@
  *   feedback: Rf || C4 (51 pF) || D1/D2   v(1/Rf + 2C4/T) + 2 Is sinh(v/nVt) = i_g + hist
  *   Vout = Vin + v
  * with Rf = R6 + P1 (51k + 500k * wiper^2, audio taper) and 1N4148/MA150
- * silicon (Is 2.52 nA, n 1.752). Three Newton steps per sample, warm-started.
+ * silicon (Is 2.52 nA, n 1.752). The diode equation is solved by table:
+ * normalised to c*u + sinh(u) = r (u = v/nVt, c set by Drive), u(c, r) is
+ * precomputed in double (tools/gen_diode_table.py -> ts808_dtab.h, 27 KB) as
+ * cubic Hermite segments on a pseudo-log |r| grid, blended across four c rows.
+ * Table error <= 4e-6 V; no iteration, so the per-sample dependency chain is
+ * short. (The first 808X ran three warm-started Newton steps: ~74k cycles per
+ * block against ~15k now, and it was less converged at high drive.)
  * Around it: C1/R2 and C2/R5 input couplings (15.6 / 15.9 Hz), R7/C5 723 Hz
  * pole, the pole-zero tone network (from Comet Flower's DriveMobileCore,
  * computed at 8x), 5 Hz output coupling.
  *
  * Scored against a 32x double-precision reference of the same circuit
- * (tests/host/ts808_accuracy.cpp): worst harmonic error 1.6 dB (passband
- * droop of the first half-band near 20 kHz), <= 0.03 dB below 1 kHz,
- * aliasing <= -55 dB.
+ * (tests/host/ts808_accuracy.cpp): worst harmonic error 1.75 dB (passband
+ * droop of the first half-band near 20 kHz), <= 0.04 dB below 1 kHz,
+ * aliasing <= -58 dB.
  *
  * Oversampling: 2x half-band FIR with 6 tap pairs (as Oversampler2x), then two
  * 2x stages with 3 pairs (the transition band is wide at 4x/8x).
@@ -24,9 +30,11 @@
 #define TS808_EXACT_H
 
 #include "ts808_sd.h"
+#include "ts808_dtab.h"
 
-#ifndef SD_ITERS_EXACT
-#define SD_ITERS_EXACT 3
+/* TSX_NEWTON 1 adds one exact Newton step after the table (bench check). */
+#ifndef TSX_NEWTON
+#define TSX_NEWTON 0
 #endif
 
 #define X_KC3            30.153905868530273f
@@ -39,6 +47,15 @@
 #define X_G_IN1          0.0011103219585493207f
 #define X_G_IN2          0.0011325032683089375f
 
+/* Normalised clipping stage. With u = v/nVt, Rf || C4 || diodes is
+ *   c*u + sinh(u) = r,   c = X_C_SCALE * (1/Rf + gC4),
+ *   r = X_R_IG * (i_g + i_C4,hist) + X_ALPHA * u_prev,
+ * and the C4 companion history folds into one float q:
+ *   r_n = (X_R_IG * i_g,n - q) + 2 X_ALPHA u_(n-1),   q' = 2 X_ALPHA u_(n-1) - q. */
+#define X_R_IG    (1.0f / (2.0f * SD_IS))
+#define X_ALPHA   (X_GC4 * SD_NVT / (2.0f * SD_IS))
+#define X_C_SCALE (SD_NVT / (2.0f * SD_IS))
+
 #define OS3_C0  0.28437113761901855f
 #define OS3_C1 -0.03608988597989082f
 #define OS3_C2  0.0017187680350616574f
@@ -50,21 +67,37 @@ typedef struct {
     TsxHB6 s1;
     TsxHB3 s2, s3;
     float hp1, hp2;                 /* input coupling one-poles */
-    float vc3, igp, v, ic4;         /* clipping stage: C3 voltage, i_g, diode v, C4 current */
+    float vc3, igp, u, q;           /* clipping stage: C3 voltage, i_g, diode v/nVt, C4 history */
     float spost, ztone, sdc;        /* R7/C5, tone, output coupling */
 } TsxState;                         /* 75 floats = 300 B */
 
-typedef struct { float rf, a, gc4rf, lin, b0, b1, gain; } TsxCoeffs;
+typedef struct {
+    float b0, b1, gain;
+    float c, inv_c1;                /* diode solve: c, 1/(c+1) */
+    float w0, w1, w2, w3;           /* cubic Lagrange weights of the four c rows */
+    const float *dt;                /* first of the four table rows */
+} TsxCoeffs;
 
 TS_INLINE void tsx_coeffs(TsxCoeffs *k, float drive, float tone, float gain)
 {
     float d = ts_clamp(drive, 0.0f, 10.0f) * 0.1f;
     float t = ts_clamp(tone, 0.0f, 1.0f);
-    float fz, kwz;
-    k->rf = 51000.0f + d * d * 500000.0f;
-    k->a = 2.0f * SD_IS * k->rf;
-    k->gc4rf = X_GC4 * k->rf;
-    k->lin = 1.0f + k->gc4rf;
+    float fz, kwz, rf, fc, x;
+    int j0;
+    rf = 51000.0f + d * d * 500000.0f;
+    k->c = X_C_SCALE * (ts_rcp(rf) + X_GC4);
+    k->inv_c1 = ts_rcp(k->c + 1.0f);
+    fc = (k->c - TSX_DT_CMIN) * ((TSX_DT_NC - 1) / (TSX_DT_CMAX - TSX_DT_CMIN));
+    fc = ts_clamp(fc, 0.0f, (float)(TSX_DT_NC - 1));
+    j0 = (int)fc - 1;
+    if (j0 < 0) j0 = 0;
+    if (j0 > TSX_DT_NC - 4) j0 = TSX_DT_NC - 4;
+    x = fc - (float)j0;                         /* position among rows j0..j0+3 */
+    k->w0 = -(x - 1.0f) * (x - 2.0f) * (x - 3.0f) * (1.0f / 6.0f);
+    k->w1 = x * (x - 2.0f) * (x - 3.0f) * 0.5f;
+    k->w2 = -x * (x - 1.0f) * (x - 3.0f) * 0.5f;
+    k->w3 = x * (x - 1.0f) * (x - 2.0f) * (1.0f / 6.0f);
+    k->dt = tsx_dtab + j0 * (TSX_DT_NSEG * 4);
     fz = 723.0f * ts_exp_pos((1.0f - t) * TS_LN_RATIO);
     kwz = X_TONE_K8 * ts_rcp(6.2831853f * fz);
     k->b0 = (1.0f + kwz) * X_TONE_INV_A0_8;
@@ -118,28 +151,63 @@ TS_INLINE float tsx_down3(TsxHB3 *h, float a, float b)
         + OS3_C2 * (h->oh[6] + h->oh[1]);
 }
 
+/* u(c, r) from the table: pseudo-log segment and position t from the float
+ * bits of |r|, the four c rows blended, cubic in t (Estrin). Odd in r. */
+TS_INLINE float tsx_dtable(const TsxCoeffs *k, float r)
+{
+    union { float f; unsigned u; } b;
+    const unsigned top = ((127u + TSX_DT_HI) << 23) - 1u;
+    const int sh = 23 - TSX_DT_LOG2K;
+    const int S = TSX_DT_NSEG * 4;
+    unsigned sgn, m, low;
+    int seg;
+    const float *p;
+    float t, t2, c0, c1, c2, c3, u, ar;
+    b.f = r;
+    sgn = b.u & 0x80000000u;
+    m = b.u & 0x7fffffffu;
+    b.u = m;
+    ar = b.f;
+    if (m > top) m = top;
+    seg = ((int)m - (int)((127u + TSX_DT_LO) << 23)) >> sh;
+    t = (float)(int)(m & ((1u << sh) - 1u)) * (1.0f / (float)(1u << sh));
+    low = (unsigned)(seg >> 31);               /* all ones below 2^LO */
+    seg &= ~(int)low;
+    p = k->dt + seg * 4;
+    c0 = (k->w0 * p[0] + k->w1 * p[S + 0]) + (k->w2 * p[2 * S + 0] + k->w3 * p[3 * S + 0]);
+    c1 = (k->w0 * p[1] + k->w1 * p[S + 1]) + (k->w2 * p[2 * S + 1] + k->w3 * p[3 * S + 1]);
+    c2 = (k->w0 * p[2] + k->w1 * p[S + 2]) + (k->w2 * p[2 * S + 2] + k->w3 * p[3 * S + 2]);
+    c3 = (k->w0 * p[3] + k->w1 * p[S + 3]) + (k->w2 * p[2 * S + 3] + k->w3 * p[3 * S + 3]);
+    t2 = t * t;
+    u = (c0 + t * c1) + t2 * (c2 + t * c3);
+    /* below 2^LO the diodes are off: u = r/(c+1). Bit select, so the loop
+     * stays branch-free and software-pipelines. */
+    b.f = ar * k->inv_c1;
+    m = b.u & low;
+    b.f = u;
+    b.u = (b.u & ~low) | m | sgn;
+    return b.f;
+}
+
 /* one 8x sample through the circuit */
 TS_INLINE float tsx_stage(TsxState *s, const TsxCoeffs *k, float x)
 {
     float ig = (x - s->vc3 - X_KC3 * s->igp) * X_INV_R4KC3;
-    float rhs, vn, y, o;
-    int it;
+    float hu = (2.0f * X_ALPHA) * s->u;
+    float r, u, y, o;
     s->vc3 += X_KC3 * (ig + s->igp);
     s->igp = ig;
-    rhs = k->rf * (ig + s->ic4) + k->gc4rf * s->v;
-    vn = s->v;
-    for (it = 0; it < SD_ITERS_EXACT; ++it) {
-        float e = sd_expf(vn * SD_INVNVT), ei = sd_expf(-vn * SD_INVNVT);
-        float f = k->lin * vn + k->a * 0.5f * (e - ei) - rhs;
-        float df = k->lin + k->a * SD_INVNVT * 0.5f * (e + ei);
-        float st = f * ts_rcp(df);
-        if (st > 0.1f) st = 0.1f;
-        if (st < -0.1f) st = -0.1f;
-        vn -= st;
+    r = (X_R_IG * ig - s->q) + hu;
+    s->q = hu - s->q;
+    u = tsx_dtable(k, r);
+#if TSX_NEWTON
+    {
+        float e = sd_expf(u), ei = sd_expf(-u);
+        u -= (k->c * u + 0.5f * (e - ei) - r) * ts_rcp(k->c + 0.5f * (e + ei));
     }
-    s->ic4 = X_GC4 * (vn - s->v) - s->ic4;
-    s->v = vn;
-    y = ts_onepole_lp(&s->spost, X_G_POST8, x + vn);
+#endif
+    s->u = u;
+    y = ts_onepole_lp(&s->spost, X_G_POST8, x + SD_NVT * u);
     o = k->b0 * y + s->ztone;
     s->ztone = k->b1 * y - X_TONE_A1_8 * o;
     return o;
