@@ -2,6 +2,8 @@
 """G1 Four write test for a DIY effect: stage 1 of the first hardware test.
 
   python tools/pedal_g1.py writetest build/G1GAIN.ZD2 [--dry-run]
+  python tools/pedal_g1.py uninstall-stock ORG1201U.ZD2
+  python tools/pedal_g1.py install build/G1GAIN.ZD2
 
 Uploads the file, reads it back and byte-compares, deletes it and verifies
 it is gone. FLST_SEQ.ZT2 (the effect list the pedal boots from) is never
@@ -164,11 +166,173 @@ def writetest(path, dry_run):
             pedal.disconnect()
 
 
+BACKUP = PROJ / "backup" / "2026-10-04" / "files"
+
+
+def set_installed(flst, name, installed):
+    """Flip one entry's installed byte. Refuses unless the grammar round-trips
+    the list byte-exactly and the result differs from it in exactly one byte."""
+    import zoomzt2
+    if zoomzt2.ZT2.build(zoomzt2.ZT2.parse(flst)) != flst:
+        refuse("effect list does not round-trip through the zoom-zt2 grammar")
+    cfg = zoomzt2.ZT2.parse(flst)
+    hits = [e for g in cfg[1] for e in g["effects"]
+            if str(e["effect"]).upper() == name]
+    if len(hits) != 1:
+        refuse(f"{name} appears {len(hits)} times in the effect list")
+    hits[0]["installed"] = int(installed)
+    new = zoomzt2.ZT2.build(cfg)
+    diff = sum(a != b for a, b in zip(flst, new))
+    if len(new) != len(flst) or diff != 1:
+        refuse(f"computed list differs in {diff} bytes, expected exactly 1")
+    return new
+
+
+def add_entry(flst, path):
+    """zoom-zt2's add, checked: same length, old entries unchanged and in
+    order, exactly one new installed entry for this file."""
+    import zoomzt2
+    if zoomzt2.ZT2.build(zoomzt2.ZT2.parse(flst)) != flst:
+        refuse("effect list does not round-trip through the zoom-zt2 grammar")
+    new = zoomzt2.zoomzt2().add_effect_from_filename(flst, str(path))
+    old_e, new_e = flst_entries(flst), flst_entries(new)
+    base = os.path.basename(path).upper()
+    added = [e for e in new_e if e not in old_e]
+    if len(new) != len(flst) or [e for e in new_e if e[0] != base] != old_e \
+            or len(added) != 1 or added[0][0] != base:
+        refuse("computed effect list is not a clean single-entry add")
+    return new
+
+
+def open_session():
+    import file_session as fs
+    import zoomzt2
+    pedal = zoomzt2.zoomzt2()
+    if not pedal.connect():
+        refuse("no 'ZOOM G' MIDI port (is ToneLib or another editor open?)")
+    logdir = PROJ / "build" / "pedal-logs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    transport = LoggedTransport(fs.MidoTransport(pedal.inport, pedal.outport),
+                                logdir / "wire.log")
+    sess = fs.FileSession(transport, log=lambda line: print("  engine:", line))
+    sess.pcmode_on()
+    return pedal, sess
+
+
+def uninstall_stock(name):
+    """Free flash by uninstalling a STOCK effect the way Zoom stores
+    uninstalled effects: file deleted, entry kept with installed=0.
+
+    Order is file first, then list, because the list rewrite needs free
+    space and the pedal has too little until the file is gone. Between the
+    two steps the list names a missing file; on any failure there, the file
+    is uploaded again from the backup."""
+    import file_session as fs
+    name = name.upper()
+    original = (BACKUP / name).read_bytes()
+    flst_backup = (BACKUP / fs.FLST_NAME).read_bytes()
+    flst_new = set_installed(flst_backup, name, 0)
+    print(f"pedal_g1: uninstall-stock {name} ({len(original)} bytes); "
+          f"new effect list computed and checked (1 byte changes)")
+
+    pedal, sess = open_session()
+    try:
+        flst_now = sess.download(fs.FLST_NAME)
+        sess.close()
+        if flst_now != flst_backup:
+            refuse("the pedal's effect list no longer matches the backup")
+        present = sess.file_check(name)
+        sess.close()
+        if not present:
+            refuse(f"{name} is not on the pedal")
+        if sess.download(name) != original:
+            refuse(f"{name} on the pedal differs from the backup copy")
+        sess.close()
+
+        try:
+            sess.delete(name)
+            sess.close()
+            if sess.file_check(name):
+                raise fs.TransferError(f"{name} still present after delete")
+            sess.close()
+            print(f"pedal_g1: {name} deleted; flash free now "
+                  f"{sess.disk_usage()[1]} bytes")
+            retries = fs.replace_flst(sess, flst_backup, flst_new,
+                                      log=lambda line: print(line))
+        except fs.TransferError as e:
+            print(f"pedal_g1: FAILED before the list was rewritten ({e}); "
+                  f"restoring {name} from the backup")
+            sess.abort()
+            fs.verified_upload(sess, name, original)
+            back = sess.download(fs.FLST_NAME)
+            sess.close()
+            if back != flst_backup:
+                raise fs.PedalUnresolved("effect list changed during restore")
+            print(f"pedal_g1: restored {name}; pedal verified unchanged")
+            return EXIT_SAFE_ABORT
+        sess.pcmode_off()
+        print(f"pedal_g1: uninstall-stock PASSED: {name} removed, effect list "
+              f"rewritten and read back identical (retries: {retries})")
+        return EXIT_OK
+    except fs.PedalUnresolved as e:
+        print(f"pedal_g1: UNRESOLVED - keep the pedal POWERED. {e}")
+        return EXIT_UNRESOLVED
+    finally:
+        if pedal.is_connected():
+            pedal.disconnect()
+
+
+def install(path):
+    """Install a DIY effect: upload + verify the file, then rewrite the list
+    (stomphacks install_effect: files-then-list, guarded, verified)."""
+    import file_session as fs
+    data = Path(path).read_bytes()
+    base = os.path.basename(path).upper()
+    p = check_container(data)
+    print(f"pedal_g1: install {base} (id 0x{p.header.effect_id:08x}, "
+          f"'{p.header.name}', {len(data)} bytes)")
+
+    pedal, sess = open_session()
+    try:
+        flst_old = sess.download(fs.FLST_NAME)
+        sess.close()
+        if any(n == base or i == p.header.effect_id
+               for n, i in flst_entries(flst_old)):
+            refuse(f"{base} or its id is already in the effect list")
+        flst_new = add_entry(flst_old, path)
+        _, available = sess.disk_usage()
+        need = len(data) + len(flst_new) + fs.DISK_MARGIN
+        if available < need:
+            refuse(f"{available} bytes free, need {need}")
+        try:
+            result = fs.install_effect(sess, [(base, data)], flst_old, flst_new,
+                                       log=lambda line: print(line))
+        except fs.TransferAborted as e:
+            print(f"pedal_g1: install did NOT complete, pedal verified SAFE: {e}")
+            return EXIT_SAFE_ABORT
+        sess.pcmode_off()
+        (PROJ / "build" / "pedal-logs" / "FLST_after_install.ZT2").write_bytes(flst_new)
+        print(f"pedal_g1: install PASSED: {base} uploaded and verified, effect "
+              f"list rewritten and read back identical "
+              f"(retries: {result['flst_retries']})")
+        return EXIT_OK
+    except fs.PedalUnresolved as e:
+        print(f"pedal_g1: UNRESOLVED - keep the pedal POWERED. {e}")
+        return EXIT_UNRESOLVED
+    finally:
+        if pedal.is_connected():
+            pedal.disconnect()
+
+
 def main(argv):
-    if len(argv) < 2 or argv[0] != "writetest":
-        print(__doc__)
-        return EXIT_REFUSED
-    return writetest(argv[1], "--dry-run" in argv[2:])
+    if len(argv) >= 2 and argv[0] == "writetest":
+        return writetest(argv[1], "--dry-run" in argv[2:])
+    if len(argv) == 2 and argv[0] == "uninstall-stock":
+        return uninstall_stock(argv[1])
+    if len(argv) == 2 and argv[0] == "install":
+        return install(argv[1])
+    print(__doc__)
+    return EXIT_REFUSED
 
 
 if __name__ == "__main__":
