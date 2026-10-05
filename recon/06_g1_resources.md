@@ -43,6 +43,29 @@ FD TWNR / FD DLXR 77.51, Ice Delay 73.00, Sweet Drive 70.75. A "solo" DIY
 effect at ~85-90 therefore follows Zoom's own precedent. The values are not
 on a simple fixed grid, so they do not reveal the cycle unit.
 
+## Measured on hardware (2026-10-05, owner, recorded via VPE at 44.1 kHz)
+Takes: `Documents/VPBE_Takes/VPB_2026-10-05_114655_dry.wav` (Probe 10) and
+`..._115139_dry.wav` (Probe 30); pedal output on the right channel.
+- **Sample rate: 44.1 kHz confirmed.** The 440 Hz tone measures 439.98 Hz
+  (fit over 20-30 s), i.e. -40 to -55 ppm: crystal tolerance between pedal
+  and interface, not a different rate.
+- **CPU ceiling: the pedal freezes at Load 60 (Probe 10) and 64 (Probe 30)**
+  = 96k-102k burn cycles per 16-sample block (1600 cycles per step; the two
+  kernels are identical, the difference is knob granularity).
+- **The overrun does not crackle: the UI freezes.** The tone stays clean
+  (residual about -55 dB) before and after the freeze, and the pedal accepts no
+  input until it is power-cycled. Audio keeps its deadline; the control/UI work
+  is what starves. So the limit cannot be heard, only crossed.
+- One 0.4 s burst of broadband noise in the Probe 30 take (11.09-11.49 s) and a
+  15 ms glitch in the Probe 10 take (23.95 s); cause unknown (knob or patch
+  change?).
+- The declared dspload is bookkeeping only: it does not limit real CPU use.
+
+Working rule: keep a DIY effect's real cost at or below ~80k cycles/block
+(~80% of the freeze point) so the UI stays responsive. The clock cannot be
+told from this alone: at 375 MHz the firmware's own audio work would be
+~35-40k cycles/block, at 456 MHz ~65k.
+
 ## Open: measured on hardware next
 - Patch load budget (sum of declared dspload before "Process Overflow").
 - Real CPU cycles per 16-sample block.
