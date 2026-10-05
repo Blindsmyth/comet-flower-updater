@@ -1,10 +1,10 @@
-// Render effects/drv808/ts808_core.h over a raw float32 mono file.
+// Render effects/common/ts808_core.h over a raw float32 mono file.
 // usage: drv808_render in.f32 out.f32 drive(0..10) tone(0..1) gain
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
 extern "C" {
-#include "../../effects/drv808/ts808_core.h"
+#include "../../effects/common/ts808_core.h"
 }
 int main(int argc, char** argv)
 {

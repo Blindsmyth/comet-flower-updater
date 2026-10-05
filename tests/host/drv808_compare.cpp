@@ -1,4 +1,4 @@
-// Compare the G1 port (effects/drv808/ts808_core.h) against the Comet Flower
+// Compare the G1 port (effects/common/ts808_core.h) against the Comet Flower
 // original (MobileDsp::DriveMobileCore) on identical input and settings.
 // Build: tests/host/build_drv808_compare.bat (needs the Comet Flower source).
 #include <cmath>
@@ -6,7 +6,7 @@
 #include <vector>
 #include "MobileDsp/DriveMobileCore.h"
 extern "C" {
-#include "../../effects/drv808/ts808_core.h"
+#include "../../effects/common/ts808_core.h"
 }
 
 static std::vector<float> testSignal(int sr)

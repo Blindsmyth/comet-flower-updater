@@ -62,3 +62,14 @@ bash tools/build_g1.sh g1gain GAIN    # effects/g1gain -> build/G1GAIN.ZD2
 
 This builds with stomphacks, then runs `zd2 g1-retarget`: target 0x02,
 G1 header bytes, a 1-bpp 24x30 icon and the group INFO text.
+
+## Local change 2: state size limit
+
+`tools/zd2_make_effect.py`: `STATE_BYTES_MAX = int(os.environ.get("ZD2_STATE_BYTES_MAX", 192))`.
+The default stays at stomphacks' 192 (MS Plus proof). `tools/build_g1.sh` sets 392, the
+contiguous state stock G1 drives use without declaring it (NYC Muff 4 + 388; recon/06).
+
+## Shared DSP headers
+
+`effects/common/*.h` (ts808_core.h, ts808_sd.h, ts808_exact.h) are copied into each
+effect's build folder by `tools/build_g1.sh`. The host benches include them from there.

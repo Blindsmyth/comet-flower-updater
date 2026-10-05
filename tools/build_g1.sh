@@ -15,9 +15,14 @@ EFFECT="$(grep -o '"name": *"[^"]*"' "$PROJ/effects/$NAME/manifest.json" | head 
 # (the MS Plus loader is name-blind); export it so we match G1 stock. Needs
 # the ZD2_EXTRA_LNK_FLAGS hook in stomphacks tools/build_zd2_from_asm.sh.
 export ZD2_EXTRA_LNK_FLAGS="--export=Dll_$EFFECT"
+# G1 plain effects use up to 392 B of contiguous state without declaring it
+# (stock NYC Muff: 4 + 388; recon/06). stomphacks caps at 192 (MS Plus proof);
+# its local ZD2_STATE_BYTES_MAX hook raises the cap for G1 builds.
+export ZD2_STATE_BYTES_MAX=392
 
 rm -rf "$LAB/effects/$NAME"
 cp -r "$PROJ/effects/$NAME" "$LAB/effects/$NAME"
+cp "$PROJ"/effects/common/*.h "$LAB/effects/$NAME/"   # shared DSP headers
 ( cd "$LAB" && .venv/Scripts/python.exe tools/zd2_make_effect.py "effects/$NAME/manifest.json" | tail -12 )
 mkdir -p "$PROJ/build"
 cp "$LAB/effects/$NAME/build/REPORT.md" "$PROJ/build/$FILE.REPORT.md"
