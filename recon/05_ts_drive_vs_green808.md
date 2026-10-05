@@ -37,3 +37,29 @@ Analysis for comparison only; nothing of Zoom's code is reused.
   coefficient table near `12.72, 1.0, 1.0, 23.93, 0, 0.225, 106.36…`).
 - A sound comparison needs either a reamp (PC out → pedal in, record USB out) or a
   full Python re-implementation of Zoom's chain.
+
+## Numbers (tests/host/compare_vs_zoom.py, 2026-10-04)
+Ours = the real pedal code (`ts808_core.h`) via `build/host/drv808_render.exe`.
+Zoom = its decoded nonlinear core only (drive table, 4x IIR oversampling, clipper
+with p = Coe[40..47] = 1.0, 1.3304, 0, 0.925, 1.4382, 0, −0.4868, −2.7326). Zoom's
+fixed EQ is not modelled.
+
+Small-signal gain into the clipper (knob 0 / 25 / 50 / 75 / 100):
+- Zoom: 3.5x / 5.0x / 8.3x / 14.6x / 26.3x (11 → 28 dB)
+- ours, above 720 Hz: 11.9x / 18.5x / 38.4x / 71.7x / 118x (21.5 → 41.5 dB)
+
+Clipper ceilings: Zoom +0.925 / −0.487 (asymmetric 1.9:1); ours ±0.6 (symmetric).
+
+Harmonics, 220 Hz sine at 0.25 peak (dB re fundamental):
+| knob | Zoom THD | Zoom H2 / H3 | ours THD | ours H2 / H3 |
+|---|---|---|---|---|
+| 25 | 18.0% | −18.5 / −17.5 | 16.2% | −178 / −16.0 |
+| 50 | 26.3% | −18.2 / −13.3 | 22.8% | −160 / −13.6 |
+| 100 | 39.7% | −27.1 / −9.9 | 24.7% | −153 / −13.1 |
+Ours has no even harmonics (symmetric clipper). At 220 Hz part of the note takes
+the circuit's clean path below 720 Hz, which caps our THD.
+
+Aliasing, 3.7 kHz sine at 0.5, knob 100 (alias energy re harmonic energy):
+- Zoom clipper with no oversampling: −13.7 dB
+- **Zoom core, 4x IIR: −34.8 dB**
+- **ours, 2x FIR + ADAA: −54.8 dB**
