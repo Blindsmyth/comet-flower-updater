@@ -36,6 +36,13 @@ yet decoded. The stomphacks `dll_fields` manifest key can write these
 (experimental). **Plain drives need none of them, so a drive-class DIY effect
 can use ~400 B of state like Zoom's own.**
 
+## Declared dspload of stock effects (zd2 inspect, 2026-10-05)
+The heaviest stock effects already take most of a patch on their own:
+BG MK1 89.41, XtasyBlue 88.18, ORG120 84.08, MS800 79.98, MS1959 78.74,
+FD TWNR / FD DLXR 77.51, Ice Delay 73.00, Sweet Drive 70.75. A "solo" DIY
+effect at ~85-90 therefore follows Zoom's own precedent. The values are not
+on a simple fixed grid, so they do not reveal the cycle unit.
+
 ## Open: measured on hardware next
 - Patch load budget (sum of declared dspload before "Process Overflow").
 - Real CPU cycles per 16-sample block.
