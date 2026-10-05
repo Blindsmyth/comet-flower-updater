@@ -16,8 +16,8 @@ works toward bringing that to the G1 Four family.
 ## Roadmap
 1. [x] Toolchain building stomphacks DIY effects on Windows (`docs/TOOLCHAIN.md`)
 2. [x] Code-ABI comparison G1X Four vs MS Plus (matches; container differs)
-3. [ ] Read-only pedal backup, then `zd2 audit` across all G1X Four effects
-4. [ ] G1 profile for the generator: target bits, header words, 1-bpp icon, image list
+3. [x] Read-only pedal backup (`tools/backup_g1.py`), audit of all 87 effects (`recon/03`)
+4. [x] G1 profile: `zd2 g1-retarget` + `tools/build_g1.sh`; first test effect `effects/g1gain`
 5. [ ] G1-aware installer (stomphacks' is MS Plus-only)
 6. [ ] First hardware test: DIY gain, under stomphacks SAFETY.md rules
 7. [ ] Real effects
