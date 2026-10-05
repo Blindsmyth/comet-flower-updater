@@ -1,0 +1,26 @@
+diff --git a/tools/build_zd2_from_asm.sh b/tools/build_zd2_from_asm.sh
+index b7aaa2b..6d95dbd 100755
+--- a/tools/build_zd2_from_asm.sh
++++ b/tools/build_zd2_from_asm.sh
+@@ -82,7 +82,7 @@ echo "== link (dynamic shared object) =="
+     --forced_static_binding=on \
+     --retain="Fx_*" --retain="_Fx_*" \
+     --retain=__pop_rts --retain=__push_rts --retain=__call_stub \
+-    --retain="$ENTRY" \
++    --retain="$ENTRY" ${ZD2_EXTRA_LNK_FLAGS:-} \
+     --output_file="$WORKDIR/$NAME.out" \
+     "$CMD" "$WORKDIR/$NAME.obj" $EXTRA_OBJS
+ 
+diff --git a/tools/zd2_make_effect.py b/tools/zd2_make_effect.py
+index d5d1d06..e237a91 100644
+--- a/tools/zd2_make_effect.py
++++ b/tools/zd2_make_effect.py
+@@ -104,7 +104,7 @@ VALUE_MAX_CHARS = VALUE_STRIDE - 1
+ VALUE_UI_CHARS = 5        # past this the pedal truncates the on-screen text
+ 
+ STATE_BYTES_FLOOR = 16    # stock init zeroes this much regardless
+-STATE_BYTES_MAX = 192     # proven floor of the firmware per-slot scratch
++STATE_BYTES_MAX = int(os.environ.get("ZD2_STATE_BYTES_MAX", 192))  # proven floor (MS Plus); G1 builds raise it, see zoom project docs/TOOLCHAIN.md
+ AUDIO_MAX_BYTES = 1472    # largest stock .audio (corpus census)
+ AUDIO_ADDR = 0x7800
+ 
