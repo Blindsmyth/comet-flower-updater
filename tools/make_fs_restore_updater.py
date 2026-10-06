@@ -39,6 +39,14 @@ With --presets <bin>, resource 133 is replaced by that whole 0xB000-byte
 presets region (e.g. from tools/g1presets.py blank), and the copy erases and
 writes flash 0x28000. --splash, if also given, is applied on top. The
 pedal's patches take the new presets only at a factory reset.
+
+With --logo <png>, the 92x16 ZOOM logo (184 bytes, 2 LCD pages x 92 columns,
+drawn at x 18, y 8) is replaced in the main firmware, resource 129 (0x81), and
+the copy also erases and writes flash 0x33000 as Zoom's updater does. The
+firmware is a TI AIS image with no CRC commands, and the logo is stored raw
+in a load section. The boot program holds its own copy of the logo and draws
+it first; that copy is never touched, so the ZOOM logo still flashes before
+ours. Zoom's official updater restores the original firmware (recon/09).
 """
 import struct
 import sys
@@ -53,26 +61,34 @@ FS_ADDR, FS_SIZE, FS_RES = 0x102000, 0x2FE000, 0x88
 
 
 PRESET_ADDR, PRESET_SIZE, PRESET_RES = 0x28000, 0xB000, 0x85
+FW_ADDR, FW_SIZE, FW_RES = 0x33000, 0x8C000, 0x81
+ZOOM_LOGO = bytes.fromhex(
+    "0e0e8ececececececececececececececeeefefe7c3800f8fcfe0e0e0e0e0e0e0e0e0e0e"
+    "0e0e0e0e1e7c787070787c1e0e0e0e0e0e0e0e0e0e0e0e0e0e0efefcf800f0fcfe1e0e0e"
+    "0e0e0efefcf88080f8fcfe0e0e0e0e0e1efefcf00e1f3f3b393939393939393939393939"
+    "393939383838000f1f3f38383838383838383838383838383c1f0f07070f1f3c38383838"
+    "383838383838383838383f1f0f003f3f3f00000000000000030307070303000000000000"
+    "003f3f3f")
 
 
-def splash_bytes(png):
-    """128x32 PNG -> 512 bytes of LCD page format (4 pages x 128 columns)."""
+def splash_bytes(png, w=128, h=32):
+    """w x h PNG -> LCD page format (h/8 pages x w columns, LSB = top row)."""
     from PIL import Image
     im = Image.open(png).convert("L")
-    if im.size != (128, 32):
-        sys.exit("splash must be 128x32, got %s" % (im.size,))
-    out = bytearray(512)
-    for page in range(4):
-        for x in range(128):
+    if im.size != (w, h):
+        sys.exit("%s must be %dx%d, got %s" % (png, w, h, im.size))
+    out = bytearray(w * h // 8)
+    for page in range(h // 8):
+        for x in range(w):
             v = 0
             for bit in range(8):
                 if im.getpixel((x, page * 8 + bit)) >= 128:
                     v |= 1 << bit
-            out[page * 128 + x] = v
+            out[page * w + x] = v
     return bytes(out)
 
 
-def main(src, dst, image=None, splash=None, presets=None):
+def main(src, dst, image=None, splash=None, presets=None, logo=None):
     pe = pefile.PE(src)
     off = pe.get_offset_from_rva(TABLE_VA - pe.OPTIONAL_HEADER.ImageBase)
     data = bytearray(open(src, "rb").read())
@@ -100,6 +116,16 @@ def main(src, dst, image=None, splash=None, presets=None):
             data[roff:roff + 512] = splash_bytes(splash)
             print("splash %s placed in resource 0x85 (presets region %#x)" % (splash, PRESET_ADDR))
         new = [(1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES)] + new
+    if logo is not None:
+        e = res[FW_RES].directory.entries[0].data.struct
+        roff = pe.get_offset_from_rva(e.OffsetToData)
+        fw = data[roff:roff + e.Size]
+        at = fw.find(ZOOM_LOGO)
+        if at < 0 or fw.find(ZOOM_LOGO, at + 1) >= 0:
+            sys.exit("ZOOM logo not found exactly once in resource 0x81")
+        data[roff + at:roff + at + len(ZOOM_LOGO)] = splash_bytes(logo, 92, 16)
+        new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
+        print("logo %s placed in resource 0x81 at %#x (main firmware %#x)" % (logo, at, FW_ADDR))
     new += [(0, 0, 0, 0)] * (8 - len(new))
     if image is not None:
         import os
@@ -128,9 +154,10 @@ def main(src, dst, image=None, splash=None, presets=None):
 if __name__ == "__main__":
     a = sys.argv[1:]
     opt = {}
-    for key in ("--image", "--splash", "--presets"):
+    for key in ("--image", "--splash", "--presets", "--logo"):
         if key in a:
             k = a.index(key)
             opt[key] = a[k + 1]
             del a[k:k + 2]
-    main(a[0], a[1], opt.get("--image"), opt.get("--splash"), opt.get("--presets"))
+    main(a[0], a[1], opt.get("--image"), opt.get("--splash"), opt.get("--presets"),
+         opt.get("--logo"))
