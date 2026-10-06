@@ -47,6 +47,12 @@ firmware is a TI AIS image with no CRC commands, and the logo is stored raw
 in a load section. The boot program holds its own copy of the logo and draws
 it first; that copy is never touched, so the ZOOM logo still flashes before
 ours. Zoom's official updater restores the original firmware (recon/09).
+
+With --firmware <res1.bin>, the whole main firmware (resource 0x81) is
+replaced by that file, typically made by tools/g1fw_gfx.py import (edited
+fonts and bitmaps). It must be the same size as Zoom's and may differ only
+inside the constant-data section (file 0x63708..0x75aac), so a code change
+cannot slip in this way. --logo, if also given, is applied on top.
 """
 import struct
 import sys
@@ -62,6 +68,7 @@ FS_ADDR, FS_SIZE, FS_RES = 0x102000, 0x2FE000, 0x88
 
 PRESET_ADDR, PRESET_SIZE, PRESET_RES = 0x28000, 0xB000, 0x85
 FW_ADDR, FW_SIZE, FW_RES = 0x33000, 0x8C000, 0x81
+FW_CONST = (0x63708, 0x63708 + 0x123a4)   # res1 file range of the const data section
 ZOOM_LOGO = bytes.fromhex(
     "0e0e8ececececececececececececececeeefefe7c3800f8fcfe0e0e0e0e0e0e0e0e0e0e"
     "0e0e0e0e1e7c787070787c1e0e0e0e0e0e0e0e0e0e0e0e0e0e0efefcf800f0fcfe1e0e0e"
@@ -88,7 +95,7 @@ def splash_bytes(png, w=128, h=32):
     return bytes(out)
 
 
-def main(src, dst, image=None, splash=None, presets=None, logo=None):
+def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=None):
     pe = pefile.PE(src)
     off = pe.get_offset_from_rva(TABLE_VA - pe.OPTIONAL_HEADER.ImageBase)
     data = bytearray(open(src, "rb").read())
@@ -116,6 +123,19 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None):
             data[roff:roff + 512] = splash_bytes(splash)
             print("splash %s placed in resource 0x85 (presets region %#x)" % (splash, PRESET_ADDR))
         new = [(1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES)] + new
+    if firmware is not None:
+        e = res[FW_RES].directory.entries[0].data.struct
+        roff = pe.get_offset_from_rva(e.OffsetToData)
+        new_fw = open(firmware, "rb").read()
+        old_fw = bytes(data[roff:roff + e.Size])
+        if len(new_fw) != len(old_fw):
+            sys.exit("firmware is %d bytes, must be %d" % (len(new_fw), len(old_fw)))
+        diff = [i for i in range(len(old_fw)) if new_fw[i] != old_fw[i]]
+        if any(not FW_CONST[0] <= i < FW_CONST[1] for i in diff):
+            sys.exit("firmware differs outside the constant-data section: refused")
+        data[roff:roff + e.Size] = new_fw
+        print("firmware %s placed in resource 0x81 (%d bytes differ, all in const data)"
+              % (firmware, len(diff)))
     if logo is not None:
         e = res[FW_RES].directory.entries[0].data.struct
         roff = pe.get_offset_from_rva(e.OffsetToData)
@@ -124,8 +144,9 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None):
         if at < 0 or fw.find(ZOOM_LOGO, at + 1) >= 0:
             sys.exit("ZOOM logo not found exactly once in resource 0x81")
         data[roff + at:roff + at + len(ZOOM_LOGO)] = splash_bytes(logo, 92, 16)
-        new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
         print("logo %s placed in resource 0x81 at %#x (main firmware %#x)" % (logo, at, FW_ADDR))
+    if logo is not None or firmware is not None:
+        new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
     new += [(0, 0, 0, 0)] * (8 - len(new))
     if image is not None:
         import os
@@ -154,10 +175,10 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None):
 if __name__ == "__main__":
     a = sys.argv[1:]
     opt = {}
-    for key in ("--image", "--splash", "--presets", "--logo"):
+    for key in ("--image", "--splash", "--presets", "--logo", "--firmware"):
         if key in a:
             k = a.index(key)
             opt[key] = a[k + 1]
             del a[k:k + 2]
     main(a[0], a[1], opt.get("--image"), opt.get("--splash"), opt.get("--presets"),
-         opt.get("--logo"))
+         opt.get("--logo"), opt.get("--firmware"))
