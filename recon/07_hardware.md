@@ -75,3 +75,19 @@ how every PC connection in this project has been made. Consequences:
   bricked the pedal (DR103 replace), alongside the file-system theory.
   Another reason to install only through update-mode images, which survive
   a failed transfer, and to keep the cable short and the joints sound.
+
+### What the parts imply (2026-10-06, to be confirmed where marked)
+- **Clock (likely):** the speed grade in "C6745DPTP3" reads as the 375 MHz
+  part (4 = 456 MHz). At 375 MHz one 16-sample block at 44.1 kHz is
+  ≈136k cycles. With effects freezing the UI at ≈96k, the firmware's own
+  work is ≈40k per block. That fits the recon/06 numbers.
+- **Codec TLV320AIC3101:** stereo ADC and DAC, sample rates up to 96 kHz,
+  analog input gain (PGA) and output volume set over I2C by the firmware,
+  plus built-in digital filters on the DAC path (per its datasheet). Open
+  ideas: input headroom and gain staging are firmware settings; the codec's
+  filters could do fixed EQ at zero DSP cost; a higher sample rate is
+  possible in hardware but would change the whole firmware's timing.
+- **The second ADC channel:** the input is mono, so one codec input
+  channel may be unused, or used for something else. Unknown.
+- **8 MB SDRAM:** ≈47 s of mono float32 audio at 44.1 kHz; long delays,
+  reverbs and cabinet IRs fit, at the cost of slower external memory.
