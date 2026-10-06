@@ -1,7 +1,8 @@
 /* hiwatt_kernel.h - the DR103 audio kernel, shared by effects/hiwatt
  * (the effect) and effects/dr103diag (HW_DIAG 1: same processing, timed with
- * the C674x TSCL cycle counter; the output becomes a test tone whose pitch
- * in Hz is cycles / 100, so the cost can be read from a recording).
+ * the C674x TSCL cycle counter; the output becomes a sequence of test tones
+ * whose pitch in Hz is cycles / 100, one per profiled section, so the cost
+ * can be read from a recording).
  *
  * Mono DSP on channel A, written to both channels; bypass crossfade per
  * channel. Guard prologue and output clamp as in stomphacks gain.c.
@@ -13,6 +14,12 @@
 #include <c6x.h>
 #endif
 #include "sh_params.h"
+#if defined(HW_DIAG) && HW_DIAG
+#define HW_PROFILE 1
+#if !defined(__TI_COMPILER_VERSION__)
+static unsigned TSCL;                /* host build: a counter that never moves */
+#endif
+#endif
 #include "hiwatt_amp.h"
 
 typedef struct {
@@ -20,17 +27,16 @@ typedef struct {
     float vol, tre, mid, bas, mas, pre;   /* knobs smoothed per block */
     float primed;
 #if HW_DIAG
-    float cyc_all, cyc_der;          /* smoothed cycles per block */
+    float cyc[8];                    /* smoothed cycles per block, per slot */
     float phase, nblk;               /* test tone, block counter */
 #endif
-} KernelState;                       /* 320 B (336 B with HW_DIAG) = state_bytes */
+} KernelState;                       /* 320 B (380 B with HW_DIAG) = state_bytes */
 
 #ifndef HW_DIAG
 #define HW_DIAG 0
 #endif
-#if HW_DIAG && !defined(__TI_COMPILER_VERSION__)
-static unsigned TSCL;                /* host build: a counter that never moves */
-#endif
+
+
 
 #define KNOB_SMOOTH 0.1f
 
@@ -105,23 +111,38 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         eff[i + SH_CH_B_OFFSET] = b;
     }
 #if HW_DIAG
-    /* Replace the output with a triangle whose pitch is cycles / 100 Hz:
-     * 0.5 s of the whole block's cost, then 0.5 s of the derivation's. */
+    /* Replace the output with a triangle whose pitch is cycles / 100 Hz,
+     * 0.5 s per slot: 0 silence (marker), 1 whole block, 2 network
+     * derivation, 3 upsampling, 4 stage loop (all 64 stages), 5 tubes only,
+     * 6 downsampling, 7 cab. */
     t2 = TSCL;
-    s->cyc_all += 0.02f * ((float)(t2 - t0) - s->cyc_all);
-    s->cyc_der += 0.02f * ((float)(t1 - t0) - s->cyc_der);
-    s->nblk += 1.0f;
-    if (s->nblk >= 2756.0f) s->nblk = 0.0f;
     {
-        float f = (s->nblk < 1378.0f ? s->cyc_all : s->cyc_der) * (0.01f / 44100.0f);
+        float now[8];
+        int j;
+        now[0] = 0.0f;
+        now[1] = (float)(t2 - t0);
+        now[2] = (float)(t1 - t0);
+        now[3] = s->dsp.prof[0];
+        now[4] = s->dsp.prof[1];
+        now[5] = s->dsp.prof[2];
+        now[6] = s->dsp.prof[3];
+        now[7] = s->dsp.prof[4];
+        for (j = 0; j < 8; ++j) s->cyc[j] += 0.02f * (now[j] - s->cyc[j]);
+        for (j = 0; j < 5; ++j) s->dsp.prof[j] = 0.0f;
+    }
+    s->nblk += 1.0f;
+    if (s->nblk >= 8.0f * 1378.0f) s->nblk = 0.0f;
+    {
+        int slot = (int)(s->nblk * (1.0f / 1378.0f));
+        float f = s->cyc[slot] * (0.01f / 44100.0f), amp = slot == 0 ? 0.0f : 0.3f;
         if (f > 0.45f) f = 0.45f;
         for (i = 0; i < SH_FRAMES; i++) {
             float tri;
             s->phase += f;
             if (s->phase >= 1.0f) s->phase -= 1.0f;
             tri = 4.0f * (s->phase < 0.5f ? s->phase : 1.0f - s->phase) - 1.0f;
-            eff[i] = 0.3f * tri;
-            eff[i + SH_CH_B_OFFSET] = 0.3f * tri;
+            eff[i] = amp * tri;
+            eff[i + SH_CH_B_OFFSET] = amp * tri;
         }
     }
 #endif

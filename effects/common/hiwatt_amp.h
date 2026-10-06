@@ -59,6 +59,17 @@
 #endif
 #define HW_LN2 0.6931471805599453f
 
+/* HW_PROFILE (dr103diag only): per-section cycle sums from the C674x TSCL,
+ * accumulated into HwState.prof[] (0 upsampling, 1 stage loop, 2 tubes,
+ * 3 downsampling, 4 cab). TSCL must be declared (c6x.h) before this header. */
+#ifdef HW_PROFILE
+#define HW_TS(v) unsigned v = TSCL
+#define HW_ADD(s, i, d) ((s)->prof[i] += (float)(d))
+#else
+#define HW_TS(v)
+#define HW_ADD(s, i, d)
+#endif
+
 /* per-stage bias, negative-half scale 1 - asym*0.15, idle output (subtracted) */
 #define HW_B1  0.03f
 #define HW_K1  0.9775f
@@ -90,6 +101,9 @@ typedef struct {
     float uv1, ust, ub0, ub1;       /* previous network inputs */
     float resid, sag;               /* NFB residual, sag envelope */
     float cab[HW_CAB_N][2];         /* cab biquads, TDF-II */
+#ifdef HW_PROFILE
+    float prof[5];
+#endif
 } HwState;                          /* 73 floats = 292 B (IIR), all zero = reset */
 
 #define HW_V1_SZ MNA_SS_SIZE(2, 1)
@@ -271,8 +285,15 @@ TS_INLINE float hw_stage(HwState *s, const HwCoeffs *k, float in)
         const float *tp = hw_tube_par[st];
         c = st < 4 ? pre : rail;
         y = y * tp[0];
-        y = (HW_ADAA && (HW_ADAA_MASK >> st & 1)) ? hw_tube_adaa(y, &s->ax[st], tp[1], tp[2], c, tp[3])
-                                                 : hw_tube(y, tp[1], tp[2], c, tp[3]);
+        {
+            HW_TS(ta);
+            y = (HW_ADAA && (HW_ADAA_MASK >> st & 1)) ? hw_tube_adaa(y, &s->ax[st], tp[1], tp[2], c, tp[3])
+                                                     : hw_tube(y, tp[1], tp[2], c, tp[3]);
+            {
+                HW_TS(tb);
+                HW_ADD(s, 2, tb - ta);
+            }
+        }
         /* if-chain, not switch: a switch compiles to a .switch jump table,
          * a data section the blob cannot carry */
         if (st == 0) {                              /* V1 network -> V2 grid */
@@ -332,6 +353,7 @@ TS_INLINE float hw_process(HwState *s, const HwCoeffs *k, float x, int cab_on)
 {
     float a1, b1, y4[4];
     int i;
+    HW_TS(t0);
 #if HW_OS_IIR
     hbi_up1(&s->up1, x, &a1, &b1);
     hbi_up2(&s->up2, a1, &y4[0], &y4[1]);
@@ -341,8 +363,18 @@ TS_INLINE float hw_process(HwState *s, const HwCoeffs *k, float x, int cab_on)
     tsx_up3(&s->os2, a1, &y4[0], &y4[1]);
     tsx_up3(&s->os2, b1, &y4[2], &y4[3]);
 #endif
-    for (i = 0; i < 4; ++i)
-        y4[i] = hw_stage(s, k, y4[i]);
+    {
+        HW_TS(t1);
+        HW_ADD(s, 0, t1 - t0);
+        for (i = 0; i < 4; ++i)
+            y4[i] = hw_stage(s, k, y4[i]);
+        {
+            HW_TS(t2);
+            HW_ADD(s, 1, t2 - t1);
+        }
+    }
+    {
+    HW_TS(t3);
 #if HW_OS_IIR
     a1 = hbi_down2(&s->dn2, y4[0], y4[1]);
     b1 = hbi_down2(&s->dn2, y4[2], y4[3]);
@@ -352,7 +384,17 @@ TS_INLINE float hw_process(HwState *s, const HwCoeffs *k, float x, int cab_on)
     b1 = tsx_down3(&s->os2, y4[2], y4[3]);
     x = tsx_down6(&s->os1, a1, b1);
 #endif
-    return cab_on ? hw_cabinet(s, x) : x;
+    {
+        HW_TS(t4);
+        HW_ADD(s, 3, t4 - t3);
+        x = cab_on ? hw_cabinet(s, x) : x;
+        {
+            HW_TS(t5);
+            HW_ADD(s, 4, t5 - t4);
+        }
+    }
+    }
+    return x;
 }
 
 #endif /* HIWATT_AMP_H */

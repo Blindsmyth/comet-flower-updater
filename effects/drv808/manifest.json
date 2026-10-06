@@ -1,9 +1,9 @@
 {
-  "name": "Green 808",
+  "name": "CF 808",
   "filename": "DRV808",
   "id": "03000f81",
   "version": "1.00",
-  "display": "GREEN 808",
+  "display": "CF 808",
   "badge": "CF",
   "description": "TS808-style overdrive ported from Comet Flower's mobile drive core: 720 Hz split, diode clipping stage with ADAA, 2x oversampling, 723 Hz post-clip pole, pole-zero tone.",
   "dspload": 40,

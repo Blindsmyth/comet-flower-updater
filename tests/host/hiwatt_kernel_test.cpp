@@ -40,7 +40,7 @@ int main()
             float x = 0.9f * (float)std::sin(2 * PI * 196.0 * n / 44100.0) * (float)std::sin(PI * n / 30000.0);
             bus[i] = x; bus[i + 16] = x; ++n;
         }
-        Fx_SFX_DR103(inst, ctx);
+        SH_AUDIO_FN(inst, ctx);
         for (int i = 0; i < 32; ++i) {
             finite = finite && std::isfinite(bus[i]);
             peak = std::max(peak, (double)std::fabs(bus[i]));
@@ -56,7 +56,7 @@ int main()
     coef[SH_COEFF_BYPASS] = 0.0f; knobs(0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1.0f);
     bool dry = true;
     for (int i = 0; i < 16; ++i) { bus[i] = 0.1f * i; bus[i + 16] = -0.05f * i; }
-    Fx_SFX_DR103(inst, ctx);
+    SH_AUDIO_FN(inst, ctx);
     for (int i = 0; i < 16; ++i) dry = dry && bus[i] == 0.1f * i && bus[i + 16] == -0.05f * i;
     check(dry, "bypass (fade 0) is exact dry, per channel");
 
@@ -64,12 +64,12 @@ int main()
     coef[SH_COEFF_BYPASS] = 1.0f;
     state[SH_STATE_GUARD_WORD] = 0;
     for (int i = 0; i < 32; ++i) bus[i] = 0.5f;
-    Fx_SFX_DR103(inst, ctx);
+    SH_AUDIO_FN(inst, ctx);
     bool mute = true; for (int i = 0; i < 32; ++i) mute = mute && bus[i] == 0.0f;
     check(mute, "bad state guard mutes");
     reset(); coef[SH_PARAM_MASTER] = 1.5f;
     for (int i = 0; i < 32; ++i) bus[i] = 0.5f;
-    Fx_SFX_DR103(inst, ctx);
+    SH_AUDIO_FN(inst, ctx);
     mute = true; for (int i = 0; i < 32; ++i) mute = mute && bus[i] == 0.0f;
     check(mute, "out-of-range coefficient mutes");
 
@@ -81,7 +81,7 @@ int main()
     for (int blk = 0; blk < 2000; ++blk) {
         for (int i = 0; i < 16; ++i) { float x = 0.3f * (float)std::sin(2 * PI * 330.0 * n / 44100.0); bus[i] = bus[i + 16] = x; ++n; }
         float in[16]; std::memcpy(in, bus, sizeof in);
-        Fx_SFX_DR103(inst, ctx);
+        SH_AUDIO_FN(inst, ctx);
         for (int i = 0; i < 16; ++i) maxd = std::max(maxd, (double)std::fabs(bus[i] - hw_process(&ref, &k, in[i], 1)));
     }
     std::printf("  kernel vs hw_process: max |diff| %.2e\n", maxd);
