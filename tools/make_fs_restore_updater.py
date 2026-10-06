@@ -34,6 +34,11 @@ With --splash <png>, the 128x32 start-up screen shown after the ZOOM logo
 presets region at flash 0x28000, LCD page format, LSB = top row) is replaced
 by a 1-bit 128x32 PNG (white = lit), and the copy also rewrites that region.
 Zoom's official updater rewrites it too, which restores the original screen.
+
+With --presets <bin>, resource 133 is replaced by that whole 0xB000-byte
+presets region (e.g. from tools/g1presets.py blank), and the copy erases and
+writes flash 0x28000. --splash, if also given, is applied on top. The
+pedal's patches take the new presets only at a factory reset.
 """
 import struct
 import sys
@@ -67,7 +72,7 @@ def splash_bytes(png):
     return bytes(out)
 
 
-def main(src, dst, image=None, splash=None):
+def main(src, dst, image=None, splash=None, presets=None):
     pe = pefile.PE(src)
     off = pe.get_offset_from_rva(TABLE_VA - pe.OPTIONAL_HEADER.ImageBase)
     data = bytearray(open(src, "rb").read())
@@ -80,14 +85,21 @@ def main(src, dst, image=None, splash=None):
     if size != FS_SIZE:
         sys.exit("resource 0x88 is %d bytes, expected %d" % (size, FS_SIZE))
     new = [(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES)]
-    if splash is not None:
+    if presets is not None or splash is not None:
         e = res[PRESET_RES].directory.entries[0].data.struct
         if e.Size != PRESET_SIZE:
             sys.exit("resource 0x85 is %d bytes, expected %d" % (e.Size, PRESET_SIZE))
         roff = pe.get_offset_from_rva(e.OffsetToData)
-        data[roff:roff + 512] = splash_bytes(splash)
+        if presets is not None:
+            pre = open(presets, "rb").read()
+            if len(pre) != PRESET_SIZE:
+                sys.exit("presets is %d bytes, must be %d" % (len(pre), PRESET_SIZE))
+            data[roff:roff + PRESET_SIZE] = pre
+            print("presets %s placed in resource 0x85 (presets region %#x)" % (presets, PRESET_ADDR))
+        if splash is not None:
+            data[roff:roff + 512] = splash_bytes(splash)
+            print("splash %s placed in resource 0x85 (presets region %#x)" % (splash, PRESET_ADDR))
         new = [(1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES)] + new
-        print("splash %s placed in resource 0x85 (presets region %#x)" % (splash, PRESET_ADDR))
     new += [(0, 0, 0, 0)] * (8 - len(new))
     if image is not None:
         import os
@@ -116,9 +128,9 @@ def main(src, dst, image=None, splash=None):
 if __name__ == "__main__":
     a = sys.argv[1:]
     opt = {}
-    for key in ("--image", "--splash"):
+    for key in ("--image", "--splash", "--presets"):
         if key in a:
             k = a.index(key)
             opt[key] = a[k + 1]
             del a[k:k + 2]
-    main(a[0], a[1], opt.get("--image"), opt.get("--splash"))
+    main(a[0], a[1], opt.get("--image"), opt.get("--splash"), opt.get("--presets"))
