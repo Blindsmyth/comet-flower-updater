@@ -19,6 +19,9 @@ Break a rule only on purpose, with a measurement plan and the owner's OK.
    so a half-finished directory update stops it from starting
    (HANDOFF_2026-10-06 §3, docs/RECOVERY_G1.md).
 
+The pedal's USB connection is a hand-soldered repair (recon/07). A
+marginal USB link is another possible cause of the stalled transfer.
+
 So: a bad DSP effect makes noise or freezes the screen until a power cycle; a
 bad install can brick. Both are guarded below.
 

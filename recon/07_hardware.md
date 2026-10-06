@@ -63,3 +63,15 @@ USB device port, and the firmware drives USB through SPI semaphores and a
 USB software interrupt, so a separate controller should sit near the USB
 socket. A photo of side A around the USB socket would settle the USB-audio
 question (recon/10).
+
+**The owner's USB repair (2026-10-06):** the pedal's USB socket broke
+earlier; a USB cable is soldered straight onto the board (the hot-glued
+wires on side B, top edge near TP41/D340). It carries power and data and is
+how every PC connection in this project has been made. Consequences:
+- The original socket's footprint shows where the USB lines enter the
+  board; the USB controller should be close to it on side A.
+- Hand-soldered, untwisted D+/D- wires can cause marginal USB signalling.
+  That is a plausible contributor to the 2026-10-05 transfer stall that
+  bricked the pedal (DR103 replace), alongside the file-system theory.
+  Another reason to install only through update-mode images, which survive
+  a failed transfer, and to keep the cable short and the joints sound.
