@@ -39,6 +39,29 @@ anything goes on the pedal.
 5. Write `docs/design/SCREEN_CF.md`: the design idea, what was changed, and
    any glyph or screen you were unsure about.
 
+## Which file is which (checked by Claude against the originals)
+| File | What it is | Rule |
+|---|---|---|
+| bmp_c0178ae0_128x32 | blank framed panel (corner screws); the firmware draws other content inside it | frame style may change, interior must stay empty |
+| bmp_c0178ce0_128x32 | "Low Battery!" + battery icon | keep text and icon |
+| bmp_c0178ee0_128x32 | "PC MODE" + USB icon (white background) | keep text and icon |
+| bmp_c01790e0_128x32 | "MISSING EFFECT / NOT FOUND" + "?" icon; small hollow square top-left | keep both lines, icon and the square's area |
+| bmp_c01792e0_128x32 | "PROCESS OVERFLOW / CHANGE EFFECT" + warning triangle | keep both lines and icon |
+| bmp_c01796e0_128x32 | framed panel split by a vertical line; content is drawn into both parts | keep the divider position and empty interiors |
+| bmp_c01798e0_128x32 | "LOOPER" (small) "CANCELED" (large) | keep both words |
+| bmp_c017a8d8_128x20 | "Edited! Can't swap." | keep text |
+| bmp_c017a458_128x21 | looper STOP / HOLD CLEAR | keep |
+| bmp_c017bf38_92x16 | the logo | = assets/logo_comet_flower.png |
+
+General rules for the messages: keep every word and icon of the original
+(restyling is welcome), text at least 1 px clear of any frame line.
+
+## Fonts
+No mechanical transforms (shear, scale): they leave jagged strokes. A font
+is changed only if every glyph is drawn cleanly by hand; otherwise keep the
+original. font_25x40 is 40 px tall, taller than the 32 px screen; we do not
+yet know where the firmware uses it, so do not use it in mock-ups.
+
 ## Hard rules
 - **Never touch the pedal**: do not open MIDI ports, do not run
   `tools/pedal_g1.py`, `patch_g1.py`, `backup_g1.py`, `midi_listen_g1.py`,
