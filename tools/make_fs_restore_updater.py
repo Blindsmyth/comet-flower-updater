@@ -28,6 +28,12 @@ altering the updater, so this is for repairing your own unit only.
 With --image, the copy carries that file-system image (exactly 0x2FE000
 bytes, e.g. from tools/make_g1_image.py) in place of Zoom's factory one;
 it is parsed and checked (tools/g1fs.py) before it is written in.
+
+With --splash <png>, the 128x32 start-up screen shown after the ZOOM logo
+(normally "G1X FOUR": the first 512 bytes of resource 133, the factory
+presets region at flash 0x28000, LCD page format, LSB = top row) is replaced
+by a 1-bit 128x32 PNG (white = lit), and the copy also rewrites that region.
+Zoom's official updater rewrites it too, which restores the original screen.
 """
 import struct
 import sys
@@ -41,7 +47,27 @@ EXPECTED = [(1, 0xBF000, 0x1000, 0), (1, 0x28000, 0xB000, 0), (2, 0x28000, 0, 0x
 FS_ADDR, FS_SIZE, FS_RES = 0x102000, 0x2FE000, 0x88
 
 
-def main(src, dst, image=None):
+PRESET_ADDR, PRESET_SIZE, PRESET_RES = 0x28000, 0xB000, 0x85
+
+
+def splash_bytes(png):
+    """128x32 PNG -> 512 bytes of LCD page format (4 pages x 128 columns)."""
+    from PIL import Image
+    im = Image.open(png).convert("L")
+    if im.size != (128, 32):
+        sys.exit("splash must be 128x32, got %s" % (im.size,))
+    out = bytearray(512)
+    for page in range(4):
+        for x in range(128):
+            v = 0
+            for bit in range(8):
+                if im.getpixel((x, page * 8 + bit)) >= 128:
+                    v |= 1 << bit
+            out[page * 128 + x] = v
+    return bytes(out)
+
+
+def main(src, dst, image=None, splash=None):
     pe = pefile.PE(src)
     off = pe.get_offset_from_rva(TABLE_VA - pe.OPTIONAL_HEADER.ImageBase)
     data = bytearray(open(src, "rb").read())
@@ -53,7 +79,16 @@ def main(src, dst, image=None):
     size = res[FS_RES].directory.entries[0].data.struct.Size
     if size != FS_SIZE:
         sys.exit("resource 0x88 is %d bytes, expected %d" % (size, FS_SIZE))
-    new = [(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES)] + [(0, 0, 0, 0)] * 6
+    new = [(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES)]
+    if splash is not None:
+        e = res[PRESET_RES].directory.entries[0].data.struct
+        if e.Size != PRESET_SIZE:
+            sys.exit("resource 0x85 is %d bytes, expected %d" % (e.Size, PRESET_SIZE))
+        roff = pe.get_offset_from_rva(e.OffsetToData)
+        data[roff:roff + 512] = splash_bytes(splash)
+        new = [(1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES)] + new
+        print("splash %s placed in resource 0x85 (presets region %#x)" % (splash, PRESET_ADDR))
+    new += [(0, 0, 0, 0)] * (8 - len(new))
     if image is not None:
         import os
         sys.path.insert(0, os.path.dirname(__file__))
@@ -71,15 +106,19 @@ def main(src, dst, image=None):
     for k, e in enumerate(new):
         struct.pack_into("<4I", data, off + 16 * k, *e)
     open(dst, "wb").write(data)
-    print("wrote %s: erase %#x+%#x, write resource %#x there; other stages skipped"
-          % (dst, FS_ADDR, FS_SIZE, FS_RES))
+    print("wrote %s; stages:" % dst)
+    for e in new:
+        if e[0]:
+            print("   %s %#08x %s" % ("erase" if e[0] == 1 else "write", e[1],
+                                      "size %#x" % e[2] if e[0] == 1 else "resource %#x" % e[3]))
 
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    img = None
-    if "--image" in a:
-        k = a.index("--image")
-        img = a[k + 1]
-        del a[k:k + 2]
-    main(a[0], a[1], img)
+    opt = {}
+    for key in ("--image", "--splash"):
+        if key in a:
+            k = a.index(key)
+            opt[key] = a[k + 1]
+            del a[k:k + 2]
+    main(a[0], a[1], opt.get("--image"), opt.get("--splash"))
