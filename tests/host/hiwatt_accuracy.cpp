@@ -152,7 +152,7 @@ int main(int argc, char** argv)
                 // G = float ADAA, GP = plain tubes; F suffix = FIR half-bands instead of IIR
                 {
                     char pre[16];
-                    std::snprintf(pre, sizeof pre, "%s%s%s", HW_ADAA ? "G" : "GP", HW_OS_IIR ? "" : "F",
+                    std::snprintf(pre, sizeof pre, "%s%s%s%s", HW_ADAA ? "G" : "GP", HW_OS_IIR ? "" : "F", HW_OS == 2 ? "2" : "",
                                   (HW_ADAA && HW_ADAA_MASK != 0x1f) ? (HW_ADAA_MASK == 0x18 ? "m18" : (HW_ADAA_MASK == 0x1c ? "m1c" : "mX")) : "");
                     write(dir + "/" + pre + "_" + tag + ".f32", o);
                 }

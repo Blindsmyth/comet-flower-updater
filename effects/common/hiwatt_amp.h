@@ -29,9 +29,24 @@
 #include "hiwatt_cab.h"
 #include "hw_tanhtab.h"
 
-#define HW_FS_OS     176400.0f
+/* HW_OS: oversampling factor, 4 (176.4 kHz) or 2 (88.2 kHz) */
+#ifndef HW_OS
+#define HW_OS 4
+#endif
 #define HW_IN_SCALE  1.8726591760299625f      /* 2 V full scale * 1M/(1M+68k) */
+#if HW_OS == 4
+#define HW_FS_OS     176400.0f
 #define HW_DC_R      0.9998219051783679f      /* 5 Hz DC guard at 176.4k */
+#define HW_SAG_ATT   0.0011331443546039877f   /* 5 ms at 176.4k */
+#define HW_SAG_REL   0.0002834065447940848f   /* 20 ms */
+#define HW_RESID_A   0.6565002619092772f      /* 30 kHz guard LP */
+#else
+#define HW_FS_OS     88200.0f
+#define HW_DC_R      0.9996438103567359f      /* the same, at 88.2k */
+#define HW_SAG_ATT   2.2650046930795531e-03f
+#define HW_SAG_REL   5.6673277031848990e-04f
+#define HW_RESID_A   0.8820079299316048f
+#endif
 #define HW_H1        2.4f                     /* stage input clip points, Vpk */
 #define HW_H2        3.8f
 #define HW_H3        2.4f
@@ -40,10 +55,7 @@
 #define HW_APIHPI    (48.5f * 0.96f)
 #define HW_VTAP      56.57f                   /* 100 W into the 16-ohm tap, peak */
 #define HW_OUT       (1.0f / 62.0f)
-#define HW_SAG_ATT   0.0011331443546039877f   /* 5 ms at 176.4k */
-#define HW_SAG_REL   0.0002834065447940848f   /* 20 ms */
 #define HW_SAG_DEPTH 0.15f
-#define HW_RESID_A   0.6565002619092772f      /* 30 kHz guard LP */
 #define HW_GRID      0.08f                    /* slope above the plate ceiling */
 
 /* HW_ADAA 1: first-order antiderivative anti-aliasing on every tube stage
@@ -354,7 +366,9 @@ TS_INLINE float hw_process(HwState *s, const HwCoeffs *k, float x, int cab_on)
     float a1, b1, y4[4];
     int i;
     HW_TS(t0);
-#if HW_OS_IIR
+#if HW_OS == 2
+    hbi_up1(&s->up1, x, &y4[0], &y4[1]);
+#elif HW_OS_IIR
     hbi_up1(&s->up1, x, &a1, &b1);
     hbi_up2(&s->up2, a1, &y4[0], &y4[1]);
     hbi_up2(&s->up2, b1, &y4[2], &y4[3]);
@@ -366,7 +380,7 @@ TS_INLINE float hw_process(HwState *s, const HwCoeffs *k, float x, int cab_on)
     {
         HW_TS(t1);
         HW_ADD(s, 0, t1 - t0);
-        for (i = 0; i < 4; ++i)
+        for (i = 0; i < HW_OS; ++i)
             y4[i] = hw_stage(s, k, y4[i]);
         {
             HW_TS(t2);
@@ -375,7 +389,10 @@ TS_INLINE float hw_process(HwState *s, const HwCoeffs *k, float x, int cab_on)
     }
     {
     HW_TS(t3);
-#if HW_OS_IIR
+#if HW_OS == 2
+    x = hbi_down1(&s->dn1, y4[0], y4[1]);
+    (void)a1; (void)b1;
+#elif HW_OS_IIR
     a1 = hbi_down2(&s->dn2, y4[0], y4[1]);
     b1 = hbi_down2(&s->dn2, y4[2], y4[3]);
     x = hbi_down1(&s->dn1, a1, b1);

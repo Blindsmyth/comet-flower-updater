@@ -12,7 +12,7 @@ import numpy as np
 
 D = Path(__file__).resolve().parents[2] / "build" / "host" / (sys.argv[1] if len(sys.argv) > 1 else "hw")
 SR = 44100
-MODELS = {"G": 1, "Gm1c": 1, "Gm18": 1, "GP": 1, "R4A": 4}   # prefix -> rate multiple
+MODELS = {"G": 1, "G2": 1, "R4A": 4}   # prefix -> rate multiple
 
 
 def decimate_ref(x, os=16):
