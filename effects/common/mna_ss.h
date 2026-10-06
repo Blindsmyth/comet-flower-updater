@@ -28,9 +28,15 @@
 #ifndef MNA_SS_H
 #define MNA_SS_H
 
+/* Scratch sizes; a build that derives only smaller nets may lower them
+ * (the DR103 kernel: 10 nodes, 1 input, to keep its stack frame small). */
+#ifndef MNA_MAXN
 #define MNA_MAXN 11
+#endif
 #define MNA_MAXK 5
+#ifndef MNA_MAXU
 #define MNA_MAXU 2
+#endif
 #define MNA_W    (MNA_MAXN + MNA_MAXK + MNA_MAXU)   /* row: [G | E | B] */
 
 /* The net and all derivation scratch share one array, to keep the audio

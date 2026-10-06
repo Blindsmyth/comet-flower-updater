@@ -1,7 +1,7 @@
 /* hiwatt_amp.h - Hiwatt DR103 Custom 100 (1971, #2130) for the Zoom G1 Four.
  *
  * A port of Comet Flower's desktop HiwattDR103Processor (the circuit model,
- * not the lean mobile line): the same per-sample chain at 4x (176.4 kHz),
+ * not the lean mobile line): the same chain at 4x (176.4 kHz),
  *   jack -> 68k/1M divider -> 5 Hz DC guard -> V1 tube -> V1 network ->
  *   V2 tube -> tone stack + master -> V3a tube -> back half (V3a, CF,
  *   presence, NFB divider, PI cathodes; linear NFB loop closed inside) ->
@@ -11,42 +11,40 @@
  *
  * Differences from the desktop, each measured (tests/host/hiwatt_*):
  *   - the three networks are capacitor-state systems without the desktop's
- *     stray capacitors, re-derived in float every block (hiwatt_nets.h);
+ *     stray capacitors (hiwatt_nets.h); the tone stack (4 knobs) is
+ *     re-derived in float every block, the V1 network (Volume) and the back
+ *     half (Presence) come from tables derived at all 101 knob positions;
  *   - ADAA in float, with the antiderivative split so it does not need the
  *     desktop's double precision (see hw_tube_adaa);
- *   - polyphase IIR half-bands of our own design (os_hbiir.h), like the
- *     desktop's JUCE oversampler but with stated stopbands.
+ *   - polyphase IIR half-bands of our own design (os_hbiir.h);
+ *   - the preamp tube ceilings follow the sag as a ramp over each 16-sample
+ *     block, one block late (the desktop: every sample; a per-block step
+ *     left sidebands at -78 dB when the sag works hard); the PI and power
+ *     stages follow it per sample.
  * Tube transfer, bias points, headroom calibration, sag and NFB constants are
  * the desktop's (HiwattDR103Processor.cpp, AmpStages.h).
+ *
+ * Processing is block-oriented and stage-major (hw_block): each preamp tube
+ * and network runs over all 64 4x samples of a block before the next, so the
+ * C674x compiler can software-pipeline them; only the NFB loop (back half,
+ * PI, power) runs sample by sample. Measured on the pedal, the first
+ * sample-major version cost ~224k cycles per block (2026-10-05).
  */
 #ifndef HIWATT_AMP_H
 #define HIWATT_AMP_H
 
 #include "ts808_sd.h"          /* sd_expf, ts_rcp, TS_INLINE */
-#include "os_halfband.h"
 #include "os_hbiir.h"
 #include "hiwatt_nets.h"
 #include "hiwatt_cab.h"
-#include "hw_tanhtab.h"
+#include "hw_blob.h"
 
-/* HW_OS: oversampling factor, 4 (176.4 kHz) or 2 (88.2 kHz) */
-#ifndef HW_OS
-#define HW_OS 4
-#endif
-#define HW_IN_SCALE  1.8726591760299625f      /* 2 V full scale * 1M/(1M+68k) */
-#if HW_OS == 4
 #define HW_FS_OS     176400.0f
+#define HW_IN_SCALE  1.8726591760299625f      /* 2 V full scale * 1M/(1M+68k) */
 #define HW_DC_R      0.9998219051783679f      /* 5 Hz DC guard at 176.4k */
 #define HW_SAG_ATT   0.0011331443546039877f   /* 5 ms at 176.4k */
 #define HW_SAG_REL   0.0002834065447940848f   /* 20 ms */
 #define HW_RESID_A   0.6565002619092772f      /* 30 kHz guard LP */
-#else
-#define HW_FS_OS     88200.0f
-#define HW_DC_R      0.9996438103567359f      /* the same, at 88.2k */
-#define HW_SAG_ATT   2.2650046930795531e-03f
-#define HW_SAG_REL   5.6673277031848990e-04f
-#define HW_RESID_A   0.8820079299316048f
-#endif
 #define HW_H1        2.4f                     /* stage input clip points, Vpk */
 #define HW_H2        3.8f
 #define HW_H3        2.4f
@@ -57,29 +55,14 @@
 #define HW_OUT       (1.0f / 62.0f)
 #define HW_SAG_DEPTH 0.15f
 #define HW_GRID      0.08f                    /* slope above the plate ceiling */
-
-/* HW_ADAA 1: first-order antiderivative anti-aliasing on every tube stage
- * (as the desktop ships), in float without its cancellation problem. */
-#ifndef HW_ADAA
-#define HW_ADAA 1
-#endif
-/* HW_OS_IIR 1: polyphase IIR half-bands (os_hbiir.h); 0: the FIR half-bands
- * of Green 808X (os_halfband.h), whose ~-77 dB image rejection lets the tubes
- * intermodulate the upsampling images into a -65..-80 dB floor. */
-#ifndef HW_OS_IIR
-#define HW_OS_IIR 1
-#endif
-#define HW_LN2 0.6931471805599453f
-
-/* HW_PROFILE (dr103diag only): per-section cycle sums from the C674x TSCL,
- * accumulated into HwState.prof[] (0 upsampling, 1 stage loop, 2 tubes,
- * 3 downsampling, 4 cab). TSCL must be declared (c6x.h) before this header. */
-#ifdef HW_PROFILE
-#define HW_TS(v) unsigned v = TSCL
-#define HW_ADD(s, i, d) ((s)->prof[i] += (float)(d))
+#define HW_LN2       0.6931471805599453f
+#define HW_NB        64                       /* 4x samples per 16-frame block */
+/* restrict: without it the compiler assumes the block buffers may overlap and
+ * serialises the tube fast pass (ii 123 instead of the resource bound) */
+#if defined(__cplusplus)
+#define HW_RESTRICT __restrict
 #else
-#define HW_TS(v)
-#define HW_ADD(s, i, d)
+#define HW_RESTRICT restrict
 #endif
 
 /* per-stage bias, negative-half scale 1 - asym*0.15, idle output (subtracted) */
@@ -100,23 +83,16 @@
 #define HW_IPW (-0.07959027980379797f)
 
 typedef struct {
-#if HW_OS_IIR
     HbiState1 up1, dn1;             /* 1x <-> 2x */
     HbiState2 up2, dn2;             /* 2x <-> 4x */
-#else
-    TsxHB6 os1;                     /* 1x <-> 2x */
-    TsxHB3 os2;                     /* 2x <-> 4x */
-#endif
     float ax[5];                    /* ADAA: previous input of each tube stage */
     float dcx, dcy;                 /* input DC guard */
     float xv1[2], xst[5], xbh[5];   /* network states (capacitor volts) */
     float uv1, ust, ub0, ub1;       /* previous network inputs */
     float resid, sag;               /* NFB residual, sag envelope */
+    float pre_last;                 /* preamp ceiling at the end of the last block */
     float cab[HW_CAB_N][2];         /* cab biquads, TDF-II */
-#ifdef HW_PROFILE
-    float prof[5];
-#endif
-} HwState;                          /* 73 floats = 292 B (IIR), all zero = reset */
+} HwState;                          /* 74 floats = 296 B, all zero = reset */
 
 #define HW_V1_SZ MNA_SS_SIZE(2, 1)
 #define HW_ST_SZ MNA_SS_SIZE(5, 1)
@@ -125,18 +101,30 @@ typedef struct {
     float v1[HW_V1_SZ], st[HW_ST_SZ], bh[HW_BH_SZ];   /* packed (mna_ss.h) */
 } HwCoeffs;                                          /* 87 floats */
 
+/* a table system at knob position kn (0..1): exact at the 101 positions */
+TS_INLINE void hw_tabsys(float *out, int base, int sz, float kn)
+{
+    float pos = (kn < 0.0f ? 0.0f : (kn > 1.0f ? 1.0f : kn)) * 100.0f, fr;
+    int i = (int)pos, j;
+    const float *a, *b;
+    if (i > 99) i = 99;
+    fr = pos - (float)i;
+    a = hw_blob + base + i * sz;
+    b = a + sz;
+    for (j = 0; j < sz; ++j) out[j] = a[j] + fr * (b[j] - a[j]);
+}
+
 /* knobs 0..1: Volume (Normal 470k-A), Treble, Middle, Bass, Master, Presence */
 TS_INLINE void hw_coeffs(HwCoeffs *k, float vol, float tre, float mid, float bas,
                          float mas, float pre)
 {
-    MnaNet n;
-    float w[MNA_MAXN];
-    int j;
-    for (j = 0; j < 3; ++j) {       /* one mna_derive site: one inlined copy */
-        if (j == 0) hw_v1net(&n, w, vol);
-        else if (j == 1) hw_stack(&n, w, tre, mid, bas, mas);
-        else hw_backhalf(&n, w, pre);
-        mna_derive(&n, w, HW_FS_OS, j == 0 ? k->v1 : (j == 1 ? k->st : k->bh));
+    hw_tabsys(k->v1, HW_BLOB_V1, HW_V1_SZ, vol);
+    hw_tabsys(k->bh, HW_BLOB_BH, HW_BH_SZ, pre);
+    {
+        MnaNet n;
+        float w[MNA_MAXN];
+        hw_stack(&n, w, tre, mid, bas, mas);
+        mna_derive(&n, w, HW_FS_OS, k->st);
     }
 }
 
@@ -245,106 +233,6 @@ TS_INLINE float hw_tube_adaa(float x, float *x1, float bias, float kneg, float c
     return acc * ts_rcp(hi - lo) - idle;
 }
 
-/* HW_ADAA_MASK: which stages (bit 0 = V1 .. bit 4 = power) use ADAA */
-#ifndef HW_ADAA_MASK
-#define HW_ADAA_MASK 0x1f
-#endif
-
-/* one step of a k-state, one-input network (packed m), input u, previous up */
-TS_INLINE float hw_net(const float *m, float *x, int k, float u, float up)
-{
-    float su = u + up, dx[MNA_MAXK], y = MNA_DY(m, k, 1, 0) * u;
-    int i, j;
-    for (i = 0; i < k; ++i) {
-        float a = MNA_DB(m, k, 1, i, 0) * su;
-        for (j = 0; j < k; ++j) a += MNA_DA(m, k, 1, i, j) * x[j];
-        dx[i] = a;
-    }
-    for (i = 0; i < k; ++i) {
-        x[i] += dx[i];
-        y += MNA_CY(m, k, 1, i) * x[i];
-    }
-    return y;
-}
-
-/* per tube stage: input scale (to the stage's clip units), bias,
- * negative-half scale, idle output */
-static const float hw_tube_par[5][4] = {
-    { 1.0f / HW_H1, HW_B1, HW_K1, HW_I1 },                        /* V1 */
-    { 1.0f / HW_H2, HW_B2, HW_K2, HW_I2 },                        /* V2 */
-    { 1.0f / HW_H3, HW_B3, HW_K3, HW_I3 },                        /* V3a */
-    { 1.0f / HW_HPI, HW_BPI, HW_KPI, HW_IPI },                    /* PI (LTP) */
-    /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V */
-    { -HW_APIHPI * (0.5f / HW_HPWR), HW_BPW, HW_KPW, HW_IPW },    /* EL34 pair */
-};
-
-/* one 4x sample through the amp; returns 16-ohm tap volts * HW_OUT.
- * The five tube stages run in one loop body (one inlined copy of the ADAA
- * code: the kernel must fit the G1 code budget); after each stage the
- * if-chain applies what follows it in the amp. */
-TS_INLINE float hw_stage(HwState *s, const HwCoeffs *k, float in)
-{
-    float v, y, u, d = 0.0f, rail = 1.0f, pre, c;
-    int i, st;
-
-    v = in * HW_IN_SCALE;
-    y = v - s->dcx + HW_DC_R * s->dcy;              /* 5 Hz DC guard */
-    s->dcx = v;
-    s->dcy = y;
-    pre = 1.0f - 0.3f * HW_SAG_DEPTH * s->sag;      /* preamp rails: 30 % of sag */
-
-    for (st = 0; st < 5; ++st) {
-        const float *tp = hw_tube_par[st];
-        c = st < 4 ? pre : rail;
-        y = y * tp[0];
-        {
-            HW_TS(ta);
-            y = (HW_ADAA && (HW_ADAA_MASK >> st & 1)) ? hw_tube_adaa(y, &s->ax[st], tp[1], tp[2], c, tp[3])
-                                                     : hw_tube(y, tp[1], tp[2], c, tp[3]);
-            {
-                HW_TS(tb);
-                HW_ADD(s, 2, tb - ta);
-            }
-        }
-        /* if-chain, not switch: a switch compiles to a .switch jump table,
-         * a data section the blob cannot carry */
-        if (st == 0) {                              /* V1 network -> V2 grid */
-            u = HW_MU3 * HW_H1 * y;
-            y = hw_net(k->v1, s->xv1, 2, u, s->uv1);
-            s->uv1 = u;
-        } else if (st == 1) {                       /* tone stack -> master wiper */
-            u = HW_MU3 * HW_H2 * y;
-            y = hw_net(k->st, s->xst, 5, u, s->ust);
-            s->ust = u;
-        } else if (st == 2) {   /* back half: u0 = V3a grid volts, u1 = -residual (POL_NFB) */
-            float u0 = HW_H3 * y, u1 = -s->resid, s0 = u0 + s->ub0, s1 = u1 + s->ub1;
-            float dx[5];
-            d = MNA_DY(k->bh, 5, 2, 0) * u0 + MNA_DY(k->bh, 5, 2, 1) * u1;
-            for (i = 0; i < 5; ++i) {
-                float a = MNA_DB(k->bh, 5, 2, i, 0) * s0 + MNA_DB(k->bh, 5, 2, i, 1) * s1;
-                int j;
-                for (j = 0; j < 5; ++j) a += MNA_DA(k->bh, 5, 2, i, j) * s->xbh[j];
-                dx[i] = a;
-            }
-            for (i = 0; i < 5; ++i) {
-                s->xbh[i] += dx[i];
-                d += MNA_CY(k->bh, 5, 2, i) * s->xbh[i];
-            }
-            s->ub0 = u0;
-            s->ub1 = u1;
-            y = d;                                  /* PI diff grid volts */
-        } else if (st == 3) {                       /* sag from the PI output */
-            float r = y < 0.0f ? -y : y;
-            s->sag += (r - s->sag) * (r > s->sag ? HW_SAG_ATT : HW_SAG_REL);
-            rail = 1.0f - HW_SAG_DEPTH * s->sag;
-        } else {                                    /* 16-ohm tap, NFB residual */
-            y = HW_VTAP * y;
-            s->resid += HW_RESID_A * ((y - HW_KTAPLIN * d) - s->resid);
-        }
-    }
-    return y * HW_OUT;
-}
-
 TS_INLINE float hw_cabinet(HwState *s, float x)
 {
     int i;
@@ -358,60 +246,184 @@ TS_INLINE float hw_cabinet(HwState *s, float x)
     return x;
 }
 
-/* one base-rate sample: 4x amp, then the cab unless cab_on is 0. The four
- * 4x samples go through one loop body (one inlined copy of the stage: a
- * smaller stack frame than four). */
-TS_INLINE float hw_process(HwState *s, const HwCoeffs *k, float x, int cab_on)
+/* bias, negative-half scale, idle output of V1, V2, V3a, PI, EL34 pair */
+static const float hw_pre_par[5][3] = {
+    { HW_B1, HW_K1, HW_I1 }, { HW_B2, HW_K2, HW_I2 }, { HW_B3, HW_K3, HW_I3 },
+    { HW_BPI, HW_KPI, HW_IPI }, { HW_BPW, HW_KPW, HW_IPW },
+};
+
+/* Fast ADAA: the same-region, small-step case (nearly every sample), with no
+ * branches and no division, so a loop over a block software-pipelines.
+ * Sets *ok to 0 when the step crosses a region boundary or is large; the
+ * caller then uses hw_tube_adaa for that sample. */
+TS_INLINE float hw_tube_fast(float x, float x1, float bias, float kneg, float ceil,
+                             float idle, int *ok)
 {
-    float a1, b1, y4[4];
-    int i;
-    HW_TS(t0);
-#if HW_OS == 2
-    hbi_up1(&s->up1, x, &y4[0], &y4[1]);
-#elif HW_OS_IIR
-    hbi_up1(&s->up1, x, &a1, &b1);
-    hbi_up2(&s->up2, a1, &y4[0], &y4[1]);
-    hbi_up2(&s->up2, b1, &y4[2], &y4[3]);
-#else
-    tsx_up6(&s->os1, x, &a1, &b1);
-    tsx_up3(&s->os2, a1, &y4[0], &y4[1]);
-    tsx_up3(&s->os2, b1, &y4[2], &y4[3]);
-#endif
-    {
-        HW_TS(t1);
-        HW_ADD(s, 0, t1 - t0);
-        for (i = 0; i < HW_OS; ++i)
-            y4[i] = hw_stage(s, k, y4[i]);
-        {
-            HW_TS(t2);
-            HW_ADD(s, 1, t2 - t1);
+    float u = x + bias, u1 = x1 + bias, du = u - u1, adu = du < 0.0f ? -du : du;
+    int r = u < 0.0f ? 0 : (u <= ceil ? 1 : 2), r1 = u1 < 0.0f ? 0 : (u1 <= ceil ? 1 : 2);
+    float W = r1 == 0 ? kneg : 1.0f, A = r1 == 2 ? HW_GRID : 1.0f;
+    float t1 = A * u1 + (r1 == 2 ? ceil * (1.0f - HW_GRID) : 0.0f);
+    *ok = (r == r1) & (adu < HW_ADAA_BIG);
+    return W * hw_mean_tanh(t1, 0.5f * A * du) - idle;
+}
+
+/* the test of hw_tube_fast alone: same region and a small step */
+TS_INLINE int hw_fast_ok(float x, float x1, float bias, float ceil)
+{
+    float u = x + bias, u1 = x1 + bias, du = u - u1;
+    int r = u < 0.0f ? 0 : (u <= ceil ? 1 : 2), r1 = u1 < 0.0f ? 0 : (u1 <= ceil ? 1 : 2);
+    return (r == r1) & (du < HW_ADAA_BIG) & (du > -HW_ADAA_BIG);
+}
+
+/* one preamp tube stage over the block: y[n] from x[n] (x scaled to the
+ * stage's clip units), previous input in *x1, ceiling c0 + dc (n + 1) */
+TS_INLINE void hw_tube_block(const float *HW_RESTRICT x, float *HW_RESTRICT y, float *x1,
+                             float bias, float kneg, float c0, float dc, float idle)
+{
+    int n, ok;
+    float prev = *x1;
+    for (n = 0; n < HW_NB; ++n) {                   /* pipelined fast pass */
+        float xp = n == 0 ? prev : x[n - 1], c = c0 + dc * (float)(n + 1);
+        y[n] = hw_tube_fast(x[n], xp, bias, kneg, c, idle, &ok);
+    }
+    /* rare exact fix-ups. The test is recomputed here, cheaply (no tanh):
+     * storing a flag from the fast pass costs it ii 46 instead of 26
+     * (register pressure). */
+    for (n = 0; n < HW_NB; ++n) {
+        float xp = n == 0 ? prev : x[n - 1], c = c0 + dc * (float)(n + 1);
+        if (!hw_fast_ok(x[n], xp, bias, c)) {
+            float t = xp;
+            y[n] = hw_tube_adaa(x[n], &t, bias, kneg, c, idle);
         }
     }
-    {
-    HW_TS(t3);
-#if HW_OS == 2
-    x = hbi_down1(&s->dn1, y4[0], y4[1]);
-    (void)a1; (void)b1;
-#elif HW_OS_IIR
-    a1 = hbi_down2(&s->dn2, y4[0], y4[1]);
-    b1 = hbi_down2(&s->dn2, y4[2], y4[3]);
-    x = hbi_down1(&s->dn1, a1, b1);
-#else
-    a1 = tsx_down3(&s->os2, y4[0], y4[1]);
-    b1 = tsx_down3(&s->os2, y4[2], y4[3]);
-    x = tsx_down6(&s->os1, a1, b1);
+    *x1 = x[HW_NB - 1];
+}
+
+/* a one-input network over the block: y[n] = net(g * v[n]) */
+TS_INLINE void hw_net_block(const float *HW_RESTRICT m, int k, float *HW_RESTRICT xs,
+                            float *HW_RESTRICT up, const float *HW_RESTRICT v, float g,
+                            float *HW_RESTRICT y)
+{
+    int n, i, j;
+    for (n = 0; n < HW_NB; ++n) {
+        float u = g * v[n], su = u + *up, dx[MNA_MAXK], o = MNA_DY(m, k, 1, 0) * u;
+        for (i = 0; i < k; ++i) {
+            float acc = MNA_DB(m, k, 1, i, 0) * su;
+            for (j = 0; j < k; ++j) acc += MNA_DA(m, k, 1, i, j) * xs[j];
+            dx[i] = acc;
+        }
+        for (i = 0; i < k; ++i) {
+            xs[i] += dx[i];
+            o += MNA_CY(m, k, 1, i) * xs[i];
+        }
+        *up = u;
+        y[n] = o;
+    }
+}
+
+/* One 16-frame block through the amp, in place; the cab unless cab_on is 0. */
+TS_INLINE void hw_block(HwState *s, const HwCoeffs *k, float *io, int cab_on)
+{
+    float a[HW_NB], b[HW_NB];
+    float pre, p0, dp;
+    int n, ok, st;
+
+    for (n = 0; n < 16; ++n) {                      /* 1x -> 4x */
+        float p, q;
+        hbi_up1(&s->up1, io[n], &p, &q);
+        hbi_up2(&s->up2, p, &a[4 * n], &a[4 * n + 1]);
+        hbi_up2(&s->up2, q, &a[4 * n + 2], &a[4 * n + 3]);
+    }
+    for (n = 0; n < HW_NB; ++n) {                   /* jack volts, DC guard, V1 units */
+        float v = a[n] * HW_IN_SCALE, y = v - s->dcx + HW_DC_R * s->dcy;
+        s->dcx = v;
+        s->dcy = y;
+        a[n] = y * (1.0f / HW_H1);
+    }
+    /* preamp rails: 30 % of the sag, ramped over the block from last block's
+     * end (all-zero state: pre_last 0 means "not set yet") */
+    pre = 1.0f - 0.3f * HW_SAG_DEPTH * s->sag;
+    p0 = s->pre_last != 0.0f ? s->pre_last : pre;
+    dp = (pre - p0) * (1.0f / HW_NB);
+    s->pre_last = pre;
+
+    /* V1 -> V1 net -> V2 -> tone stack -> V3a, one stage per pass (one
+     * inlined copy of the tube code: .text must fit the 30 KB code region) */
+#if defined(__TI_COMPILER_VERSION__)
+#pragma UNROLL(1)
 #endif
-    {
-        HW_TS(t4);
-        HW_ADD(s, 3, t4 - t3);
-        x = cab_on ? hw_cabinet(s, x) : x;
-        {
-            HW_TS(t5);
-            HW_ADD(s, 4, t5 - t4);
+    for (st = 0; st < 3; ++st) {
+        const float *tp = hw_pre_par[st];
+        hw_tube_block(a, b, &s->ax[st], tp[0], tp[1], p0, dp, tp[2]);
+        if (st == 0) {
+            hw_net_block(k->v1, 2, s->xv1, &s->uv1, b, HW_MU3 * HW_H1, a);
+            for (n = 0; n < HW_NB; ++n) a[n] *= 1.0f / HW_H2;
+        } else if (st == 1) {
+            hw_net_block(k->st, 5, s->xst, &s->ust, b, HW_MU3 * HW_H2, a);
+            for (n = 0; n < HW_NB; ++n) a[n] *= 1.0f / HW_H3;
         }
     }
+
+    /* the NFB loop, sample by sample: back half (u0 = V3a grid volts,
+     * u1 = -residual), PI, sag, power stage, tap, residual */
+    for (n = 0; n < HW_NB; ++n) {
+        const float *m = k->bh;
+        float u0 = HW_H3 * b[n], u1 = -s->resid, s0 = u0 + s->ub0, s1 = u1 + s->ub1;
+        float d = MNA_DY(m, 5, 2, 0) * u0 + MNA_DY(m, 5, 2, 1) * u1, dx[5], xi, y, r, t, rail;
+        int i, j;
+        /* fully unrolled: as a 5-trip software-pipelined loop it costs ii 30 */
+#if defined(__TI_COMPILER_VERSION__)
+#pragma UNROLL(5)
+#endif
+        for (i = 0; i < 5; ++i) {
+            float acc = MNA_DB(m, 5, 2, i, 0) * s0 + MNA_DB(m, 5, 2, i, 1) * s1;
+#if defined(__TI_COMPILER_VERSION__)
+#pragma UNROLL(5)
+#endif
+            for (j = 0; j < 5; ++j) acc += MNA_DA(m, 5, 2, i, j) * s->xbh[j];
+            dx[i] = acc;
+        }
+#if defined(__TI_COMPILER_VERSION__)
+#pragma UNROLL(5)
+#endif
+        for (i = 0; i < 5; ++i) {
+            s->xbh[i] += dx[i];
+            d += MNA_CY(m, 5, 2, i) * s->xbh[i];
+        }
+        s->ub0 = u0;
+        s->ub1 = u1;
+
+        /* PI (LTP), then the EL34 pair: one pass each (one inlined copy) */
+        y = d * (1.0f / HW_HPI);
+        rail = 1.0f - 0.3f * HW_SAG_DEPTH * s->sag; /* PI: preamp rail */
+#if defined(__TI_COMPILER_VERSION__)
+#pragma UNROLL(1)
+#endif
+        for (st = 3; st < 5; ++st) {
+            const float *tp = hw_pre_par[st];
+            xi = y;
+            y = hw_tube_fast(xi, s->ax[st], tp[0], tp[1], rail, tp[2], &ok);
+            if (!ok) { t = s->ax[st]; y = hw_tube_adaa(xi, &t, tp[0], tp[1], rail, tp[2]); }
+            s->ax[st] = xi;
+            if (st == 3) {
+                r = y < 0.0f ? -y : y;              /* sag from the PI output */
+                s->sag += (r - s->sag) * (r > s->sag ? HW_SAG_ATT : HW_SAG_REL);
+                rail = 1.0f - HW_SAG_DEPTH * s->sag;
+                /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V */
+                y = -y * HW_APIHPI * (0.5f / HW_HPWR);
+            }
+        }
+        y *= HW_VTAP;                               /* 16-ohm tap volts */
+        s->resid += HW_RESID_A * ((y - HW_KTAPLIN * d) - s->resid);
+        a[n] = y * HW_OUT;
     }
-    return x;
+
+    for (n = 0; n < 16; ++n) {                      /* 4x -> 1x, cab */
+        float p = hbi_down2(&s->dn2, a[4 * n], a[4 * n + 1]);
+        float q = hbi_down2(&s->dn2, a[4 * n + 2], a[4 * n + 3]);
+        float x = hbi_down1(&s->dn1, p, q);
+        io[n] = cab_on ? hw_cabinet(s, x) : x;
+    }
 }
 
 #endif /* HIWATT_AMP_H */

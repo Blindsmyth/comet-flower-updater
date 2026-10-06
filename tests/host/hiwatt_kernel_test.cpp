@@ -3,7 +3,7 @@
 // instance[1] = coefficients, instance[2] = state (+ guard word), ctx[1] =
 // in-place 16-frame A/B bus. Checks: output finite and bounded over knob
 // sweeps, bypass (fade 0) passes the dry signal, a bad guard or an
-// out-of-range coefficient mutes, matches hw_process for the same knobs.
+// out-of-range coefficient mutes, matches hw_block for the same knobs.
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -73,7 +73,7 @@ int main()
     mute = true; for (int i = 0; i < 32; ++i) mute = mute && bus[i] == 0.0f;
     check(mute, "out-of-range coefficient mutes");
 
-    // 4. steady knobs: the kernel equals hw_process with the same (settled) knobs
+    // 4. steady knobs: the kernel equals hw_block with the same (settled) knobs
     reset(); knobs(0.6f, 0.4f, 0.7f, 0.3f, 0.8f, 0.5f, 1.0f); coef[SH_COEFF_BYPASS] = 1.0f;
     HwState ref = {}; HwCoeffs k;
     hw_coeffs(&k, 0.6f, 0.4f, 0.7f, 0.3f, 0.5f, 0.8f);
@@ -82,10 +82,11 @@ int main()
         for (int i = 0; i < 16; ++i) { float x = 0.3f * (float)std::sin(2 * PI * 330.0 * n / 44100.0); bus[i] = bus[i + 16] = x; ++n; }
         float in[16]; std::memcpy(in, bus, sizeof in);
         SH_AUDIO_FN(inst, ctx);
-        for (int i = 0; i < 16; ++i) maxd = std::max(maxd, (double)std::fabs(bus[i] - hw_process(&ref, &k, in[i], 1)));
+        hw_block(&ref, &k, in, 1);
+        for (int i = 0; i < 16; ++i) maxd = std::max(maxd, (double)std::fabs(bus[i] - in[i]));
     }
-    std::printf("  kernel vs hw_process: max |diff| %.2e\n", maxd);
-    check(maxd < 1e-6, "kernel == hw_process for steady knobs");
+    std::printf("  kernel vs hw_block: max |diff| %.2e\n", maxd);
+    check(maxd < 1e-6, "kernel == hw_block for steady knobs");
 
     std::printf(fails ? "FAILED (%d)\n" : "all passed\n", fails);
     return fails ? 1 : 0;

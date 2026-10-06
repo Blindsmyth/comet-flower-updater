@@ -97,6 +97,7 @@ MNA_INLINE void hw_stack(MnaNet *n, float *w, float t, float mid, float b, float
     w[OUT] = 1.0f;
 }
 
+#if MNA_MAXN >= 11 && MNA_MAXU >= 2   /* host / table generator only on DR103 */
 /* V3a + cathode follower + presence + NFB divider + PI cathode folds, with
  * the linear NFB loop closed in the network. Output: PI grid a - grid b. */
 MNA_INLINE void hw_backhalf(MnaNet *n, float *w, float pres01)
@@ -152,5 +153,6 @@ MNA_INLINE void hw_backhalf(MnaNet *n, float *w, float pres01)
     w[KB3] = 1.0f;
     w[M] = -1.0f;
 }
+#endif
 
 #endif /* HIWATT_NETS_H */

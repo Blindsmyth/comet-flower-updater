@@ -12,9 +12,9 @@
   "kernel_section": "text",
   "allow_stack": true,
   "opt_for_space": null,
-  "state_bytes": 320,
+  "state_bytes": 324,
   "scaffold": "cleanroom",
-  "const_blob": { "symbol": "hw_tanhtab", "words": 1024, "init": "tanh.bin" },
+  "const_blob": { "symbol": "hw_blob", "words": 6175, "init": "blob.bin" },
   "params": [
     { "name": "Volume", "max": 100, "default": 50,
       "explanation": "Normal channel volume, 470k audio taper." },

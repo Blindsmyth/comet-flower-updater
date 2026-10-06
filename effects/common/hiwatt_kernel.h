@@ -1,36 +1,38 @@
 /* hiwatt_kernel.h - the DR103 audio kernel, shared by effects/hiwatt
  * (the effect) and effects/dr103diag (HW_DIAG 1: same processing, timed with
- * the C674x TSCL cycle counter; the output becomes a sequence of test tones
- * whose pitch in Hz is cycles / 100, one per profiled section, so the cost
- * can be read from a recording).
+ * the C674x TSCL cycle counter; the output becomes test tones whose pitch in
+ * Hz is cycles / 100, so the cost can be read from a recording). Only
+ * kernel-level timings are reliable: ordinary code moves across the volatile
+ * TSCL reads, so sections inside the sample loops cannot be timed.
  *
  * Mono DSP on channel A, written to both channels; bypass crossfade per
  * channel. Guard prologue and output clamp as in stomphacks gain.c.
- * Per block: knobs smoothed, the three networks re-derived (on the stack, not
- * in state: state stays under the G1's ~392 B), then 16 samples at 4x.
+ * Per block: knobs smoothed, the networks set up (tone stack derived on the
+ * stack, not in state: state stays under the G1's ~392 B), then hw_block.
  */
 #include <stdint.h>
 #if defined(__TI_COMPILER_VERSION__)
 #include <c6x.h>
 #endif
 #include "sh_params.h"
-#if defined(HW_DIAG) && HW_DIAG
-#define HW_PROFILE 1
-#if !defined(__TI_COMPILER_VERSION__)
+#if defined(HW_DIAG) && HW_DIAG && !defined(__TI_COMPILER_VERSION__)
 static unsigned TSCL;                /* host build: a counter that never moves */
 #endif
-#endif
+/* on the pedal only the tone stack (10 nodes, 1 input) is derived: smaller
+ * solver scratch, smaller stack frame (stock maximum 1536 B) */
+#define MNA_MAXN 10
+#define MNA_MAXU 1
 #include "hiwatt_amp.h"
 
 typedef struct {
-    HwState dsp;                     /* 292 B */
+    HwState dsp;                     /* 296 B */
     float vol, tre, mid, bas, mas, pre;   /* knobs smoothed per block */
     float primed;
 #if HW_DIAG
-    float cyc[8];                    /* smoothed cycles per block, per slot */
+    float cyc[3];                    /* smoothed cycles per block, per slot */
     float phase, nblk;               /* test tone, block counter */
 #endif
-} KernelState;                       /* 320 B (380 B with HW_DIAG) = state_bytes */
+} KernelState;                       /* 324 B (344 B with HW_DIAG) = state_bytes */
 
 #ifndef HW_DIAG
 #define HW_DIAG 0
@@ -98,9 +100,13 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     t1 = TSCL;
 #endif
 
+    {
+        float wetb[SH_FRAMES];
+        for (i = 0; i < SH_FRAMES; i++) wetb[i] = eff[i];
+        hw_block(&s->dsp, &k, wetb, cab);
     for (i = 0; i < SH_FRAMES; i++) {
         float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
-        float wet = hw_process(&s->dsp, &k, da, cab);
+        float wet = wetb[i];
         float a, b;
         if (!(wet > -8.0f && wet < 8.0f)) wet = 0.0f;
         a = da + fade * (wet - da);
@@ -110,28 +116,16 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         eff[i] = a;
         eff[i + SH_CH_B_OFFSET] = b;
     }
+    }
 #if HW_DIAG
     /* Replace the output with a triangle whose pitch is cycles / 100 Hz,
-     * 0.5 s per slot: 0 silence (marker), 1 whole block, 2 network
-     * derivation, 3 upsampling, 4 stage loop (all 64 stages), 5 tubes only,
-     * 6 downsampling, 7 cab. */
+     * 0.5 s per slot: 0 silence (marker), 1 whole block, 2 network setup. */
     t2 = TSCL;
-    {
-        float now[8];
-        int j;
-        now[0] = 0.0f;
-        now[1] = (float)(t2 - t0);
-        now[2] = (float)(t1 - t0);
-        now[3] = s->dsp.prof[0];
-        now[4] = s->dsp.prof[1];
-        now[5] = s->dsp.prof[2];
-        now[6] = s->dsp.prof[3];
-        now[7] = s->dsp.prof[4];
-        for (j = 0; j < 8; ++j) s->cyc[j] += 0.02f * (now[j] - s->cyc[j]);
-        for (j = 0; j < 5; ++j) s->dsp.prof[j] = 0.0f;
-    }
+    s->cyc[1] += 0.02f * ((float)(t2 - t0) - s->cyc[1]);
+    s->cyc[2] += 0.02f * ((float)(t1 - t0) - s->cyc[2]);
+    s->cyc[0] = 0.0f;
     s->nblk += 1.0f;
-    if (s->nblk >= 8.0f * 1378.0f) s->nblk = 0.0f;
+    if (s->nblk >= 3.0f * 1378.0f) s->nblk = 0.0f;
     {
         int slot = (int)(s->nblk * (1.0f / 1378.0f));
         float f = s->cyc[slot] * (0.01f / 44100.0f), amp = slot == 0 ? 0.0f : 0.3f;
