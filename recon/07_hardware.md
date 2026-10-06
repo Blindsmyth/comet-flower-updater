@@ -33,3 +33,33 @@ Sources:
 - https://kanengomibako.github.io/pages/00339.html (MS-50G teardown)
 - https://www.manualslib.com/manual/2613703/Zoom-G1x.html?page=22 (old G1X)
 - https://hackcorrelation.blogspot.com/2013/10/zoom-g1-guitar-effects-pedal-repair.html (old G1)
+
+
+## Owner's board photos (2026-10-06) — confirmed parts
+Photos: `backup/photos/2026-10-06/` (gitignored), board PCB-0993-02, date
+code 200114 on side B.
+
+| Ref | Marking | Part | Notes |
+|---|---|---|---|
+| IC1 | TMS320 C6745DPTP3 | TI C6745 DSP, 176-pin | confirmed |
+| IC2 | EtronTech EM638165TSD-7G | 64 Mbit SDRAM, 4M × 16 = **8 MB** | confirms the MS-50G inference |
+| IC3 | IS25LP032 (ISSI, date 1918) | 32 Mbit SPI NOR flash = **4 MB** | not the MX25L3233F w1ne reported: a second source, same size |
+| IC12 | AC3101I / TI 93I | **TI TLV320AIC3101** stereo audio codec (ADC + DAC, I2C control, QFN-32) | replaces the WM8782 + PCM5101A guess; fits the firmware's `g_Semaphore_SetI2C0` |
+| X1 | crystal | DSP clock | frequency not legible |
+| IC4, IC5, IC6 (X01DJ), IC10, IC13 | small SOT/SOIC parts | regulators / support | not identified |
+
+Connectors worth knowing:
+- **CN2, 7 pins, right next to the flash (IC3)**: its traces run to IC3.
+  Very likely a factory **SPI flash programming header**. If confirmed (meter
+  continuity CN2 → IC3 pins: CS 1, SO 2, WP 3, GND 4, SI 5, SCK 6, HOLD 7,
+  VCC 8), a cheap 3.3 V SPI programmer could read and write the whole 4 MB
+  flash, boot program included: a complete backup and a recovery path that
+  does not depend on update mode. Read-only first; never 5 V.
+- **CN5, 7 pins, next to the DSP**: possibly JTAG (TMS, TCK, TDI, TDO, TRST,
+  VCC, GND is exactly 7) or a debug UART. Unconfirmed.
+
+USB: no USB controller chip is visible in these photos. The C6745 has no
+USB device port, and the firmware drives USB through SPI semaphores and a
+USB software interrupt, so a separate controller should sit near the USB
+socket. A photo of side A around the USB socket would settle the USB-audio
+question (recon/10).
