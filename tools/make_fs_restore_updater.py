@@ -23,7 +23,11 @@ Afterwards the pedal boots with the factory effects; DIY effects must be
 reinstalled. The copy breaks Zoom's code signature; Zoom's licence forbids
 altering the updater, so this is for repairing your own unit only.
 
-    python tools/make_fs_restore_updater.py <official updater.exe> <output.exe>
+    python tools/make_fs_restore_updater.py <official updater.exe> <output.exe> [--image <fs image>]
+
+With --image, the copy carries that file-system image (exactly 0x2FE000
+bytes, e.g. from tools/make_g1_image.py) in place of Zoom's factory one;
+it is parsed and checked (tools/g1fs.py) before it is written in.
 """
 import struct
 import sys
@@ -37,7 +41,7 @@ EXPECTED = [(1, 0xBF000, 0x1000, 0), (1, 0x28000, 0xB000, 0), (2, 0x28000, 0, 0x
 FS_ADDR, FS_SIZE, FS_RES = 0x102000, 0x2FE000, 0x88
 
 
-def main(src, dst):
+def main(src, dst, image=None):
     pe = pefile.PE(src)
     off = pe.get_offset_from_rva(TABLE_VA - pe.OPTIONAL_HEADER.ImageBase)
     data = bytearray(open(src, "rb").read())
@@ -50,6 +54,20 @@ def main(src, dst):
     if size != FS_SIZE:
         sys.exit("resource 0x88 is %d bytes, expected %d" % (size, FS_SIZE))
     new = [(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES)] + [(0, 0, 0, 0)] * 6
+    if image is not None:
+        import os
+        sys.path.insert(0, os.path.dirname(__file__))
+        import g1fs
+        img = open(image, "rb").read()
+        if len(img) != FS_SIZE:
+            sys.exit("image is %d bytes, must be %d" % (len(img), FS_SIZE))
+        _, _, ents = g1fs.current_dir(img)
+        files = {n: g1fs.read_file(img, f, sz) for n, f, sz, _, _ in ents}
+        g1fs.check_image(img, files)
+        e = res[FS_RES].directory.entries[0].data.struct
+        roff = pe.get_offset_from_rva(e.OffsetToData)
+        data[roff:roff + FS_SIZE] = img
+        print("image %s: %d files, verified, placed at file offset %#x" % (image, len(files), roff))
     for k, e in enumerate(new):
         struct.pack_into("<4I", data, off + 16 * k, *e)
     open(dst, "wb").write(data)
@@ -58,4 +76,10 @@ def main(src, dst):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    a = sys.argv[1:]
+    img = None
+    if "--image" in a:
+        k = a.index("--image")
+        img = a[k + 1]
+        del a[k:k + 2]
+    main(a[0], a[1], img)
