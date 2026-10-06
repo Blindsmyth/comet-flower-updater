@@ -25,6 +25,14 @@ marginal USB link is another possible cause of the stalled transfer.
 So: a bad DSP effect makes noise or freezes the screen until a power cycle; a
 bad install can brick. Both are guarded below.
 
+## 1b. Design goal (owner, 2026-10-06)
+
+**The cheapest version that sounds the same wins.** A CF effect should be able
+to share a full 5-slot patch whenever the sound allows it, like Zoom's own
+drives (≈9–15k cycles/block, recon/11). Spend extra CPU only where it is
+audible (aliasing, circuit response), and prove it with an on-pedal A/B,
+not by analysis alone. Solo-only effects are the exception, not the aim.
+
 ## 2. Installing
 
 - **Install through update-mode images only** (`tools/make_g1_image.py` +
