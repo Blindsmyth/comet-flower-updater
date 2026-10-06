@@ -477,7 +477,7 @@ PRME/defaults: Gain 61, Tone 41, VOL 100, Comp 0.
 OVS: `.const+0x7f0/0x808`, file 0x27d0/0x27e8.
 The 16-frame outer loop is 0x394..0xa60. ILC=3 at 0x4ca, 0x616 and 0x72e
 gives four values through the clip/filter/clip stages: 4x. Inline clamp and
-quadratic math replaces the first pass's unsupported Ã¢â‚¬Å“hard clipping tables.Ã¢â‚¬Â
+quadratic math replaces the first pass's unsupported "hard clipping tables."
 
 Comp's editor (0x1968..0x1a54) copies two 28-byte blocks. Both CLIP_1 variants
 are byte-identical; CLIP_2 changes its positive/negative ceilings from +/-0.7
@@ -563,7 +563,7 @@ The DOWN loop at 0x688 accumulates one scalar plus ten coefficient pairs
 (0x640), so the stored array cannot safely be assumed chronological FIR taps.
 **DOWN order/corners and the complete resampler response remain unresolved.**
 Applying freqz to the raw 21-word order and calling it verified would be wrong.
-This effect does not justify the first pass's blanket Ã¢â‚¬Å“same 4x IIRÃ¢â‚¬Â claim.
+This effect does not justify the first pass's blanket "same 4x IIR" claim.
 
 BAL has no named knob table; its editor is 0xde8. SUSTN changes both pre-level
 and post attenuation, and separately computes the clipper input gain at Coe[132]
@@ -623,7 +623,7 @@ does not establish odd symmetry of the complete effect under dynamic input.
 15000 Hz. The varying table is gain, 0..-29.23 dB, with a small trim
 0..-0.59 dB. The filter editor 0x1904..0x1a10 reads all three and constructs
 the filter using the frequency and gain arguments; the raw table claim is
-stronger evidence than the first pass's Ã¢â‚¬Å“famous LM308 filterÃ¢â‚¬Â inference.
+stronger evidence than the first pass's "famous LM308 filter" inference.
 Gain maps to multiple pre/post EQs, a 2-pole Q of 0.1..1, and bias controls.
 No verified slew-rate-limiter equation has been recovered here.
 
@@ -676,7 +676,7 @@ setup, non-SPLOOP filters, branch-delay packets and fixed-count outer loops.
 - The first pass's rebuild costs and sound-quality verdicts are projections,
   not binary-derived facts. The numbers above estimate the **stock kernels**.
   dspload is bookkeeping, not measured cycles; no CF cost is established here.
-- Ã¢â‚¬Å“No SPLOOP means envelope-follower branchingÃ¢â‚¬Â is not valid. A loop may be
+- "No SPLOOP means envelope-follower branching" is not valid. A loop may be
   unrolled or use BDEC; signal-dependent predication is not a conditional branch.
   TS's SPLOOPW 6 belongs to GetString_ON_OFF, not its audio kernel.
 - Same coefficient bytes are verified for five priority effects, not all drives.
