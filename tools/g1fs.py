@@ -89,7 +89,7 @@ def _chain(img, first):
     return out
 
 
-def build_image(base, add=None, remove=(), replace=None):
+def build_image(base, add=None, remove=(), replace=None, compact=False):
     """A new image from `base` (the factory image), as the file system itself
     would leave it:
       remove   names marked deleted (slot state 00), their blocks freed
@@ -99,7 +99,9 @@ def build_image(base, add=None, remove=(), replace=None):
                block written
     Blocks not referenced by a valid entry are erased (FF): the region is
     erased and written whole, and the file system treats them as free.
-    Everything else is kept byte for byte."""
+    compact=True drops deleted and removed slots from the directory (the
+    factory image's live directory has none), leaving free slots for later
+    installs. Everything else is kept byte for byte."""
     add, replace = dict(add or {}), dict(replace or {})
     img = bytearray(base)
     dblk, _, _ = current_dir(img)
@@ -115,7 +117,8 @@ def build_image(base, add=None, remove=(), replace=None):
     for n in add:
         if n in valid and n not in remove:
             raise ValueError("already present: " + n)
-    if len(slots) + len(add) > SLOTS:
+    kept = len(valid) - len(remove) if compact else len(slots)
+    if kept + len(add) > SLOTS:
         raise ValueError("directory full")
     ndata = len(img) // BLOCK - DATA_BASE
     used = set()
@@ -153,6 +156,8 @@ def build_image(base, add=None, remove=(), replace=None):
                          + name.encode("latin-1").ljust(12, b"\x00") + b"\xff" * 12)
     body = b""
     for name, first, size, ok, raw in slots:
+        if compact and (not ok or name in remove):
+            continue
         if ok and name in remove:
             raw = raw[:3] + b"\x00" + raw[4:]
         body += raw

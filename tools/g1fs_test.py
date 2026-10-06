@@ -51,6 +51,15 @@ img3 = g1fs.build_image(base, remove=[victim])
 exp3 = {n: d for n, d in orig.items() if n != victim}
 check(g1fs.check_image(img3, exp3) == len(exp3), "remove %s (marked deleted, blocks freed)" % victim)
 
+zd2 = [n for n in orig if n.endswith(".ZD2")]
+img5 = g1fs.build_image(base, remove=zd2, add=diy, compact=True)
+exp5 = {n: d for n, d in orig.items() if n not in zd2}
+exp5.update(diy)
+blk5 = g1fs.current_dir(img5)[0]
+nslots = len(g1fs._slots(img5[blk5 * 4096:(blk5 + 1) * 4096]))
+check(g1fs.check_image(img5, exp5) == len(exp5) and nslots == len(exp5),
+      "compact: remove all %d effects, add 3: %d slots, none deleted" % (len(zd2), nslots))
+
 flst = bytearray(orig["FLST_SEQ.ZT2"])
 flst[100] ^= 1
 img4 = g1fs.build_image(base, replace={"FLST_SEQ.ZT2": bytes(flst)})
