@@ -124,3 +124,17 @@ a pointer block in L2 RAM that is initialised by the EABI cinit table.
 ### Risks and staged test plan
 
 Static analysis only; scratch: build/codex6/. Original findings above are preserved.
+
+### C1. Audio ping-pong PaRAM construction (confirmed)
+The main McASP0 audio setup is c0153cb8 (TX) and c0153d6c (RX). Both call c016ef60, a veneer to 1180a954. That builder emits the eight EDMA PaRAM words and calls 1180a580 with A4=temporary descriptor, B4=PaRAM index. Evidence: `1180a98a STW A5,*B15[2]` (SRC), `1180a98c SHL A4,16,A0; 1180a990 OR B4,A0,B0` (BCNT:ACNT), `1180a994 STW B2,*B15[4]` (DST), `1180a996 SHL A3,16,A0; 1180a998 OR A0,B3,A0` (DSTBIDX:SRCBIDX), `1180a9a0 EXTU A2,16,16,A0` (LINK), `1180a9a8 MVK 1,B0` (CCNT).
+
+| Direction | PaRAM index | Source | Destination | ACNT / BCNT / CCNT | SRCBIDX / DSTBIDX | LINK |
+|---|---:|---|---|---|---|---|
+| TX initial | 1 | 11f03630 | 01d00218 | 4 / 32 / 1 | 4 / 0 | 4800 |
+| TX ping | 64 | 11f03630 | 01d00218 | 4 / 32 / 1 | 4 / 0 | 4820 |
+| TX pong | 65 | 11f036b0 | 01d00218 | 4 / 32 / 1 | 4 / 0 | 4800 |
+| RX initial | 0 | 01d02000 | 11f03530 | 4 / 32 / 1 | 0 / 4 | 4840 |
+| RX ping | 66 | 01d02000 | 11f03530 | 4 / 32 / 1 | 0 / 4 | 4860 |
+| RX pong | 67 | 01d02000 | 11f035b0 | 4 / 32 / 1 | 0 / 4 | 4840 |
+
+Call evidence: TX c0153cf4/c0153d24/c0153d54; RX c0153d98/c0153dc8/c0153df4. `c0153d00 MVK 32,A12`, `c0153d14 MVK 0x4820,A6`, `c0153d2c MVK 0x40,A8`; RX `c0153d84 MVK 0x4840,A6`, `c0153db8 MVK 0x42,A8`, `c0153dc4 MVK 0x4860,A6`. OPT construction at 1180a978..a986 gives TX 0x00101000 (TCC 1, completion interrupt) and RX 0x00100000 (TCC 0, completion interrupt), A-synchronized; stack argument 2 supplies interrupt-enable bit after shifting. Each half is 128 bytes; each direction has two adjacent halves (256 bytes). The 32 transfers are 32-bit words, not 32 stereo sample frames: paired left/right words give 16 frames. Combined with the codec's 44,100 frames/s configuration above, one half spans 16/44100 = 362.812 microseconds, or 2756.25 blocks/s. Stereo framing and the active event/channel mapping are checked separately below.
