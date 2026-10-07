@@ -17,6 +17,15 @@ Static analysis of res1_493412.bin, 2026-10-06. No pedal access. Confidence labe
 > is not yet measured; the double-pass timing effects (CF RATT, CF 808T,
 > fixed frame length) measure exactly that, for code and data together.
 >
+> **KERNEL TIMING ON THE PEDAL (2026-10-06, CF RATT / CF 808T, slot 1,
+> VPB_2026-10-06_225337).** Per 16-sample block, TSCL, 21,582 blocks each:
+> RAT kernel cold 17,161 (min 16,962, max 20,642), warm 13,920 -> refill
+> 3,240 (19%). 808 kernel cold 17,360 (max 19,151), warm 12,964 -> refill
+> 4,395 (25%). The kernels cost what the static counts predicted (15-17k);
+> the cache refill between blocks is 19-25%. The Load tests attributed ~24k
+> to each effect, so ~7k per effect is outside the kernel (suspect: per-slot
+> framework work); to be measured with Probe 10 + G1 Gain.
+>
 > **Review by Claude (2026-10-06).** Written by Codex (gpt-6-astra, medium)
 > from docs/helpers/CODEX_LOADER.md. Evidence is instruction-level and the
 > parts Claude checked hold. It corrects recon/06 and recon/13: entry
