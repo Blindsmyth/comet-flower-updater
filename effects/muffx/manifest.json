@@ -12,7 +12,7 @@
   "kernel_section": "text",
   "allow_stack": true,
   "opt_for_space": null,
-  "state_bytes": 212,
+  "state_bytes": 220,
   "const_blob": { "symbol": "muff_blob", "words": 2573, "init": "blob.bin" },
   "scaffold": "cleanroom",
   "params": [

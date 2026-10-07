@@ -29,9 +29,12 @@ typedef struct {
     float clip1_hp_s;
     float clip2_hp_s;
     float rec_hp_s;
+    /* prev_w slots are reserved; the algebraic recurrence no longer uses w. */
     float c1_vo, c1_prev_u, c1_prev_w, c1_prev_rhs, c1_prev_v, c1_prev_VI;
     float c2_vo, c2_prev_u, c2_prev_w, c2_prev_rhs, c2_prev_v, c2_prev_VI;
     float t_z1, t_z2;
+    float input_pending; /* overlap linear input work with both nonlinear stages */
+    float clip1_pending; /* one oversample of latency permits parallel clip stages */
 } MuffState;
 
 typedef struct {
@@ -137,25 +140,36 @@ TS_INLINE void muff_clip_lookup(const float* tab, float rhsMax, float invDr,
     *w = rhs < 0.0f ? -w_abs : w_abs;
 }
 
+/* Retimed feed-forward chain: input at n, clip 1 at n-1, clip 2 at n-2.
+ * Two oversamples (11.34 us) of added latency break the serial dependence
+ * between stages while preserving each stage's own feedback recurrence.
+ * Pipeline state persists across the four-sample groups and block boundaries.
+ *
+ * The implicit solution obeys v*(1+c*g)+c*w=rhs. Substituting this into
+ * next_rhs = v+c*(u+prev_u-g*v-w) gives 2*v-rhs+c*(u+prev_u).
+ * Thus the w lookup/store is unnecessary; its unused outputs are eliminated
+ * by inlining, and the original blob layout is kept intact.
+ */
 TS_INLINE float muff_stage(MuffState *st, const MuffCoeffs *k, float v)
 {
     float in_hp = v - muff_onepole_lp(&st->in_hp_s, MUFF_G_IN_HP, v);
     float in_lp = muff_onepole_lp(&st->in_lp_s, MUFF_G_IN_LP, in_hp);
     float x = in_lp * k->stage1Gain;
     
-    // Rail limiter
-    float px = x * 0.5f;
-    float nx = -x * 0.142857143f;
-    float px_cl = ts_clamp(px, 0.0f, 8.5f);
-    float p_out = 2.0f * muff_lerp(MUFF_TANH_TAB, 257, 256.0f / 8.5f, px_cl);
-    float nx_cl = ts_clamp(nx, 0.0f, 8.5f);
-    float n_out = -7.0f * muff_lerp(MUFF_TANH_TAB, 257, 256.0f / 8.5f, nx_cl);
-    x = x >= 0.0f ? p_out : n_out;
-    
+    /* Choose the rail scale before the single tanh lookup. */
+    float rail = x >= 0.0f ? 2.0f : -7.0f;
+    float invrail = x >= 0.0f ? 0.5f : -0.142857143f;
+    float pos = ts_clamp(x * invrail, 0.0f, 8.5f) * (256.0f / 8.5f);
+    int ri = (int)pos;
+    ri = ri > 255 ? 255 : ri;
+    float rf = pos - (float)ri;
+    x = rail * (MUFF_TANH_TAB[ri] + (MUFF_TANH_TAB[ri+1] - MUFF_TANH_TAB[ri]) * rf);
+
     // Clip stage 1
     float c1_hp = x - muff_onepole_lp(&st->clip1_hp_s, k->clip1_hp_g, x);
-    float u1 = c1_hp * k->drive;
-    float rhs1 = st->c1_vo + MUFF_CLIP1_C * (u1 + st->c1_prev_u - MUFF_CLIP1_G * st->c1_vo - st->c1_prev_w);
+    float u1 = st->input_pending;
+    st->input_pending = c1_hp * k->drive;
+    float rhs1 = 2.0f * st->c1_vo - st->c1_prev_rhs + MUFF_CLIP1_C * (u1 + st->c1_prev_u);
     
     float v1, w1, VI1;
     muff_clip_lookup(MUFF_CLIP1_TAB, MUFF_CLIP1_MAX, MUFF_CLIP1_INV_DR, MUFF_CLIP1_V_END, MUFF_CLIP1_W_END,
@@ -165,13 +179,14 @@ TS_INLINE float muff_stage(MuffState *st, const MuffCoeffs *k, float v)
     float ad1 = d1 < 0.0f ? -d1 : d1;
     float out1 = ad1 > 1.0e-4f ? (VI1 - st->c1_prev_VI) * ts_rcp(d1) : 0.5f * (v1 + st->c1_prev_v);
     st->c1_prev_rhs = rhs1; st->c1_prev_v = v1; st->c1_prev_VI = VI1;
-    st->c1_prev_u = u1; st->c1_prev_w = w1; st->c1_vo = v1;
-    x = out1;
+    st->c1_prev_u = u1; st->c1_vo = v1;
+    x = st->clip1_pending;
+    st->clip1_pending = out1;
     
     // Clip stage 2
     float c2_hp = x - muff_onepole_lp(&st->clip2_hp_s, MUFF_G_C2_HP, x);
     float u2 = c2_hp * k->stage3Gain;
-    float rhs2 = st->c2_vo + MUFF_CLIP2_C * (u2 + st->c2_prev_u - MUFF_CLIP2_G * st->c2_vo - st->c2_prev_w);
+    float rhs2 = 2.0f * st->c2_vo - st->c2_prev_rhs + MUFF_CLIP2_C * (u2 + st->c2_prev_u);
     
     float v2, w2, VI2;
     muff_clip_lookup(MUFF_CLIP2_TAB, MUFF_CLIP2_MAX, MUFF_CLIP2_INV_DR, MUFF_CLIP2_V_END, MUFF_CLIP2_W_END,
@@ -181,7 +196,7 @@ TS_INLINE float muff_stage(MuffState *st, const MuffCoeffs *k, float v)
     float ad2 = d2 < 0.0f ? -d2 : d2;
     float out2 = ad2 > 1.0e-4f ? (VI2 - st->c2_prev_VI) * ts_rcp(d2) : 0.5f * (v2 + st->c2_prev_v);
     st->c2_prev_rhs = rhs2; st->c2_prev_v = v2; st->c2_prev_VI = VI2;
-    st->c2_prev_u = u2; st->c2_prev_w = w2; st->c2_vo = v2;
+    st->c2_prev_u = u2; st->c2_vo = v2;
     x = out2;
     
     // Tone biquad
@@ -204,10 +219,16 @@ TS_INLINE float muff_process(MuffState *st, const MuffCoeffs *k, float x)
     hbi_up2(&st->up2, a0, &b0, &b1);
     hbi_up2(&st->up2, a1, &b2, &b3);
     
-    b0 = muff_stage(st, k, b0);
-    b1 = muff_stage(st, k, b1);
-    b2 = muff_stage(st, k, b2);
-    b3 = muff_stage(st, k, b3);
+    float y[4];
+    int i;
+    y[0] = b0; y[1] = b1; y[2] = b2; y[3] = b3;
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(4, 4, 4)
+#pragma UNROLL(1)
+#endif
+    for (i = 0; i < 4; ++i)
+        y[i] = muff_stage(st, k, y[i]);
+    b0 = y[0]; b1 = y[1]; b2 = y[2]; b3 = y[3];
     
     float c0 = hbi_down2(&st->down2, b0, b1);
     float c1 = hbi_down2(&st->down2, b2, b3);
