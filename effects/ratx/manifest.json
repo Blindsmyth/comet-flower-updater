@@ -1,0 +1,25 @@
+{
+  "name": "CF RAT",
+  "filename": "RATX",
+  "id": "03000f83",
+  "version": "1.00",
+  "display": "CF RAT",
+  "badge": "CF",
+  "description": "ProCo RAT, port of Comet Flower's circuit model: exact gain legs, 100 pF feedback cap, LM308 slew and bandwidth limits, 1N914 shunt pair, Filter control.",
+  "dspload": 30,
+  "allow_any_id": true,
+  "kernel": "ratx.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 64,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Distortion", "max": 100, "default": 50,
+      "explanation": "100k log pot in the op-amp feedback; 0 = clean unity stage." },
+    { "name": "Filter", "max": 100, "default": 60,
+      "explanation": "Tone low-pass, 475 Hz to 32 kHz; up = brighter (Comet Flower convention)." },
+    { "name": "Volume", "max": 100, "default": 80, "curve": "stock_vol",
+      "explanation": "Output level." }
+  ]
+}
