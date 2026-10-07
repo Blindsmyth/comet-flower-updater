@@ -171,3 +171,22 @@ McASP0 base **01d00000** is loaded through 1181329c. Setup c0151730..1a64 progra
 McASP1 initializer **c0164720** loads base **01d04000** via 11813314. It writes AHCLKRCTL and AHCLKXCTL **0x8000** (divider field 0), PFUNC **f6ffffff**, PDIR **feffffff**, and raises only GBLCTL bit 9 (XHCLKRST), waiting for acknowledgement. Excerpt: `c0164772 SET B2,15,15,B2; c0164774 STW B2,*A4[29]`; `c01647ae MVK 45,A5; c01647b0 STW B2,*A4[A5]`; `c01647c4 MVK -1,B0; c01647c8 MVKH 0xf6000000,B0; c01647cc STW B0,*A4[4]`; `c01647f0 SET A0,9,9,A0; c01647f2 STW A0,*A4[A1]`. This releases the transmit high-frequency clock without releasing TX serializer/frame state machines or setting up PaRAM2/3. The inspected active startup path c015d4b8 calls it before codec init and McASP0 start. It is likely the codec's 19.2 MHz master-clock generator, not another audio DMA stream. Physical board routing from AHCLKX1 to codec MCLK is not proven by disassembly.
 
 No PaRAM2/3 audio-buffer setup is present in this startup chain. This is a scoped negative finding, not a claim that EDMA channels 2/3 can safely be borrowed globally. I2C already owns channel 25, SPI/USB also have DMA-related machinery; a new L1P copy engine needs an ownership audit or a separately audited IDMA path.
+
+### C7. L2 occupancy bounds before considering slot relocation (confirmed static regions; unused tail only likely)
+Stock L2CFG=3 reserves the upper 128 KiB of 256 KiB L2 as cache; addressable SRAM is **11800000..1181ffff** (local alias 00800000..0081ffff). AIS section-load records and decoded C initialization establish these occupied/reserved spans (end exclusive):
+
+| L2 range | Bytes | Evidence / use |
+|---|---:|---|
+| 11800000..11800400 | 0400 | two cinit zero records, 0200 each; reserve both, including vector-related storage |
+| 11800400..1180bd40 | b940 | AIS executable section; GPIO, drivers, interrupt/control tasks |
+| 1180bd40..118134a1 | 7761 | cinit RLE-initialized data, including callback tables and peripheral pointers |
+| 118134a8..118164a8 | 3000 | stack reservation: startup B15=118164a4 then aligns down to 118164a0; system stack top 11813468+3000=11816468 |
+| 118164a8 | 1 | cinit byte and stack sentinel boundary; do not reclaim alignment gap |
+| 118164c0..11818ee0 | 2a20 | AIS audio DSP code, including 11818ba0 Swi |
+| 11818ee0..11819820 | 0940 | cinit zero data |
+| 11819820..11819d0c | 04ec | AIS constants/tables |
+| 11819d20..1181a1a0 | 0480 | AIS executable math/helper code |
+
+Instruction evidence for stack boundaries: `c0169a2c MVK 0x64a4,B15; c0169a30 MVKH 0x11810000,B15; c0169a34 AND -8,B15,B15`; `c0163e94 MVK 0x3468,B5; c0163e98 MVK 0x3000,B4; c0163ea8 ADD B5,B4,B4; c0163eb4 STW B4,*A3[6]`. Stack monitoring explicitly addresses **118134a8** at c016c7ec/c016c844. The 0x3000 region is not a free L2 heap. Task record MainApp has a separate SDRAM stack-like allocation c00dc800/0x4000 (c0181b44/48); this does not free the shared interrupt/startup stack.
+
+The tail **1181a1a0..11820000** is only **0x5e60 = 24,160 bytes**. A conservative aligned candidate is 1181a200..11820000 (0x5e00). No AIS/cinit load occupies it, and decoded pointer/nearby MVK-MVKH scans found no higher L2 allocation, but absence of those references is not proof against computed pointers, dynamic allocations or local aliases. Therefore it is **likely available**, not certified free. One unchanged 0xa000 effect heap does not fit, let alone five (0x32000). Merely pointing all five slots into current L2 RAM would overwrite live firmware/stack. Preserve every region above during any relocation experiment. Scratch inventories: build/codex6/ais.ps1, refs.txt, l2-pointers.txt; source records are build/codex3/cinit_map.txt.
