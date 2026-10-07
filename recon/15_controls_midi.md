@@ -71,6 +71,12 @@ SysEx c01488b2 recognizes F7 (`c01488c4 MVK 247,B7; c01488f2 CMPEQ B0,B7,B0`). c
 
 ## 5. USB controller
 
+### USB hardware premise needs correction (confirmed MMIO, controller identity pending)
+USB code directly accesses the 01e00000 register region; the inspected USB paths do not show MAX3420E-style SPI register commands. UsbTask's shutdown/error path c013826c calls c011ff28, which clears bit 6 at 01e00401 and writes words at 01e01800/01e01808 with 32-byte strides. Evidence: `c011ff2c MVK 0x0401,A4; c011ff30 MVKH 0x01e00000,A4; c011ff34 LDBU *A4[0],A1; c011ff4a CLR A1,6,6,A1; c011ff4c STB A1,*A4[0]`. Endpoint code directly accesses 01e00512/522/532/542 and 01e00516/526/536/546; e.g. `c0122000 MVK 0x0512,A4; c0122004 MVKH 0x01e00000,A4; c0122008 LDHU *A4[0],A0; c0122012 CLR A0,5,5,A0; c0122014 STH A0,*A4[0]`.
+
+This contradicts recon/10's inference that USB must be a separate SPI controller. SPI semaphores alone do not locate USB. The exact SoC variant and register-map match require checking; do not rule out USB audio based on the earlier external-chip guess.
+
+
 ## 6. Plan
 
 ### Task-entry anchors (confirmed)
