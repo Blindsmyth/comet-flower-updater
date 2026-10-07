@@ -43,6 +43,12 @@ Four distinct accumulated controls live at 11813430+4*i: `1180afec LDW *A4[A5],A
 
 ## 3. MIDI out
 
+### Editor-reply send API (confirmed)
+`c01274cc(A4=byte_buffer, B4=byte_length)` saves both arguments, takes semaphore B14[161] with timeout -1, calls `c0144dc8(A4=0, B4=byte_buffer, A6=byte_length)`, then releases the semaphore. Evidence: `c01274d0 MV B4,A11; c01274d2 MV A4,A10; c01274d4 CALLP c0150b20; c01274d8 LDW *+B14[161],A4; c01274e4 CALLP c0144dc8; c01274e8 MV A11,A6; c01274ea MV A10,B4; c01274ec MVK 0,A4; c01274f0 CALLP c01628e0`. Treat return value as unspecified: the wrapper does not preserve the transport return across semaphore release.
+
+Reply builder c0127500 copies seven bytes from c0181880 (raw `f0 52 00 00 00 00 f7`), fills offset 3 from c0183b48 and offset 5 from its argument masked to seven bits, and calls c01274cc with length 7 at c0127548. This proves the API accepts raw MIDI/SysEx bytes, not already packetized USB event words. B14 base is c0184e00 (`c0169a38 MVK 0x4e00,B14; c0169a3c MVKH 0xc0180000,B14`), so semaphore-handle storage B14[161] is c0185084.
+
+
 ## 4. Start-up
 
 ## 5. USB controller
