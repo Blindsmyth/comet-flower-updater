@@ -1,0 +1,25 @@
+{
+  "name": "CF Muff",
+  "filename": "MUFFX",
+  "id": "03000f84",
+  "version": "1.00",
+  "display": "CF Muff",
+  "badge": "CF",
+  "description": "'74 Violet Ram's Head Big Muff, port of Comet Flower's circuit model: asymmetric-rail Q1 booster, two diode-and-560pF feedback clip stages (finite loop gain), exact tone network, recovery stage.",
+  "dspload": 30,
+  "allow_any_id": true,
+  "kernel": "muffx.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 64,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Sustain", "max": 100, "default": 60,
+      "explanation": "100k linear sustain pot into the first clip stage." },
+    { "name": "Tone", "max": 100, "default": 50,
+      "explanation": "Big Muff tone network: up = brighter, mid-scoop at noon." },
+    { "name": "Volume", "max": 100, "default": 80, "curve": "stock_vol",
+      "explanation": "Output level." }
+  ]
+}
