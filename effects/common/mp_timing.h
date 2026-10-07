@@ -8,8 +8,9 @@
  * real state, timed (whatever cache state the firmware left: "cold");
  * pass 2 = the same on the snapshot with the same input ("warm": code and
  * data just used). The guitar is muted; the tone code (mp_fsk.h) reports:
- *   0 magic 0xCF0071ED   1 tag   2 blocks   3 sum cold   4 min cold
- *   5 max cold   6 sum warm   7 min warm   8 code address   9 0   10 0
+ *   0 magic 0xCF0071ED   1 tag   2 blocks   3 sum cold   4 0 (was min cold)
+ *   5 0 (was max cold)   6 sum warm   7 0 (was min warm)   8 code address
+ *   9 sum of block periods (TSCL between consecutive calls)   10 periods summed
  *   11 check
  * Decoder: tools/decode_memprobe.py. Never save it in a patch. */
 #ifndef MP_TIMING_H
@@ -26,7 +27,8 @@ static unsigned TSCL;                /* host build: a counter that never moves *
 typedef struct {
     MpFsk fsk;                       /* 64 B */
     MPT_STATE dsp;
-    uint32_t n, sc, minc, maxc, sw, minw;
+    uint32_t n, sc, sw;
+    uint32_t last, psum, pn;         /* block period: TSCL between calls */
 } KernelState;
 
 typedef char mpt_state_fits[(sizeof(KernelState) <= SH_STATE_BYTES) ? 1 : -1];
@@ -51,6 +53,9 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         return;
     }
 #endif
+    t0 = TSCL;                                                /* block period */
+    if (s->last != 0 && t0 - s->last < 1000000u) { s->psum += t0 - s->last; s->pn++; }
+    s->last = t0;
     if (!(fade >= 0.0f && fade <= 1.0f)) fade = 0.0f;
     if (!(lvl >= 0.0f && lvl <= 0.8f)) lvl = 0.0f;
 
@@ -70,26 +75,22 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     if (!(sink > -1.0e30f && sink < 1.0e30f))                 /* reset a blown state */
         for (i = 0; i < (int)(sizeof(MPT_STATE) / 4); i++) src[i] = 0u;
 
-    if (s->n == 0) { s->minc = 0xffffffffu; s->minw = 0xffffffffu; }
     s->n++; s->sc += dc; s->sw += dw;
-    if (dc < s->minc) s->minc = dc;
-    if (dc > s->maxc) s->maxc = dc;
-    if (dw < s->minw) s->minw = dw;
 
     if (MP_FSK_FRAME_START(&s->fsk)) {
         s->fsk.w[0] = 0xCF0071EDu;
         s->fsk.w[1] = MPT_TAG;
         s->fsk.w[2] = s->n;
         s->fsk.w[3] = s->sc;
-        s->fsk.w[4] = s->minc;
-        s->fsk.w[5] = s->maxc;
+        s->fsk.w[4] = 0;
+        s->fsk.w[5] = 0;
         s->fsk.w[6] = s->sw;
-        s->fsk.w[7] = s->minw;
+        s->fsk.w[7] = 0;
         s->fsk.w[8] = (uint32_t)(uintptr_t)&SH_AUDIO_FN;
-        s->fsk.w[9] = 0;
-        s->fsk.w[10] = 0;
+        s->fsk.w[9] = s->psum;
+        s->fsk.w[10] = s->pn;
         MP_FSK_SEAL(&s->fsk);
-        s->n = 0; s->sc = 0; s->maxc = 0; s->sw = 0;
+        s->n = 0; s->sc = 0; s->sw = 0; s->psum = 0; s->pn = 0;
     }
     MP_FSK_BLOCK(&s->fsk, eff, lvl, fade);
 }

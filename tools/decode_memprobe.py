@@ -30,12 +30,17 @@ def show_timing(w):
     n = max(w[2], 1)
     cold, warm = w[3] / n, w[6] / n
     print("  timing diagnostic '%s': %d blocks in this frame" % (tag, w[2]))
-    print("  cold pass (cache as the firmware left it): mean %8.0f  min %8d  max %8d cycles/block"
-          % (cold, w[4], w[5]))
-    print("  warm pass (code and data just used):       mean %8.0f  min %8d" % (warm, w[7]))
+    mm = lambda *v: ("  min %8d  max %8d" % v) if any(v) else ""
+    print("  cold pass (cache as the firmware left it): mean %8.0f%s cycles/block" % (cold, mm(w[4], w[5])))
+    print("  warm pass (code and data just used):       mean %8.0f%s" % (warm, ("  min %8d" % w[7]) if w[7] else ""))
     print("  refill cost (cold - warm): %.0f cycles/block (%.0f%% of the cold pass)"
           % (cold - warm, 100.0 * (cold - warm) / max(cold, 1)))
     print("  code address 0x%08x  %s" % (w[8], region(w[8])))
+    if w[10]:
+        period = w[9] / w[10]
+        print("  block period: %.0f cycles = the whole DSP budget per 16-sample block" % period)
+        print("  -> DSP clock %.1f MHz (period x 44100 / 16); this kernel cold = %.1f%% of the block"
+              % (period * 44100 / 16 / 1e6, 100.0 * cold / period))
 
 
 def read_wav(path):
