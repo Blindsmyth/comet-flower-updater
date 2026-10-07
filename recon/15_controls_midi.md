@@ -41,6 +41,10 @@ Initialized AD descriptor 11813320 has callback c015f08c at +4 and last-value wo
 Four distinct accumulated controls live at 11813430+4*i: `1180afec LDW *A4[A5],A0; 1180aff0 ADD B0,A0,B0; 1180aff2 STW B0,*A4[A5]` in 1180afe0(index A4, delta B4). c0169554(index A4, clear B4) reads the accumulator; normal-speed task calls it for indices 0..3 via 1180b6e0. Nonzero values call c0169520 via 1180b6d0, which posts event 25+i through c016ef70 -> 1180b000 -> c0166780. Evidence: `c0169530 ADD A4,0x19,A4`; `1180b004 STW A4,*B15[2]`; `1180b008 LDW *+B14[162],A4`. These are very likely the four rotary knobs (delta accumulators, not AD channels); electrical decoder and parameter application still need tracing. Correction to the early queue shorthand: dispatchers copy a 16-byte event record (c0134ad6/4ad8 and c0134ae6/4ae8), whose first word is the event ID. Producers shown here initialize that first word; do not assume the queue's message size is four bytes.
 
 
+### Calibrated expression candidate (confirmed arithmetic, likely pedal identity)
+The AD descriptor's c015ffe8 calls c015f194(0) to fetch the analog value, then c015ff60(raw,1). c015ff60 rejects raw >255; clamps at calibration bounds B14[74] and B14[75]; between them computes `1 + floor(126*(raw-low)/(high-low))`, yielding 0..127. Evidence: `c015ff94 SHL A0,7,A1; c015ff98 ADD A0,A0,A0; c015ff9a SUB A1,A0,A4; c015ffa0 CALLP c0168580; c015ffa4 SUB B1,B0,B4; c015ffa8 ADD 1,A4,A10`. With B4 enabled, a changed in-range result calls c014aef4(A4=value) at c015ffd0, then saves result in B14[76]. Calibration setup c015fff8 uses c014d0bc/c014d0c8 and 8%/92% bounds (`c0160012 SHL A3,3,A4`, divisor 100 at c0160010; `c0160024 MVK 92,A0; c016002c MPY32 A0,A3,A4`). This is likely the expression pedal and an attractive already-scaled CC source, but physical association is not proven by the arithmetic alone.
+
+
 ## 3. MIDI out
 
 ### Editor-reply send API (confirmed)
