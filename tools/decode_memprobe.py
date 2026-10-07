@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decode the CF MEMPRB tone code from a recording.
+"""Decode the CF diagnostics' tone code (CF MEMPRB, CF RATT, CF 808T) from a recording.
 
   python tools/decode_memprobe.py <recording.wav> [channel]
 
@@ -15,11 +15,27 @@ import sys
 import numpy as np
 
 SR = 44100
-SYNC, BIT, WORDS = 6615, 882, 12
+SYNC, BIT, WORDS = 6624, 882, 12   # 6615 in the first MEMPRB build
 NAMES = ["magic", "code (this function)", "table (const_blob)", "state (instance[2])",
          "knob table (instance[1])", "audio buffer (ctx[1])", "stack local",
          "instance pointer", "cycles: 128 table reads, first call",
          "cycles: 128 table reads, now", "cycles: 128 stack reads", "check (XOR)"]
+
+
+MAGICS = (0xCF00A55A, 0xCF0071ED)
+
+
+def show_timing(w):
+    tag = w[1].to_bytes(4, "big").decode("ascii", "replace").strip()
+    n = max(w[2], 1)
+    cold, warm = w[3] / n, w[6] / n
+    print("  timing diagnostic '%s': %d blocks in this frame" % (tag, w[2]))
+    print("  cold pass (cache as the firmware left it): mean %8.0f  min %8d  max %8d cycles/block"
+          % (cold, w[4], w[5]))
+    print("  warm pass (code and data just used):       mean %8.0f  min %8d" % (warm, w[7]))
+    print("  refill cost (cold - warm): %.0f cycles/block (%.0f%% of the cold pass)"
+          % (cold - warm, 100.0 * (cold - warm) / max(cold, 1)))
+    print("  code address 0x%08x  %s" % (w[8], region(w[8])))
 
 
 def read_wav(path):
@@ -92,7 +108,7 @@ def decode(x):
                 chk = 0
                 for v in w[:11]:
                     chk ^= v
-                frames.append((k * win / SR, w, w[0] == 0xCF00A55A and chk == w[11]))
+                frames.append((k * win / SR, w, w[0] in MAGICS and chk == w[11]))
             k = j + (WORDS * 32 * BIT) // win
         else:
             k += 1
@@ -141,7 +157,7 @@ def stitch(x, frames_found):
     chk = 0
     for v in w[:11]:
         chk ^= v
-    return (s0 / SR, w, w[0] == 0xCF00A55A and chk == w[11])
+    return (s0 / SR, w, w[0] in MAGICS and chk == w[11])
 
 
 def main(a):
@@ -164,6 +180,9 @@ def main(a):
     for t, w, ok in frames:
         print("\nframe at %.2f s: %s" % (t, "OK" if ok else "BAD (magic/check mismatch)"))
         if not ok:
+            continue
+        if w[0] == 0xCF0071ED:
+            show_timing(w)
             continue
         for i, v in enumerate(w):
             extra = ""

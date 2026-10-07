@@ -1,0 +1,22 @@
+{
+  "name": "CF RATT",
+  "filename": "RATT",
+  "id": "07000f85",
+  "version": "1.00",
+  "display": "CF RATT",
+  "badge": "CF",
+  "description": "Times the CF RAT kernel cold and warm on the pedal; reports by tone code (tools/decode_memprobe.py). Mutes the guitar. Never save it in a patch.",
+  "dspload": 40,
+  "allow_any_id": true,
+  "kernel": "ratt.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 296,
+  "scaffold": "cleanroom",
+  "const_blob": { "symbol": "rat_blob", "words": 2048, "init": "blob.bin" },
+  "params": [
+    { "name": "Level", "max": 100, "default": 50,
+      "explanation": "Tone level (0..0.5 of full scale)." }
+  ]
+}

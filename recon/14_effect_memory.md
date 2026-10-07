@@ -9,11 +9,13 @@ Static analysis of res1_493412.bin, 2026-10-06. No pedal access. Confidence labe
 > 0x11f037b0, all exactly Codex's slot-1 values (L1D RAM); stack 0x11816140
 > (L2 RAM). Slot numbering: the probe sat in the pedal's slot 2, so the
 > firmware's slot index is 0-based (pedal slot N = index N-1). Timings: 128 strided const_blob reads cost 64.2 cycles/read on
-> the first call (cold SDRAM) and 5.1 at later frame starts, the same as
-> on-chip stack reads (5.2, which is the timing loop's own latency): after
-> first use the table is served from cache. So steady-state table reads do
-> NOT explain the ~1.5x gap of CF RAT / CF 808; the next suspect is code
-> refetch (L1P eviction by firmware work between blocks).
+> the first call (cold SDRAM) and 5.1 right after that (CORRECTION: the
+> first MEMPRB build only refreshed its words on the first frame, because
+> the frame length was not a multiple of 16 samples; so the 5.1 is the
+> just-used case, not 8 s later), the same as on-chip stack reads (5.2, the
+> timing loop's own latency). Whether the table STAYS cached between blocks
+> is not yet measured; the double-pass timing effects (CF RATT, CF 808T,
+> fixed frame length) measure exactly that, for code and data together.
 >
 > **Review by Claude (2026-10-06).** Written by Codex (gpt-6-astra, medium)
 > from docs/helpers/CODEX_LOADER.md. Evidence is instruction-level and the

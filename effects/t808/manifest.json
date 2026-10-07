@@ -1,0 +1,22 @@
+{
+  "name": "CF 808T",
+  "filename": "T808",
+  "id": "07000f86",
+  "version": "1.00",
+  "display": "CF 808T",
+  "badge": "CF",
+  "description": "Times the CF 808 kernel cold and warm on the pedal; reports by tone code (tools/decode_memprobe.py). Mutes the guitar. Never save it in a patch.",
+  "dspload": 40,
+  "allow_any_id": true,
+  "kernel": "t808.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 388,
+  "scaffold": "cleanroom",
+  "const_blob": { "symbol": "tsx_dtab", "words": 6912, "init": "dtab.bin" },
+  "params": [
+    { "name": "Level", "max": 100, "default": 50,
+      "explanation": "Tone level (0..0.5 of full scale)." }
+  ]
+}
