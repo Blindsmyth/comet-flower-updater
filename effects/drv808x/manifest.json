@@ -1,9 +1,9 @@
 {
-  "name": "CF 808X",
+  "name": "CF 808",
   "filename": "DRV808X",
   "id": "03000f82",
   "version": "1.00",
-  "display": "CF 808X",
+  "display": "CF 808",
   "badge": "CF",
   "description": "Circuit-exact TS808: diode pair (Shockley) and 51 pF cap solved every sample at 8x, real 720 Hz ground leg, input/output couplings. Within 0.04 dB of a 32x circuit simulation below 1 kHz.",
   "dspload": 80,
