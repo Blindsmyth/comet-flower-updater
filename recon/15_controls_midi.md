@@ -53,6 +53,12 @@ The AD descriptor's c015ffe8 calls c015f194(0) to fetch the analog value, then c
 Reply builder c0127500 copies seven bytes from c0181880 (raw `f0 52 00 00 00 00 f7`), fills offset 3 from c0183b48 and offset 5 from its argument masked to seven bits, and calls c01274cc with length 7 at c0127548. This proves the API accepts raw MIDI/SysEx bytes, not already packetized USB event words. B14 base is c0184e00 (`c0169a38 MVK 0x4e00,B14; c0169a3c MVKH 0xc0180000,B14`), so semaphore-handle storage B14[161] is c0185084.
 
 
+### Transmit scheduling and backpressure (confirmed)
+c0144dc8 checks port A4==0, nonzero length, and readiness at c01152b8+12 and +36; it can return ffff63c0 (invalid port) or ffff63be (not ready). c0149de4 copies bytes into a 1025-byte ring at c0117b28 through c0149db0/c0149d74 under B14[89]'s lock, then signals B14[90] bit 1. The ring deliberately leaves one byte unused; c0149d74 detects next-write==read before storing. Evidence: `c0149d84 SET A0,10,10,A0` (1024); `c0149d8e CMPEQ B1,B0,B0`; `c0149da6 STB B2,*A5[8]`; `c0149de0..9e20` bulk append; `c0149e64 CALLP c014a240` with B4=1. c0149de4 returns number accepted on normal success, so arbitrary long sends are not guaranteed whole-message acceptance. c01274cc hides that return.
+
+Worker c0149d40 waits for bit 1 then calls c0149c14; it drains the ring into c0117318, normalizes running status through c0149b60, and calls c01489a0(0,buffer,length,&result). Evidence: `c0149c5a CALLP c0149b60`; `c0149c6c STB A4,*B7++[1]` (optional status); `c0149c78 STB B0,*B7++[1]`; `c0149c8c CALLP c01489a0`. The send API queues/copies caller data; it does not directly perform SPI in the caller's context. A controller implementation still needs a bounded queue/coalescing policy for disconnected/full conditions.
+
+
 ## 4. Start-up
 
 ## 5. USB controller
