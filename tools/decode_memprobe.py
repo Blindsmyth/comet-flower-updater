@@ -99,6 +99,51 @@ def decode(x):
     return frames
 
 
+def stitch(x, frames_found):
+    """No complete frame: join the end of one frame (before a sync) with the
+    start of the next (after it). Addresses repeat, so the frame's own check
+    word validates the join. Needs one sync with >= 2.3 s of tone each side."""
+    win = 441
+    nwin = len(x) // win
+    r3 = np.array([power(x[k * win:(k + 1) * win], 3000) for k in range(nwin)])
+    r1 = np.array([power(x[k * win:(k + 1) * win], 1000) + power(x[k * win:(k + 1) * win], 2000)
+                   for k in range(nwin)])
+    on = np.where((r3 > 4 * r1) & (r3 > 0.05 * r3.max()))[0]
+    if len(on) == 0:
+        return None
+    s0 = on[0] * win
+    total = WORDS * 32
+    loud = np.where((r1 + r3) > 0.01 * (r1 + r3).max())[0]   # where the tone is
+    t_first, t_last = loud[0] * win, (loud[-1] + 1) * win
+    after = min(total, (t_last - (s0 + SYNC)) // BIT - 1)
+    before = min(total, (s0 - t_first) // BIT - 1)
+    if after + before < total:
+        return None
+
+    def bits_at(start, n):
+        out, marg = [], []
+        for b in range(n):
+            seg = x[start + b * BIT + BIT // 5:start + (b + 1) * BIT - BIT // 5]
+            p1, p2 = power(seg, 1000), power(seg, 2000)
+            out.append(1 if p2 > p1 else 0)
+            marg.append(abs(np.log10((p2 + 1e-20) / (p1 + 1e-20))))
+        return out, np.median(marg)
+
+    def best(base_fn, n):
+        cands = [bits_at(base_fn(off), n) + (off,) for off in range(-win, win + 1, 20)
+                 if base_fn(off) >= 0 and base_fn(off) + n * BIT <= len(x)]
+        return max(cands, key=lambda c: c[1])[0]
+
+    b_after = best(lambda off: s0 + SYNC + off, after)
+    b_before = best(lambda off: s0 + off - before * BIT, before)
+    full = b_after[:total - before] + b_before
+    w = [int("".join(map(str, full[i * 32:(i + 1) * 32])), 2) for i in range(WORDS)]
+    chk = 0
+    for v in w[:11]:
+        chk ^= v
+    return (s0 / SR, w, w[0] == 0xCF00A55A and chk == w[11])
+
+
 def main(a):
     if not a:
         sys.exit(__doc__)
@@ -109,6 +154,12 @@ def main(a):
     sig = x[:, min(ch, x.shape[1] - 1)]
     frames = decode(sig)
     good = [f for f in frames if f[2]]
+    if not good:
+        st = stitch(sig, frames)
+        if st:
+            print("no complete frame; stitched the frames either side of the sync at %.2f s" % st[0])
+            frames = [st]
+            good = [st] if st[2] else []
     print("%d frames found, %d decode cleanly" % (len(frames), len(good)))
     for t, w, ok in frames:
         print("\nframe at %.2f s: %s" % (t, "OK" if ok else "BAD (magic/check mismatch)"))

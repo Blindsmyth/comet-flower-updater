@@ -2,6 +2,18 @@
 
 Static analysis of res1_493412.bin, 2026-10-06. No pedal access. Confidence labels describe static evidence, not measured runtime addresses. Only this report and build/codex3 are edited. PowerShell/.NET readers are used because the hard rule forbids running python.exe as well as other executables except dis6x.
 
+> **CONFIRMED ON THE PEDAL (2026-10-06, CF MEMPRB, VPB_2026-10-06_212158).**
+> Decoded (magic + XOR check OK): code 0xc01fe1e0 and const_blob 0xc01fecb8
+> inside the slot-1 region 0xc01fe000+0xa000 (SDRAM, cached); state
+> 0x11f01650, knob table 0x11f00348, instance 0x11f03ae4, audio bus
+> 0x11f037b0, all exactly Codex's slot-1 values (L1D RAM); stack 0x11816140
+> (L2 RAM). Timings: 128 strided const_blob reads cost 64.2 cycles/read on
+> the first call (cold SDRAM) and 5.1 at later frame starts, the same as
+> on-chip stack reads (5.2, which is the timing loop's own latency): after
+> first use the table is served from cache. So steady-state table reads do
+> NOT explain the ~1.5x gap of CF RAT / CF 808; the next suspect is code
+> refetch (L1P eviction by firmware work between blocks).
+>
 > **Review by Claude (2026-10-06).** Written by Codex (gpt-6-astra, medium)
 > from docs/helpers/CODEX_LOADER.md. Evidence is instruction-level and the
 > parts Claude checked hold. It corrects recon/06 and recon/13: entry
