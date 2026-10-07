@@ -7,7 +7,8 @@ Static analysis of res1_493412.bin, 2026-10-06. No pedal access. Confidence labe
 > inside the slot-1 region 0xc01fe000+0xa000 (SDRAM, cached); state
 > 0x11f01650, knob table 0x11f00348, instance 0x11f03ae4, audio bus
 > 0x11f037b0, all exactly Codex's slot-1 values (L1D RAM); stack 0x11816140
-> (L2 RAM). Timings: 128 strided const_blob reads cost 64.2 cycles/read on
+> (L2 RAM). Slot numbering: the probe sat in the pedal's slot 2, so the
+> firmware's slot index is 0-based (pedal slot N = index N-1). Timings: 128 strided const_blob reads cost 64.2 cycles/read on
 > the first call (cold SDRAM) and 5.1 at later frame starts, the same as
 > on-chip stack reads (5.2, which is the timing loop's own latency): after
 > first use the table is served from cache. So steady-state table reads do
