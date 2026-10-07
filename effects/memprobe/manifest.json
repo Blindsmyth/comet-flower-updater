@@ -1,0 +1,22 @@
+{
+  "name": "CF MEMPRB",
+  "filename": "MEMPRB",
+  "id": "07000f84",
+  "version": "1.00",
+  "display": "CF MEMPRB",
+  "badge": "CF",
+  "description": "Diagnostic: plays a tone code (FSK) reporting where the firmware put this effect's code, table, state, knob table, audio buffer and stack, and how long table reads take. Record it; tools/decode_memprobe.py reads it. Never save it in a patch.",
+  "dspload": 10,
+  "allow_any_id": true,
+  "kernel": "memprobe.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 96,
+  "scaffold": "cleanroom",
+  "const_blob": { "symbol": "mp_blob", "words": 2048 },
+  "params": [
+    { "name": "Level", "max": 100, "default": 50,
+      "explanation": "Tone level (0..0.5 of full scale)." }
+  ]
+}
