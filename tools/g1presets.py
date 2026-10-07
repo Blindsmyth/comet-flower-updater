@@ -2,8 +2,8 @@
 """Inspect and blank the G1X FOUR v2.00 factory-presets resource.
 
     python tools/g1presets.py list <res2.bin>
-    python tools/g1presets.py blank <res2.bin> <out.bin> [--name Empty]
-    python tools/g1presets.py verify <original.bin> <out.bin> [--name Empty]
+    python tools/g1presets.py blank <res2.bin> <out.bin> [--name Empty] [--set 10="CF test"]...
+    python tools/g1presets.py verify <original.bin> <out.bin> [--name Empty] [--set N=NAME]...
 
 blank copies Zoom's own empty patch (factory records 41..50: no effects, no
 description, default patch parameters) into all 50 records, with --name as
@@ -119,24 +119,41 @@ def expected(record, name):
     return bytes(raw)
 
 
-def verify(original, output, name="Empty"):
-    """Re-parse and check every record is the named empty template and
-    nothing outside the records changed."""
-    want = expected(template(records(original)), name)
+def names_for(name, overrides):
+    """Patch names 1..COUNT: `name`, except overrides {patch number: name}."""
+    require(all(1 <= n <= COUNT for n in overrides), "--set patch numbers are 1..%d" % COUNT)
+    return [overrides.get(i + 1, name) for i in range(COUNT)]
+
+
+def verify(original, output, name="Empty", overrides=None):
+    """Re-parse and check every record is the empty template with its
+    expected name and nothing outside the records changed."""
+    tpl = template(records(original))
+    names = names_for(name, overrides or {})
     after = records(output)
     require(original[:START] == output[:START], "splash changed")
     require(original[END:] == output[END:], "region trailer changed")
-    for record in after:
-        require(record["raw"] == want,
-                "record %d: not the empty template" % record["index"])
+    for i, record in enumerate(after):
+        require(record["raw"] == expected(tpl, names[i]),
+                "record %d: not the empty template named %r" % (record["index"], names[i]))
     return len(after)
 
 
-def blank(data, name="Empty"):
-    want = expected(template(records(data)), name)
-    output = data[:START] + want * COUNT + data[END:]
-    verify(data, output, name)
+def blank(data, name="Empty", overrides=None):
+    tpl = template(records(data))
+    names = names_for(name, overrides or {})
+    output = data[:START] + b"".join(expected(tpl, n) for n in names) + data[END:]
+    verify(data, output, name, overrides)
     return output
+
+
+def parse_sets(items):
+    out = {}
+    for item in items or []:
+        number, _, label = item.partition("=")
+        require(number.isdigit() and label, "--set takes N=NAME")
+        out[int(number)] = label
+    return out
 
 
 def main(argv=None):
@@ -149,6 +166,8 @@ def main(argv=None):
         sub.add_argument("input")
         sub.add_argument("output")
         sub.add_argument("--name", default="Empty")
+        sub.add_argument("--set", action="append", metavar="N=NAME",
+                         help="give patch N (1..50) its own name")
     args = parser.parse_args(argv)
 
     try:
@@ -161,13 +180,15 @@ def main(argv=None):
         elif args.command == "blank":
             require(Path(args.input).resolve() != Path(args.output).resolve(),
                     "input and output must be different files")
-            output = blank(original, args.name)
+            sets = parse_sets(args.set)
+            output = blank(original, args.name, sets)
             Path(args.output).write_bytes(output)
-            count = verify(original, Path(args.output).read_bytes(), args.name)
+            count = verify(original, Path(args.output).read_bytes(), args.name, sets)
             print("wrote %s: %d empty records, verified" %
                   (args.output, count))
         else:
-            count = verify(original, Path(args.output).read_bytes(), args.name)
+            count = verify(original, Path(args.output).read_bytes(), args.name,
+                           parse_sets(args.set))
             print("%d empty records; layout and untouched bytes verified" %
                   count)
         return 0

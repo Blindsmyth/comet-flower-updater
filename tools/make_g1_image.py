@@ -3,11 +3,13 @@ effects, installed the way tools/pedal_g1.py installs over USB (file added,
 one effect-list entry added with zoom-zt2 and the same checks), but written
 as a whole image for update mode instead of through the MIDI file protocol.
 
-    python tools/make_g1_image.py [--clean] <factory image> <out image> <effect.ZD2>...
+    python tools/make_g1_image.py [--clean [--keep STOCK.ZD2]...] <factory image> <out image> <effect.ZD2>...
 
 --clean removes every stock effect: its file goes and its effect-list entry
 is kept with installed = 0 (how Zoom stores uninstalled effects; the pedal
 booted this way after our 2026-10-04 wipe). The directory is compacted.
+--keep NAME.ZD2 (with --clean, repeatable) leaves that stock effect installed,
+e.g. TS_DRIVE.ZD2 for a stock-vs-CF comparison.
 System files (rhythm samples, output EQ, guard file, effect list) stay.
 
 The factory image is resource 136 of Zoom's v2.00 G1X FOUR updater
@@ -24,7 +26,7 @@ import g1fs  # noqa: E402
 import pedal_g1  # noqa: E402  (zoom-zt2 paths, add_entry, set_installed)
 
 
-def main(base_path, out_path, effects, clean=False):
+def main(base_path, out_path, effects, clean=False, keep=()):
     base = open(base_path, "rb").read()
     _, _, ents = g1fs.current_dir(base)
     files = {n: g1fs.read_file(base, f, s) for n, f, s, _, _ in ents}
@@ -33,11 +35,17 @@ def main(base_path, out_path, effects, clean=False):
     if clean:
         installed = [n for n, i in ((str(e["effect"]).upper(), int(e["installed"]))
                      for g in __import__("zoomzt2").ZT2.parse(flst)[1] for e in g["effects"]) if i]
+        keep = [k.upper() for k in keep]
+        for k in keep:
+            if k not in installed or k not in files:
+                sys.exit("--keep %s: not an installed stock effect" % k)
         for name in installed:
-            flst = pedal_g1.set_installed(flst, name, 0)
-        remove = [n for n in files if n.endswith(".ZD2")]
-        if sorted(remove) != sorted(installed):
+            if name not in keep:
+                flst = pedal_g1.set_installed(flst, name, 0)
+        stock = [n for n in files if n.endswith(".ZD2")]
+        if sorted(stock) != sorted(installed):
             sys.exit("installed entries and effect files differ")
+        remove = [n for n in stock if n not in keep]
     add = {}
     for p in effects:
         name = os.path.basename(p).upper()
@@ -55,9 +63,8 @@ def main(base_path, out_path, effects, clean=False):
     import zoomzt2
     inst = sorted(str(e["effect"]).upper() for g in zoomzt2.ZT2.parse(flst)[1]
                   for e in g["effects"] if int(e["installed"]))
-    if inst != sorted(add) + ([] if clean else sorted(n for n in files if n.endswith(".ZD2"))) \
-            and clean:
-        sys.exit("installed set is %s, expected %s" % (inst, sorted(add)))
+    if clean and inst != sorted(list(add) + list(keep)):
+        sys.exit("installed set is %s, expected %s" % (inst, sorted(list(add) + list(keep))))
     open(out_path, "wb").write(img)
     print("image %s: %d files (%d removed, %d added: %s); effect list %d entries, "
           "%d installed; verified" % (out_path, n, len(remove), len(add), ", ".join(add),
@@ -68,6 +75,11 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     clean = "--clean" in a
     a = [x for x in a if x != "--clean"]
-    if len(a) < 3:
+    keep = []
+    while "--keep" in a:
+        k = a.index("--keep")
+        keep.append(a[k + 1])
+        del a[k:k + 2]
+    if len(a) < 3 or (keep and not clean):
         sys.exit(__doc__)
-    main(a[0], a[1], a[2:], clean)
+    main(a[0], a[1], a[2:], clean, keep)
