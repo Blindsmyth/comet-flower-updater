@@ -30,8 +30,8 @@ read it for understanding, do not edit anything in that folder.
 
 ## 2. The test loop (run from the repository root)
 These are bash commands. In PowerShell use
-`cmd /c "tests\hostuild_rat_accuracy.bat rat --skip-ref"` and
-`& "C:\Program Files\Gitinash.exe" tools/build_g1.sh ratx "CF RAT" "CF/RAT"`.
+`cmd /c "tests\host\build_rat_accuracy.bat rat --skip-ref"` and
+`& "C:\Program Files\Git\bin\bash.exe" tools/build_g1.sh ratx "CF RAT" "CF/RAT"`.
 ```
 cmd //c "tests\\host\\build_rat_accuracy.bat rat --skip-ref"
 .venv/Scripts/python.exe tests/host/rat_accuracy.py rat
