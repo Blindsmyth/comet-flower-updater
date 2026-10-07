@@ -51,6 +51,12 @@ Four distinct accumulated controls live at 11813430+4*i: `1180afec LDW *A4[A5],A
 The AD descriptor's c015ffe8 calls c015f194(0) to fetch the analog value, then c015ff60(raw,1). c015ff60 rejects raw >255; clamps at calibration bounds B14[74] and B14[75]; between them computes `1 + floor(126*(raw-low)/(high-low))`, yielding 0..127. Evidence: `c015ff94 SHL A0,7,A1; c015ff98 ADD A0,A0,A0; c015ff9a SUB A1,A0,A4; c015ffa0 CALLP c0168580; c015ffa4 SUB B1,B0,B4; c015ffa8 ADD 1,A4,A10`. With B4 enabled, a changed in-range result calls c014aef4(A4=value) at c015ffd0, then saves result in B14[76]. Calibration setup c015fff8 uses c014d0bc/c014d0c8 and 8%/92% bounds (`c0160012 SHL A3,3,A4`, divisor 100 at c0160010; `c0160024 MVK 92,A0; c016002c MPY32 A0,A3,A4`). This is likely the expression pedal and an attractive already-scaled CC source, but physical association is not proven by the arithmetic alone.
 
 
+### Analog change reaches the effect parameter setter (confirmed)
+c014aef4(value A4) checks its assignment mode through c014ad4c, locks B14[155], iterates effect slots, checks assignment masks, obtains a parameter descriptor via c012afe0(slot,param), scales the incoming 0..127 value through c014aea0, and calls c0141684(slot A4, parameter B4, value A6, apply B6=1). Evidence: `c014af68 CALLP c012afe0`; `c014af78/c014af86 CALLP c014aea0`; `c014af90 CALLP c0141684; c014af94 MV A4,A6; c014af96 MV A14,A4; c014af98 MV A13,B4; c014af9a MVK 1,B6`.
+
+c0141684 stores value in 11811ca8+84*slot+4*parameter (`c0141698 MVK 0x54,B0; c01416a0 MPYLI B0,A10,B3:B2; c01416c4 STW A1,*A4[0]`). It can invoke a parameter descriptor's callback with the effect instance from c014ff44 and shared service context from c01502cc (`c01416ea LDW *A4[7],A0; c0141704 B A11; c014170c MV A4,B4; c014170e MV B10,A4`). Thus intercepting before c014aef4 prevents this analog assignment from mutating effect parameters, while preserving the existing calibration/filter path.
+
+
 ## 3. MIDI out
 
 ### Editor-reply send API (confirmed)
