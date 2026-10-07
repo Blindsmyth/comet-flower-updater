@@ -23,6 +23,10 @@ Sampling c0156f00 assembles bits 0..9 from three direct readers and seven indexe
 Indexed-reader evidence: 118094c4..9504 selects pins 27,24,26,37,38,86 for indices 0..5 and defaults to 0 for index 6, which c0157018 actually passes. Physical legends and press polarity remain unresolved; GPIO pin indices must not be confused with package pin numbers. There is no ADC/SPI read in this ten-bit switch sampler.
 
 
+### Event queue and MainApp dispatcher (confirmed)
+MainApp c0134e10 calls c015d428 then enters c0134db8. Its loop calls c015350c with A4 pointing to a stack event word and B4=-1; that wrapper calls c01534c4, which receives from the same B14[162] handle used by the switch task. Evidence: `c01534c8 CALLP c0166680; c01534cc ADD 8,B15,B4; c01534d0 LDW *+B14[162],A4; c01534d4 MV A4,A6` (parallel argument forwarding). Receive failure becomes sentinel 42 at c01534e0. Main loop ignores event 42 (`c0134de6 MVK 42,B1; c0134dea CMPEQ B0,B1,B0`), calls c0127fe0 to choose between dispatchers c0134acc and c0134d04, passing the event-word pointer. These are useful interception points before stock UI actions; patch up/down versus menu/effect semantics are not established merely by this queue trace.
+
+
 ## 2. Knobs and expression pedal
 
 ## 3. MIDI out
