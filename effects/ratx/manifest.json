@@ -12,8 +12,9 @@
   "kernel_section": "text",
   "allow_stack": true,
   "opt_for_space": null,
-  "state_bytes": 64,
+  "state_bytes": 220,
   "scaffold": "cleanroom",
+  "const_blob": { "symbol": "rat_blob", "words": 2048, "init": "blob.bin" },
   "params": [
     { "name": "Distortion", "max": 100, "default": 50,
       "explanation": "100k log pot in the op-amp feedback; 0 = clean unity stage." },
