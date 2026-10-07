@@ -29,6 +29,12 @@ MainApp c0134e10 calls c015d428 then enters c0134db8. Its loop calls c015350c wi
 
 ## 2. Knobs and expression pedal
 
+### AD read and change callback (confirmed value path; ADC identity unresolved)
+Task 11809004 calls read routine 1180abc0. That routine locks through B14[149], drives GPIO 90 low via 11809474 -> 118093c0, calls serial-transfer routine 1180673c with A4=0, B4=stack+8, A6=4, B6=4, A8=1, B8=0, drives GPIO 90 high, and unlocks. It returns `((byte0<<2)|(byte1>>6)) & 255`: `1180ac0c LDBU *+B15[8],B0; 1180ac10 LDBU *+B15[9],B1; 1180ac16 SHL B0,2,B0; 1180ac18 SHRU B1,6,A0; 1180ac20 OR A0,B0,A0; 1180ac24 EXTU A0,24,24,A4`. Task inverts that byte (`11809038 NOT A4,A0; 1180903c EXTU A0,24,24,A1`), so the application value is 0..255. This proves an external serial conversion path, not an internal ADC read or direct codec sample; converter model and serial peripheral are still to be identified.
+
+Change filtering is at 11808f40: compares absolute delta with a halfword threshold at channel state+8; adjusts thresholds from 11813318/1181331a with a 250-tick interval. Task keeps recent samples at 118133f8 and chooses a median-like value at 118090ca..90ee, then calls 11808f40. A successful change calls `*(11813320 + 40*channel + 4)` with A4=channel descriptor, B4=value, A6=channel (`11809100 SHL A1,5,A0; 11809104 ADDAD A0,A1,A0; 1180910c LDW *A4[1],A0; 11809110 B A0; 11809118 MV A12,B4; 1180911a MV A11,A6`). Initial sampling also calls that callback at 11809068. The actual loop initializes channel=0 and exits after increment makes it nonzero (11809124 truncates to byte; 1180912c branches only if zero), so this task scans ONE analog channel, not proven four knob pots. The four knobs may be encoders on a separate path; do not assign them to AD without evidence.
+
+
 ## 3. MIDI out
 
 ## 4. Start-up
