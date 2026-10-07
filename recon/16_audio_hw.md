@@ -112,3 +112,15 @@ a pointer block in L2 RAM that is initialised by the EABI cinit table.
   `0x1181346c`=0x01C10000 (PSC0), `0x11813470`=0x01E27000 (PSC1), `0x11812fec`=0x01C41000 (SPI0),
   `0x118133bc`=**0xAC44 = 44100** (sample rate), `0x118133b0`=0x0124F800 (19.2 MHz),
   `0x118133c4`=0x01C20000 (TIMER64P0).
+
+## Codex continuation (2026-10-07)
+
+### Audio DMA and scheduling
+
+### PLLC0 and memory clocks
+
+### On-chip occupancy and cache patch designs
+
+### Risks and staged test plan
+
+Static analysis only; scratch: build/codex6/. Original findings above are preserved.
