@@ -35,6 +35,12 @@ Task 11809004 calls read routine 1180abc0. That routine locks through B14[149], 
 Change filtering is at 11808f40: compares absolute delta with a halfword threshold at channel state+8; adjusts thresholds from 11813318/1181331a with a 250-tick interval. Task keeps recent samples at 118133f8 and chooses a median-like value at 118090ca..90ee, then calls 11808f40. A successful change calls `*(11813320 + 40*channel + 4)` with A4=channel descriptor, B4=value, A6=channel (`11809100 SHL A1,5,A0; 11809104 ADDAD A0,A1,A0; 1180910c LDW *A4[1],A0; 11809110 B A0; 11809118 MV A12,B4; 1180911a MV A11,A6`). Initial sampling also calls that callback at 11809068. The actual loop initializes channel=0 and exits after increment makes it nonzero (11809124 truncates to byte; 1180912c branches only if zero), so this task scans ONE analog channel, not proven four knob pots. The four knobs may be encoders on a separate path; do not assign them to AD without evidence.
 
 
+### AD consumer and knob notification are separate (confirmed)
+Initialized AD descriptor 11813320 has callback c015f08c at +4 and last-value word 254 at +8. c015f08c compares B4 against descriptor[2], optionally calls descriptor[7] with A4=value, then descriptor[9], stores new value at [2], and calls c012f840(2). Excerpt: `c015f094 LDW *A4[2],A0; c015f0a2 LDW *A4[7],A0; c015f0a8 B A0; c015f0b6 LDW *A4[9],A0; c015f0cc STW A0,*A4[2]`. Initial descriptor[9]=c015ffe8, which calls c015f194(0) then c015ff60(value,1), a downstream analog consumer; initial [7]=0. Callback installation routine c015f118 writes B4 into 11813324+40*A4.
+
+Four distinct accumulated controls live at 11813430+4*i: `1180afec LDW *A4[A5],A0; 1180aff0 ADD B0,A0,B0; 1180aff2 STW B0,*A4[A5]` in 1180afe0(index A4, delta B4). c0169554(index A4, clear B4) reads the accumulator; normal-speed task calls it for indices 0..3 via 1180b6e0. Nonzero values call c0169520 via 1180b6d0, which posts event 25+i through c016ef70 -> 1180b000 -> c0166780. Evidence: `c0169530 ADD A4,0x19,A4`; `1180b004 STW A4,*B15[2]`; `1180b008 LDW *+B14[162],A4`. These are very likely the four rotary knobs (delta accumulators, not AD channels); electrical decoder and parameter application still need tracing. Correction to the early queue shorthand: dispatchers copy a 16-byte event record (c0134ad6/4ad8 and c0134ae6/4ae8), whose first word is the event ID. Producers shown here initialize that first word; do not assume the queue's message size is four bytes.
+
+
 ## 3. MIDI out
 
 ## 4. Start-up
