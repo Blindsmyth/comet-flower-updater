@@ -59,6 +59,14 @@ c0144dc8 checks port A4==0, nonzero length, and readiness at c01152b8+12 and +36
 Worker c0149d40 waits for bit 1 then calls c0149c14; it drains the ring into c0117318, normalizes running status through c0149b60, and calls c01489a0(0,buffer,length,&result). Evidence: `c0149c5a CALLP c0149b60`; `c0149c6c STB A4,*B7++[1]` (optional status); `c0149c78 STB B0,*B7++[1]`; `c0149c8c CALLP c01489a0`. The send API queues/copies caller data; it does not directly perform SPI in the caller's context. A controller implementation still needs a bounded queue/coalescing policy for disconnected/full conditions.
 
 
+### USB-MIDI packetizer and short messages (confirmed)
+The worker reaches c01489a0, whose state table c0181138 dispatches to c0148740 (new status), c0148930 (remaining short-message bytes), and c01488b2 (SysEx). Per-cable packet state is c0116308+12*cable. Header byte is stored at +4; MIDI data at +5..7; byte count at +8. `c01485ee STB B0,*A5[5]` appends a MIDI byte; `c01485b2 STB B0,*A4[A5]` writes header. c0148668 loads the four-byte word at c011630c+12*cable and c0148600 appends it to c0115300, indexed by a halfword count at c0116300.
+
+Short-message completion c01486c8 extracts status high nibble for channel messages (`c014870c EXTU A1,20,24,A0`), combines `(cable<<4)|CIN` (`c0148724 SHL A2,4,A1; c0148728 OR A0,A1,A0`) and emits the word. Thus raw `B0 cc value` becomes bytes `0B B0 cc value`; raw `C0 program` becomes `0C C0 program 00` on cable 0. Packet reset c0148648 zeros the four-byte packet and byte counts, establishing padding. Existing normalizer's channel table c017d778 has two data bytes for status Bn (entry c017d7d0=2) and one for Cn (c017d7d8=1). Short CC and PC are already supported by the transmit machinery; a stock user-action caller that emits CC/PC has not yet been established.
+
+SysEx c01488b2 recognizes F7 (`c01488c4 MVK 247,B7; c01488f2 CMPEQ B0,B7,B0`). c0148854 selects CIN 4 for continued three-byte payloads, or CIN 5/6/7 for terminal payload length 1/2/3 (`c0148888 MVK 7,A0; c014888c MVK 6,A0; c0148890 MVK 5,A0; c0148894 MVK 4,A0`). Example seven-byte editor reply is three USB words: `04 F0 52 00`, `04 model 00 result`, `05 F7 00 00`. No new USB-MIDI framing implementation is needed for controller CC output.
+
+
 ## 4. Start-up
 
 ## 5. USB controller
