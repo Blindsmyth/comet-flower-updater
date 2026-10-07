@@ -49,3 +49,7 @@ Re-run independently; all reproduced:
   branch), so the "no data-dependent branch" rule holds in practice.
 - Not done: the stretch goal (anti-aliasing the slew limiter).
 Verdict: a correct, plain 8x port that passes the gate; no tricks found.
+
+## On the pedal (2026-10-06, owner)
+Plays. Probe 10 + CF RAT (all knobs 100) froze at Load ≈ 45: ≈ 24k cycles per
+block measured, against a 15–17k static estimate.
