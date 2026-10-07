@@ -4,6 +4,25 @@ Static analysis only. Addresses refer to the main firmware disassembly unless st
 
 ## 1. Footswitches and buttons
 
+### Direct GPIO switch map (confirmed)
+Sampling c0156f00 assembles bits 0..9 from three direct readers and seven indexed readers. Veneers c016f1d0/c0/b0 resolve respectively to 11809530/11809540/11809524; c016f1a0 resolves to 118094c4. Those routines call 11809484, which reads `*(GPIO_base + 40*(pin>>5) + 32)` and extracts bit `pin&31`. GPIO_base is 01e26000 from initialized word 11813214. Instruction evidence: `118094a2 SHR A4,5,B0`; `118094a4 SHL B0,5,B1`; `118094a6 SHL B0,3,B0`; `118094a8 ADD B1,B0,B0`; `118094b2 LDW *A5[8],A0`; `118094b6 SHRU A0,A1,A0`.
+
+| Bitmap bit | GPIO pin index | Input register / bit | Zero / one event |
+|---|---|---|---|
+|0|4|01e26020 / 4|5 / 6|
+|1|2|01e26020 / 2|7 / 8|
+|2|6|01e26020 / 6|9 / 10|
+|3|27|01e26020 / 27|11 / 12|
+|4|24|01e26020 / 24|13 / 14|
+|5|26|01e26020 / 26|15 / 16|
+|6|37|01e26048 / 5|17 / 18|
+|7|38|01e26048 / 6|19 / 20|
+|8|86|01e26070 / 22|21 / 22|
+|9|0|01e26020 / 0|23 / 24|
+
+Indexed-reader evidence: 118094c4..9504 selects pins 27,24,26,37,38,86 for indices 0..5 and defaults to 0 for index 6, which c0157018 actually passes. Physical legends and press polarity remain unresolved; GPIO pin indices must not be confused with package pin numbers. There is no ADC/SPI read in this ten-bit switch sampler.
+
+
 ## 2. Knobs and expression pedal
 
 ## 3. MIDI out
