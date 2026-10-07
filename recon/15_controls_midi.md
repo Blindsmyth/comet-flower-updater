@@ -2,6 +2,18 @@
 
 Static analysis only. Addresses refer to the main firmware disassembly unless stated otherwise. Findings are saved individually with confidence and instruction evidence.
 
+> **Review by Claude (2026-10-07).** Codex (gpt-6-astra, LOW effort), 15
+> committed findings before its usage cap. Spot-checked: the USB register
+> accesses are real (c011ff2c/30 and c0122000/04 build 0x01e00401 and
+> 0x01e00512; 36 resolved references into 0x01e0xxxx). **Major correction
+> of recon/07 and recon/10:** USB is the C6745's integrated USB0 controller,
+> not an external SPI chip; it supports isochronous transfers, so USB audio
+> is not ruled out by the hardware (a large firmware project nonetheless).
+> Unfinished: section 4 (start-up / update-mode check) is empty; the plan
+> section is partial. Promising for the MIDI controller mode: a calibrated
+> 7-bit analog change hook and a send path that already packetizes CC, PC
+> and SysEx.
+
 ## 1. Footswitches and buttons
 
 ### Direct GPIO switch map (confirmed)

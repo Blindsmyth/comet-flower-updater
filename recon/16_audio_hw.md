@@ -3,6 +3,14 @@
 Helper: Antigravity (Claude Opus 5.5). Static analysis only of `build/fw/map/main.dis`.
 Scratch: `build/agy5/`. Confidence tags: confirmed / likely / guess.
 
+> **Review by Claude (2026-10-07).** Antigravity on Claude Opus 5.5; the run
+> ended at Antigravity's weekly Claude quota (resets ~2026-10-13) after two
+> committed findings: codec init decoded (44.1 kHz PLL from 19.2 MHz, codec
+> = clock master, 32-bit I2S, both ADCs used via MIC3L/R, no AGC, no DAC
+> biquads) and the peripheral pointer block (I2C0, codec 0x18, McASP0/1,
+> EDMA, 44100). Not yet checked by Claude in detail. Unfinished: the audio
+> path (McASP/EDMA), the cache patch study, the CPU clock.
+
 ## 1. Codec setup (TLV320AIC3101 over I2C)
 
 **Driver (confirmed).** I2C0 (base `0x01C22000` from `0x1181340c`), slave 0x18

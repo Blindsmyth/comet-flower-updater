@@ -20,6 +20,10 @@ replaced ZOOM logo works (a main-firmware edit, recon/09).
   the USB device controller is very likely a separate chip on SPI. **Not
   confirmed**: needs a board photo or a trace of the SPI register traffic.
 
+> **CORRECTION 2026-10-07 (recon/15):** USB is the C6745's integrated USB0
+> (0x01e00000, isochronous capable), not an external SPI controller. USB
+> audio is NOT ruled out by the hardware.
+
 ## Consequences
 - **MIDI controller:** the USB-MIDI port already exists and the firmware
   already sends MIDI on it. Sending CC/PC from the footswitches and the

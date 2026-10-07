@@ -58,7 +58,10 @@ Connectors worth knowing:
 - **CN5, 7 pins, next to the DSP**: possibly JTAG (TMS, TCK, TDI, TDO, TRST,
   VCC, GND is exactly 7) or a debug UART. Unconfirmed.
 
-USB: no USB controller chip is visible in these photos. The C6745 has no
+USB (CORRECTED 2026-10-07, recon/15): the firmware drives the C6745's own
+integrated USB0 controller at 0x01e00000; no external USB chip is needed.
+The earlier reasoning below was wrong. Original note: no USB controller chip
+is visible in these photos. The C6745 has no
 USB device port, and the firmware drives USB through SPI semaphores and a
 USB software interrupt, so a separate controller should sit near the USB
 socket. A photo of side A around the USB socket would settle the USB-audio
