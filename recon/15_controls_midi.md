@@ -27,6 +27,12 @@ Indexed-reader evidence: 118094c4..9504 selects pins 27,24,26,37,38,86 for indic
 MainApp c0134e10 calls c015d428 then enters c0134db8. Its loop calls c015350c with A4 pointing to a stack event word and B4=-1; that wrapper calls c01534c4, which receives from the same B14[162] handle used by the switch task. Evidence: `c01534c8 CALLP c0166680; c01534cc ADD 8,B15,B4; c01534d0 LDW *+B14[162],A4; c01534d4 MV A4,A6` (parallel argument forwarding). Receive failure becomes sentinel 42 at c01534e0. Main loop ignores event 42 (`c0134de6 MVK 42,B1; c0134dea CMPEQ B0,B1,B0`), calls c0127fe0 to choose between dispatchers c0134acc and c0134d04, passing the event-word pointer. These are useful interception points before stock UI actions; patch up/down versus menu/effect semantics are not established merely by this queue trace.
 
 
+### Two footswitches use a separate fast path (confirmed GPIO/events; likely physical role)
+Do not confuse the ten normal-speed buttons with the two-switch path. `c0157034` samples two bits through c016f340 -> 1180954c. Index 0 reads GPIO3; index 1 reads GPIO5 (`11809550 [A0] BNOP 11809556; 11809554 MVK 5,A4; 11809556 MVK 3,A4; 11809558 CALLP 11809484`). Both use 01e26020, bits 3 and 5. Their state is 118132e4 (raw), 118132e8 (masked), 118132ec (prior). 11807858 calls sampler via 1180b6b0; it is called from 1180ac40 at 1180ac68, separately from SwitchNrmlSpdRead.
+
+Debounce path waits for elapsed >19 ticks (`118078e4 MVK 19,A1; 118078ea CMPGTU A0,A1,A0`). Changed bit i starts event 2*i (`11807968 ADD A10,A10,A0`); sampled high adds 1 at 1180799a, giving low/high pairs 0/1 and 2/3. A two-switch coincidence path can replace the event with 4 when timestamp distance <=100 (`11807a22 MVK 100,A0; 11807a2e MVK 4,A0`). A remapper 118077e8 can substitute the event before the nonblocking queue post at 11807a80 (A6=0). This is strongly consistent with the two footswitches, including a both-held gesture, but left/right labels and electrical pressed polarity remain to be proved from boot/UI behavior.
+
+
 ## 2. Knobs and expression pedal
 
 ### AD read and change callback (confirmed value path; ADC identity unresolved)
