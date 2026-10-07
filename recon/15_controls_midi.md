@@ -77,6 +77,12 @@ USB code directly accesses the 01e00000 register region; the inspected USB paths
 This contradicts recon/10's inference that USB must be a separate SPI controller. SPI semaphores alone do not locate USB. The exact SoC variant and register-map match require checking; do not rule out USB audio based on the earlier external-chip guess.
 
 
+### Controller identification and audio consequence (confirmed register-family match)
+The observed map matches the SoC's integrated USB0, not an external MAX3420E. TI's TMS320C6745/C6747 datasheet SPRS377F section 6.26 explicitly gives USB0 base 01e00000, full-speed device capability on C6745, and control/bulk/interrupt/isochronous transfers with four TX and four RX endpoints plus EP0. Source: https://www.ti.com/lit/gpn/TMS320C6745 (section 6.26 and table 6-96); https://www.ti.com/product/TMS320C6745 . Firmware evidence remains c011ff2c..ff4c and c0122000..2014 above. The prior statement that C6745 has no USB controller is false. Identifying C6745 versus C6747 from these shared registers alone is not possible, but no external USB chip is required to explain this code.
+
+**Likely feasibility, not implemented:** USB audio is not excluded by the controller's transfer types. Full-speed bandwidth, FIFO allocation, clock synchronization, buffering, audio format and CPU/DMA budget still need design and validation. Current MIDI descriptors/packetizer do not establish an existing USB-audio implementation.
+
+
 ## 6. Plan
 
 ### Task-entry anchors (confirmed)
