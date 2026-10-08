@@ -1,5 +1,15 @@
 # Firmware map part 3: controls and MIDI
 
+## Handoff continuation: Task A implementation (Codex GPT-6 Astra)
+
+### Startup toggle latch
+
+### MainApp dispatcher interception
+
+### Rotary and analog interception
+
+### Machine code and trampoline placement
+
 Static analysis only. Addresses refer to the main firmware disassembly unless stated otherwise. Findings are saved individually with confidence and instruction evidence.
 
 > **Review by Claude (2026-10-07).** Codex (gpt-6-astra, LOW effort), 15
@@ -138,3 +148,11 @@ Both footswitch inputs must be **low** to continue to the update checks. The cod
 The earlier unknown knob path is **11818540**, called each audio Swi at **11818c70**. It reads four GPIO pairs: (65,66), (67,68), (59,58), (57,55), via 11809484. Evidence: `11818568 CALLP 11809484 || ... MVK 65,A4`; 11818574/78 selects 66; 1181858c/94 selects 67; 11818598/a0 selects 68; 118185b0/b8 selects 59; 118185c0/c4 selects 58; 118185d4/e0 selects 57; 118185e4/e8 selects 55. The pairs are inverted and packed into 2-bit quadrature states at **11f03e90+4*i**, with history at **11f03e80+4*i**. Recognized histories **0x387 / 0x34b** call **1180afe0(A4=index, B4=+1/-1)** (`11818630 MVK 0x34b,A4; 11818640 CMPEQ A3,A12,A0; 1181867c EXTU A10,24,24,A4; 11818680 MVK -1,B4; 11818698 MVK 1,B4`). Clockwise labeling is not established.
 
 1180afe0 only accumulates signed motion in **11813430+4*i** (`1180afec LDW *A4[A5],A0; 1180aff0 ADD B0,A0,B0; 1180aff2 STW B0,*A4[A5]`). Event IDs **25..28** map to indices 0..3 through c01534f0; c015350c at **c0153634** calls **c0169554(index,1)** to fetch-and-clear motion and stores it into the normalized event record at +8 (`c0153642 STW A0,*B4[2]`). Zero motion becomes sentinel 42. Thus the MainApp gate can map IDs 25..28 and signed word[2] to four relative CCs, or clamp a per-knob absolute 0..127 accumulator. Do not emit USB/MIDI calls from 11818540/1180afe0: they run in audio Swi context. The consumer hook after c015350c already has the normalized delta and can stop normal rotary actions with the other controls. This closes the earlier four-knob source gap; event direction-to-panel clockwise still needs mapping. The read-clear routine is not an atomic read-modify-write against a preempting Swi, so preserve existing scheduling assumptions or add a short critical section if changing that interaction.
+
+## Handoff continuation (Codex GPT-6 Astra)
+
+### Task A: startup latch, dispatch, rotary/analog hooks and placement
+
+**Confirmed placement blocker:** the proposed file offsets are AIS structure boundaries, not usable trampoline caves. Section c011adc0 starts at file 0xed3c, length 0x549c0, and ends exactly at 0x636fc. Bytes 0x636fc..0x63707 are the next section-load command/address/length; its payload starts at 0x63708 (VMA c016f780), length 0x123a4, ending exactly at 0x75aac. Bytes 0x75aac..0x75ab7 are again AIS metadata, followed by c0183b74's payload. Verified by the AIS walk in build/codex6/ais.ps1 against res1_493412.bin. Overwriting either suggested end offset with instructions corrupts the boot stream. No trampoline has been installed. An implementation needs a genuinely reserved executable region plus a new/extended AIS load record, or a separately verified in-section cave.
+
+Instruction evidence for the hooks remains `c0134df0 CALLP c0127fe0,B3`, `c0134e14 CALLP c015d428,B3`, and `c015ffd0 CALLP c014aef4,B3`. In particular c0134df4 onward must remain intact in normal mode; a controller wrapper must restore its own stack frame before branching to c0134dc4. Memory reservation and transport backpressure remain prerequisites for a deployable implementation.
