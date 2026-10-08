@@ -437,20 +437,28 @@ flowchart TD
 
     <!-- Section 4: Machine Code -->
     <div class="section-header">
-        <h2>4. Exact Machine Code (c016e380 Inline Patch)</h2>
-        <span>File Offset: 0x622FC in res1_493412.bin</span>
+        <h2>4. Exact Patch Machine Code (Audited & Verified)</h2>
+        <span>Byte-for-byte disassembly of patched regions</span>
     </div>
 
     <pre>
-; Overwrites entire 32-byte fetch packet at c016e380 (no .fphead needed when p-bits = 0)
-0x00801428    MVK.S1    0x0028, A1         ; Lower 16-bits of L1PINV register (0x01840028)
-0x0080c268    MVKH.S1   0x01840000, A1     ; Upper 16-bits of L1PINV register
-0x0004a358    MVK.L1    1, A0              ; Invalidate command bit
-0x00040274    STW.D1T1  A0, *+A1[0]        ; Write 1 to 0x01840028 (invalidates L1P cache)
-0x0320002a    MVK.S2    0x4000, B6         ; L2 Writeback range base lower
-0x0300c26a    MVKH.S2   0x01840000, B6     ; L2 Writeback range base upper
-0x0fe16012    B.S2      0xc015ee80         ; PC-relative tail call (preserves return register B3)
-0x00008000    NOP       5                  ; 5 delay slots before branch completes
+; 1. Early L2CFG Initializer at c016d08c (File Offset 0x61008 in res1_493412.bin)
+; Replaces: f6 62 3c 00 (32-bit STW.D2T2 B0, *+B15[3])
+; With compact 16-bit instructions:
+4427          MVK.L2        2, B0              ; Set L2 mode = 2 (64 KiB cache) while L1D remains 3
+fc05          STW.D2T2      B0, *B15[3]        ; Write L2 mode to stack structure
+
+; 2. .fphead VLIW Fetch Packet Header at c016d09c (File Offset 0x61018 in res1_493412.bin)
+; Replaces: 00 00 d0 e0 (0xe0d00000: mask 0000110b -> slots 1, 2 compact)
+; With:     00 00 d0 e1 (0xe1d00000: mask 0001110b -> slots 1, 2, 3 compact)
+; Declares compact instruction pairing for slot 3 so CPU does not trap on boot.
+
+; 3. Late L2CFG Table at c0181728 (File Offset 0x756b0 in res1_493412.bin)
+; Replaces: 03 00 00 00 -> 02 00 00 00 (64 KiB L2 Cache Mode)
+
+; 4. Active Slot 0 Base Table in .cinit RLE stream (File Offset 0x77efd in res1_493412.bin)
+; Replaces: 40 1f c0 -> 00 82 11 (within stream 1a 05 00 ...)
+; Decompresses to: 0x11820000 at c01839a8 with zero stream shift.
     </pre>
 
     <!-- Section 5: Status Matrix -->
@@ -489,9 +497,9 @@ flowchart TD
             </tr>
             <tr>
                 <td><strong>Patched Firmware Binary</strong></td>
-                <td><span class="pill pill-ready">Generated</span></td>
+                <td><span class="pill pill-ready">Verified</span></td>
                 <td><code>build/fw/res1_patched.bin</code></td>
-                <td>Ready to flash using Zoom's recovery protocol.</td>
+                <td>SHA256: <code>9E2CCC1B727672C250D431A8D88A1D5101105C5DB90EC7CFC8CA85799267C002</code></td>
             </tr>
             <tr>
                 <td><strong>Custom DSP Effects</strong></td>

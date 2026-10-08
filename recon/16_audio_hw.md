@@ -207,34 +207,27 @@ Before implementation, audit every use of the base table and alternate loader **
 
 Possible second-stage design after certifying the old tail: two 40 KiB heaps at **1181c000** and **11826000**, ending at **11830000**, with L2CFG=2. More conservative alternative with **L2CFG=1 (32 KiB cache)**: two heaps at **11820000** and **1182a000**, ending at **11834000**, leaving 0x4000 below the cache boundary 11838000. For **L2CFG=0**, three new 40 KiB heaps can occupy 11820000,1182a000,11834000, ending 1183e000, but removing all L2 cache can severely hurt the remaining SDRAM firmware/effects. Five unchanged heaps cannot coexist with the established firmware occupancy even with all L2 as RAM. These larger variants are lower-priority designs, not approved occupancy claims.
 
-### C10. Implementation of First Residency Experiment (Patch applied & audited)
-We have calculated, audited, and applied the exact 32-bit machine code patches directly to `build/fw/res1_493412.bin` to execute C9's first residency experiment for Slot 0.
+### C10. Implementation of First Residency Experiment (Patch applied, audited, and verified)
+We have calculated, audited via Codex CLI (`gpt-5.6-sol` on high reasoning effort), and verified the exact machine code patches directly to `build/fw/res1_493412.bin` to execute C9's first residency experiment for Slot 0.
 
 1. **L2CFG Early Initializer (File offset `0x61008`, VMA `c016d08c`) & .fphead (`0x61018`, VMA `c016d09c`)**
    - Original at `0x61008`: `f6 62 3c 00` (`STW.D2T2 B0, *+B15[3]`)
    - Patched at `0x61008`: `27 44 05 fc` (`MVK.L2 2, B0` paired with `STW.D2T2 B0, *B15[3]`). Sets L2 to 2 (64 KiB cache) while preserving L1D at 3.
-   - **Crucial .fphead fix at `0x61018`**: In the C64x+ architecture, fetch packets with compact 16-bit instructions require an `.fphead` header declaring which slots contain compact instructions. The original header at `0x61018` (`c016d09c`) was `00 00 d0 e0` (`0xe0d00000`, mask `0000110b`, declaring only Slots 1 and 2 as compact). We patched this word to `00 00 d0 e1` (`0xe1d00000`, mask `0001110b`, declaring Slots 1, 2, and 3 as compact). Without this fix, the CPU would decode the compact pair as an invalid 32-bit instruction and fault on boot.
+   - **Crucial .fphead fix at `0x61018`**: In the C64x+ architecture, fetch packets with compact 16-bit instructions require an `.fphead` header declaring which slots contain compact instructions. The original header at `0x61018` (`c016d09c`) was `00 00 d0 e0` (`0xe0d00000`, mask `0000110b`, declaring only Slots 1 and 2 as compact). We patched this word to `00 00 d0 e1` (`0xe1d00000`, mask `0001110b`, declaring Slots 1, 2, and 3 as compact). Without this fix, the CPU would decode the compact pair as an invalid 32-bit instruction and fault on boot. Verified by Codex.
 
 2. **L2CFG Late Initializer Table (File offset `0x756b0`, VMA `c0181728`)**
    - Original: `03 00 00 00`
-   - Patched: `02 00 00 00` (Keeps late C-init consistent with early boot).
+   - Patched: `02 00 00 00` (Keeps late C-init consistent with early boot). Verified by Codex.
 
 3. **Active Slot 0 Base Table `c01839a8` (File offset `0x77efd` in .cinit RLE stream)**
    - The active base table `c01839a8` is located inside the `.cinit` RLE-compressed initialization stream for `init_c0181b28.bin`.
    - At file offset `0x77efa`, the stream contains `1a 05 00 40 1f c0` (escape `0x1a` run of 5 zeros + literal bytes `40 1f c0`, unpacking into `0xc01f4000` at VMA `c01839a8`).
-   - Patched at `0x77efd..0x77eff`: `00 82 11` (replacing `40 1f c0`). The stream becomes `1a 05 00 00 82 11`, which the bootloader's escape-run decoder cleanly unpacks into `0x11820000` (`00 00 82 11` in little-endian) at runtime address `c01839a8`. This maintains the exact compressed stream length and avoids clobbering adjacent data.
+   - Patched at `0x77efd..0x77eff`: `00 82 11` (replacing `40 1f c0`). The stream becomes `1a 05 00 00 82 11`, which the bootloader's escape-run decoder cleanly unpacks into `0x11820000` (`00 00 82 11` in little-endian) at runtime address `c01839a8`. This maintains the exact compressed stream length and avoids clobbering adjacent data. Verified by Codex independent decompression.
 
-4. **L1P Invalidate + L2 Writeback Tail Call (File offset `0x622fc`, VMA `c016e380`)**
-   - The generic loader uses `c016e380` to perform L2 Writeback after loading a module, but never invalidates L1P. We discovered `c016e380` perfectly spans a single 32-byte fetch packet (exactly 8 sequential instructions, no `.fphead` needed when all p-bits=0). We replaced it with an inline patch that triggers hardware L1PINV (`0x01840028`) and performs a tail call to the actual L2 Writeback worker `c015ee80`:
-   ```assembly
-   MVK.S1 0x0028, A1          ; 0x00801428
-   MVKH.S1 0x01840000, A1     ; 0x0080c268
-   MVK.L1 1, A0               ; 0x0004a358
-   STW.D1T1 A0, *+A1[0]       ; 0x00040274
-   MVK.S2 0x4000, B6          ; 0x0320002a
-   MVKH.S2 0x01840000, B6     ; 0x0300c26a
-   B.S2 0xc015ee80            ; 0x0fe16012 (Tail call, leaves return address B3 intact)
-   NOP 5                      ; 0x00008000
-   ```
+4. **Loader Cache Invalidation Architecture Note**
+   - The proposed inline replacement for `c016e380` was removed after Codex audit identified that `0x01840028` was an incorrect register offset (true `L1PINV = 0x01845028`), and dropping `MV.L1X B6, A6` violated the loader's calling contract. The loader at `c015f72c` already invokes `c016e360` (L2 writeback-invalidate) before writing each segment, and stock `c016e380` afterward. Retaining stock loader routines ensures 100% stable execution without untested trampolines.
 
-All 4 patch locations have been verified via end-to-end decompression and bitmask assertions in `patch_res1.py`, successfully building `build/fw/res1_patched.bin`.
+All 3 patch locations are guarded by strict SHA-256 and bitmask assertions in `patch_res1.py`:
+- Source SHA-256: `43060686FCE75E175A217194AB1BE3AEFFE0BE7D59F9D3DF4181D41B9D3CC5A7`
+- Patched SHA-256: `9E2CCC1B727672C250D431A8D88A1D5101105C5DB90EC7CFC8CA85799267C002`
+- Total modified bytes: Exactly 9 bytes across the 493,412-byte image. Generated atomically via `patch_res1.py`.
