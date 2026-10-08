@@ -118,3 +118,20 @@ Only direct setup caller c01358b4 consumes standard endpoint descriptor fields (
 | TX4 | 0c0..13f | TXFIFOSZ=0x13 (64 B x2) | 0x018 |
 
 Inactive endpoints' address fields can coincide; zero software reservations do not mean they should be enabled at those overlapping addresses. [SPRUFM9H sections 2.6/4.55–4.58](https://www.ti.com/lit/ug/sprufm9h/sprufm9h.pdf) supplies the 4096-byte total, fixed EP0, power-of-two sizing and address units. Free FIFO on this path is **4096-64-128-128=3776 bytes**. A new ISO IN endpoint 1 or 2 fits: 180-byte packets need 256 B per bank (512 B double buffered, size 0x15); 270-byte packets need 512 B per bank (1024 B double buffered, size 0x16). Configure TXMAXP=180 or 270 independently of rounded FIFO size. These are capacity calculations, not measured service guarantees. Stock allocator repacks all endpoints numerically; adding TX1 moves RX3/TX4, so reconfigure while quiescent and preserve exclusive ranges rather than inserting a live overlapping FIFO.
+
+### A3 — partial enqueue plus blocking locks (confirmed); bounded coalescing design (likely)
+Ring object is **c0117b28**, read index at +0, write index at +4; data starts **c0117b30**, 1025 byte positions (indices 0..1024), **1024 usable bytes**. Correcting shorthand in recon/15: c0117b28 is the object, not the first data byte.
+```text
+c0149d80 ADD A1,1,B1
+c0149d84 SET A0,10,10,A0 ; limit 1024
+c0149d86 CMPLT A1,A0,A0 ; wrap after index 1024
+c0149d8e CMPEQ B1,B0,B0 ; next write == read: full
+c0149da6 STB B2,*A5[8]  ; object + write index + 8
+c0149dcc [A0] BNOP c0149dd8 ; first failed append ends batch
+c0149dda MV A2,A4       ; accepted-byte count
+```
+No capacity wait occurs inside byte append: full returns ffff63be; bulk append returns its accepted prefix count (zero if already full). c0149de4 sets an overflow flag at c0117b24 and invokes registered callback with event 3 on **positive partial** acceptance, then wakes worker bit1. It does not retry the unsent suffix. A wakeup error can replace the accepted count at c0149e74. c0144dc8 rejects unready state with ffff63be. c01274cc hides transport result by releasing the outer semaphore.
+
+The overall send API **can block**, independently of ring capacity: `c01274d4 CALLP c0150b20` with B4=-1 at c01274e0 (B14[161]); `c0149df0 CALLP c014a094` (B14[89]); and `c014a096 MVK -1,B4; c014a098 CALLP c0150b20`. Worker c0149d40 waits for an event, then c0149c14 holds B14[89] while draining/normalizing into c0117318 and calling packetizer (`c0149c8c CALLP c01489a0`), releasing at c0149c98. Thus calling the stock wrapper directly from MainApp, as the prototype does, fails the requested nonblocking guarantee.
+
+Proposed rule: hooks only publish latest absolute 7-bit value plus dirty/version per (channel,CC), with four saturating knob accumulators and one expression slot; overwrite obsolete unsent motion. Use a short bounded critical section to synchronize MainApp and analog producer, with **no semaphore wait or send call in either hook**. Dedicated lower-priority transmitter takes a snapshot, round-robins at most a bounded number of CCs per activation, and keeps the dirty bit if version changed while sending. Under the existing serialization and ring lock, require at least three free bytes before appending a whole CC; otherwise release and retry later, retaining only latest unsent value. Do not call c0149de4 while already holding its nonrecursive lock: implement a reviewed atomic reserve/append path or refactor that boundary. Handle disconnect/reset by clearing partial transport state and publishing latest state on reconnect. Button edges need a separate bounded policy, not motion coalescing. The hook path is bounded by construction; actual critical-section timing and worker integration remain to implement. Do not blindly resend three bytes after a partial stock enqueue.
