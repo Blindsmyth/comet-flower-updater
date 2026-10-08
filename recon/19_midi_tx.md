@@ -77,4 +77,68 @@ given; fixed-period alternative explicitly ruled out, not just unexplored).
 
 ## 2. Ring free-space test and lock-free peek
 
+### Finding: the free-space test and the single-byte append are pure arithmetic, no CALLP at all (confirmed)
+
+Direct read of `build/fw/map/main.dis` at `c0149d74..c0149dac`:
+```text
+c0149d74 MV.L2    B4,B2          ; B2 = byte to append (arg)
+c0149d76 LDW.D1T2 *A4[0],B0      ; B0 = ring->read_index  (c0117b28+0)
+c0149d78 LDW.D1T1 *A4[1],A1      ; A1 = ring->write_index (c0117b28+4)
+c0149d80 ADD.L2X  A1,1,B1
+c0149d84 SET.S1   A0,10,10,A0    ; A0 = 0x400 (1024): wrap modulus
+c0149d86 CMPLT.L1 A1,A0,A0
+c0149d8e CMPEQ.L2 B1,B0,B0       ; candidate next-write == read -> full
+c0149da4 ADD.L1   A4,A1,A5
+c0149da6 STB.D1T2 B2,*A5[8]      ; data byte at ring+8+write_index
+c0149da8 STW.D1T2 B1,*A4[1]      ; commit new write_index
+c0149dac BNOP.S1  B3,5           ; return
+```
+No `CALLP` instruction appears anywhere from `c0149d74` to `c0149dac` (I
+scanned the full window; the only other `CALLP` nearby, at `c0149dc4`, is
+inside a *different*, caller function — the bulk-copy loop at `c0149db0`
+that repeatedly invokes this same single-byte routine). So the free-space
+test and the actual index/byte update that recon/17 A3 already describes
+("full returns ffff63be; bulk append returns its accepted prefix count")
+require **no semaphore and no wait** at the ISA level. Confidence:
+confirmed (exhaustive read of the instruction range, not just the two
+addresses named in the brief).
+
+Entry parameters, read directly from the prologue: `A4` = ring object
+pointer (`c0117b28`), `B4` = byte value. This confirms recon/17 A3's field
+layout (read index +0, write index +4, data +8) from the producer side as
+well as the consumer side already shown there.
+
+### Finding: every externally-reachable entry point wraps this in a blocking wait; no non-blocking variant found (confirmed call sites; absence of a bypass is likely, not exhaustively proven)
+
+The only two ways into the append logic that this audit or recon/17 found
+both take an unbounded-timeout lock first:
+```text
+c01274d4 CALLP.S2 0xc0150b20,B3   ; outer lock, B14[161], timeout -1 (c01274e0)
+c0149df0 CALLP.S2 0xc014a094,B3 || LDW *+B14[89],A4   ; inner lock, B14[89]
+```
+(addresses and roles per recon/17 A3 / recon/18 1.6, both already confirmed
+there; re-verified present in `main.dis` at those addresses). No
+zero-timeout or "try" variant of either acquire call was found anywhere in
+the traced call graph. So: **a caller can check free space without any
+lock** (above), but **cannot reach the real stock append without going
+through one of these two blocking acquisitions** — there is no proven
+non-blocking path through the stock API itself. What is missing: an
+exhaustive search of every other `CALLP` target in the firmware for a
+hypothetical third, non-blocking entry point was not done (would require
+scanning the whole 1.3 MB image for callers of the ring object address,
+beyond this budget); absence here is "not found", not "proven absent".
+
+### Design consequence adopted for item 3
+
+Because the pure append (`c0149d74`) takes no lock by itself, the new
+drain step calls the ring object's raw indices **read-only** to *decide*
+whether to attempt a send (never mutates them directly — mutating them
+from a second, unaudited producer would race the stock worker, which also
+holds `B14[89]` while draining, recon/17 A3). The actual byte transmission
+still goes through the stock `c01274cc` (hence through both blocking
+locks) when, and only when, the peek says there is room. This is a
+deliberate, disclosed compromise: it is **not** a proven non-blocking send
+(see item 3's `send_cc` comment), only a bounded-in-practice one, because
+no non-blocking stock entry point exists to call instead. Status: done.
+
 ## 3. Bounded producer/consumer design (C/asm in build/sonnet4a/)
