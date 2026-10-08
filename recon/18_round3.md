@@ -101,6 +101,13 @@ Confidence: confirmed transfer-type/CSR logic; proposed fixed-tail PIO allocatio
 
 Stock setup calls the shared FIFO allocator at c012146e onward, recomputing all endpoints from byte 64 (`c01214c0/c01214c6` write TX/RX FIFOADDR). Adding double-buffered TX1=256*2 through it shifts RX3/TX4 by 512 bytes; it cannot preserve their old addresses while using this unchanged repacker. A dedicated allocation at unused bytes 0x140..0x33f can preserve RX3=0x040..0x0bf and TX4=0x0c0..0x13f: TX1 FIFOADDR=0x28, TXFIFOSZ=0x15, TXMAXP=180. Total occupied end is 0x340 (832 bytes). Patch/bypass the repacker consistently for TX1, reserve that tail across later endpoint configuration/reset, and flush while quiescent. PIO must disable TX1 DMA ownership and set/clear TXPKTRDY with correct CSR semantics; endpoint number availability alone does not make that integration safe.
 
+### 3.4 SOF runs in CPU interrupt 7, not the priority-13 USB Swi
+Confidence: confirmed registration/vector chain and context; PIO worst-case timing unknown.
+
+USB registration passes {callback=c011fc8c, CPU interrupt=7, event=19, enable=1, mask parameter=16}: c0122290 stores callback, `c0122292 MVK 7,B0`, c0122296 selects 19. c014a524 copies input[1] and callback into the argument pair consumed by c01655c0 -> c0168d00. c0168d00 indexes the per-interrupt table using that 7, then c0169ca0 generates a vector at ISTP+32*interrupt (`c0169cd0 SHL A4,5,B7`) to the Hwi dispatcher c015ec80. Event routing parameters are supplied separately. The SOF path executes `c011fca2 EXTU B0,12,31,B0; c011fcb2 STW B0,*A4[0]; c011fcb4 CALLP c016f770` before the deferred Swi post at c011fd28. Veneer c016f770 branches to 11818e80 (008ca362, BNOP B3,5). Priority designation is CPU INT7/event19; USB Swi priority13 and audio Swi priority15 are different scheduling levels, not the SOF hook's priority. Exact nesting/mask behavior needs a complete Hwi-dispatch audit.
+
+180 bytes require 45 word FIFO stores plus CSR/frame bookkeeping; that is a bounded loop, not a proved cycle budget. Bus wait states, interrupt masking/nesting, cache misses and audio deadline interference are not established by static instruction count. A Hwi delays Swis while running, including audio. Verdict on 'fits there': unknown without a worst-case bus/dispatch timing bound; do not claim 45 cycles or guaranteed 1 ms completion. For a silence prototype, precompute zeros, use fixed bounded PIO stores and direct endpoint registers where possible, avoid locks/allocators/bulk APIs, and retain overflow/missed-SOF counters. No timing or hardware test was run.
+
 ## 4. Slot 0 residency and remaining reload paths
 
 ## 5. Effect exceeding its 40 KiB slot
