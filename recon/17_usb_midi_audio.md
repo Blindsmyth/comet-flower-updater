@@ -94,3 +94,16 @@ Exact normal full-speed bytes, one descriptor per line (total **101**), reproduc
 05 25 01 01 14
 ```
 Interface 0 alt0: class 1/subclass 1/protocol 0, zero endpoints, AC header version 1.00 linking interface 1. Interface 1 alt0: class 1/subclass 3/protocol 0, two endpoints. Embedded/external MIDI IN jacks 10/30; embedded/external MIDI OUT jacks 20/40. OUT endpoint **0x03**, bulk, 64 B, associated embedded IN jack 10; IN endpoint **0x84**, bulk, 64 B, associated embedded OUT jack 20. Intervals/refresh/synchronization-address bytes are zero. No AudioStreaming interface exists. Device descriptor uses interface-defined class (0), USB 1.10, EP0=64, VID/PID 1686:04a1. Alternate speed templates exist but do not establish high-speed capability on C6745. “Exact host bytes” here means the full normal FS descriptor response; host requests may truncate it by wLength.
+
+### B2 finding 1 — dynamic FIFO configuration routine (confirmed)
+Endpoint setup is **c01212e0(A4=endpoint address, B4=attributes, A6=max packet)**. Endpoint low nibble selects INDEX at 01e0040e (`c0121338 STB A1,*B7[0]`). It rounds packet size up to a power of two, starting at 8 B, and always enables double buffering:
+```text
+c0121352 ADD B2,B2,B2 ; round up; A1 is size exponent
+c0121368 ADD B2,B2,B2 ; reserved bytes doubled
+c0121378 SET A0,4,4,A0
+c0121380 STB A0,*B4[0] ; INDEX+85 = RXFIFOSZ 01e00463
+c0121402 STB A0,*B4[0] ; INDEX+84 = TXFIFOSZ 01e00462
+c012138c STH B0,*B4[0] ; RXMAXP indexed 01e00414
+c012140c STH B0,*B4[0] ; TXMAXP indexed 01e00410
+```
+Address allocation is rebuilt for endpoints 1..4 at c012146e..14c6: starts at byte 64, adds each TX then RX reservation, writes INDEX at c01214b2, TXFIFOADDR at c01214c0 (01e00464), RXFIFOADDR at c01214c6 (01e00466). `EXTU ...,16,19` converts byte offsets to 8-byte FIFO-address units. Endpoint table stride is 680 bytes. Current allocation totals require checking initialized/reserved endpoints, not merely counting descriptor endpoints.
