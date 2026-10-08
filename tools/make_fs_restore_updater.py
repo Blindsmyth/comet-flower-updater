@@ -53,7 +53,21 @@ replaced by that file, typically made by tools/g1fw_gfx.py import (edited
 fonts and bitmaps). It must be the same size as Zoom's and may differ only
 inside the constant-data section (file 0x63708..0x75aac), so a code change
 cannot slip in this way. --logo, if also given, is applied on top.
+
+With --patch-fw <res1_patched.bin>, only the exact hash-pinned nine-byte
+Slot 0 residency patch is accepted. Firmware erase/write stages at 0x33000
+are added to the filesystem restore; the boot/update program and recovery
+sector are preserved. This is NOT firmware-only packaging. --firmware and
+--logo cannot be combined with --patch-fw. Runtime stability is not certified.
 """
+# --patch-fw <res1_patched.bin> accepts only the exact hash-pinned nine-byte
+# residency patch. It rewrites main firmware at 0x33000 in addition to the
+# existing filesystem restore stages; boot/update-mode code is preserved.
+# It cannot be combined with --firmware or --logo. This validates packaging,
+# not runtime stability of the firmware experiment.
+import argparse
+import hashlib
+from pathlib import Path
 import struct
 import sys
 
@@ -95,7 +109,32 @@ def splash_bytes(png, w=128, h=32):
     return bytes(out)
 
 
-def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=None):
+PATCH_SOURCE_SHA256 = "43060686fce75e175a217194ab1be3aeffe0be7d59f9d3df4181d41b9d3cc5a7"
+PATCH_RESULT_SHA256 = "9e2ccc1b727672c250d431a8d88a1d5101105c5db90ec7cfc8ca85799267c002"
+PATCH_BYTES = {0x61008: 0x27, 0x61009: 0x44, 0x6100a: 0x05,
+               0x6100b: 0xfc, 0x6101b: 0xe1, 0x756b0: 0x02,
+               0x77efd: 0x00, 0x77efe: 0x82, 0x77eff: 0x11}
+
+
+def validate_patch_fw(old_fw, new_fw):
+    """Accept only the reviewed Slot 0 residency image; no generic code bypass."""
+    if len(old_fw) != 493412 or len(new_fw) != 493412:
+        raise ValueError("--patch-fw requires the 493412-byte v2.00 firmware")
+    if hashlib.sha256(old_fw).hexdigest() != PATCH_SOURCE_SHA256:
+        raise ValueError("--patch-fw source firmware SHA-256 mismatch")
+    if hashlib.sha256(new_fw).hexdigest() != PATCH_RESULT_SHA256:
+        raise ValueError("--patch-fw patched firmware SHA-256 mismatch")
+    diff = {i: b for i, b in enumerate(new_fw) if b != old_fw[i]}
+    if diff != PATCH_BYTES:
+        raise ValueError("--patch-fw requires the exact reviewed nine-byte diff")
+
+
+def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=None,
+         patch_fw=None):
+    if Path(src).resolve() == Path(dst).resolve():
+        sys.exit("output must differ from the official updater")
+    if patch_fw is not None and (firmware is not None or logo is not None):
+        sys.exit("--patch-fw cannot be combined with --firmware or --logo")
     pe = pefile.PE(src)
     off = pe.get_offset_from_rva(TABLE_VA - pe.OPTIONAL_HEADER.ImageBase)
     data = bytearray(open(src, "rb").read())
@@ -123,19 +162,26 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
             data[roff:roff + 512] = splash_bytes(splash)
             print("splash %s placed in resource 0x85 (presets region %#x)" % (splash, PRESET_ADDR))
         new = [(1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES)] + new
-    if firmware is not None:
+    if firmware is not None or patch_fw is not None:
         e = res[FW_RES].directory.entries[0].data.struct
         roff = pe.get_offset_from_rva(e.OffsetToData)
-        new_fw = open(firmware, "rb").read()
+        firmware_path = patch_fw if patch_fw is not None else firmware
+        new_fw = Path(firmware_path).read_bytes()
         old_fw = bytes(data[roff:roff + e.Size])
         if len(new_fw) != len(old_fw):
             sys.exit("firmware is %d bytes, must be %d" % (len(new_fw), len(old_fw)))
         diff = [i for i in range(len(old_fw)) if new_fw[i] != old_fw[i]]
-        if any(not FW_CONST[0] <= i < FW_CONST[1] for i in diff):
+        if patch_fw is not None:
+            try:
+                validate_patch_fw(old_fw, new_fw)
+            except ValueError as exc:
+                sys.exit(str(exc))
+        elif any(not FW_CONST[0] <= i < FW_CONST[1] for i in diff):
             sys.exit("firmware differs outside the constant-data section: refused")
         data[roff:roff + e.Size] = new_fw
-        print("firmware %s placed in resource 0x81 (%d bytes differ, all in const data)"
-              % (firmware, len(diff)))
+        print("firmware %s placed in resource 0x81 (%d bytes differ; %s)"
+              % (firmware_path, len(diff), "reviewed residency patch" if patch_fw is not None
+                 else "all in const data"))
     if logo is not None:
         e = res[FW_RES].directory.entries[0].data.struct
         roff = pe.get_offset_from_rva(e.OffsetToData)
@@ -145,8 +191,16 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
             sys.exit("ZOOM logo not found exactly once in resource 0x81")
         data[roff + at:roff + at + len(ZOOM_LOGO)] = splash_bytes(logo, 92, 16)
         print("logo %s placed in resource 0x81 at %#x (main firmware %#x)" % (logo, at, FW_ADDR))
-    if logo is not None or firmware is not None:
+    if logo is not None or firmware is not None or patch_fw is not None:
         new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
+    if patch_fw is not None:
+        # Boot/update-mode program [0, 0x28000), settings/recovery sector
+        # [0xbf000, 0xc0000), and all unused flash regions remain untouched.
+        allowed = {(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES),
+                   (1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES),
+                   (1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)}
+        if len(new) > 8 or any(stage not in allowed for stage in new):
+            sys.exit("unsafe update stages: refused")
     new += [(0, 0, 0, 0)] * (8 - len(new))
     if image is not None:
         import os
@@ -173,12 +227,9 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
 
 
 if __name__ == "__main__":
-    a = sys.argv[1:]
-    opt = {}
-    for key in ("--image", "--splash", "--presets", "--logo", "--firmware"):
-        if key in a:
-            k = a.index(key)
-            opt[key] = a[k + 1]
-            del a[k:k + 2]
-    main(a[0], a[1], opt.get("--image"), opt.get("--splash"), opt.get("--presets"),
-         opt.get("--logo"), opt.get("--firmware"))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("src")
+    parser.add_argument("dst")
+    for key in ("image", "splash", "presets", "logo", "firmware", "patch-fw"):
+        parser.add_argument("--" + key)
+    main(**vars(parser.parse_args()))
