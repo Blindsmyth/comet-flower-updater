@@ -194,3 +194,87 @@ This matches the safe B3 pattern (silence published for every slot before any un
 Status: blocked: c01568a0's enclosing function (entry near c0156680/c01567e0), its callers, and the meaning of its hard-coded A4=0 / B4 fields are not traced far enough to classify this path as safe or unsafe like the other six. No code from the old image was observed to run after a reload starts on any OTHER traced path (4.2's cleanup does not touch the callback table); the only confirmed unsafe-ordering path is unload-all (4.1).
 
 ## 5. Effect exceeding its 40 KiB slot
+
+### 5.1 Allocator failure returns NULL and records a numeric status code; every traced layer up to the generic ELF loader checks it and aborts cleanly, with no wild write (confirmed)
+
+`c0151190`'s free-list search fails closed: if no block is found, `A11` (candidate pointer) stays 0 and the function falls to:
+```text
+c0151274 [!B0] BNOP.S1 0xc01512b0,5   ; B0 = A11; branch taken when A11==0 (no block found)
+c01512b0 CALLP.S2 0xc016be80,B3       ; A4=7
+c01512c8 CALLP.S2 0xc016be80,B3       ; A4=2 (different failure, e.g. zero-size request)
+c01512da MVK.L1 0,A4                  ; return 0
+```
+`c016be80` is a one-line setter, `STW.D2T1 A4,*+B14[114]`; its pair `c016be88` is a getter. So the allocator records a small numeric "last status" code (7 observed for the out-of-block case) and returns a NULL pointer.
+
+Its caller `c015f72c` (the ELF segment loader, called from recon/14's `c0163af4`/`c0163ac0` chain) checks the return before doing anything with it:
+```text
+c015f748 CALLP.S2 0xc0163af4,B3
+c015f752 MV.L1 A4,A0
+c015f754 [A0] BNOP.S1 0xc015f766,5    ; nonzero -> continue to c015f780 zero-fill / c015f7a4 read
+c015f756 MVK.L1 7,A4
+c015f758 CALLP.S2 0xc016be80,B3       ; record code 7 again
+c015f760 BNOP.S1 0xc015f7f4,4         ; skip the zero-fill/file-read entirely
+c015f764 MVK.L1 0,A4                  ; return 0 to this function's own caller
+```
+So on allocation failure, `c015f72c` never reaches the `c015f780` memset or `c015f7a4` file read that would otherwise write through the (NULL) pointer — there is no wild write at this layer.
+
+Its caller, the PT_LOAD loop `c01242bc` (called at `c0124368`), repeats the same pattern on a 0 return — code 7 again, then an unconditional abort:
+```text
+c0124370 [A0] BNOP.S1 0xc012438e,5    ; success -> next segment
+c0124380 CALLP.S2 0xc016be80,B3       ; A4=7
+c0124388 BNOP.S1 0xc0124578,4         ; abort the whole PT_LOAD loop
+c012438c MVK.L1 0,A4                  ; return 0
+```
+(The same loop also has an independent header-validation failure branch at `c0124300` that records code 3 instead, for a malformed/out-of-range program header — a different, non-memory failure reason using the same mechanism.)
+
+The generic ELF loader entry `c0124b2c` checks every sub-stage identically (`[!A0] BNOP ...` to one of two shared abort targets, `c0124c7a`/`c0124c6c`), including the PT_LOAD call at `c0124bac`:
+```text
+c0124bac CALLP.S2 0xc01242bc,B3
+c0124bb6 [!A0] BNOP.S1 0xc0124c7a,5   ; abort immediately, skip relocation/symbol stages
+```
+Confidence: confirmed for all four layers (c0151190, c015f72c, c01242bc, c0124b2c) — each checks the previous stage's return and aborts without touching memory through a bad pointer.
+
+Status: done.
+
+### 5.2 c01560f0 surfaces the specific failure code as its own return value; a failed load leaves the slot's display metadata reset to a placeholder, not populated from the partial image (confirmed)
+
+`c01560f0` (recon/14's segment-descriptor-to-`c0124b2c` wrapper) checks `c0124b2c`'s return and, on failure, re-reads the status code via the `c016be88` getter and returns *that* code (not a generic boolean) to its own caller:
+```text
+c015618c CALLP.S2 0xc0124b2c,B3
+c01561a2 [A0] BNOP.S1 0xc01561b6,5    ; success -> shared return
+c01561a4 CALLP.S2 0xc016be88,B3       ; A4 = B14[114] (the recorded code, e.g. 7)
+c01561a8 MV.L1 A4,A11
+c01561aa BNOP.S1 0xc01561b6,5
+c01561b6 MV.L1 A11,A4                 ; function result = the specific error code
+```
+One level up, `c0129724` (recon/14's effect-facing loader, destinations from `c0164a8c`/`c0164a80`) calls `c01560f0` and, further up, `c01297a0`'s load branch funnels any non-success outcome into the same `c0129b40` cleanup already described in §4.2: it zeroes the slot's name/flag fields and writes a placeholder-string pointer into the per-slot UI descriptor (`0xc0060000+0x4508/0x4518/0x4520/0x44d0`, offsets by `slot*0x20`), rather than ever populating those fields with data from the too-big image. So the user-visible effect of a failed load, at the metadata layer, is "slot reverts to its empty/default-looking state" — not a crash and not a display of the partially-loaded effect's real name.
+
+No retry loop was observed in any of the traced functions (`c0151190`, `c015f72c`, `c01242bc`, `c0124b2c`, `c01560f0`, `c0129724`, `c01297a0`): each is a single synchronous attempt that returns/aborts on first failure. No infinite loop or obviously unreleased lock was seen in this specific call chain, but lock/semaphore release on the *error* path of every caller above `c01297a0` (e.g. whatever takes `B14[155]`'s semaphore before reaching `c012fb9c`/`c0132910`) was not exhaustively re-checked here; only `c01438b0` (§4.1) was confirmed to release its lock unconditionally.
+
+Confidence: confirmed (code propagation and metadata reset); likely (no retry/hang in this chain, given the scope above).
+
+Status: done.
+
+### 5.3 No confirmed path from the failure code to anything the user actually sees on-screen; a dedicated code-to-string formatter exists but has no caller found in the disassembly (likely gap, not confirmed either way)
+
+A dedicated formatter `c016be90(code)` exists: for `code < 11` it indexes a RAM table at `c0180000+0x3608` (11 pointer-sized entries, one per code) to get a message string, then calls the same string-copy helper used for slot names (`c016c360`) to write into a fixed buffer at `c0180000+0x3868`:
+```text
+c016be98 CMPGT.L1 11,A4,A0
+c016be9c [!A0] BNOP.S1 0xc016beb0,5
+c016bea4 MVK.S1 0x3608,A5
+c016beac LDW.D1T1 *+A5[A4],A4        ; A4 = table[code]
+c016beb0 MVK.S2 0xffffc13e,B0        ; B0 = c016c13e (role not confirmed: not in build/fw/map/strings.txt's covered range)
+c016bec4 CALLP.S2 0xc016c360,B3      ; writes into c0180000+0x3868
+```
+This is exactly the kind of mechanism that would be needed to show a load-failure message, and code 7 (the allocation-failure code from §5.1) is within its valid 0..10 range. However, a full-file search of `build/fw/map/main.dis` for `c016be90` found **only its own definition** — no `CALLP` to it anywhere, and no `MVK/MVKH 0x...be90` pair that would indicate an indirect/function-pointer reference either. I could not find what (if anything) calls this formatter, nor confirm that `c0180000+0x3868` is ever read by the LCD/UI refresh code. `build/fw/map/strings.txt` does not cover the `c016c000-c016c200` range (it starts at `c016f780`), so the exact text at `c016c13e` and the table's 11 message strings were not recovered — doing so would require decoding the cinit-compressed block `c0185260 -> c0181b28` (build/codex3/decode_cinit.ps1's existing output already covers this destination range, offset `0x3608`/`0x3868` minus `0x1b28` into `build/codex3/init_c0181b28.bin`) and then resolving each table pointer, which was not completed.
+
+This means: it is **not established** whether the DR103-style allocation failure produces any visible on-screen message. What is established (§5.1-5.2) is that the failure does not crash, hang, or retry — the effect is silently skipped and the slot's display metadata reverts to a placeholder. Separately, `c0129724` sets a per-slot "registered" flag (`c01839f0+4*slot = 1`) unconditionally after any load attempt:
+```text
+c0129784 MVK.S1 0x39f0,A5             ; table base c01839f0 (distinct from recon/14's base/size tables c01839a8/c01839c0)
+c0129790 STW.D1T2 B0,*+A5[A4]         ; B0=1, written regardless of c01560f0's returned code
+```
+with no conditional branch on the load's success/failure visible between the `c01560f0` call and this store. The early-ELF stages (`c01233c0` parse, `c0123ce4` module creation) do complete before the PT_LOAD loop can fail, so a real (if partially-loaded) module object should exist for `c01560c0` to unload later — but `c01560c0`'s handling of a partially-loaded module was not traced deeply enough to confirm it tears down an incomplete object safely.
+
+Confidence: confirmed (no caller of c016be90 found; the c01839f0 store is unconditional); likely/unresolved (whether this means "no UI message at all" vs. "message shown via a mechanism not visible to static CALLP/MVK search," and whether c01560c0 safely unloads a partial module).
+
+Status: blocked: exact message-table contents (needs cinit decode of build/codex3/init_c0181b28.bin at the c016be90 table's offset) and any indirect/jump-table caller of c016be90 are missing; c01560c0's handling of a partially-loaded module object is not traced. What is confirmed: the oversize-effect failure path is a clean, single-attempt abort with no wild write, no hang, and no retry — the slot's own metadata resets to a placeholder regardless of whether any error text reaches the screen.
