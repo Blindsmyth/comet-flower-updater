@@ -1,15 +1,5 @@
 # Firmware map part 3: controls and MIDI
 
-## Handoff continuation: Task A implementation (Codex GPT-6 Astra)
-
-### Startup toggle latch
-
-### MainApp dispatcher interception
-
-### Rotary and analog interception
-
-### Machine code and trampoline placement
-
 Static analysis only. Addresses refer to the main firmware disassembly unless stated otherwise. Findings are saved individually with confidence and instruction evidence.
 
 > **Review by Claude (2026-10-07).** Codex (gpt-6-astra, LOW effort), 15

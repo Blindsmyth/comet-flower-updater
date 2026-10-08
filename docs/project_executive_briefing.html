@@ -680,9 +680,9 @@
                     <div class="metric-desc">Native C674x payload driving footswitches, 10 buttons, 4 knobs, and expression.</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value emerald">100%</div>
-                    <div class="metric-title">Unbrickable Safety Margin</div>
-                    <div class="metric-desc">Factory bootloader and recovery flash sectors are strictly untouched.</div>
+                    <div class="metric-value emerald">0 B</div>
+                    <div class="metric-title">Boot &amp; Recovery Writes</div>
+                    <div class="metric-desc">Updater never writes the boot program or recovery sector, so update-mode recovery stays available. Not a guarantee against power or hardware faults.</div>
                 </div>
             </div>
         </header>
@@ -876,9 +876,9 @@ flowchart LR
 
             <!-- Quiescence Proof Callout -->
             <div class="callout-box">
-                <h4>🛡️ Critical Breakthrough: Runtime Quiescence Verified</h4>
+                <h4>🛡️ Finding: Reload Quiescence Mechanism (likely, not hardware-verified)</h4>
                 <p>
-                    A critical hurdle in embedded DSP modification is runtime race conditions: what happens when a user switches guitar patches while audio interrupts are firing? Our reverse-engineering of the effect loop revealed that Zoom's native engine swaps the effect interrupt pointer with a stock silence stub (<code>0xc016d184</code>) at <code>118133e0 + 4*slot</code> before reloading. This proves that swapping Slot 0 into L2 SRAM is <strong>100% race-free</strong>—the audio hardware is already silenced by design during reload.
+                    A critical hurdle in embedded DSP modification is runtime race conditions: what happens when a user switches guitar patches while audio interrupts are firing? Our reverse-engineering of the effect loop revealed that Zoom's native engine swaps the effect interrupt pointer with a stock silence stub (<code>0xc016d184</code>) at <code>118133e0 + 4*slot</code> before reloading. On the three traced reload paths this <strong>likely</strong> keeps the audio Swi out of the old image during a swap. It does not yet cover every loader/error path, and L1P cache safety for code in SRAM is still open (recon/16 B1–B3).
                 </p>
             </div>
         </section>
@@ -961,10 +961,10 @@ flowchart LR
                     <div class="timeline-content">
                         <div class="timeline-heading">
                             <span class="timeline-phase">Phase 1: Silicon Cache Hardening</span>
-                            <span class="timeline-badge tb-done">Completed & Audited</span>
+                            <span class="timeline-badge tb-done">Patch built, not yet hardware-tested</span>
                         </div>
                         <p style="font-size: 0.88rem; color: var(--text-secondary);">
-                            Identified L2 memory configuration bottlenecks, developed 9-byte surgical patch, proved audio interrupt quiescence, and completed independent Codex high-reasoning mathematical audits.
+                            Identified L2 memory configuration bottlenecks, developed 9-byte surgical patch, traced reload quiescence on the main paths (likely), and had the bytes independently audited. Runtime safety is not yet certified.
                         </p>
                     </div>
                 </div>

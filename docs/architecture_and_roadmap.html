@@ -273,7 +273,7 @@
         <div class="summary-card">
             <h3>2. The Silicon Patch Applied</h3>
             <p>
-                We reconfigured the DSP's internal cache controller from 128 KiB to 64 KiB, freeing <strong>64 KiB of fast on-chip L2 SRAM</strong>. Slot 0 was relocated to this SRAM, completely removing SDRAM instruction stalls for the lead effect.
+                A 9-byte patch reconfigures the DSP's L2 cache from 128 KiB to 64 KiB, freeing <strong>64 KiB of fast on-chip L2 SRAM</strong>, and points Slot 0 at that SRAM. Built and byte-verified offline; the stall reduction is expected but not yet measured on hardware.
             </p>
         </div>
         <div class="summary-card">
