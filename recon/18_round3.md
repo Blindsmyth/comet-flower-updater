@@ -46,6 +46,8 @@ Send lock order is outer B14[161] then inner B14[89]: `c01274d4 CALLP c0150b20 |
 
 Unready transport returns ffff63be (`c0144e00 LDW *A4[3],A0; c0144e02 CMPEQ 1,A0,A0; c0144e10 MVK 63be,A4; c0144e14 MVKH ffff0000,A4`). But the outer infinite-timeout lock precedes this check. Disconnect cleanup clears ready state at c0144e78; it is not proof that a send cannot wait for an existing owner. Ready sends append a possibly partial prefix without waiting for ring space; c01274cc then releases its outer lock and hides that result. Therefore: no explicit enumeration wait in the traced send path, fast rejection only after outer-lock acquisition, no unconditional fail-fast or bounded-latency guarantee. Proposed fix remains bounded producer state plus a separate transmitter, with whole-message reservation and disconnect handling (recon/17 A3).
 
+Status: blocked: fresh isolated compile/dis6x forbidden by current executable/write constraints; exhaustive indirect lock graph unresolved. Existing-artifact hook audit found a confirmed startup ABI bug; no runtime-safety approval.
+
 ## 2. SDRAM gap c0187024..c01f4000
 
 ## 3. USB audio driver and silence-stream patch list
