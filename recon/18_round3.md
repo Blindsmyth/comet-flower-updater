@@ -94,6 +94,13 @@ GET_INTERFACE requires B14[11] configured and returns the byte at c011a1b0+wInde
 
 Interface ownership lookup c015c788 accepts low-byte interface indices <6, reads c011aac0[index], and rejects -1. Registration c015c66c hard-codes only IF0/IF1 and OUT3/IN4; reset c015c638..64a initializes only two interface mappings, while the decoded remaining words initially contain zero. IF2/IF3 can therefore alias registration slot 0 rather than reach a new UAC handler. Existing standard fallback can address them but is not a correct UAC implementation. Unsupported class requests stall when that callback returns the fallback/error; the actual callback must also be audited before asserting every UAC bRequest always stalls. Patch IF2/IF3 routing explicitly, initialize all mapping/alternate entries, validate recipient/index/length/value, and reject unsupported fixed-rate UAC controls deliberately. Current one-byte alternate-array clearing at c01359cc..da/c013566c..7a also needs replacement for all four interfaces.
 
+### 3.3 Stock endpoint setup already sets ISO; its FIFO repacker moves MIDI
+Confidence: confirmed transfer-type/CSR logic; proposed fixed-tail PIO allocation is unimplemented.
+
+`c0121412 AND B1,3,B0; c0121414 CMPEQ 1,B0,B0` identifies isochronous attributes (including proposed 0x05), records the flag at endpoint-state[2], then `c0121434 XOR 1,A0,A1; c012143a SHL A1,14,A1; c0121440 SHL A0,6,A0; c0121442 OR A0,A1,A0; c0121444 STH A0,*B4[0]` writes TXCSR. Here A0 before the shift is 209: base CSR=0x3440; ISO adds 0x4000, yielding 0x7440. This is actual stock ISO-mode support, although stock descriptors never select it. It also enables DMA-related bits, so do not reuse that entire CSR value for a PIO producer. [TI SPRUFM9H, sections 2.7.1.4.1 and 4.35](https://www.ti.com/lit/ug/sprufm9h/sprufm9h.pdf) identifies ISO bit 14 and the separate DMA controls.
+
+Stock setup calls the shared FIFO allocator at c012146e onward, recomputing all endpoints from byte 64 (`c01214c0/c01214c6` write TX/RX FIFOADDR). Adding double-buffered TX1=256*2 through it shifts RX3/TX4 by 512 bytes; it cannot preserve their old addresses while using this unchanged repacker. A dedicated allocation at unused bytes 0x140..0x33f can preserve RX3=0x040..0x0bf and TX4=0x0c0..0x13f: TX1 FIFOADDR=0x28, TXFIFOSZ=0x15, TXMAXP=180. Total occupied end is 0x340 (832 bytes). Patch/bypass the repacker consistently for TX1, reserve that tail across later endpoint configuration/reset, and flush while quiescent. PIO must disable TX1 DMA ownership and set/clear TXPKTRDY with correct CSR semantics; endpoint number availability alone does not make that integration safe.
+
 ## 4. Slot 0 residency and remaining reload paths
 
 ## 5. Effect exceeding its 40 KiB slot
