@@ -50,6 +50,13 @@ Status: blocked: fresh isolated compile/dis6x forbidden by current executable/wr
 
 ## 2. SDRAM gap c0187024..c01f4000
 
+### 2.1 Known initialization and heap extents do not allocate the gap
+Confidence: confirmed for inspected decoded ranges and direct constructor calls; not an exhaustive runtime ownership proof.
+
+Scanned every existing `build/codex3/init_*.bin` destination plus decoded length: none intersects [c0187024,c01f4000). Inventory saved at `build/codex8/cinit-ranges.txt`. c0187024 is a record-table end, not a clear-until-RAM-end destination: `c0163718 MVK 6ef4,A3; c0163720 MVK 7024,B4` with c0180000 high halves; records supply separate destination B4 at c016376c and decoder handler at c0163780/3788. Thus that reference alone does not create a growing .bss/heap into the gap.
+
+Direct constructor inventory (`build/codex8/heap-callers.txt`) finds the custom heap initializer at c015fe78 consuming descriptor base/size (`c015fe76 LDW *B4[4],A6; c015fe80 LDW *B4[3],B4`). Its known effect descriptors are the five fixed 0xa000 regions starting c01f4000 (or the independently relocated Slot 0), and output-EQ c00d2800; none grows backward into the gap. The one direct HeapMem constructor call at c0163078 explicitly supplies c0184a00 and 0x400 (`c0163068 SET B0,10,10,B0; c016306a STW B0,*B15[6]; c0163074 STW B0,*B15[5]`). The static c00f1800+0x8000 heap is likewise disjoint. Indirect allocator constructors and arbitrary effect memory writes are not ruled out by this inventory.
+
 ## 3. USB audio driver and silence-stream patch list
 
 ## 4. Slot 0 residency and remaining reload paths
