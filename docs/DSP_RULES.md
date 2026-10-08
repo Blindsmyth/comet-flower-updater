@@ -51,6 +51,7 @@ not by analysis alone. Solo-only effects are the exception, not the aim.
 | Limit | Value | Source |
 |---|---|---|
 | Per-instance state | ≤ 392 B undeclared | stock drives use 392 B (recon/06) |
+| Slot heap (all PT_LOAD + symbols + loader overhead) | **≤ 40 KiB, enforced** by `tools/check_slot_mem.py` | fixed 0xa000 per slot, no spill (recon/14); T808 has ~0.5 KiB left |
 | Code (`.text`) | 18 KB default budget | DR103 needed `ZD2_TEXT_EXTRA`; keep under 18 KB when possible |
 | Stack frame | ≤ 1536 B | stock maximum (DR103 used 1428 B) |
 | Constant tables | in the const blob; 27 KB proven | CF 808X diode table |

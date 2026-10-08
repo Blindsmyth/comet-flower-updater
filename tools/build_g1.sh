@@ -27,3 +27,9 @@ cp "$PROJ"/effects/common/*.h "$LAB/effects/$NAME/"   # shared DSP headers
 mkdir -p "$PROJ/build"
 cp "$LAB/effects/$NAME/build/REPORT.md" "$PROJ/build/$FILE.REPORT.md"
 "$PROJ/.venv/Scripts/zd2" g1-retarget "$LAB/effects/$NAME/build/$FILE.ZD2" "$PROJ/build/$FILE.ZD2" --label "$LABEL" --pic "$PIC"
+# Each slot loads into a fixed 40 KiB heap with no spill (recon/14); an
+# effect that does not fit must never reach an image.
+if ! "$PROJ/.venv/Scripts/python.exe" "$PROJ/tools/check_slot_mem.py" "$PROJ/build/$FILE.ZD2"; then
+    mv -f "$PROJ/build/$FILE.ZD2" "$PROJ/build/$FILE.ZD2.oversize"
+    exit 1
+fi
