@@ -75,3 +75,31 @@ c011d84c, c011d938, c011f87c, c011f8d8.
 | c011d8f0 | unk_d8f0 | 72B routine forwarding to orchestrator_c011b848 (c011d84c, see 00); sole caller big_subsystem_2 (c011d938, see 00) | guess | calls=c011d84c(see00); caller=c011d938(see00) |
 | c011d938 | see 00 | big_subsystem_2 | - | - |
 | c011dca8 | unk_dca8 | 604B routine calling big_subsystem_2 (c011d938, see00), rts_sdiv32 and c0168640; no caller found inside this chunk (reached by table/pointer or an external CALLP) | guess | calls=c011d938=see00,c01675c0=rts_sdiv32,c0168640; 0 in-chunk callers listed |
+| c011df04 | ui_draw_box_c | 244B routine calling gfx_set_bit_range only; no caller found inside this chunk | guess | calls=c011c508=gfx_set_bit_range; 0 in-chunk callers listed |
+| c011dff8 | ui_screen_compose_1 | 656B routine combining the blit leaf c011b0b8 with the two box-fill pairs c011d2d4/c011d590 -- composes a screen from box + blit elements; callers c01341e4,c0140740,c01408cc,c01695c0 (outside chunk) | likely | calls=c011b0b8,c011d2d4,c011d590; 4 callers (none in this chunk) |
+| c011e288 | unk_e288 | 200B routine, sole caller c011e350; not traced | guess | n=200; caller=c011e350 |
+| c011e350 | unk_e350_wrap | 92B wrapper forwarding to c011e288; sole caller c013a810(outside) | guess | calls=c011e288 |
+| c011e3ac | ui_render_item_a_logged | 152B routine calling c011b5a0, c011d014 (-> c011cdec) and diag_mask_test, inside a save/restore frame -- a logged/instrumented variant of the item-render path; sole caller c012e010(outside) | likely | calls=c011b5a0,c011d014,c0169fc0=diag_mask_test,c016e000,c016e020 |
+| c011e444 | ui_render_leaf_logged | 112B routine calling c011b5a0 and diag_mask_test -- sibling pattern to c011e3ac; sole caller c011e4b4 | likely | calls=c011b5a0,c0169fc0=diag_mask_test,c016e000,c016e020 |
+| c011e4b4 | ui_render_item_a_wrap2 | 64B wrapper combining c011d014 (-> c011cdec) and c011e444; callers c012dca4,c012e164,c012e4b8,c01374c8 (outside chunk) | likely | calls=c011d014,c011e444,c016e000,c016e020 |
+| c011e4f4 | ui_render_item_b | 524B routine calling the leaf c011b470 (sibling of c011cdec); sole caller c011e700 | likely | calls=c011b470; caller=c011e700 |
+| c011e700 | ui_screen_render_2 | 408B routine combining c011cdec (item-render-a) and c011e4f4 (item-render-b); callers c013a710,c01407b0,c0140a30,c0154338,c0157876,c015e588 (outside chunk) | likely | calls=c011cdec,c011e4f4; 6 callers |
+| c011e898 | ui_draw_box_d | 152B routine calling gfx_set_bit_range only; sole caller c011e930; recon:10 | guess | calls=c011c508=gfx_set_bit_range; recon=10 |
+| c011e930 | unk_e930_wrap | 60B wrapper forwarding to c011e898; sole caller c013a810(outside) | guess | calls=c011e898 |
+| c011e96c | ui_draw_box_e | 136B routine calling gfx_set_bit_range only -- sibling of c011e898; sole caller c011e9f4 | guess | calls=c011c508=gfx_set_bit_range |
+| c011e9f4 | unk_e9f4_wrap | 60B wrapper forwarding to c011e96c; sole caller c013a810(outside) | guess | calls=c011e96c |
+| c011ea30 | ui_draw_box_f | 216B routine calling gfx_set_bit_range only -- sibling of e898/e96c; sole caller c011ec84 | guess | calls=c011c508=gfx_set_bit_range |
+| c011eb08 | ui_draw_box_shared | 76B routine calling gfx_set_bit_range only, shared by three outer wrappers (eb54/ebc8/ec48) -- a common small icon-fill primitive; roots UpdateUI | likely | calls=c011c508=gfx_set_bit_range; callers=c011eb54,c011ebc8,c011ec48 |
+| c011eb54 | ui_draw_box_shared_wrap1 | 116B wrapper forwarding to c011eb08; sole caller c0137a98(outside) | guess | calls=c011eb08 |
+| c011ebc8 | ui_draw_box_shared_wrap2 | 128B wrapper forwarding to c011eb08; callers c0137a98,c0137eac,c015942c (outside) | guess | calls=c011eb08 |
+| c011ec48 | ui_draw_box_shared_wrap3 | 60B wrapper forwarding to c011eb08; callers c0137748,c0137a98,c014c70c,c01594f0 (outside) | guess | calls=c011eb08 |
+| c011ec84 | unk_ec84_wrap | 148B wrapper forwarding to c011ea30; callers c013a810,c0164880(outside) | guess | calls=c011ea30 |
+| c011ed18 | unk_ed18 | 472B routine calling rts_sdiv32 only; no caller found inside this chunk | guess | calls=c01675c0=rts_sdiv32; 0 in-chunk callers |
+| c011eef0 | gfx_shape_dispatch | 356B dispatcher fanning out to the whole shape/line-draw family (b608,b848,bb08,bbc4,bd00,bfc8,c22c); sole caller big_mvc_subsystem (c011f8d8, see 00) | likely | calls=c011b608,c011b848,c011bb08,c011bbc4,c011bd00,c011bfc8,c011c22c,c016e000,c016e020; caller=c011f8d8(see00) |
+| c011f054 | unk_f054 | tiny (24B) leaf, six callers all outside this chunk; not traced | guess | n=24; 6 callers outside chunk |
+| c011f06c | unk_f06c | large (1208B) leaf with no internal CALLPs detected, 2 callers outside chunk (1180aea0,c012e474); not traced given size | guess | n=1208; 0 calls; 2 callers outside chunk |
+| c011f524 | ui_screen_render_logged | 500B routine calling orchestrator_c011c990 (c011cb64, see00), rts_memset and diag_mask_test; callers c01545c4,c015460c(outside) | likely | calls=c011cb64=see00,c0167b00=rts_memset,c0169fc0=diag_mask_test,c016e000,c016e020 |
+| c011f718 | ui_logged_leaf_1 | 220B routine calling diag_mask_test only (plus save/restore); callers c0135cd0,c01361ac,c0145ec8(outside); roots MainApp | likely | calls=c0169fc0=diag_mask_test,c016e000,c016e020 |
+| c011f7f4 | ui_logged_leaf_2 | 136B routine calling diag_mask_test only (plus save/restore) -- sibling of c011f718; callers c011f87c(see00),c0135cd0,c0137748,c014dc08 | likely | calls=c0169fc0=diag_mask_test,c016e000,c016e020 |
+| c011f87c | see 00 | wrapper_c011f7f4 | - | - |
+| c011f8d8 | see 00 | big_mvc_subsystem | - | - |
