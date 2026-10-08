@@ -1,5 +1,13 @@
 # 16 — Audio hardware and the cache patch study (firmware map part 4)
 
+## Handoff continuation: reload quiescence and updater (Codex GPT-6 Astra)
+
+Findings below are static analysis; no updater is executed and no pedal is flashed.
+
+### Task B: effect unload/reload quiescence
+
+### Task C: guarded `--patch-fw` updater support
+
 Helper: Antigravity (Claude Opus 5.5). Static analysis only of `build/fw/map/main.dis`.
 Scratch: `build/agy5/`. Confidence tags: confirmed / likely / guess.
 
@@ -231,3 +239,11 @@ All 3 patch locations are guarded by strict SHA-256 and bitmask assertions in `p
 - Source SHA-256: `43060686FCE75E175A217194AB1BE3AEFFE0BE7D59F9D3DF4181D41B9D3CC5A7`
 - Patched SHA-256: `9E2CCC1B727672C250D431A8D88A1D5101105C5DB90EC7CFC8CA85799267C002`
 - Total modified bytes: Exactly 9 bytes across the 493,412-byte image. Generated atomically via `patch_res1.py`.
+
+### B1. Loader cache calls and limits of the stability claim (confirmed calls; safety unresolved)
+
+`c015f76c CALLP c016e360` precedes segment clearing at c015f780 and file read at c015f7a4; `c015f7cc CALLP c016e380` follows the read. Both use segment destination/size and B6=1 (wait). Relocation patcher writes at c013396e and calls c016e380 at c0133978 with size 4 and B6=1. The wrappers select MMIO bases 01844010 (c016e364/368) and 01844000 (c016e384/388) respectively; both preserve B6 as A6 before calling c015ee80. Thus pre-load L2 WBINV and post-write L2 WB are confirmed, including for Slot 0 when its destination table points at 11820000.
+
+`c016b1c0` explicitly writes 1 to **01845028**, then polls it: c016b1f0 MVK 5028,A4; c016b1f8 MVKH 01840000,A4; c016b200 STW A3,*A4[0]; c016b208 LDW *A4[0],A0. The full decoded AIS listing has one direct caller, c0169d14, in vector/code-generation support after c0169d10 -> c016e360. No direct call from the segment/relocation routines was found. This does NOT rule out indirect calls or equivalent cache-register operations elsewhere, nor does it establish a stale-code failure.
+
+TI [SPRUG82A section 2.6 and Appendix A](https://www.ti.com/lit/ug/sprug82a/sprug82a.pdf) requires code writes to become visible to the instruction fetch path: L1D writeback and L1P invalidation must be accounted for. L2 operations interact with L1 caches, so absence of a standalone L1PINV call alone is not a hazard proof. The pre-load invalidate is sufficient only if no old instruction line is fetched again before the new image is ready. Quiescence, all later relocation writes, and L2-operation behavior for the new SRAM address still need closure. C10's phrase 'ensures 100% stable execution' is unsupported and superseded by this finding: the nine-byte patch is byte-verified, not runtime-safety-verified.
