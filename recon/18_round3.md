@@ -37,6 +37,15 @@ Independent PowerShell byte reads of `build/fw/res1_controller.bin` decode the C
 
 Existing startup wrapper saves/restores B13 and A11:A10 (`c01a0000 STW B13,*B15--[2]; c01a0002 STDW A11:A10,*B15--[1]; c01a0054 MV B13,B3; c01a0058 LDDW *++B15[1],A11:A10; c01a005a LDW *++B15[2],B13`). B15 moves by 16 total, preserving eight-byte alignment. Analog wrapper c01a01e8..022c is a tail-branch wrapper with no frame or preserved-register writes: stock path branches to c014aef4, controller path tail-branches to cc. cc uses a 16-byte frame (`c01a006c STW B3,*B15--[4]`, restore c01a0094) for the three-byte message. The stock analog caller's live A10 is preserved, allowing `c015ffd8 STW A0,*B14[76]` and A10 return after the hook. No B14 modification occurs in these wrappers. This closes these calling-frame checks, not the sampler ABI bug or transport safety.
 
+### 1.6 Hook tasks and MIDI lock ordering do not establish a bounded send
+Confidence: confirmed for traced tasks/locks and unready branch; likely absence of an inversion on these direct hook paths, not a global deadlock proof.
+
+Start/dispatch execute in MainApp (entry c0134e10). Analog notifications execute in AD task 11809004: callback call `1180910c LDW *A4[1],A0; 11809110 B A0` reaches c015f08c, then descriptor[9]=c015ffe8 and `c015fff0 CALLP c015ff60 || MVK 1,B4`. The two other direct calibration calls supply B4=0 (c0160044/c01600f0), suppressing c015ffd0. AD's serial lock B14[149] is released by `1180ac00 CALLP 1180b0f0` before returning the sample. MainApp dispatch has returned from queue receive before the hook. Controller analog bypasses stock c014aef4, so its B14[155] acquisition at c014af0c has not occurred.
+
+Send lock order is outer B14[161] then inner B14[89]: `c01274d4 CALLP c0150b20 || LDW *B14[161],A4`, timeout -1 at c01274e0; `c0149df0 CALLP c014a094 || LDW *B14[89],A4`, with `c014a096 MVK -1,B4`. Worker c0149c14 also holds B14[89] while calling packetizer c01489a0 (c0149c8c), then releases it at c0149c98. No reverse 89->161 acquisition was established on that traced worker segment. Indirect callbacks/transitive transport waits remain outside a complete lock graph; 'short waits' is not justified merely by Task context.
+
+Unready transport returns ffff63be (`c0144e00 LDW *A4[3],A0; c0144e02 CMPEQ 1,A0,A0; c0144e10 MVK 63be,A4; c0144e14 MVKH ffff0000,A4`). But the outer infinite-timeout lock precedes this check. Disconnect cleanup clears ready state at c0144e78; it is not proof that a send cannot wait for an existing owner. Ready sends append a possibly partial prefix without waiting for ring space; c01274cc then releases its outer lock and hides that result. Therefore: no explicit enumeration wait in the traced send path, fast rejection only after outer-lock acquisition, no unconditional fail-fast or bounded-latency guarantee. Proposed fix remains bounded producer state plus a separate transmitter, with whole-message reservation and disconnect handling (recon/17 A3).
+
 ## 2. SDRAM gap c0187024..c01f4000
 
 ## 3. USB audio driver and silence-stream patch list
