@@ -278,3 +278,11 @@ with no conditional branch on the load's success/failure visible between the `c0
 Confidence: confirmed (no caller of c016be90 found; the c01839f0 store is unconditional); likely/unresolved (whether this means "no UI message at all" vs. "message shown via a mechanism not visible to static CALLP/MVK search," and whether c01560c0 safely unloads a partial module).
 
 Status: blocked: exact message-table contents (needs cinit decode of build/codex3/init_c0181b28.bin at the c016be90 table's offset) and any indirect/jump-table caller of c016be90 are missing; c01560c0's handling of a partially-loaded module object is not traced. What is confirmed: the oversize-effect failure path is a clean, single-attempt abort with no wild write, no hang, and no retry — the slot's own metadata resets to a placeholder regardless of whether any error text reaches the screen.
+
+## Review by Claude (2026-10-08)
+
+**Item 1 (Codex).** 1.2 is confirmed at c0156f04 (`MV A4,A10`) and c0156f08 (`STW B0,*+A4[0]`): the sampler writes through A4 and returns nothing useful. Fixed in commit f2e9511. controller_start now calls c015d428 first, then samples twice into locals (`ADD 4,B15,A4` / `ADD 8,B15,A4` before each `B B10` to c0156f00). Test updater rebuilt.
+
+**Item 4.1 (Sonnet).** The order is confirmed: c01437c4 CALLP c01297a0 (unload) precedes c01437d4 CALLP c016f660 (silence) in each loop pass. c01438b0 sets B14[101]=1 only at c01438d8, after the loop. c016d220 (c01438c8) is only a 0x18d-byte memset of 11f03ebc, not a gate. **This window exists in stock and is not created by the Slot 0 patch:** the patch changes c01839a8[0] (where the heap lives), not the unload/silence order. Unload frees heap blocks but does not erase the image; the zeroing happens at the next load (c015f780), after silence is published. Free-list header writes from c01510e8 land in the freed block in both the SDRAM and L2 cases, so the residual risk is the same as stock (likely).
+
+**Item 5 (Sonnet).** A clean abort with no wild write fits the DR103 install having *completed* the file transfer before the hang. The hang came after the close acknowledgement (recon/04), so it is not explained by this load-failure path. Still open: 5.3 (whether any message is shown) and c01560c0's teardown of a partially built module.
