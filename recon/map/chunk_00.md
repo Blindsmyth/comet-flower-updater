@@ -111,3 +111,27 @@ with FWMAP.md's documented settings-menu table.
 | 118049ec | unk_1180_49ec | 68 B, roots UpdateUI, single caller `c0129398` | guess | callers=c0129398 |
 | 11804a30 | unk_1180_4a30 | 20 B, roots TunerService, single caller `11804a44` | guess | callers=11804a44 |
 | 11804a44 | tuner_period_measure | 1524 B TunerService core: reads a hardware tick counter via `1180bae0` three times, computing elapsed-tick deltas into globals `0x118131e4`/`31b0`/`31bc`/`31c0`, compares against a reference count at `0xc011a398`, and calls `rts_udiv32`/`hwi_guarded_divide_update` -- pitch-period measurement (time between zero-crossings) feeding the tuner's frequency computation | likely | `11804a48/70/a8 CALLP 0x1180bae0,B3` (tick read) x3; `11804a6c SUB A1,A0,A0; STW A0,*B4[...]` deltas; `11804aa0 CMPEQ A0,B0,A0` vs c011a398; calls=c0168580=rts_udiv32,c016b540=hwi_guarded_divide_update; b14=108 |
+| 11805038 | unk_1180_5038 | 176 B, roots UpdateUI, calls `rts_sdiv32`; mmio `01818000`; single caller `118050e8` | guess | calls=c01675c0=rts_sdiv32; mmio=01818000 |
+| 118050e8 | unk_1180_50e8 | 824 B, roots UpdateUI, calls `11805038` plus `11805dc0`/`11805dd8`/`1180b060`; single caller `c013c674` | guess | n=824; calls=11805038,11805dc0,11805dd8,1180b060 |
+| 11805420 | orchestrator_1180_region2 | see 00 | guess | recon/map/00_library_kernel.md |
+| 11805484 | serial_xfer_caller2_1180 | 212 B; calls `11805420` (see 00) and the confirmed serial-transfer orchestrator `1180673c`, plus `11809420`/`11809438`/`diag_mask_test` -- another entry point into the serial-transfer family | likely | calls=11805420,1180673c=serial_xfer_entry,11809420,11809438,c0169fc0=diag_mask_test |
+| 11805558 | unk_1180_5558 | 80 B, roots MainApp, single caller `c0160b80` | guess | callers=c0160b80 |
+| 118055a8 | unk_1180_55a8 | 12 B forwarder to `11805420`, caller `1180ab20` | guess | calls=11805420 |
+| 118055b4 | unk_1180_55b4 | 96 B, roots MainApp; calls `11805420`,`11805484`,`rts_memset`; caller `c0160b80` | guess | calls=11805420,11805484,rts_memset |
+| 11805614 | unk_1180_5614 | 28 B, roots MIDI/MainApp; calls `11805420`; callers `c0160b80`/`c0169700` | guess | calls=11805420 |
+| 11805630 | hwi_guarded_update_1180 | 584 B, roots MIDI/MainApp/UpdateUI; calls `hwi_guarded_divide_update` under save/restore; single caller `11805878` (the audio_or_ui_handler named in 00) | likely | calls=c016b540=hwi_guarded_divide_update; callers=11805878 |
+| 11805878 | audio_or_ui_handler_1180 | see 00 | guess | recon/map/00_library_kernel.md |
+| 11805b00 | unk_1180_5b00 | 32 B forwarder to `11805420`, caller `c0160b80` | guess | calls=11805420 |
+| 11805b20 | unk_1180_5b20 | 16 B, single caller `c0168144` | guess | callers=c0168144 |
+| 11805b30 | menu_item_record1 | 20 B, ptr@ c0185e4c -- a settings/menu-item record entry (FWMAP's documented settings table family); caller `c01508f0` | guess | ptr@=c0185e4c |
+| 11805b44 | unk_1180_5b44 | 16 B, single caller `c0168418` | guess | callers=c0168418 |
+| 11805b54 | unk_1180_5b54 | 112 B, single caller `c0168434` | guess | callers=c0168434 |
+| 11805bc4 | menu_item_record2 | 52 B, ptr@ c0185ca8 -- settings/menu-item record entry | guess | ptr@=c0185ca8 |
+| 11805bf8 | unk_1180_5bf8 | 76 B, single caller `c016846c` | guess | callers=c016846c |
+| 11805c44 | menu_item_record3 | 16 B, ptr@ c0186160 -- settings/menu-item record entry | guess | ptr@=c0186160 |
+| 11805c54 | unk_1180_5c54 | 36 B, roots MIDI/MainApp; single caller `c0163118` (locked_subsystem_op_115, named in 00) | guess | callers=c0163118=locked_subsystem_op_115 |
+| 11805c78 | unk_1180_5c78 | 76 B, single caller `c0168488` | guess | callers=c0168488 |
+| 11805cc4 | menu_item_record4 | 16 B, ptr@ c0185cec -- settings/menu-item record entry | guess | ptr@=c0185cec |
+| 11805cd4 | menu_item_record5 | 20 B, ptr@ c0185e00 -- settings/menu-item record entry | guess | ptr@=c0185e00 |
+| 11805ce8 | unk_1180_5ce8 | 56 B, single caller `c0168434` | guess | callers=c0168434 |
+| 11805d20 | orchestrator_1180_region3 | see 00 | guess | recon/map/00_library_kernel.md |
