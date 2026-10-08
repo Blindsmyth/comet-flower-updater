@@ -59,6 +59,14 @@ Slot 0 residency patch is accepted. Firmware erase/write stages at 0x33000
 are added to the filesystem restore; the boot/update program and recovery
 sector are preserved. This is NOT firmware-only packaging. --firmware and
 --logo cannot be combined with --patch-fw. Runtime stability is not certified.
+
+With --controller-fw <res1_controller.bin> (tools/make_controller_fw.py), the
+main firmware becomes stock v2.00 plus USB MIDI controller mode: three
+redirected CALLPs and one extra AIS section in free SDRAM, checked
+structurally here; const-data edits (logo, start-up text) are allowed too. The image is larger than Zoom's, so it is appended to the
+end of the resource section and resource 0x81 is pointed at it; the
+updater's (already invalid) signature block is dropped. Same stage limits
+as --patch-fw.
 """
 # --patch-fw <res1_patched.bin> accepts only the exact hash-pinned nine-byte
 # residency patch. It rewrites main firmware at 0x33000 in addition to the
@@ -129,12 +137,83 @@ def validate_patch_fw(old_fw, new_fw):
         raise ValueError("--patch-fw requires the exact reviewed nine-byte diff")
 
 
+def validate_controller_fw(old_fw, new_fw):
+    """Accept only stock v2.00 + the controller section and three hooks."""
+    import os
+    sys.path.insert(0, os.path.dirname(__file__))
+    import make_controller_fw as ctl
+    if hashlib.sha256(old_fw).hexdigest() != ctl.STOCK_SHA256:
+        raise ValueError("--controller-fw needs the stock v2.00 firmware in the updater")
+    # Allowed: const-data edits (logo, text), the three hooks, one new section.
+    close = len(old_fw) - 8
+    if new_fw[-8:] != old_fw[-8:]:
+        raise ValueError("--controller-fw: jump-and-close command changed")
+    cmds = list(ctl.ais_commands(new_fw))
+    off, op, args = cmds[-2]
+    if op != ctl.AIS_SECTION_LOAD or off != close:
+        raise ValueError("--controller-fw: no added section before jump-and-close")
+    base, size = args
+    lo, hi = ctl.FREE_SDRAM
+    if not (lo <= base and base + size <= hi):
+        raise ValueError("--controller-fw: section %#x+%#x outside free SDRAM" % (base, size))
+    if len(new_fw) != close + 12 + ((size + 3) & ~3) + 8:
+        raise ValueError("--controller-fw: unexpected image length")
+    hooks = {off: (vma, target) for vma, off, _, target, _ in ctl.HOOKS}
+    for i in range(close):
+        if (new_fw[i] != old_fw[i] and i & ~3 not in hooks
+                and not FW_CONST[0] <= i < FW_CONST[1]):
+            raise ValueError("--controller-fw: stock byte %#x changed" % i)
+    for off, (vma, stock_target) in hooks.items():
+        old = struct.unpack_from("<I", old_fw, off)[0]
+        new = struct.unpack_from("<I", new_fw, off)[0]
+        if ctl.callp_target(vma, old) != stock_target:
+            raise ValueError("--controller-fw: hook %#x is not the stock CALLP" % vma)
+        if (old ^ new) & ~(0x1fffff << 7):
+            raise ValueError("--controller-fw: hook %#x changed more than its target" % vma)
+        if not base <= ctl.callp_target(vma, new) < base + size:
+            raise ValueError("--controller-fw: hook %#x leaves the controller section" % vma)
+
+
+def grow_resource(data, res_id, payload):
+    """Append payload to the last (.rsrc) section and point resource res_id
+    at it. Returns the new file bytes."""
+    pe = pefile.PE(data=bytes(data))
+    sec = pe.sections[-1]
+    if sec.Name.rstrip(b"\0") != b".rsrc":
+        sys.exit("resource section is not last: cannot grow it")
+    end = sec.PointerToRawData + sec.SizeOfRawData
+    sec_dir = pe.OPTIONAL_HEADER.DATA_DIRECTORY[4]
+    tail = len(data) - end
+    if tail and not (sec_dir.VirtualAddress == end and sec_dir.Size == tail):
+        sys.exit("unexpected data after the resource section")
+    rva = sec.VirtualAddress + max(sec.SizeOfRawData, sec.Misc_VirtualSize)
+    rva = (rva + 15) & ~15
+    gap = rva - sec.VirtualAddress - sec.SizeOfRawData
+    align = pe.OPTIONAL_HEADER.FileAlignment
+    blob = b"\0" * gap + payload
+    blob += b"\0" * (-len(blob) % align)
+    sec.SizeOfRawData += len(blob)
+    sec.Misc_VirtualSize = sec.SizeOfRawData
+    salign = pe.OPTIONAL_HEADER.SectionAlignment
+    pe.OPTIONAL_HEADER.SizeOfImage = -(-(sec.VirtualAddress + sec.Misc_VirtualSize) // salign) * salign
+    sec_dir.VirtualAddress = sec_dir.Size = 0
+    entry = [e for t in pe.DIRECTORY_ENTRY_RESOURCE.entries if str(t.name) == "BIN"
+             for e in t.directory.entries if e.id == res_id][0].directory.entries[0].data.struct
+    entry.OffsetToData, entry.Size = rva, len(payload)
+    out = pefile.PE(data=bytes(pe.write()[:end]) + blob)
+    out.OPTIONAL_HEADER.CheckSum = out.generate_checksum()
+    return bytearray(out.write())
+
+
 def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=None,
-         patch_fw=None):
+         patch_fw=None, controller_fw=None):
     if Path(src).resolve() == Path(dst).resolve():
         sys.exit("output must differ from the official updater")
     if patch_fw is not None and (firmware is not None or logo is not None):
         sys.exit("--patch-fw cannot be combined with --firmware or --logo")
+    if controller_fw is not None and (firmware is not None or logo is not None
+                                      or patch_fw is not None):
+        sys.exit("--controller-fw cannot be combined with --firmware, --logo or --patch-fw")
     pe = pefile.PE(src)
     off = pe.get_offset_from_rva(TABLE_VA - pe.OPTIONAL_HEADER.ImageBase)
     data = bytearray(open(src, "rb").read())
@@ -191,9 +270,24 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
             sys.exit("ZOOM logo not found exactly once in resource 0x81")
         data[roff + at:roff + at + len(ZOOM_LOGO)] = splash_bytes(logo, 92, 16)
         print("logo %s placed in resource 0x81 at %#x (main firmware %#x)" % (logo, at, FW_ADDR))
-    if logo is not None or firmware is not None or patch_fw is not None:
+    grown = None
+    if controller_fw is not None:
+        e = res[FW_RES].directory.entries[0].data.struct
+        roff = pe.get_offset_from_rva(e.OffsetToData)
+        old_fw = bytes(data[roff:roff + e.Size])
+        new_fw = Path(controller_fw).read_bytes()
+        if len(new_fw) > FW_SIZE:
+            sys.exit("firmware is %d bytes, larger than its %#x flash region" % (len(new_fw), FW_SIZE))
+        try:
+            validate_controller_fw(old_fw, new_fw)
+        except ValueError as exc:
+            sys.exit(str(exc))
+        grown = new_fw
+        print("firmware %s: stock v2.00 + controller section (%d bytes larger)"
+              % (controller_fw, len(new_fw) - len(old_fw)))
+    if logo is not None or firmware is not None or patch_fw is not None or grown is not None:
         new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
-    if patch_fw is not None:
+    if patch_fw is not None or grown is not None:
         # Boot/update-mode program [0, 0x28000), settings/recovery sector
         # [0xbf000, 0xc0000), and all unused flash regions remain untouched.
         allowed = {(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES),
@@ -218,6 +312,13 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
         print("image %s: %d files, verified, placed at file offset %#x" % (image, len(files), roff))
     for k, e in enumerate(new):
         struct.pack_into("<4I", data, off + 16 * k, *e)
+    if grown is not None:
+        data = grow_resource(data, FW_RES, grown)
+        check = pefile.PE(data=bytes(data))
+        e = [r for t in check.DIRECTORY_ENTRY_RESOURCE.entries if str(t.name) == "BIN"
+             for r in t.directory.entries if r.id == FW_RES][0].directory.entries[0].data.struct
+        if bytes(check.get_data(e.OffsetToData, e.Size)) != grown:
+            sys.exit("resource 0x81 read-back mismatch after growing")
     open(dst, "wb").write(data)
     print("wrote %s; stages:" % dst)
     for e in new:
@@ -230,6 +331,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("src")
     parser.add_argument("dst")
-    for key in ("image", "splash", "presets", "logo", "firmware", "patch-fw"):
+    for key in ("image", "splash", "presets", "logo", "firmware", "patch-fw",
+                "controller-fw"):
         parser.add_argument("--" + key)
     main(**vars(parser.parse_args()))
