@@ -127,6 +127,8 @@ Confidence: likely design, anchored in confirmed instructions above; no patch by
 
 Instruction anchors: descriptor count c0161044, standard request indirect branch c0135aaa, callback shortcut c0151ef0, ISO store c0121444, shared allocator stores c01214c0/c01214c6 and SOF CALLP c011fcb4. Register semantics checked against [SPRUFM9H](https://www.ti.com/lit/ug/sprufm9h/sprufm9h.pdf). These are reviewable change locations and behaviors, not an assertion that selecting ISO alone implements streaming.
 
+Status: blocked: exact response-buffer allocation provenance, reserved patch storage and worst-case Hwi/PIO timing are missing. Driver traces and addressed silence-stream plan saved; no image built.
+
 ## 4. Slot 0 residency and remaining reload paths
 
 ## 5. Effect exceeding its 40 KiB slot
