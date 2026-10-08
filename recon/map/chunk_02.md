@@ -167,3 +167,99 @@ c011d84c, c011d938, c011f87c, c011f8d8.
 | c0121cb0 | usb_ep0_fsm_case4 | EP0 control-FSM case: writes state=6/command=128 then state=5 -- reached via the jump table (index4, ptr@ c018443c) | likely | c0121cb2/ba STW6,128,5; ptr@=c018443c |
 | c0121cc4 | usb_ep0_fsm_case0 | EP0 control-FSM case: writes state=3 and forwards a status word -- reached via the jump table (index0, ptr@ c018442c); mmio 01e00000 | likely | c0121cc6/ca STW3,*A4; STW B1,*B4; ptr@=c018442c |
 | c0121d80 | usb_event_decode | the USB/controller event decoder -- confirmed by recon/17 B4 finding1's exact quote of its caller c0138378; fans out to c01219f4 and the EP0 decoder c0121b4c; sole caller c0138370(outside); mmio 01e00000; recon=15,17,20 | confirmed | recon/17: "c0138378 CALLP c0121d80 ; decode USB/controller event"; calls=c01219f4,c0121b4c |
+| c01221b8 | usb_stub_ret0_c | returns 0; sole caller c015e9c0(outside) | confirmed | c01221b8 MVK 0,A4; BNOP B3,5 |
+| c01221c0 | usb_cppi_freequeue_init | pre-populates CPPI free/completion queue 28 with 4096 sequential raw index values (0..4095) via c011fa70, instead of real descriptor pointers -- explains how c0120250's "pop a free descriptor from queue 28" can use the popped value directly as a table index; roots MainApp, sole caller c0155628(outside) | likely | c01221c4 SET A3,12,12,A3 (bound=0x1000=4096); c01221cc CALLP c011fa70,B3 \|\| MVK 28,A4 (loop) |
+| c01221e0 | usb_phy_calibrate_init | writes two magic configuration words to SYSCFG registers 0x1c14038/3c, then runs a calibrate-bit sequence at 0x1c14184 (set bit15, delay loop of 50, clear bit15/bit10/bit9, poll a status bit via SPLOOP) -- a USB PHY/PLL calibration sequence; roots MainApp,SwitchNrmlSpdRead; sole caller c0122260(confirmed init); mmio 01c14000 | likely | c01221f0/0200 STW to 0x1c14038/3c; c0122212 delay loop(50); c0122244 SPLOOPW poll |
+| c0122260 | usb_controller_init | the USB0 controller init routine -- confirmed by recon/17 B4 finding1: installs callback c011fc8c with interrupt/event argument 19 into B14[131] via c014a524, and calls c01215e4, c01221e0, c011fe70 (ep-table clear), c011ffc0 (syscfg) and c0120004 (CPPI region init); roots MainApp,SwitchNrmlSpdRead; sole caller c0138a78(outside); B14=131; recon=17,18,20 | confirmed | recon/17: "USB init c0122260 installs c011fc8c as callback with interrupt/event argument 19 (c0122288..2290 callback pointer; c0122296 MVK 19,A0; c01222a8 CALLP c014a524)"; calls=c011fe70,c011ffc0,c0120004,c01215e4,c01221e0,c014a524 |
+| c01222d8 | usb_otg_mode_flag_get | reads the OTG/DEVCTL byte at 0x1e00460, extracts a 4-bit mode field, and writes 1 through the output pointer A4 if the field equals 3, else 0; sole caller c015e880(outside); mmio 01e00000 | likely | c01222e0/e8 LDBU *0x1e00460; EXTU A0,27,30,A0; CMPEQ 3,A0 |
+| c0122304 | usb_ep_ready_check | per-endpoint ready/status check: computes the 0x1e00000+ep*16+0x502 register (same family as c0120628/c0120860), tests a CSR bit (either the indexed one at fixed 0x1e00502 or the per-endpoint one depending on an endpoint-class test), and returns 0 on success or error 0xffff8a64; sole caller c01354f8(outside); mmio 01e00000 | likely | c0122310 MVK 0x0502,A0 (same offset family); c012232c/48 LDHU+EXTU bit27:31 checks; error=0xffff8a64 |
+| c0122358 | usb_ctrlstate_field1_get | copies the ctrl-struct global word at c0112c0c (adjacent to the c0112c08 EP0-state block mapped around c0121b4c/c0122370) into the caller's output pointer *A4, returns 0; sole caller c015e924(outside) | confirmed | c0122358/60 MVK 0x2c0c,A5;MVKH 0xc0110000,A5; LDW *A5[0],A0; STW A0,*A4[0] |
+| c0122370 | usb_ep0_read_setup | reads the EP0 FIFO data register at 0x1e00420 (two 32-bit words) and decodes them into the caller's 8-byte SETUP-packet struct (bmRequestType/bRequest/wValue/wIndex/wLength), updates the EP0 control-transfer state variable at c0112c14, and clears RXPKTRDY via the indexed CSR -- confirmed as the SETUP reader used by the common request decoder per recon/18,20: "c01359e4 ... reads SETUP via c0122370"; sole caller c01359e4(outside); mmio 01e00000 | confirmed | recon/18: "Common decoder c01359e4 reads SETUP via c0122370"; c0122378/80 MVK 0x0420,A4 (FIFO0 data reg); c0122388..a2 STB/STH decode into *A5 |
+| c0122404 | usb_ep_struct_defaults_init | writes the 16-byte constant sequence {1,2,3,4} into the caller's struct (two STNDW double-word stores) and writes queue number 28 into a second output pointer; sole caller c0155628(outside) | likely | c012240a STNDW 2:1,*A5(0); c0122410 STNDW 4:3,*A5(8); c0122414 STW 28,*B4[0] |
+| c0122418 | usb_rx_buffer_enqueue | stores an RX buffer pointer+length into the c011341c RX record's field+6/+7 (after checking field+2 is set, else error 0xffff8ad0), and if field+5 ("ready") is set calls c01203b8 to reset+resubmit -- exact mirror of c0120f64 on the TX side; sole caller c0122468 | likely | same shape as c0120f64; calls=c01203b8 |
+| c0122468 | usb_rx_ringbuf_drain | drains up to N bytes (count from the ctrl struct at c0112c1c) byte-by-byte from a computed ring-buffer address into the caller's output pointer, decrementing a pending-count field each iteration, then re-arms the endpoint via c0122418; callers c01380b4, c01384ac, c015b2b4(all outside) | likely | c012249c/a0 LDB/STB loop (byte drain); c01224ac/ae ADD -1,*A5[0] (count decrement); calls=c0122418 |
+| c0122570 | usb_rx_ep_io_entry | the RX-side counterpart to c0120fb0: large (416B) per-endpoint entry point on the c011341c table, special-casing ep==0 (far branch) and reading the EP0 control-state var at c0112c14 (compared against 3/7) for a second branch, else checking a 0x1e00508 FIFO-count-style register (>64) and resetting RX I/O-state record 4 (c011fe20); caller c015b168(outside); mmio 01e00000 | likely | c0122584 ep==0 special case; c01225d8 LDW *0xc0112c14 (state var, ==3/7); c0122610/16 LDHU 0x1e00508, CMPGTU 64; calls=c011fe20 |
+| c0122710 | usb_speed_selector_get | reads the POWER byte at 0x1e00401, tests a status bit, and returns 0, 1 or 2 -- confirmed by recon/17 as the "current-speed reader" supplying the descriptor-template selector to GET_DESCRIPTOR at c0134fe4; roots MainApp,SwitchNrmlSpdRead; 7 callers (c0134fe4,c0135138,c0135250,c01354f8,c0135660,c01357c8,c0152500); mmio 01e00000; recon=17 | confirmed | recon/17: "Current-speed reader c0122710 supplies the selector to GET_DESCRIPTOR at c0134fe4"; c0122718/20 LDBU 0x1e00401, EXTU bit27:31 |
+| c0122734 | usb_ep_intr_enable_bit_set | maps an endpoint number (1..4) to a bit mask (2,8,4,16 respectively, else default) and conditionally writes it into the interrupt-enable register at 0x1e00024, after first setting a flag=1 in the c011298c-based 168-stride table; sole caller c0122824 | likely | c012278a..a6 CMPEQ 4/3/2/1,A1 -> B0=16/8/4/2; c01227b0/b8 STW A0,*0x1e00024 |
+| c01227c0 | usb_tx_pending_count_update | 2-state transition on the c011297c TX table's field+3 counter: if (count-1) wraps to 0/1 sets count=3, else sets count=2; sole caller c0122824 | likely | c01227d4 LDW *B4[3]; c01227d8/da ADD -1,CMPLTU 1; c01227e4/ec STW 3/2,*B4[3] |
+| c01227f0 | usb_rx_pending_count_update | same 2-state transition as c01227c0 but on the c011341c RX table's field+3 -- exact mirror; sole caller c0122824 | likely | identical shape to c01227c0, base=0xc011341c |
+| c0122824 | usb_ep_event_service | per-endpoint event-service step combining the pending-table op (c01200f4), the interrupt-enable bit setter (c0122734) and both pending-count updaters (c01227c0, c01227f0); callers c01380b4, c01384ac, c015b2b4(all outside) | likely | calls=c01200f4,c0122734,c01227c0,c01227f0 |
+| c0122900 | usb_stub_ret0_d | returns 0; sole caller c015e880(outside) -- same caller as c01222d8, possibly a null/no-op counterpart in a function-pointer table | confirmed | c0122900 MVK 0,A4; BNOP B3,5 |
+| c0122904 | usb_ep_state_field_clear | zeroes field+0x10 of the 680-byte-stride per-endpoint record based near 0xc011298c, indexed by endpoint arg A4 -- same 680-byte stride confirmed for c011fe70 by recon/17 (B2 finding2's "680-byte increments and bound 4" quote); roots MainApp,Swi:USB,SwitchNrmlSpdRead | likely | c0122904/06 MVK168,SET bit9 ->680; c012290c MVK 0x298c,B0; c012291a STW 0,*B4[0]; recon/17 680-byte-stride precedent |
+
+## Data
+
+Three separate per-endpoint software-state table families emerged in the
+second half of this chunk, all in the low-SRAM 0xc0110000-ish region used
+throughout this driver:
+
+- **TX-state table**, 168-byte stride, base `0xc011297c`: field+2 "enabled",
+  field+5 "ready", field+6/+7 buffer pointer/length, field+9 retry/depth
+  counter, field+3 a 2-state pending counter. Consumers: c0120650 (drain
+  step), c01207c8 (reset+notify, via c011fd40), c0120800 (service entry),
+  c0120f64 (buffer enqueue -> c01204b4 TX submit), c0120b2c (desc prepare),
+  c01227c0 (pending-count update).
+- **RX-state table**, 168-byte stride, base `0xc011341c`: same field layout
+  as the TX table. Consumers: c0120904 (drain step), c0120a94 (reset+notify,
+  via c011fdc8), c0120acc (service entry), c0122418 (buffer enqueue ->
+  c01203b8 RX resubmit), c0120ca4 (desc prepare), c01227f0 (pending-count
+  update).
+- **EP0 control-transfer ctrl struct**, base `0xc0112c08` (168-byte stride
+  per the reset helpers c011fd40/fdc8, which touch `+0x8c`/`+0x14` sub-
+  offsets of it): field at `+4` (0xc0112c0c, read by c0122358), `+8`
+  (0xc0112c10, cleared by c012154c), `+0xC` (0xc0112c14, the EP0 FSM state
+  variable read/written by c0121b4c, c0121c54..cc4 and c0122370/c0122570 --
+  observed values 0,1,2,3,5,6,7).
+- A fourth, 680-byte-stride array near `0xc011298c`/`0xc0112988` region is
+  touched by c0122904 (field+0x10) and by the already-confirmed
+  `c011fe70` (recon/17: 680-byte increments, bound 4) -- likely a bigger
+  per-endpoint struct that nests or sits beside the two 168-byte tables.
+- Register-offset family `0x1e00000 + ch*16 + {0x502,0x506,0x508,...}`:
+  per-channel DMA/CPPI control bits, each offset apparently a different
+  flag/field (bit3 at +0x502 via c0120628, bit4 at +0x506 via c0120860,
+  a 16-bit threshold-compared-to-64 at +0x508 read by c0122570). The fixed
+  (non-indexed) register at `0x1e00502` is read by c0121b4c as a *global*
+  EP0/session status word (bits 2, 27, 31 tested), distinct from its
+  per-channel use elsewhere.
+- CPPI "free queue" 28 is pre-populated by c01221c0 with 4096 raw sequential
+  index values (0..4095) via c011fa70 -- this is why c0120250's "pop a free
+  descriptor from queue 28" can treat the popped value directly as a table
+  index into 0xc87b9000+32*index, unlike the real HW completion queues
+  24-27 whose entries need c011fa20's pointer-to-index translation.
+- Template/config tables in the 0xc0180000 data-table region: `0x5d0`
+  (9-field, read by c0120650), `0x598/59c` (read by c0120888), `0x5a0`
+  (read by c0120904), `0x5c8/5cc` (read by c01201e0, row 123) -- all feed
+  a "build a 32-bit channel-config word" pattern whose exact bit layout
+  was not resolved.
+- EP0 FSM case-handler jump table at `0xc018442c` (6 word-sized entries,
+  indices 0..5): c0121cc4, c0121c94 (twice, indices 1 and 3), c0121c74,
+  c0121cb0, c0121c54, selected by c0121b4c from the ctrl-state variable at
+  0xc0112c14. c0121ca2's own table-pointer slot (`0xc0184444`) sits one
+  entry past this 6-entry table, so it is reached from a different site
+  not traced here.
+- SYSCFG/PHY registers: `0x1c14038/3c` (magic config words, c01221e0),
+  `0x1c14184` (calibrate-bit sequence, c01221e0), `0x1e207804/7128/7a04`
+  (PSC-style module reset/enable-and-wait, c01215e4).
+
+## Open questions
+
+- Exact bit/field semantics of the three "DMA/CPPI control" register
+  offsets `0x502/0x506/0x508` relative to `0x1e00000+ch*16` were not
+  confirmed against a register reference -- named by observed effect
+  (set bit3 / set bit4 / compare-to-64) rather than by TRM name.
+- The 0x180000-region template tables at `0x5d0/598/59c/5a0/5c8/5cc` feed
+  a repeated "build a channel-config word, store at base+0x17e0-ish"
+  pattern (c0120650/c0120888/c0120904/c01201e0) whose output consumer and
+  exact bit layout were not traced.
+- The relationship between the 168-byte-stride TX/RX tables
+  (c011297c/c011341c) and the 680-byte-stride array near c011298c is
+  unresolved -- they may be nested substructures of one bigger per-endpoint
+  record, or entirely separate arrays that happen to sit close together.
+- c01218c4 (usb_queue_service_case_c) has no CALLPs in the facts sheet and
+  was not read directly (self-contained MMIO leaf, 156B) -- its specific
+  role among the c01219f4 dispatch cases is a guess from position alone.
+- c0121ca2's jump-table slot (0xc0184444) lies just past the 6-entry table
+  c0121b4c indexes (0xc018442c..440) -- which code reaches it was not
+  identified in this chunk.
+- c01215ac returns a bare constant pointer (0xc01816dc); the structure it
+  points to was not inspected, so its role is an unverified guess.
