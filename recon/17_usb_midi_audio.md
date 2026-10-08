@@ -276,3 +276,7 @@ c022ba16 MVK 3,A4
 c022ba18 CALLP c022b928,B3
 ```
 Boot code requires both foot inputs low and the ten normal inputs high for the update branch (c020a4d0..c020a560); an extra held normal button changes that branch. Physical labels, direction and user-visible startup timing cannot be established from static code alone.
+
+## Review by Claude (2026-10-08)
+
+Spot-checked against the binaries: the res5 L2CFG/L1DCFG/L1PCFG stores at c0203d50/62/74 (boot.dis); the SOF hook c011fcb4 -> c016f770 -> 11818e80, where the word at 11818e80 is 0x008ca362 = `BNOP B3,5`; and the reconstructed 101-byte configuration (config-False.bin starts `09 02 65 00 02 01 00 80 fa 09 04 00 00 ...`). All three match. A1's consequence for the Slot 0 patch (a real 3 -> 2 cache-size change) is resolved as safe in recon/16 C12. The controller-code placement still needs a staging design: copy the code from an SDRAM image into 1182a000 after c016d080, before the hooks can fire.
