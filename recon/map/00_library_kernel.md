@@ -181,3 +181,23 @@ honest guess beats a wrong confirmed."
 | c016b7c0 | unk_b7c0 | 140-instruction routine, prologue 'STW A10,*B15--[2]; STW B3,*B15[1]', only external call c0163c00 -- not traced in detail this wave despite 11 callers and being called by both c016b540's sibling wrappers (c016b6c0/c016b740) and c01529c0 | guess | n=140; calls=c0163c00; 11 callers; called by c016b6c0,c016b740,c01529c0,c016b9c0 |
 | c016b9c0 | wrapper_c016b9c0 | generic routine (calls c0169fc0) | guess | c016b9c0: n=111; 4 callers; first op STW.D2T1 A10,*B15--[2] |
 | c016bb40 | wrapper_c016bb40 | generic leaf routine, no further structure identified | guess | c016bb40: n=32; 0 callers; first op MV.L1X B4,A0 |
+| c016bbc0 | wrapper_c016bbc0 | generic routine (calls c016bd40,c016cf00,c016e980; string '%.*s ') | guess | c016bbc0: n=113; 1 callers; first op STW.D2T1 A11,*B15--[2] |
+| c016bd40 | wrapper_c016bd40 | generic routine (calls c016ec00) | guess | c016bd40: n=35; 4 callers; first op MV.L1X B15,A15 |
+| c016bdc0 | wrapper_c016bdc0 | generic routine (calls c0167b00) | guess | c016bdc0: n=25; 1 callers; first op MVK.S1 0x0cfc,A3 |
+| c016be20 | wrapper_c016be20 | generic routine (calls 11809224,c01295c8,c0129630) | guess | c016be20: n=20; 2 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016be58 | wrapper_c016be58 | generic routine (calls c016be20) | guess | c016be58: n=11; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016be80 | err_set_last_code | setter: B14[114] = A4 (records a small last status/error code); 48 CALLP callers including the heap allocator's out-of-block path | confirmed | c016be80 STW A4,*+B14[114]; BNOP B3,5 -- already identified in recon/18_round3.md |
+| c016be88 | err_get_and_format | getter for B14[114] (pairs with c016be80) that goes on to build an error message, default string literal 'Unknown (Error ...)'; calls c016c360 (format helper) and uses c016e000/c016e020 save-restore, so it is a real 24-instruction function, not a 2-instruction leaf, despite sharing the getter's opening instruction | likely | fact sheet: b14=114, strings=Unknown (Error, calls c016c360,c016e000,c016e020; n=24 |
+| c016bee0 | wrapper_c016bee0 | generic routine (calls 1180a350,c014fea0,c014ff58) | guess | c016bee0: n=24; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016bf40 | ptr_const_c018326c | returns the fixed pointer constant 0xc018326c (no load) | confirmed | c016bf40: MVK/MVKH -> 0xc018326c; BNOP; 2 callers |
+| c016bf50 | wrapper_c016bf50 | generic routine (calls c0155ac0,c01628e0,c016bf40; B14[139 154 ]) | guess | c016bf50: n=11; 5 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016bf74 | struct_get_field_0_c016bf74 | getter: returns field +0 of the struct pointed to by arg A4 | confirmed | c016bf74: LDW.D1T1 *+A4[0],A4; 1 callers |
+| c016bfa0 | wrapper_c016bfa0 | generic routine (calls c0167b00,c016e000,c016e020) | guess | c016bfa0: n=32; 1 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016bff0 | ptr_const_118130a0 | returns the fixed pointer constant 0x118130a0 (no load) | confirmed | c016bff0: MVK/MVKH -> 0x118130a0; BNOP; 9 callers |
+| c016c000 | rts_const_return_0_c016c000 | leaf stub, returns constant 0 | confirmed | c016c000 MVK.L1 0,A4; BNOP; 1 callers |
+| c016c004 | cfg_get_global_c0180d61 | getter: returns the word/field at fixed global 0xc0180d61 | likely | c016c004: MVK/MVKH -> 0xc0180d61; LDBU.D1T1 *A4[A5],A4; 1 callers |
+| c016c024 | wrapper_c016c024 | generic routine (calls c016c004,c016df64,c016e000) | guess | c016c024: n=19; 1 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016c060 | wrapper_c016c060 | generic routine (calls 11805e64,11808c44,c0168580) | guess | c016c060: n=14; 1 callers; first op STW.D2T2 B3,*B15--[4] |
+| c016c090 | wrapper_c016c090 | generic routine (calls 1180a448,c0127fe0,c0129630; B14[99 125 174 ]) | guess | c016c090: n=43; 2 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016c118 | cfg_get_b14_125 | getter: return B14[125] | confirmed | c016c118 LDW.D2T1 *+B14[125],A4; returns; 1 callers |
+| c016c120 | wrapper_c016c120 | generic routine (calls 1180950c,c0155290,c015576c) | guess | c016c120: n=56; 1 callers; first op CALLP.S1 0xc016e020,A3 |
