@@ -173,3 +173,19 @@ c01202ea STW A6,*B4[7] ; original buffer pointer
 c0120318 CALLP c011fa70 ; queue submission
 ```
 RX refill c0120d44 calls this path. TX uses related descriptor routines, requiring continuation below. Presence of USB FIFO CPU accesses for EP0 must not be generalized to MIDI endpoints.
+
+### B4 finding 2 — Swi -> UsbTask -> endpoint dispatch, and existing SOF stub (confirmed)
+Decoded B14[181] at c01850d4 points to **c0182aa0**, Swi entry **c015b0f0**, priority 13 (audio Swi priority 15). c015b100 calls c01387f0 with command A4=7 and B4=-1; command table c0180d40[7]=**c0138370**. USB worker **c0138310** comes from task-creation descriptor c01800bc (entry +8=c0138310), used at c01387ac. It receives messages on B14[95], indexes command table, and invokes the callback:
+```text
+c0138318 CALLP c014a214 ; receive USB command
+c0138340 ADDAW B1,B0,B0 ; B1=c0180d40
+c0138364 B B0
+c0138378 CALLP c0121d80 ; decode USB/controller event
+c01383e6 LDW *B5[B4],B0 ; B5=c01807a0
+c01383ea BNOP B0       ; endpoint/event callback
+```
+In the Swi's command-7 path c01389ec.., submission details still need timing review; the task/handler association is confirmed by both tables. CPPI TX chain: c01204b4 -> c012042c -> c0120250; c012050c invokes cache operation c016e380 before queuing. Queue writer c011fa70 writes **01e0600c + 16*queue** (`c011fa90 ADDK 24588,A4; c011fa96 STW B0,*A4[0]`), matching CPPI queue manager. EP0 setup is CPU FIFO read: `c0122380 LDW *A4[0],A1; c0122386 LDW *A6[0],A0`, both from **01e00420**. This is mixed CPPI data transport / control PIO, not a general PIO-only stack.
+
+SOF already has a top-half hook: c011fca2 extracts wrapper interrupt bit19; c011fcb2 acknowledges it; **c011fcb4 calls c016f770 -> 11818e80**, currently only `BNOP B3,5`. Rearm c0121576 writes 0x01ff1e1f to 01e00030, including bit19. This is a concrete bounded SOF-hook candidate, not an implemented audio scheduler. At full speed, stage the next packet ahead of the host IN token; use SOF/frame counter plus TX completion to handle buffer ownership and missed intervals. Copying/converting in a bounded high-priority service and PIO-feeding a dedicated endpoint is a simple first design; CPPI is an alternative but needs exact ISO mode, descriptor lifetime, cache and short-packet behavior review. Do not call the semaphore/task-oriented bulk API in Hwi/audio Swi or assume bulk retries apply to ISO.
+
+Clock design (likely): asynchronous IN must derive packet counts from actual codec-produced frames/ring occupancy relative to USB SOF. Nominal sequence totals 441 frames/10 ms (44/45 per ms), but a fixed repeating sequence alone does **not** accommodate independent-clock drift. Track monotonic production/consumption and bounded ring fill; specify startup fill, underrun, overrun, suspend and reset behavior. No resampler is required solely to label the source asynchronous. Deadline/worst-case jitter remains an owner measurement, not closed by FIFO capacity.
