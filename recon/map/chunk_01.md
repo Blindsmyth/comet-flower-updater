@@ -53,3 +53,23 @@ and are skipped here (see 00): 118093c0, 1180a2a8, 1180ad68.
 | 11808320 | usbdesc_fmt3 | calls c012b324, fixed_scale_mul_84 (c0130d74), c013b7e8, fmt_render_wrapper; 1 caller 11808360 | guess | calls=c012b324,c0130d74,c013b7e8,c016c360 |
 | 11808360 | usbdesc_builder_main | orchestrates 11808200/280/82b4/82f8/8320 plus usb_desc_table_get, orchestrator_midi_compose, c012f068, fixed_scale_mul_84_div; builds a formatted USB-descriptor/MIDI string; 1 caller 1180af60 | likely | 12 calls incl. c012afe0,c012ee10,c0130d28; 1 caller |
 | 11808440 | usbdesc_builder_alt | sibling of 11808360 (calls 11808200,11808280,usb_desc_table_get,c012db40,c013b7e8); 1 caller 1180af8c | guess | calls=11808200,11808280,c012afe0,c012db40,c013b7e8 |
+| 11808560 | ad_init_stub | tiny (12-byte) leaf, no calls recorded; 1 caller 1180abc0 — part of the AD init sequence | guess | n=12 |
+| 1180856c | ad_gpio_setup | AD peripheral setup: pokes 8 MMIO fields via shared helpers c01609f0,c0160a04..c0160a84 (the same helper set 118086e4/MainApp uses), then calls 11808ac0; 1 caller 1180abc0 | likely | calls incl. 11808ac0, 8x c0160a0x, hwi_guarded_divide_update; roots AD |
+| 11808654 | ui_buf_clear | clears a buffer via rts_memset; shared by MainApp/UpdateUI redraw sites | likely | calls=c0167b00; 4 callers (118086e4,11808cb0,c013c204,c013c514) |
+| 118086a4 | mainapp_helper_86a4 | 64-byte leaf, no calls recorded; 1 caller 118086e4 | guess | n=64 |
+| 118086e4 | mainapp_bigsetup | calls 11808654,118086a4, the same 8 MMIO-poke helpers (c01609f0..c0160a84) 1180856c uses, bios_sem_post, rts_memset, wrapper_c016bfa0; B14[183]; 1 caller c015d428 (MainApp init path) | likely | calls incl. 8x c0160a0x, c01628e0, c0167b00; b14=183 |
+| 11808838 | i2c_rate_div | computes a divide (rts_udiv32) for the I2C transaction, e.g. a bus-speed/clock-divider value; 1 caller 118088d0 (i2c_write) | likely | calls=c0168580 |
+| 118088d0 | i2c_write | i2c_write(buf,len,dev); far stub c016f200; locks B14[182/183] via bios_sem_pend, computes rate via 11808838, transfers, diag_mask_test, releases via bios_sem_post; 1 caller c013dca0 | confirmed | recon/16: "0x118088d0 i2c_write(buf, len, dev) (L2 code; far stub c016f200)" |
+| 11808ac0 | ad_gpio_table_init | 212-byte leaf, no further calls recorded; 1 caller 1180856c — likely a bulk GPIO pin-table init for the AD serial handshake lines | guess | n=212, calls=none; roots AD |
+| 11808b94 | updateui_leaf_b94 | 12-byte leaf, 1 caller c013c218 | guess | n=12 |
+| 11808ba0 | updateui_divhelper | calls hwi_guarded_divide_update; 1 caller 11808bc8 | guess | calls=c016b540 |
+| 11808bc8 | updateui_scroll_helper | calls 11808ba0; UpdateUI scroll/position helper, 4 callers incl. c014dbb8,c0160d8c | guess | calls=11808ba0; 4 callers |
+| 11808c44 | rhythm_div_helper | calls hwi_guarded_divide_update; 1 caller wrapper_c016c060 — RhythmService timing divide | guess | calls=c016b540; roots RhythmService |
+| 11808c68 | updateui_scroll_thunk | thin wrapper calling 11808bc8; 2 callers c0160d58/e30 | guess | calls=11808bc8 |
+| 11808ca4 | updateui_leaf_ca4 | 12-byte leaf, no calls; 4 callers incl. 11808cb0,11808d00,c013c218,c0160dd4 | guess | n=12 |
+| 11808cb0 | updateui_item_clear | calls 11808654 (buf clear),11808ca4,ptr_const_118130a0; 6 callers across UpdateUI screen handlers | likely | calls=11808654,11808ca4,c016bff0 |
+| 11808d00 | updateui_item_clear2 | calls 11808ca4; sibling of 11808cb0, 2 callers 11808ed0/c013c514 | guess | calls=11808ca4 |
+| 11808d50 | updateui_scroll_main | calls 11808bc8 three times; B14[129]; 1 caller 11808ed0 — larger UpdateUI scroll routine | guess | calls=11808bc8 x3; b14=129 |
+| 11808ed0 | updateui_screen_switch | calls 11808d00,11808d50,c0150830; 2 callers 11808f00/c013c674 | guess | calls incl. 11808d00,11808d50 |
+| 11808f00 | updateui_screen_switch2 | calls 11808ed0,ptr_const_118130a0; 2 callers c01507d8/c0150844 | guess | calls=11808ed0,c016bff0 |
+| 11808f40 | task_ad_main | AD task body; registered task entry 11809004 (named verbatim in FWMAP.md task list) falls 196 bytes into this 544-byte block; calls the serial-read sequencer 1180abc0, locked_lookup_big, hwi_guarded_divide_update | confirmed | recon/15,18: "Task 11809004 calls read routine 1180abc0"; 11809004-11808f40=0xc4 < size 544 |
