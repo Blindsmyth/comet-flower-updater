@@ -135,3 +135,29 @@ with FWMAP.md's documented settings-menu table.
 | 11805cd4 | menu_item_record5 | 20 B, ptr@ c0185e00 -- settings/menu-item record entry | guess | ptr@=c0185e00 |
 | 11805ce8 | unk_1180_5ce8 | 56 B, single caller `c0168434` | guess | callers=c0168434 |
 | 11805d20 | orchestrator_1180_region3 | see 00 | guess | recon/map/00_library_kernel.md |
+| 11805d84 | bound_check_lt4 | see 00 | likely | recon/map/00_library_kernel.md |
+| 11805dc0 | shared_accessor1_1180 | 12 B, roots UpdateUI; 7 callers spanning both the rhythm-render family (`11802c44`,`118031ac`,`118050e8`) and settings-menu sites (`c0154654`,`c0159160`,`c01591ac`,`c0159216`) -- a generic small B14/global accessor | guess | callers=7 |
+| 11805dcc | unk_1180_5dcc | 12 B, ptr@ c0185e48; 4 callers | guess | ptr@=c0185e48 |
+| 11805dd8 | shared_accessor2_1180 | 16 B, roots UpdateUI; ptr@ c0185ebc; callers `11802c58`,`118031ac`,`118050e8` | guess | ptr@=c0185ebc |
+| 11805de8 | shared_accessor3_1180 | 28 B, roots MainApp/TunerService; 6 callers incl `11802c70`,`118031ac`,`11804a44` | guess | callers=6 |
+| 11805e04 | unk_1180_5e04 | 12 B, single caller `c013ac04` | guess | callers=c013ac04 |
+| 11805e10 | shared_accessor4_1180 | 16 B, roots MIDI/MainApp/RhythmService/UpdateUI; 7 callers spanning both rhythm-render dispatchers (`11804124`,`118048fc`) and RhythmService (`11806ce0`,`11806eb4`) -- likely a "get current rhythm pattern/slot" accessor shared by UI render and playback | guess | callers=11804124,118048fc,11806ce0,11806eb4,c0150588,c015408c,c0158c58 |
+| 11805e20 | unk_1180_5e20 | 12 B, roots MIDI/MainApp/RhythmService; single caller `c0158cf4` | guess | callers=c0158cf4 |
+| 11805e2c | unk_1180_5e2c | 12 B, 8 callers (c0148xxx family) | guess | callers=8 |
+| 11805e38 | menu_item_record6 | 16 B, roots UpdateUI; ptr@ c0185ca4,c0186870 -- settings/menu-item record entry | guess | ptr@=c0185ca4,c0186870 |
+| 11805e48 | menu_item_record7 | 12 B, roots UpdateUI; ptr@ c018686c | guess | ptr@=c018686c |
+| 11805e54 | menu_item_record8 | 16 B, roots UpdateUI; ptr@ c0186874 | guess | ptr@=c0186874 |
+| 11805e64 | shared_accessor5_1180 | 12 B, roots AD/MIDI/MainApp/RhythmService; 11 callers | guess | callers=11 |
+| 11805e70 | unk_1180_5e70 | 16 B, roots MIDI/MainApp; 3 callers | guess | callers=3 |
+| 11805e80 | unk_1180_5e80 | 12 B, roots MIDI; single caller `c013af08` | guess | callers=c013af08 |
+| 11805e8c | unk_1180_5e8c | 12 B, roots MainApp; single caller `c016a8c0` | guess | callers=c016a8c0 |
+| 11805e98 | menu_item_record9 | 16 B, roots MIDI/MainApp; ptr@ c018615c; caller `c0139a70` | guess | ptr@=c018615c |
+| 11805ea8 | unk_1180_5ea8 | 12 B, roots MainApp; callers `c01631d4`,`c016976c` | guess | callers=2 |
+| 11805eb4 | unk_1180_5eb4 | 16 B, roots MIDI/MainApp/Swi:USB/SwitchNrmlSpdRead; 3 callers | guess | callers=3 |
+| 11805ec4 | shared_accessor6_1180 | 12 B, roots MIDI/MainApp; ptr@ c0185d34; 10 callers | guess | ptr@=c0185d34; callers=10 |
+| 11805ed0 | unk_1180_5ed0 | 40 B, callers `c01301cc`,`c01307d4` | guess | callers=2 |
+| 11805ef8 | menu_item_record10 | 16 B, roots MainApp/UpdateUI; ptr@ c0185ce8; callers `c01374c8`,`c01694a0` | guess | ptr@=c0185ce8 |
+| 11805f08 | menu_item_record11 | 12 B, roots MIDI/MainApp/Swi:USB/SwitchNrmlSpdRead; ptr@ c0185dfc; caller `1180add8` | guess | ptr@=c0185dfc |
+| 11805f14 | shared_accessor7_1180 | 16 B, roots MIDI/MainApp/RhythmService/UpdateUI; 6 callers | guess | callers=6 |
+| 11805f24 | unk_1180_5f24 | 12 B, roots AD/MIDI/MainApp/UpdateUI; single caller `c01635c0` | guess | callers=c01635c0 |
+| 11805f30 | unk_1180_5f30 | 16 B, callers `11807d54`,`c0148c48` | guess | callers=2 |
