@@ -131,4 +131,66 @@ Status: blocked: exact response-buffer allocation provenance, reserved patch sto
 
 ## 4. Slot 0 residency and remaining reload paths
 
+### 4.1 Unload-all (c01437b4) unloads each slot's module BEFORE substituting the silence callback, the reverse of the safe order in recon/16 B3 (confirmed)
+
+`c01437b4` loops A10=0..4 and for each slot issues, in this program order:
+```text
+c01437c4 CALLP.S2 0xc01297a0,B3   ; A4=slot, B4=0  -> unload-only
+c01437cc CALLP.S2 0xc014ff44,B3   ; A4=slot
+c01437d4 CALLP.S2 0xc016f660,B3   ; A4=slot  -> writes silence callback into 118133e0+4*slot
+c01437d8 ADD.L1 1,A10,A10
+c01437e0 CMPGT.L1 5,A10,A0
+c01437e4 [A0] BNOP.S1 0xc01437c4,5
+```
+`c01297a0` (entry at line above) checks table `c01839f0+4*slot`; if nonzero it calls the real unload `c01560c0` at `c01297f0` before returning (flag B4=0 skips any new load). So for each slot, in order: (1) unload/free the module via `c01560c0`, (2) an unrelated call `c014ff44`, (3) only then does `c016f660` overwrite `118133e0+4*slot` with the stock silence routine `c016d184`. This is the **opposite order** from the three paths recon/16 B3 found safe (silence substituted for all slots *before* any unload/reload call).
+
+The caller `c01438b0` additionally confirms the global effect-loop gate is not protective here: it checks `B14[101]` at entry (`c01438c0`) and, if already 1, skips the whole sequence; otherwise it calls unload-all first and only sets `B14[101]=1` **after** unload-all returns:
+```text
+c01438cc CALLP.S2 0xc01437b4,B3   ; unload-all runs first
+c01438d0 CALLP.S2 0xc016f4c0,B3
+c01438d4 MVK.L2 1,B0
+c01438d8 STW.D2T2 B0,*+B14[101]   ; gate set only now
+```
+So throughout the unload-all loop, `B14[101]` is 0 (the audio Swi at `11818ba0`/`11818bd8` would NOT skip a slot's indirect callback), and per slot there is a window, between `c01560c0` freeing that slot's module and `c016f660` publishing silence, during which `118133e0+4*slot` still holds the old (now-freed) callback pointer. If the audio Swi preempts in that window for that slot, it would invoke a stale pointer into memory `c01560c0` has already unloaded. This is confirmed from instruction order; whether `c01560c0` actually overwrites/zeroes the slot's memory immediately (vs. just returning it to the heap free list) is not traced here (its first ~20 instructions only show a conditional call into `c0122f4c`/`c016be88`-adjacent cleanup, not examined further for budget reasons) — so the practical consequence (benign stale call vs. corrupted fetch) is not established, only the ordering hazard itself.
+
+Confidence: confirmed (instruction order and gate timing); likely (this constitutes an exploitable hazard, since it depends on the audio Swi's priority/preemption relative to the Task running unload-all, which recon/16 B2/B3 already established as higher-priority/preemptive).
+
+Status: done (sub-finding; see 4.3 for residual open caller).
+
+### 4.2 c01297a0 never touches the callback table itself; its failed/aborted-load cleanup resets only per-slot UI metadata (confirmed)
+
+Scanning the full body of `c01297a0` (c01297a0..c0129db0, the whole function) found no reference to `118133e0` or to `c016f660`/`c014ff44` anywhere inside it — callback-table substitution is entirely the caller's responsibility (consistent with 4.1 and with recon/16 B3's three safe callers). The common "give up without a new image" landing point `c0129b40` (reached both from pre-load validation failures and, per §5 below, from a real allocation failure propagated up through the loader) only resets display/bookkeeping fields:
+```text
+c0129b58 STW.D2T2 B0,*+B4[0]      ; zero name/size field at 0xc0060000+0x44d0+slot*0x20
+c0129b76 STB.D1T2 B0,*A5[A4]      ; zero byte at +0x4500
+c0129b86 STB.D1T1 A0,*A5[A4]      ; set byte at +0x4528 = 1 (empty/failed flag)
+c0129b98 CALLP.S2 0xc016c360,B3   ; copy placeholder string into +0x4508
+c0129bb0 CALLP.S2 0xc016c360,B3   ; copy placeholder string into +0x4518
+c0129bc4 CALLP.S2 0xc016c360,B3   ; copy placeholder string into +0x4520
+```
+It never writes `118133e0+4*slot`. So after a failed/aborted load, whatever the caller had already put in the callback table (silence, for the three paths in B3, or the real old callback for the unsafe window in 4.1) is left untouched by this cleanup; the slot's *displayed* name/metadata reverts to a placeholder, independent of the callback table's actual state.
+
+Confidence: confirmed.
+
+Status: done.
+
+### 4.3 Other callers of c01297a0: one more confirmed-safe path, one unresolved (confirmed + blocked)
+
+All literal `CALLP`-sites targeting `c01297a0`: c012ae08, c012fbac, c012fbb8, c0132964, c013296c, c01437c4 (4.1), c01568a0. Of these, c012fbac/c012fbb8 and c0132964/c013296c are the three paths already traced safe in recon/16 B3 (silence-substitution loop runs first).
+
+**c012ae08 (new, confirmed safe):** immediately before the call, a loop substitutes silence into all five slots:
+```text
+c012ade4 CALLP.S2 0xc014ff44,B3   ; A4=A15 (slot 0..4)
+c012adec CALLP.S2 0xc016f660,B3   ; A4=A15 -> silence callback
+c012adf0 ADD.L1 1,A15,A15
+c012adf4 CMPGT.L1 5,A15,A0
+c012adf8 [A0] BNOP.S1 0xc012ade4,5
+c012ae08 CALLP.S2 0xc01297a0,B3   ; A4=0, B4=<loaded flag>, runs only after the loop above
+```
+This matches the safe B3 pattern (silence published for every slot before any unload/reload), giving a fourth confirmed-safe caller.
+
+**c01568a0 (unresolved):** this call site sits inside a routine (entered around c0156680/c01567e0) that drains a bounded (`count < 4`) queue of 16-byte records via `c012afe0`/`c0156680`, with an `SPLOOPW` byte-copy of a short string, then calls `c01297a0` with `A4=0` (hard-coded) and `B4` loaded from the queued record's offset-4 field. A targeted search of the ~270 disassembly lines immediately around this call (c01567c8..c0156920) found no `CALLP` to `c016f660` or `c014ff44`. This is suggestive but not conclusive: it does not establish the enclosing function's true entry point, callers, or whether `A4=0` even denotes an effect-slot index in this context (it could be an unrelated queue-item type). I could not resolve this further within budget.
+
+Status: blocked: c01568a0's enclosing function (entry near c0156680/c01567e0), its callers, and the meaning of its hard-coded A4=0 / B4 fields are not traced far enough to classify this path as safe or unsafe like the other six. No code from the old image was observed to run after a reload starts on any OTHER traced path (4.2's cleanup does not touch the callback table); the only confirmed unsafe-ordering path is unload-all (4.1).
+
 ## 5. Effect exceeding its 40 KiB slot
