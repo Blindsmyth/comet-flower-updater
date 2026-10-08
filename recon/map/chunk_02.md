@@ -56,3 +56,22 @@ c011d84c, c011d938, c011f87c, c011f8d8.
 | c011c22c | gfx_shape_draw_6 | 732B shape-draw routine calling c011b808 and rts_sdiv32; sibling of b848/bbc4, called by c011d84c(see00) and c011eef0 | likely | calls=c011b808,c01675c0=rts_sdiv32; callers=c011d84c(see00),c011eef0 |
 | c011c508 | see 00 | gfx_set_bit_range | - | - |
 | c011c588 | ui_draw_proportional_bar | 380B routine calling gfx_set_bit_range, c0142ec4 and rts_sdiv32 together -- shape matches a proportional bar/meter draw (width = value/divide, then bit-range fill); sole caller c0154290 | likely | calls=c011c508=gfx_set_bit_range,c0142ec4,c01675c0=rts_sdiv32; caller=c0154290 |
+| c011c704 | unk_c704 | 132B routine, sole caller big_mvc_subsystem (c011f8d8, see 00); not traced | guess | n=132; caller=c011f8d8(see00) |
+| c011c788 | unk_c788 | 520B routine, sole caller big_mvc_subsystem (c011f8d8, see 00); not traced | guess | n=520; caller=c011f8d8(see00) |
+| c011c990 | unk_c990 | 468B routine, sole caller orchestrator_c011c990 (c011cb64, see 00); not traced | guess | n=468; caller=c011cb64(see00) |
+| c011cb64 | see 00 | orchestrator_c011c990 | - | - |
+| c011cc14 | unk_cc14 | 472B standalone routine, both callers (c01431f2, c014c6d0) outside this chunk; not traced | guess | n=472; callers outside chunk |
+| c011cdec | ui_render_item_a | 552B routine calling the leaf c011b470; called by c011d014 and c011e700 | likely | calls=c011b470; callers=c011d014,c011e700 |
+| c011d014 | ui_render_item_a_wrap | thin (96B) wrapper forwarding to c011cdec; called by c011d124, c011e3ac, c011e4b4, and c012e330(outside) | likely | calls=c011cdec; 4 callers |
+| c011d074 | unk_d074 | 176B routine, sole caller c011d124; not traced | guess | n=176; caller=c011d124 |
+| c011d124 | ui_screen_render_1 | 432B orchestrator entered via the save/restore pair, calling orchestrator_c011c990 (c011cb64, see 00), c011d014 and c011d074 -- a screen-render driver; sole caller c014dc08(outside) | likely | calls=c011cb64=see00,c011d014,c011d074,c016e000,c016e020 |
+| c011d2d4 | unk_d2d4 | 188B routine shared by c011d390 and c011dff8; not traced | guess | n=188; callers=c011d390,c011dff8 |
+| c011d390 | ui_draw_box_a | 328B routine calling gfx_set_bit_range and c011d2d4 -- an icon/box-fill drawer; sole caller unk_d4d8 (c011d4d8, see 00) | likely | calls=c011c508=gfx_set_bit_range,c011d2d4; caller=c011d4d8(see00) |
+| c011d4d8 | see 00 | unk_d4d8 | - | - |
+| c011d590 | unk_d590 | 188B routine shared by c011d64c and c011dff8 -- structurally identical sibling of c011d2d4 | guess | n=188; callers=c011d64c,c011dff8 |
+| c011d64c | ui_draw_box_b | 328B routine calling gfx_set_bit_range and c011d590 -- sibling of c011d390; sole caller c011d794 | likely | calls=c011c508=gfx_set_bit_range,c011d590; caller=c011d794 |
+| c011d794 | ui_draw_box_b_wrap | thin (184B) wrapper forwarding to c011d64c; callers c013a4ec, c013a710 (outside chunk) | likely | calls=c011d64c; 2 callers |
+| c011d84c | see 00 | orchestrator_c011b848 | - | - |
+| c011d8f0 | unk_d8f0 | 72B routine forwarding to orchestrator_c011b848 (c011d84c, see 00); sole caller big_subsystem_2 (c011d938, see 00) | guess | calls=c011d84c(see00); caller=c011d938(see00) |
+| c011d938 | see 00 | big_subsystem_2 | - | - |
+| c011dca8 | unk_dca8 | 604B routine calling big_subsystem_2 (c011d938, see00), rts_sdiv32 and c0168640; no caller found inside this chunk (reached by table/pointer or an external CALLP) | guess | calls=c011d938=see00,c01675c0=rts_sdiv32,c0168640; 0 in-chunk callers listed |
