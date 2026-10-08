@@ -181,3 +181,39 @@ rows have only call-graph/size evidence.
 | c012da30 | midi_cmd_veneer_to_d4d0 | table-jump veneer: CALLP midi_param_reply_build16 then epilogue | confirmed | read in full: `CALLP 0xc012d4d0,B3; BNOP 0xc012daac,5` |
 | c012da34 | midi_cmd_veneer_to_cce0 | table-jump veneer: CALLP midi_param_reply_build2 then epilogue | confirmed | read in full: `CALLP 0xc012cce0,B3; BNOP 0xc012daac,5` |
 | c012da40 | midi_cmd_veneer_to_caf4 | table-jump veneer: CALLP midi_param_reply_coordinator1 then epilogue | confirmed | read in full: `CALLP 0xc012caf4,B3; BNOP 0xc012daac,5` |
+| c012da48 | midi_cmd_veneer_to_cf30 | table-jump veneer: CALLP midi_param_reply_build6 then epilogue | confirmed | read in full: `CALLP 0xc012cf30,B3; BNOP 0xc012daac,5` |
+| c012da4e | midi_cmd_veneer_to_d890 | table-jump veneer: CALLP midi_param_reply_build24 then epilogue | confirmed | read in full: `CALLP 0xc012d890,B3; BNOP 0xc012daac,5` |
+| c012da54 | midi_cmd_veneer_to_d030 | table-jump veneer: CALLP midi_param_reply_build8_patchlink then epilogue | confirmed | read in full: `CALLP 0xc012d030,B3; BNOP 0xc012daac,5` |
+| c012da60 | midi_cmd_veneer_to_d190 | table-jump veneer: CALLP midi_param_reply_build10 then epilogue | confirmed | read in full: `CALLP 0xc012d190,B3; BNOP 0xc012daac,5` |
+| c012da66 | midi_cmd_veneer_to_d2c4 | table-jump veneer: CALLP midi_param_reply_build12 then epilogue | confirmed | read in full: `CALLP 0xc012d2c4,B3; BNOP 0xc012daac,5` |
+| c012da6a | midi_cmd_veneer_to_d8c4 | table-jump veneer: CALLP midi_cmd_veneer_ack6 then epilogue | confirmed | read in full: `CALLP 0xc012d8c4,B3; BNOP 0xc012daac,5` |
+| c012da6e | midi_cmd_veneer_to_d2e4 | table-jump veneer: CALLP midi_param_reply_build13_bulk then epilogue | confirmed | read in full: `CALLP 0xc012d2e4,B3; BNOP 0xc012daac,5` |
+| c012da74 | midi_cmd_veneer_to_cd78 | table-jump veneer: CALLP midi_cmd_veneer_ack3 then epilogue | confirmed | read in full: `CALLP 0xc012cd78,B3; BNOP 0xc012daac,5` |
+| c012da80 | midi_cmd_veneer_to_cd6c | table-jump veneer: CALLP midi_cmd_veneer_ack2 then epilogue | confirmed | read in full: `CALLP 0xc012cd6c,B3; BNOP 0xc012daac,5` |
+| c012da88 | midi_cmd_veneer_to_d1c4 | table-jump veneer: CALLP midi_cmd_veneer_ack4 then epilogue | confirmed | read in full: `CALLP 0xc012d1c4,B3; BNOP 0xc012daac,5` |
+| c012da90 | midi_cmd_veneer_to_d8d0 | table-jump veneer: stores B1 into B14[284] then CALLP midi_param_reply_build25, falls to epilogue | confirmed | read in full: `STB B1,*+B14[284]; CALLP 0xc012d8d0,B3; BNOP 0xc012daac,5`; B14[284] |
+| c012da98 | midi_cmd_veneer_to_d1d0 | table-jump veneer: CALLP midi_param_reply_build11 then epilogue | likely | fact-sheet callee matches the confirmed veneer pattern exactly: `CALLP 0xc012d1d0,B3` (seen directly), epilogue not re-verified byte-for-byte |
+| c012daa2 | midi_cmd_veneer_to_d640 | table-jump veneer: CALLP midi_cmd_veneer_ack5 then epilogue | likely | fact-sheet callee c012d640 matches the confirmed veneer pattern; not individually re-read |
+| c012daa8 | midi_cmd_veneer_to_cd60 | table-jump veneer: CALLP midi_cmd_veneer_ack1 (no epilogue branch listed in fact sheet -- smallest veneer, 4B) | guess | fact sheet: calls(1)=c012cd60 only, size 4B; not individually re-read |
+| c012daac | see 00_library_kernel.md | (epilogue_pop_b3_shared) | confirmed | named by prior wave-0 sweep; this is the shared tail every table veneer above branches into |
+
+## Data
+- `0xc0183b48` (1 byte): the active MIDI device-ID/channel byte. Read by every SysEx reply builder (c0128134, c0128210, ...) as the message's `<devid>` field; written by `cfg_set_global_c0183b48` (c0129600); range-checked by `midi_devid_range_valid` (c0129638).
+- `0xc01844a8..c01844b8` (5 x 4-byte function pointers, ascending): the inbound-SysEx receive-state table, indexed by the running parser state; entries are `midi_rx_state_b/c/dispatch_entry/d/e` (c0129242,c0129214,c0129276,c01291f0,c01291ce).
+- `0xc0183c40..c0183d00` (48 x 4-byte function pointers): the "get/set effect parameter over MIDI" command table, indexed by `B14[284]` via `midi_param_cmd_dispatch48` (c012d9e0); entries are the `midi_cmd_veneer_to_*` thin wrappers.
+- `0xc0100062c4` (halfword): a parameter-count/bound table read by `param_buf_validate_init` (c012b3c0) to range-check an incoming parameter index.
+- `0xc010aa78` (4-byte-stride halfword pairs): a per-field size/offset table used by the same function to compute a buffer offset.
+- `0xc0064528` (1 byte per slot): a small per-effect-slot flag table, accessed by `effect_slot_flag_copy`/`effect_slot_flag_set` (c0129680/c0129698).
+- `B14[15]`/`B14[16]`: patch-list entry count / current index (getter/setter pair `cfg_get_b14_16`/`cfg_set_b14_16`, c0129fb0/c01296ac).
+- `B14[26]`/`B14[27]`: MIDI channel-ish config slots (setters c01295ec/c01295f4 pair with the already-named getters cfg_get_b14_26/27).
+- `B14[43]`,`B14[164]`,`B14[165]`,`B14[167]`,`B14[168]`: inbound-SysEx parser running state (byte counter, last-byte values, state/status byte) touched throughout the rx-state-machine cluster.
+- `B14[70]`,`B14[72]`,`B14[73]`: fields threaded through nearly every `midi_param_reply_build*` composer/coordinator pair -- likely the current parameter's slot/index/value triple.
+- `B14[284]`: the command index into the 48-entry table, also independently stored by two of the table veneers (c012d9e0's own test, and c012da90's `STB B1,*+B14[284]`).
+- Patch/preset filenames found as literals in this range: `FLST_SEQ.ZT2`, `BYPASS.ZD2`, `GUARDZDL.ZT2`, `*.*`, and UI scroll-arrow labels `<<<`/`>>>`.
+
+## Open questions
+- Exact semantics of the 20 command codes dispatched by `midi_cmd_dispatch` (c0128e54) and the 48 commands dispatched by `midi_param_cmd_dispatch48` (c012d9e0) are not decoded to specific MIDI/SysEx operation names (e.g. which code is "identity request", "bulk dump", "parameter set") -- only the dispatch mechanism and the generic "compose+checksum+send" shape of the targets is confirmed.
+- The precise state-number-to-table-slot mapping for the 5-entry rx-state-machine (0xc01844a8..b8) was read structurally (byte comparisons against 0x52/0x7E, B14 state advances) but not pinned to named protocol states (e.g. "waiting for manufacturer ID" vs "waiting for device ID").
+- `c012b2c0` (4 bytes, 5 callers) was not read directly; flagged as a likely constant-return stub by size alone.
+- Several "generic_util"/"usbdesc_helper" leaves (c012ad1c, c012ad48, c012ad58, c012afa0, c012b024, c012b030) have no callees in the fact sheet and were not read; their exact role is unresolved beyond "small shared utility".
+- `param_buf_build_bulk_dump` (c012be20, 1876B, the largest function in this chunk) and its siblings `param_buf_bulk_apply`/`param_buf_init_all` were only read via their anchor `c012b3c0`'s shape, not instruction-by-instruction; whether they build a bulk SysEx dump, a flash-save record, or both is not established.
