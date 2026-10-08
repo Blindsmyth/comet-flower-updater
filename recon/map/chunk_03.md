@@ -156,3 +156,22 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
 | c01276b4 | midi_param_send_6b4 | 532-instr routine calling midi_tx_n and midi_param_helper_64c; B14 slots 31,33,34,35,37,38,112-117 -- a wider per-parameter MIDI send stage; single caller c0127cf4 | guess | calls=c0127500=midi_tx_n,c012764c; B14 31,33,34,35,37,38,112,113,114,115,116,117; callers=c0127cf4 |
 | c01278c8 | midi_jtbl_worker_8c8 | 136-instr worker, single caller c0127daa (a jump-table entry below) | guess | callers=c0127daa |
 | c0127950 | midi_jtbl_worker_950 | 20-instr worker calling out-of-range c0143580; single caller c0127db2 | guess | calls=c0143580; callers=c0127db2 |
+| c0127964 | midi_jtbl_worker_964 | 16-instr worker calling out-of-range c01435a0; single caller c0127db8 | guess | calls=c01435a0; callers=c0127db8 |
+| c0127974 | midi_jtbl_worker_974 | 100-instr worker calling midi_param_helper_64c (c012764c); B14 34,35,38; single caller c0127dc2 | guess | calls=c012764c; B14 34,35,38; callers=c0127dc2 |
+| c01279d8 | midi_jtbl_worker_9d8 | 116-instr worker calling midi_tx_n; B14 30,38,118,119; single caller c0127dca | guess | calls=c0127500=midi_tx_n; B14 30,38,118,119; callers=c0127dca |
+| c0127a4c | midi_jtbl_worker_a4c | 476-instr worker calling midi_tx_n and midi_param_helper_64c; B14 30,31,33,34,35,37,38,118,119; single caller c0127dd2 | guess | calls=c0127500=midi_tx_n,c012764c; B14 30,31,33,34,35,37,38,118,119; callers=c0127dd2 |
+| c0127c28 | midi_jtbl_worker_c28 | 204-instr worker, B14 32,33,38; single caller c0127dda, no recorded callees | guess | B14 32,33,38; callers=c0127dda |
+| c0127cf4 | midi_param_table_dispatch | 182-instr dispatcher selecting between midi_param_send_558 (c0127558) and midi_param_send_6b4 (c01276b4), plus an out-of-range call (11803010) and the already-named epilogue_pop_b3_shared2 (c0127f58, see 00); single caller c01291f0 | likely | calls=11803010,c0127558=midi_param_send_558,c01276b4=midi_param_send_6b4,c0127f58=epilogue_pop_b3_shared2,c012c914; callers=c01291f0 |
+| c0127daa | midi_jtbl_entry_daa | per-parameter jump-table entry: calls midi_jtbl_worker_8c8 (c01278c8) then returns via the shared epilogue_pop_b3_shared2 (see 00); own slot in the function-pointer table at 0xc0183bb8 | likely | ptr@ c0183bb8; calls=c01278c8,c0127f58=epilogue_pop_b3_shared2 |
+| c0127db2 | midi_jtbl_entry_db2 | jump-table entry calling midi_jtbl_worker_950 (c0127950), table slot 0xc0183bb4 | likely | ptr@ c0183bb4; calls=c0127950,c0127f58=epilogue_pop_b3_shared2 |
+| c0127db8 | midi_jtbl_entry_db8 | jump-table entry calling midi_jtbl_worker_964 (c0127964), table slot 0xc0183bb0 | likely | ptr@ c0183bb0; calls=c0127964,c0127f58=epilogue_pop_b3_shared2 |
+| c0127dc2 | midi_jtbl_entry_dc2 | jump-table entry calling midi_jtbl_worker_974 (c0127974), table slot 0xc0183b9c | likely | ptr@ c0183b9c; calls=c0127974,c0127f58=epilogue_pop_b3_shared2 |
+| c0127dca | midi_jtbl_entry_dca | jump-table entry calling midi_jtbl_worker_9d8 (c01279d8), table slot 0xc0183b98 | likely | ptr@ c0183b98; calls=c01279d8,c0127f58=epilogue_pop_b3_shared2 |
+| c0127dd2 | midi_jtbl_entry_dd2 | jump-table entry calling midi_jtbl_worker_a4c (c0127a4c), table slot 0xc0183b94 | likely | ptr@ c0183b94; calls=c0127a4c,c0127f58=epilogue_pop_b3_shared2 |
+| c0127dda | midi_jtbl_entry_dda | jump-table entry calling midi_jtbl_worker_c28 (c0127c28), table slot 0xc0183b80 | likely | ptr@ c0183b80; calls=c0127c28,c0127f58=epilogue_pop_b3_shared2 |
+| c0127de8 | midi_jtbl_entry_de8 | jump-table entry calling midi_jtbl_entry_f0a (c0127f0a); B14[44]; table slot 0xc0183b74 | likely | ptr@ c0183b74; B14 44; calls=c0127f0a,c0127f58=epilogue_pop_b3_shared2 |
+| c0127ea4 | midi_jtbl_entry_ea4 | jump-table entry, B14[38], table slot 0xc0183c3c, no inner worker call (acts directly then returns via shared epilogue) | guess | ptr@ c0183c3c; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127eb0 | midi_jtbl_entry_eb0 | jump-table entry, B14[38], table slot 0xc0183c2c | guess | ptr@ c0183c2c; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127ec0 | midi_jtbl_entry_ec0 | jump-table entry, B14[38], table slot 0xc0183c08 | guess | ptr@ c0183c08; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127eca | midi_jtbl_entry_eca | jump-table entry, B14[38], table slot 0xc0183c04 | guess | ptr@ c0183c04; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127ed2 | midi_jtbl_entry_ed2 | jump-table entry, B14[38], table slot 0xc0183c00 | guess | ptr@ c0183c00; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
