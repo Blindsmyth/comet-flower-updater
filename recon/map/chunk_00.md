@@ -55,3 +55,33 @@ with FWMAP.md's documented settings-menu table.
 | 11802cec | midi_send_variant8_1180 | sibling, calls `11802b90` then `11805ec4` | likely | callers=c0168488; calls=11802b90,11805ec4 |
 | 11802d08 | midi_send_full1_1180 | full locked send (own sem_pend/post on B14[161], not via `11802b90`) calling `11802a90`+`11802b70` directly | likely | callers=c0150738; calls=11802a90,11802b70,bios_sem_pend,bios_sem_post; b14=161 |
 | 11802d44 | midi_send_full2_1180 | sibling of `11802d08`, same shape, caller `c01507d8` | likely | b14=161; calls=11802a90,11802b70,bios_sem_pend,bios_sem_post |
+| 11802d80 | midi_send_build_1180 | 352 B builder: calls `c0127440`, `rts_memset`, under save/restore -- likely clears/prepares a message buffer before a send, single caller `11802ee0` | guess | n=352; calls=c0127440,rts_memset,rts_regs_restore,rts_regs_save |
+| 11802ee0 | midi_send_diag_gated_1180 | 192 B locked op (sem_pend/post B14[161]) gated by `diag_mask_test`, also touches B14[99]; calls `11802a90`,`11802b70`,`11802d80`,`11806258`,`c0130e04`,`c013bc8c` -- a diagnostics/log-gated MIDI send | likely | b14=99,161; calls include c0169fc0=diag_mask_test,bios_sem_pend,bios_sem_post |
+| 11802fa0 | unk_1180_2fa0 | 12 B tiny forwarder to `11802ee0`, caller `11803778` | guess | calls=11802ee0 |
+| 11802fac | unk_1180_2fac | 12 B tiny forwarder to `11802ee0`, 6 callers across c012/c013/c015 message-type handlers | guess | calls=11802ee0; callers=6 |
+| 11802fb8 | unk_1180_2fb8 | 20 B, single caller `c0134650` | guess | callers=c0134650 |
+| 11802fcc | div_then_post_1180 | 68 B: calls the divide wrapper `11802a40` then `1180b000` (near the known event-post helper `1180b020`) -- likely divides a value then posts an event | guess | calls=11802a40,1180b000; 4 callers |
+| 11803010 | unk_1180_3010 | 32 B, single caller `c0127cf4` | guess | callers=c0127cf4 |
+| 11803030 | unk_1180_3030 | 20 B, single caller `c01349ec` (thin_orchestrator_veneers, named in 00) | guess | callers=c01349ec |
+| 11803044 | midi_send_full3_1180 | locked sender (sem_pend/post B14[161]) calling `11802a90`+`11802b70` plus `1180b060`, caller `11803780` (a dispatch-table veneer) | likely | b14=161; calls=11802a90,11802b70,1180b060,bios_sem_pend,bios_sem_post |
+| 118030a0 | status_struct_rmw_c011ad8c | reads/updates the small status struct at `0xc011ad8c` via the known getter `cfg_get_global_c011ad8c` plus sibling `c0156e8c`, single caller `118030d0` | likely | calls=c0156e80=cfg_get_global_c011ad8c,c0156e8c |
+| 118030d0 | locked_dispatch_154 | 96 B locked dispatcher (sem_pend/post), B14[154], calls 10 callees including `118030a0` | guess | b14=154; n=96; callers=11803794 |
+| 11803130 | unk_1180_3130 | 124 B, calls `11802fcc`,`c0127fe0`,`c01395dc` under save/restore, single caller `118037a4` | guess | n=124; calls=11802fcc,c0127fe0,c01395dc |
+| 118031ac | midi_send_batch_1180 | 168 B locked sender (B14[161]) that calls SIX of the "variant" helpers (`11805dc0`,`11805dd8`,`11805de8`,`11805e64`,`11805ec4`,`11805f14`) in one locked section -- a composite/batch send of several message fields at once | likely | b14=161; calls=11805dc0,11805dd8,11805de8,11805e64,11805ec4,11805f14,bios_sem_pend,bios_sem_post |
+| 11803254 | midi_send_full4_1180 | 440 B locked sender variant, B14[161], single caller `1180344c` (paired with `1180340c`) | guess | n=440; b14=161; callers=1180344c |
+| 1180340c | midi_send_full5_1180 | 64 B locked sender variant, B14[161], sibling called alongside `11803254` from `1180344c` | guess | b14=161; callers=1180344c |
+| 1180344c | midi_send_dispatch1_1180 | dispatches to both `11803254` and `1180340c` then calls `c0156860`, caller `118037b6` (table veneer) | guess | calls=11803254,1180340c,c0156860 |
+| 11803474 | midi_send_via_txn_1180 | 64 B locked sender (sem_pend/post) that calls the c0-region `midi_tx_n` (c0127500) directly, plus `c0127fe0`/`c0156938`; B14[180] -- a different lock slot from the B14[161] family above | likely | b14=180; calls=c0127500=midi_tx_n,c0127fe0,c0156938,bios_sem_pend,bios_sem_post |
+| 118034b4 | unk_1180_34b4 | 96 B, calls `11802fcc`,`c013b7e8` under save/restore, caller `118037c2` (table veneer) | guess | n=96; calls=11802fcc,c013b7e8 |
+| 11803514 | midi_send_full6_1180 | 508 B locked sender, B14[155] and B14[161] -- B14[155] is the same slot flagged for `effect_slot_lookup` (c015c164, string 'OFF') in 00, so this send may report effect on/off state over MIDI | likely | b14=155,161; calls=11802a90,11802b70,1180af60,1180af8c,c0127fe0,rts_memset,bios_sem_pend,bios_sem_post |
+| 11803710 | midi_case_body1_1180 | 104 B case body feeding into the shared epilogue `118037d6` (see 00), single caller `c0128e54` | guess | roots=MIDI; calls=118037d6 |
+| 11803778 | midi_table_veneer1 | dispatch-table entry #1 (ptr@ c0184138): calls `11802fa0` then the shared epilogue `118037d6` | likely | ptr@=c0184138; calls=11802fa0,118037d6 |
+| 11803780 | midi_table_veneer2 | dispatch-table entry #2 (ptr@ c0184130): calls `11803044` then the shared epilogue | likely | ptr@=c0184130; calls=11803044,118037d6 |
+| 11803784 | midi_table_veneer3 | dispatch-table entry #3 (ptr@ c0184128): calls `midi_tx_n` (c0127500) and `c01289ec` then the shared epilogue | likely | ptr@=c0184128; calls=c0127500=midi_tx_n,c01289ec,118037d6 |
+| 11803794 | midi_table_veneer4 | dispatch-table entry #4 (ptr@ c0184124): calls `118030d0` and `midi_tx_n` then the shared epilogue | likely | ptr@=c0184124; calls=118030d0,c0127500=midi_tx_n,118037d6 |
+| 118037a4 | midi_table_veneer5 | dispatch-table entry #5 (ptr@ c0184120): calls `11802fcc`+`11803130` then the shared epilogue | likely | ptr@=c0184120; calls=11802fcc,11803130,118037d6 |
+| 118037b2 | midi_table_veneer6 | dispatch-table entry #6 (ptr@ c018411c): calls `118031ac` then the shared epilogue | likely | ptr@=c018411c; calls=118031ac,118037d6 |
+| 118037b6 | midi_table_veneer7 | dispatch-table entry #7 (ptr@ c0184108): calls `1180344c` then the shared epilogue | likely | ptr@=c0184108; calls=1180344c,118037d6 |
+| 118037ba | midi_table_veneer8 | dispatch-table entry #8 (ptr@ c0184104): calls `11803474` then the shared epilogue | likely | ptr@=c0184104; calls=11803474,118037d6 |
+| 118037c2 | midi_table_veneer9 | dispatch-table entry #9 (ptr@ c0184100): calls `118034b4` then the shared epilogue | likely | ptr@=c0184100; calls=118034b4,118037d6 |
+| 118037c6 | midi_table_veneer10 | dispatch-table entry #10 (ptr@ c01840fc): calls `11803514` directly | likely | ptr@=c01840fc; calls=11803514 |
