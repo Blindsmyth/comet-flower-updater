@@ -244,3 +244,6 @@ locking (including the firmware-update "Complete!"/"Error!" popups).
   (mainapp_screen_h01..h10) are tagged "guess"/"likely" purely from call-
   graph shape; none were instruction-traced given the volume of tiny
   near-duplicate handlers in this chunk.
+
+## Review by Claude (2026-10-08)
+**Two tables, not one 17-slot table.** c01840b8 holds **8** per-screen handlers: the screen index B10 from c0156e80 is bounded at c0134b2c (`CMPLTU 0x7,B10`), and slots 4 and 7 share c0134b44. **c01840d8 is a separate table indexed by event ID 36..44**: c0134bb0..c0134bd2 test `event - 36 <= 8`, then `SHL event,2; ADDK -144; MVK/MVKH 0xc01840d8; LDW`. The handlers rowed above as "mainapp_screen_h08" and later (c0134c0c ...) are therefore **event 36..44 handlers** that run after the screen handler in c0134acc, not screens 8..16. Their names should be read as mainapp_event36..44 handlers.
