@@ -195,3 +195,6 @@ with FWMAP.md's documented settings-menu table.
 - `11805e10` is shared between the rhythm-render dispatchers (UpdateUI, B14[184]) and the RhythmService playback routines (`11806ce0`,`11806eb4`) -- worth confirming whether it is a single "current rhythm pattern pointer" accessor used by both drawing and playback, which would tie this chunk's two rhythm sub-families together.
 - `11806450`'s and `1180710c`'s single caller (`1180738c`, `c016aa88`) are both outside this chunk (chunk_01 territory); whoever maps that range should cross-check the B14 slots and callee sets noted here.
 - `11806258`/`1180626c` both call `118092a0`, also outside this chunk -- worth checking what that shared target does once chunk_01/chunk_02 names it.
+
+## Review by Claude (2026-10-08)
+11800400/11800424: `LDW *+A3[A4]` with A4 = 96 (11800414) is scaled, giving **byte offset 0x180** for both functions, not 0x60 for the set. Both act on the same word (+0x180) of the struct at *0x11813468: set bit 12 / clear bit 12. The role is otherwise as stated.

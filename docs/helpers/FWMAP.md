@@ -47,3 +47,10 @@ per function, in address order, exactly this format:
 Commit your report after every 10-20 rows (`git add` your file only) and at
 the end. Never guess a role and mark it confirmed. A short honest "guess" is
 better than a wrong "confirmed".
+
+## Pitfalls seen in review (read before you start)
+- **Indexed addressing is scaled.** `LDW *+A3[A4]` with A4=96 reads byte offset 96*4 = 0x180,
+  not 0x60 (LDH scales by 2, LDB by 1; `*+A3[5]` immediate forms scale too; only the
+  `(offset)` byte form with parentheses is unscaled). Always state byte offsets.
+- `c016e020`/`c016e000` (`CALLP ...,A3`) are register save/restore helpers, not logic.
+- High caller counts can be shared epilogues reached by branch (recon/map/00 notes).
