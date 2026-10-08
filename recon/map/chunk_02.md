@@ -263,3 +263,6 @@ throughout this driver:
   identified in this chunk.
 - c01215ac returns a bare constant pointer (0xc01816dc); the structure it
   points to was not inspected, so its role is an unverified guess.
+
+## Review by Claude (2026-10-08)
+**Correction to c01221c0 (usb_cppi_freequeue_init).** It loops i = 0..4095 (`SET A3,12,12` = 4096 at c01221c4) calling c011fa70(A4 = 28, B4 = i). c011fa70 converts the index into a **real descriptor address**, c87b9000 + 32*i (`MVK/MVKH 0xc87b9000,B1; SHL B0,5; ADD B1,B0,B0` at c011fa74..c011fa84), and builds the queue-push word before the queue-manager write (01e0600c + 16*queue, recon/17 B4). So free queue 28 holds 4096 genuine 32-byte CPPI descriptor pointers, not raw indices. The pop side (c0120250) converts back to an index for its table.
