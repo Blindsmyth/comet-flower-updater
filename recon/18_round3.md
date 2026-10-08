@@ -30,6 +30,13 @@ At c0134db8 MainApp reserves 24 bytes. Queue receive uses `c0134dd4 ADD 4,B15,A4
 
 The controller-mode resume executes housekeeping c01537f4 before `c0134dcc STW 0,*B14[124]`, receives the next event, then `c0134de0 STW 1,*B14[124]`. That is the same cycle reached by both stock handler returns and the stock event-42 skip. No missing B14[124] restore is required in the wrapper. The loop retains no scratch-register result across that resume; the event lives on the preserved frame. Skipping handlers intentionally suppresses their screen/system actions too, and does not imply the whole application retains stock behavior. Housekeeping remains able to run c01537a8, including its system-event path; controller mode is not total isolation from all stock UI work.
 
+### 1.5 Existing patched hook words retain targets and analog parallel instruction
+Confidence: confirmed for bytes read from the existing BIN and existing disassembly; fresh dis6x rebuild remains blocked.
+
+Independent PowerShell byte reads of `build/fw/res1_controller.bin` decode the CALLP signed 21-bit displacement against its 32-byte fetch-packet base: c0134e14=10d64012 -> c01a0000; c0134df0=10d68c12 -> c01a0240; c015ffd0=10804513 -> c01a01e8. Analog p-bit remains 1, adjacent c015ffd4 remains 9862 (`EXTU A0,24,24,A4`), and fetch header c015ffdc remains e5e08000. Thus A4 is produced in the same execute packet before entering the wrapper; changing the branch target alone does not sever that pairing.
+
+Existing startup wrapper saves/restores B13 and A11:A10 (`c01a0000 STW B13,*B15--[2]; c01a0002 STDW A11:A10,*B15--[1]; c01a0054 MV B13,B3; c01a0058 LDDW *++B15[1],A11:A10; c01a005a LDW *++B15[2],B13`). B15 moves by 16 total, preserving eight-byte alignment. Analog wrapper c01a01e8..022c is a tail-branch wrapper with no frame or preserved-register writes: stock path branches to c014aef4, controller path tail-branches to cc. cc uses a 16-byte frame (`c01a006c STW B3,*B15--[4]`, restore c01a0094) for the three-byte message. The stock analog caller's live A10 is preserved, allowing `c015ffd8 STW A0,*B14[76]` and A10 return after the hook. No B14 modification occurs in these wrappers. This closes these calling-frame checks, not the sampler ABI bug or transport safety.
+
 ## 2. SDRAM gap c0187024..c01f4000
 
 ## 3. USB audio driver and silence-stream patch list
