@@ -1,6 +1,29 @@
 # chunk_06: c0132430..c0136674 (150 functions)
 
-Summary: in progress.
+Summary: this range holds three distinct subsystems. (1) c0132430..c0133398
+is a MIDI/MainApp effect-slot parameter cluster: per-slot gain-ramp control,
+a per-slot instance-parameter table at 0x11811598/0x11f03ad0 (stride 84B,
+matching recon/14's confirmed effect-instance addresses), knob-count UI
+visibility, and a master dispatcher (slot_param_type_dispatch c0133254)
+reached through a single public entry slot_param_apply_entry (c0133398)
+with 6 unrelated callers. (2) c01333e0..c0133e38 is the TI ELF loader's
+EM_C6000 relocation handler, confirmed instruction-by-instruction against
+recon/14_effect_memory.md's prior trace: DT_RELA/DT_REL table readers, the
+RELA/REL iteration loops, a value-evaluate step, and three parallel
+dispatch tables (shift-amount select c0133670, bitfield/sign-bit select
+c0133740, instruction-field patch apply c01337f8) each keyed by relocation
+type, converging on overflow-check and cache-sync shared tails. (3)
+c01341a0..c0136674 is MainApp: the confirmed task entry mainapp_task_main
+(c0134e10) and its loop body mainapp_task_loop_body (c0134db8, matching
+recon/19's direct trace), a 17-slot per-screen handler table at
+0xc01840b8 (recon/15), a firmware/effect-update progress-UI step table at
+0xc01842a4, the USB control-transfer subsystem (the full standard-request
+table at 0xc0180210 -- GET_STATUS through SYNCH_FRAME, cross-checked
+against recon/18 and recon/20's independently-confirmed GET_INTERFACE/
+SET_INTERFACE/SET_CONFIGURATION entries -- plus a 3-variant descriptor-
+builder table at 0xc0184410 and the common SETUP decoder c01359e4), and a
+tail of popup/menu/rhythm screen-draw routines sharing B14[149]/[154]
+locking (including the firmware-update "Complete!"/"Error!" popups).
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
@@ -65,13 +88,12 @@ Summary: in progress.
 | c01337cc | elf_reloc_bitfield_arm_b25 | bitfield arm: A4=EXTU(A0,bit25) | confirmed | read: `EXTU A0,25,25,A4` |
 | c01337d4 | elf_reloc_bitfield_arm_b16 | bitfield arm: A4=EXTU(A0,bit16) | confirmed | read: `EXTU A0,16,16,A4` |
 | c01337f8 | elf_reloc_patch_apply | applies the computed relocation value into the target instruction word at B5: for types 1-12 loads a handler from the jump table at 0xc01841ec and branches indirectly (this is recon/14's "jump table c01841ec" step feeding c013396e/c01338c2/c01338d6), inline arms handle types 14-19/24/25, default errors via err_set_last_code(5); single caller c013398c | confirmed | read full 110B body c01337f8..c0133866; table arithmetic `SHL A1,2; ADD -4` then `MVK 0x41ec; MVKH 0xc0180000; LDW; BNOP A0,5` |
-| c0133866 | elf_reloc_patch_field_8_22_a | instruction-field patch: OR's value<<8 into instr bits [8:22] then stores back; falls into the shared cache-sync tail c0133970 | confirmed | read: `SHL B1,0x8,B0; CLR B2,8,22,B1; OR; STW; BNOP c0133970` |
-| c013387a | elf_reloc_patch_field_7_22_a | sibling patch arm: value<<7 into bits [7:22] | confirmed | read: `SHL B1,0x7,B0; CLR B2,7,22,B1` |
-| c0133894 | elf_reloc_patch_field_8_22_b | sibling of elf_reloc_patch_field_8_22_a (same bit range, separate relocation type) | confirmed | read: identical shape to c0133866 |
-| c01338ac | elf_reloc_patch_field_8_22_c | sibling of elf_reloc_patch_field_8_22_a | confirmed | read: identical shape to c0133866 |
-| c01338c2 | elf_reloc_patch_field_7_22_b | sibling of elf_reloc_patch_field_7_22_a; this is recon/14's type-10 (ABS_H16) patch step, fed by the >>16 value from elf_reloc_shift_arm_16 | confirmed | read: identical shape to c013387a; recon/14_effect_memory.md line 83 ("type 10 -> c01338c2 ... after c0133670 selects c0133704/c0133708") |
-| c01338d6 | elf_reloc_patch_field_7_22_c | sibling of elf_reloc_patch_field_7_22_a; recon/14's type-9 (ABS_L16) patch step | confirmed | read: identical shape; recon/14_effect_memory.md line 83 ("type 9 -> c01338d6, shifting value left 7 ... ABS_L16") |
-| c01338ee | elf_reloc_patch_field_7_22_d | sibling of elf_reloc_patch_field_7_22_a | confirmed | read: identical shape to c013387a |
+| c0133866 | elf_reloc_patch_field_8_22_a | instruction-field patch, two back-to-back arms in one 46B function (coverage.py did not split them): entry c0133866 ORs value<<8 into instr bits [8:22] and stores back; a second entry at c013387a (reached by branch, not a separate fact-sheet function) does the same with value<<7 into bits [7:22]; both fall into the shared cache-sync tail c0133970 | confirmed | read: `SHL B1,0x8,B0; CLR B2,8,22,B1; OR; STW; BNOP c0133970` (entry c0133866) and `SHL B1,0x7,B0; CLR B2,7,22,B1` (entry c013387a, inside the same 46B span c0133866..c0133894) |
+| c0133894 | elf_reloc_patch_field_8_22_b | sibling of elf_reloc_patch_field_8_22_a's c0133866 entry (same bit range, separate relocation type) | confirmed | read: identical shape to c0133866 |
+| c01338ac | elf_reloc_patch_field_8_22_c | sibling of elf_reloc_patch_field_8_22_a's c0133866 entry | confirmed | read: identical shape to c0133866 |
+| c01338c2 | elf_reloc_patch_field_7_22_b | sibling of elf_reloc_patch_field_8_22_a's c013387a (shift-7) entry; this is recon/14's type-10 (ABS_H16) patch step, fed by the >>16 value from elf_reloc_shift_arm_16 | confirmed | read: identical shape to the c013387a entry inside c0133866; recon/14_effect_memory.md line 83 ("type 10 -> c01338c2 ... after c0133670 selects c0133704/c0133708") |
+| c01338d6 | elf_reloc_patch_field_7_22_c | sibling of elf_reloc_patch_field_8_22_a's c013387a (shift-7) entry; recon/14's type-9 (ABS_L16) patch step | confirmed | read: identical shape; recon/14_effect_memory.md line 83 ("type 9 -> c01338d6, shifting value left 7 ... ABS_L16") |
+| c01338ee | elf_reloc_patch_field_7_22_d | sibling of elf_reloc_patch_field_8_22_a's c013387a (shift-7) entry | confirmed | read: identical shape to that entry |
 | c0133906 | elf_reloc_patch_field_16_22 | patch arm: value<<16 into bits [16:22] | confirmed | read: `SHL B1,0x10,B0; CLR B2,16,22,B1` |
 | c013391a | elf_reloc_patch_field_13_22 | patch arm: value<<13 into bits [13:22] | confirmed | read: `SHL B1,0xd,B0; CLR B2,13,22,B1` |
 | c0133934 | elf_reloc_patch_field_16_27 | patch arm: value<<16 into bits [16:27] (wider field than the _16_22 arm) | confirmed | read: `SHL B1,0x10,B0; CLR B2,16,27,B1` |
@@ -126,6 +148,99 @@ Summary: in progress.
 | c0134e10 | mainapp_task_main | the MainApp SYS/BIOS task entry point named in FWMAP.md's task list; calls mainapp_task_loop_body (c0134db8) then the boot/init step c015d428; its address is itself a task-table pointer (ptr@ c0185280) | confirmed | FWMAP.md brief lists "MainApp c0134e10" directly; calls=c0134db8,c015d428; ptr@=c0185280 (task table entry); recon mentions 15,16,17,18,19 |
 | c0134e24 | midi_c0121508_wrapper | MIDI-root function (not MainApp): single caller c0128a54 (outside chunk), single callee c0121508 (outside chunk); B14 slot 124 (same slot mainapp_task_loop_body reads) | guess | roots=MIDI; calls=c0121508; B14=124; not traced instruction-by-instruction |
 
+| c01349ec | thin_orchestrator_veneers | already named and rowed | see | recon/map/00_library_kernel.md |
+| c0134e60 | usb_std_req_synch_frame_stub | USB standard-request table (c0180210) slot 12 (SYNCH_FRAME, offset 0x240): 8-byte stub, no callees recorded | likely | ptr@=c0180240; table base/index arithmetic confirmed via c0134e68(idx10)/c0135940(idx11) below; n=8 |
+| c0134e68 | usb_std_req_get_interface | standard-request table slot 10 = GET_INTERFACE: reads B14[11], returns the byte at c011a1b0+wIndex; confirmed by recon's direct disassembly quote | confirmed | recon/18_round3.md line 91 and line 93 ("GET_INTERFACE requires B14[11]... returns the byte at c011a1b0+wIndex"); recon/20_usb_audio_proto.md line 21 ("c0180238 = 0xc0134e68 (index 10, GET_INTERFACE)"); ptr@=c0180238 |
+| c0134ef8 | usb_std_req_get_configuration | standard-request table slot 8 (offset 0x230): same call shape as GET_INTERFACE (c015af48,c015b0b8); B14 slot 11 | likely | ptr@=c0180230; calls=c015af48,c015b0b8; standard USB bRequest 8 at this table offset |
+| c0134f94 | usb_std_req_set_descriptor_stub | standard-request table slot 7 (offset 0x22c): 12-byte stub, no callees — SET_DESCRIPTOR is rarely implemented in device firmware | guess | ptr@=c018022c; n=12 |
+| c0134fa0 | usb_std_req_get_descriptor | standard-request table slot 6 (offset 0x228) = GET_DESCRIPTOR: thin entry that calls usb_descriptor_response_finalize (c0135368) | likely | ptr@=c0180228; calls=c0135368,rts_regs_save |
+| c0134fe4 | usb_descriptor_build_variant_a | assembles a USB configuration/descriptor fragment set: uses the current-speed selector c0122710 and the fragment builder c0160ec0 (recon/17: clears pointer array, installs device/config/interface/header/jack fragments, FS OUT/IN, alternates 512B templates on B4==2), then finalizes via usb_descriptor_response_finalize (c0135368); one of 3 variants in table 0xc0184410 (slot idx1/idx6) | likely | recon/17_usb_midi_audio.md line 58 ("Current-speed reader c0122710 supplies the selector to GET_DESCRIPTOR at c0134fe4"); calls=c0122710,c0135368,c015af48,c0160ec0; ptr@=c0184414,c0184428 |
+| c0135138 | usb_descriptor_build_variant_b | sibling of usb_descriptor_build_variant_a (same c0122710/c015af48/c0160ec0 call shape, no call to usb_descriptor_response_finalize) — a second descriptor-fragment-set variant in table 0xc0184410 (slot idx0/idx5) | likely | calls=c0122710,c015af48,c0160ec0; ptr@=c0184410,c0184424 |
+| c0135250 | usb_descriptor_build_variant_c | sibling of usb_descriptor_build_variant_a (same call shape, also calls usb_descriptor_response_finalize) — third descriptor-fragment-set variant in table 0xc0184410 (slot idx2) | likely | calls=c0122710,c0135368,c015af48,c0160ec0; ptr@=c0184418 |
+| c0135368 | usb_descriptor_response_finalize | shared tail for the descriptor builders: calls c015b0b8 (likely the actual control-transfer send); called by usb_std_req_get_descriptor and both of the _a/_c builder variants; also itself a table 0x184410 slot (idx3/idx4, a generic/empty-descriptor filler) | likely | callers=c0134fa0,c0134fe4,c0135250; calls=c015b0b8,rts_regs_restore; ptr@=c018441c,c0184420 |
+| c01353a4 | usb_std_req_set_address | standard-request table slot 5 (offset 0x224) = SET_ADDRESS; B14 slot 12 | likely | ptr@=c0180224; calls=c015af48; B14=12; standard USB bRequest 5 at this offset |
+| c01353f0 | usb_std_req_set_feature | standard-request table slot 3 (offset 0x21c) = SET_FEATURE; calls c0120ef8 (likely the EP0 stall/ack helper, also used by the common decoder's error path) plus c015af48; B14 slot 10 | likely | ptr@=c018021c; calls=c0120ef8,c015af48; recon/18_round3.md line 91's stall path also uses c0120ef8 |
+| c013546c | usb_std_req_reserved_stub | shared stub for the two reserved/undefined bRequest slots (2 and 4, offsets 0x218/0x220): 8 bytes, no callees — the "unsupported standard request" path | likely | ptr@=c0180218,c0180220; n=8 |
+| c0135474 | usb_std_req_clear_feature | standard-request table slot 1 (offset 0x214) = CLEAR_FEATURE; calls c0120ef8 (stall helper) and c015af48; B14 slot 10 | likely | ptr@=c0180214; calls=c0120ef8,c015af48 |
+| c01354f8 | usb_std_req_get_status | standard-request table slot 0 (table base, offset 0x210) = GET_STATUS; calls c0122304, c0122710 (speed selector), c015af48, c015b0b8, c0160ec0 (fragment builder — GET_STATUS can return device/interface/endpoint status bytes that reuse the descriptor-fragment machinery); B14 slots 10,11 | likely | ptr@=c0180210 (the table's own base address, confirming index 0); calls=c0122304,c0122710,c015af48,c015b0b8,c0160ec0 |
+| c0135660 | usb_std_req_set_configuration | standard-request table slot 9 (offset 0x234) = SET_CONFIGURATION: calls the current-speed selector c0122710, usb_interface_altsetting_configure (c01357c8), c015af48, c015c804, c0160ec0; B14 slot 11 | likely | ptr@=c0180234; recon/18_round3.md and recon/20_usb_audio_proto.md tag this address (recon:18,20); calls=c0122710,c01357c8,c015af48,c015c804,c0160ec0 |
+| c01357c8 | usb_interface_altsetting_configure | walks interface descriptors matching descriptor-type 4 + bInterfaceNumber + bAlternateSetting, then configures the matched interface's endpoints through c01212e0; called from both SET_INTERFACE and SET_CONFIGURATION | confirmed | recon/20_usb_audio_proto.md line 21 ("c0135840/4c/58 ... descriptor-type-4 + interface + alt match") and recon/18_round3.md line 93 ("That walker explicitly matches interface descriptor type 4, bInterfaceNumber and bAlternateSetting... configures its endpoint descriptors through c01212e0 at c01358b4"); callers=c0135660,c0135940 |
+| c0135940 | usb_std_req_set_interface | standard-request table slot 11 (offset 0x23c) = SET_INTERFACE: writes wValue into the alternate-setting array then calls usb_interface_altsetting_configure (c01357c8) | confirmed | recon/18_round3.md line 91,93 and recon/20_usb_audio_proto.md line 21 ("c018023c = 0xc0135940 (index 11, SET_INTERFACE)"; "c013596e STB A0,*A4[A5]; c0135970 CALLP c01357c8"); ptr@=c018023c |
+| c01359b8 | usb_ctrl_helper_small | small (44B) USB-control helper, single caller c015e9d0 (outside chunk); B14 slots 10,11 tag it alongside the standard-request handlers, but not independently traced | guess | callers=c015e9d0; B14=10,11; recon:18,20 but no direct quote found for this specific address |
+| c01359e4 | usb_ctrl_setup_common_decoder | the common SETUP-packet decoder: reads SETUP via c0122370, extracts recipient/type, tries a registered class/interface callback first, falls back to the standard-request table above for standard-type requests, and stalls EP0 IN (c0120ef8) on any nonzero final result | confirmed | recon/18_round3.md line 90-91 ("Common decoder c01359e4 reads SETUP via c0122370, extracts recipient and type, first attempts a registered class/interface callback... then falls back for standard type"); recon/20_usb_audio_proto.md line 21 corroborates every cited sub-address; ptr@=c01807ac (its own registration slot) |
+| c0135b14 | mainapp_rhythm_menu_popup_sub | helper for the rhythm/menu popup: calls big_mvc_subsystem, rhythm_pattern_dispatch, c013c0f4, c013c948, c01649f0; single caller mainapp_rhythm_menu_popup_open (c0135b70) | guess | calls=c011f8d8=big_mvc_subsystem,c0126ff8=rhythm_pattern_dispatch,c013c0f4,c013c948,c01649f0 |
+| c0135b40 | mainapp_popup_close | closes/tears down a locked popup: calls cfg_locked_dispatch, c0164a54, sem_post_or_clear, region_bridge_1; callers mainapp_rhythm_menu_popup_open (c0135b70) and c0135c00; B14 slot 149 | likely | calls=c0161200=cfg_locked_dispatch,c0164a54,c016d880=sem_post_or_clear,c016df00=region_bridge_1; same B14[149]/call trio reused by every popup-draw function in this tail cluster |
+| c0135b70 | mainapp_rhythm_menu_popup_open | opens a rhythm/menu popup screen: bios_sem_pend, calls ui_menu_screen_handler, mainapp_rhythm_menu_popup_sub, mainapp_popup_close, mainapp_event_dispatch, locked_lookup_big, bios_sem_post; 5 diverse out-of-chunk callers (c01498a2,c0150844,c0154d54,c0157b44,c015c2d4); B14 slot 154 | likely | calls=c01270b8=ui_menu_screen_handler,c0135b14,c0135b40,c0150b20=bios_sem_pend,c01537a8=mainapp_event_dispatch,c0158980=locked_lookup_big,c01628e0=bios_sem_post; 5 unrelated callers matches a shared "open this popup" entry point |
+| c0135c00 | mainapp_menu_popup_open | sibling of mainapp_rhythm_menu_popup_open: same lock/dispatch/close shape (bios_sem_pend/post, ui_menu_screen_handler, mainapp_popup_close, mainapp_event_dispatch, locked_lookup_big) plus c013c948 and c01649f0; single caller c015096c (outside chunk); B14 slot 154 | likely | calls=c01270b8=ui_menu_screen_handler,c0135b40,c013c948,c0150b20=bios_sem_pend,c01537a8=mainapp_event_dispatch,c0158980=locked_lookup_big,c01628e0=bios_sem_post,c01649f0 |
+| c0135c94 | mainapp_popup_draw_sub | small (60B) helper for the big popup-draw routine: single call to c0153730; single caller mainapp_popup_draw (c0135cd0) | guess | callers=c0135cd0; calls=c0153730 |
+| c0135cd0 | mainapp_popup_draw | large (1060B) popup/dialog draw routine: calls the graphics primitive gfx_set_bit_range, ui_logged_leaf_1/2, wrapper_c011f7f4, big_mvc_subsystem, mainapp_popup_draw_sub, c013c900, bios_sem_pend/post, cfg_locked_dispatch, sem_post_or_clear, region_bridge_1; callers c0154c40,c015c254 (outside chunk); B14 slots 82,83,84,149,154 | guess | n=1060; calls=c011c508=gfx_set_bit_range,c011f718=ui_logged_leaf_1,c011f7f4=ui_logged_leaf_2,c011f87c=wrapper_c011f7f4,c011f8d8=big_mvc_subsystem,c0135c94,c013c900,c0150b20,c01537a8=mainapp_event_dispatch,c0161200=cfg_locked_dispatch,c01628e0,c016d880=sem_post_or_clear,c016df00=region_bridge_1; not traced instruction-by-instruction given size |
+| c01360f4 | mainapp_update_complete_popup | draws the "Complete!" popup (literal string in this function): calls c0137340, bios_sem_pend/post, mainapp_event_dispatch, locked_lookup_big, cfg_locked_dispatch, sem_post_or_clear, region_bridge_1 — part of the firmware/effect-update-flow UI (ties to the "File System Error" strings in mainapp_frame_update and the fwupdate_ui_step_* table earlier in this chunk); single caller c014cef4 (outside chunk); B14 slots 149,154 | likely | strings="Complete!"; calls=c0137340,c0150b20=bios_sem_pend,c01537a8=mainapp_event_dispatch,c0158980=locked_lookup_big,c0161200=cfg_locked_dispatch,c01628e0=bios_sem_post,c016d880=sem_post_or_clear,c016df00=region_bridge_1 |
+| c01361ac | mainapp_screen_draw_common | 512B MainApp screen-draw routine: calls unk_f054, ui_logged_leaf_1, wrapper_c011f7f4, big_mvc_subsystem, locked_lookup_big, cfg_locked_dispatch, diag_mask_test, sem_post_or_clear, region_bridge_1; 4 callers within this chunk (c01363ac,c0136578,c0136684,c01366a0) plus roots MainApp; B14 slot 149 | likely | roots=MainApp; calls=c011f054=unk_f054,c011f718=ui_logged_leaf_1,c011f87c=wrapper_c011f7f4,c011f8d8=big_mvc_subsystem,c0158980=locked_lookup_big,c0161200=cfg_locked_dispatch,c0169fc0=diag_mask_test,c016d880=sem_post_or_clear,c016df00=region_bridge_1 |
+| c01363ac | mainapp_screen_draw_common_wrap_a | thin wrapper: calls mainapp_screen_draw_common (c01361ac) then mainapp_event_dispatch; callers c01496d0,c0157b6c (outside chunk) | likely | calls=c01361ac,c01537a8=mainapp_event_dispatch |
+| c01363cc | mainapp_screen_draw_variant | sibling screen-draw routine (276B): calls orchestrator_c011c990, unk_f054, c013c948, c01563a0, locked_lookup_big, cfg_locked_dispatch, sem_post_or_clear, region_bridge_1; single caller c01493a8 (outside chunk); B14 slot 149 | guess | calls=c011cb64=orchestrator_c011c990,c011f054=unk_f054,c013c948,c01563a0,c0158980=locked_lookup_big,c0161200=cfg_locked_dispatch,c016d880=sem_post_or_clear,c016df00=region_bridge_1 |
+| c01364e0 | mainapp_update_error_popup | draws the "Error!" popup (literal string in this function), sibling of mainapp_update_complete_popup with an identical call shape (c0137340, bios_sem_pend/post, mainapp_event_dispatch, locked_lookup_big, cfg_locked_dispatch, sem_post_or_clear, region_bridge_1); single caller c014cef4 (same caller as the Complete! popup — likely branches to one or the other depending on update result); B14 slots 149,154 | likely | strings="Error!"; calls identical set to c01360f4; same single caller c014cef4 |
+| c0136578 | mainapp_screen_draw_common_wrap_b | thin wrapper: single call to mainapp_screen_draw_common (c01361ac); single caller c0148e1c (outside chunk) | likely | calls=c01361ac only |
+| c0136590 | mainapp_rhythm_screen_draw | screen-draw routine tied to the rhythm subsystem: calls orchestrator_c011c990, unk_f054, rhythm_pattern_dispatch, cfg_table_index_1181191c, mainapp_event_dispatch, c01563a0, c0156648, locked_lookup_big, cfg_locked_dispatch, c0164a54, sem_post_or_clear, region_bridge_1; single caller c0136674 (first function of chunk_07, outside this chunk); B14 slot 149 | guess | calls=c011cb64=orchestrator_c011c990,c011f054=unk_f054,c0126ff8=rhythm_pattern_dispatch,c0140320=cfg_table_index_1181191c,c01537a8=mainapp_event_dispatch,c01563a0,c0156648,c0158980=locked_lookup_big,c0161200=cfg_locked_dispatch,c0164a54,c016d880=sem_post_or_clear,c016df00=region_bridge_1; this is the LAST function fully inside chunk_06 (ends at c0136674, chunk_07's first address) |
+
 ## Data
 
+- Per-slot effect-instance parameter table, base 0x11811598 (field0) /
+  0x1181159c (field used by slot_table_scan_1598), stride 84 bytes (0x54) --
+  5 slots. Addresses close to recon/14's confirmed instance table
+  (0x11f03ae4) and the named accessors cfg_table_ptr_11f03ad0 /
+  cfg_get_ptr_11f03b48.
+- ELF relocation-type dispatch tables (all confirmed by direct read): shift-
+  amount table 0xc0184220 (12 entries, overflow-check arms) plus a second
+  tier at 0xc0184240 (4 entries); shift-select side tables 0xc01841b4 and
+  0xc01841c4 (10 entries each, reached from elf_reloc_shift_select
+  c0133670); bitfield-select table 0xc0184448 (reached from
+  elf_reloc_bitfield_select c0133740); instruction-patch table 0xc01841ec
+  (12 entries, reached from elf_reloc_patch_apply c01337f8 -- this is the
+  table recon/14 cites for the ABS32/ABS_L16/ABS_H16 handlers).
+- MainApp per-screen handler table, 0xc01840b8..0xc01840f8, 17 word slots
+  (indices 0-16), indexed by cfg_get_global_c011ad8c()'s screen id per
+  recon/15_controls_midi.md line 175. Slot 0 = mainapp_screen_h00
+  (c0134b94); slots 11-15 all alias the shared mainapp_screen_h_shared
+  (c0134c30).
+- Firmware/effect-update progress-UI step table, 0xc01842a4..0xc01842c8
+  (11 word slots), reused heavily by thin_orchestrator_veneers (c01349ec,
+  already named in 00_library_kernel.md).
+- USB standard-request table, 0xc0180210, 13 word slots (bRequest 0-12,
+  GET_STATUS..SYNCH_FRAME). Base and slots 10/11 independently confirmed
+  by recon/18_round3.md and recon/20_usb_audio_proto.md; slots 0,1,3,5-9,
+  12 derived by address arithmetic from that confirmed base and standard
+  USB bRequest numbering (likely, not independently quoted).
+- Descriptor-fragment-builder table, 0xc0184410..0xc0184428 (7 word
+  slots), selecting among 3 builder functions (usb_descriptor_build_
+  variant_a/b/c) plus the shared finalizer usb_descriptor_response_finalize
+  (c0135368) for 2 slots.
+- B14[149] and B14[154] are reused as lock/handle slots across nearly
+  every popup/menu/rhythm screen-draw routine in c0135b14..c0136674,
+  always alongside the trio cfg_locked_dispatch/sem_post_or_clear/
+  region_bridge_1 (all named in earlier chunks).
+
 ## Open questions
+
+- Exact relocation-type-number-to-handler mapping for the overflow-check
+  table (0xc0184220/0184240) and the two shift-select side tables
+  (0xc01841b4/c4) was not individually resolved per entry -- the mechanical
+  shape (N-bit range check / N-bit shift) is confirmed, the C6x relocation
+  type number for most individual slots is not.
+- c013364a's trailing CMPLTU instruction (c0133654) is dead code whenever
+  reached via the branch that defines the function (fixed 2-cycle delay
+  slot skips it) -- flagging as a possible compiler/linker code-layout
+  quirk worth independent confirmation if this area is ever patched.
+- usb_std_req_get_descriptor (c0134fa0, standard table slot 6) does not
+  directly call any of the three descriptor-builder variants
+  (c0134fe4/c0135138/c0135250) -- it only calls usb_descriptor_response_
+  finalize (c0135368). How GET_DESCRIPTOR actually reaches the builder
+  table at 0xc0184410 (likely through c0135368 or a register-indirect call
+  not captured by the static call-graph pass) is not resolved.
+- Which of the 3 descriptor-builder variants (c0134fe4/c0135138/c0135250)
+  serves which specific descriptor type (device/config/MIDI-streaming/
+  audio-streaming) was not individually traced; recon/17 only confirms
+  c0134fe4 by name.
+- usb_ctrl_helper_small (c01359b8) and several screen-table slot handlers
+  (mainapp_screen_h01..h10) are tagged "guess"/"likely" purely from call-
+  graph shape; none were instruction-traced given the volume of tiny
+  near-duplicate handlers in this chunk.
