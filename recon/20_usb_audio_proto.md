@@ -65,6 +65,41 @@ The six "instruction anchors" (c0161044, c0135aaa, c0151ef0, c0121444, c01214c0/
 Gap found: 3.6 point 5 cites "endpoint-1 FIFO 01e00424 and direct EP1 TXCSR 01e00512" as if these were established addresses. `grep` of main.dis for `0x1e00424`/`0x1e00512` (and the surrounding `0x1e0042`/`0x1e0051` prefixes) finds **zero** stock references — expected, since EP1 is never configured by stock (3.3 already says FIFO/CSR setup only touches endpoints 1..4 generically through the indexed allocator, and stock only activates RX3/TX4). These two addresses rest entirely on the SPRUFM9H register map (direct, non-indexed per-endpoint FIFO/CSR block alongside the indexed CSR at 01e0040c used by c0121444), not on anything visible in main.dis. This does not make them wrong, but they are a datasheet-only claim, one level less certain than the rest of 3.6's confirmed instruction addresses.
 Confidence: confirmed (anchors, byte arithmetic) / likely (EP1 direct FIFO/CSR addresses — datasheet-derived, no stock cross-check possible).
 
+### 1.7 New finding: TXCSR's indexed MMIO address is traceable in main.dis, correcting the 3.6 "direct EP1 TXCSR 01e00512" guess
+c0121336 confirms **A10 = 0x1e0040e (the INDEX register)** directly:
+```text
+c012132c MVK.S2 0x040e,B4
+c0121330 MVKH.S2 0x1e00000,B4   ; B4 = 0x1e0040e
+c0121336 MV.L1X B4,A10          ; A10 = INDEX register address
+c0121338 STB.D2T1 A1,*+B7[0]    ; select endpoint: INDEX = A1 (low nibble)
+```
+Every later FIFO-config field in c01212e0 is then computed as a fixed offset
+from A10, matching B2's own annotations exactly: TXMAXP = A10+2 (0x1e00410,
+c0121406/0c), RXMAXP = A10+6 (0x1e00414, c0121386/8c), TXFIFOSZ = A10+0x54
+(0x1e00462, c01213f6/c0121402), RXFIFOSZ = A10+0x55 (0x1e00463,
+c0121374/80). The ISO/DMA CSR store at c0121444 (re-verified in 1.3) uses
+`B4 = A10+4` (c012142e `ADD.L2 B4,4,B4` where B4 is A10's value via the
+`MV.L2X A10,B0` at c012142c) — i.e. **TXCSR's indexed address is
+0x1e00412 (INDEX+4), confirmed by the same firmware arithmetic that
+produces every other B2-confirmed offset**, not merely asserted.
+
+This corrects, rather than merely flags, the gap from 1.6: 3.6 point 5's
+"direct EP1 TXCSR 01e00512" is a datasheet-only, unconfirmed address with
+zero stock cross-reference. The address actually exercised by this
+firmware for TXCSR is the **indexed** one at 0x1e00412 (select endpoint 1
+via INDEX=0x1e0040e, then access 0x1e00412) — the same mechanism already
+used, confirmed, for every other per-endpoint register in c01212e0. Section
+3's SOF routine uses this confirmed indexed path instead of the
+unconfirmed direct address. The FIFO *data* register address (0x1e00424
+for EP1, by extrapolation from EP0's confirmed fixed FIFO0 at 0x1e00420,
+c0122380/86) remains a pattern-based, not firmware-confirmed, address —
+EP0's FIFO is genuinely a separate non-indexed register in the standard
+MUSB layout, so this extrapolation is independently well-motivated, but
+still "likely," not "confirmed" (no stock instruction ever touches
+0x1e00424).
+Confidence: confirmed (TXCSR indexed address 0x1e00412); likely (EP1 FIFO
+data register 0x1e00424, pattern-based).
+
 Status: done.
 
 ## 2. 3.6 turned into exact work items
