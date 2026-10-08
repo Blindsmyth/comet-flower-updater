@@ -382,3 +382,76 @@ design, not that the design is correct on real hardware (see item 4).
 Status: done.
 
 ## 4. What can only be proven on hardware
+
+Carried over from recon/18 3.4/3.6 and recon/17 B4/B5, plus new items this
+pass's design surfaced:
+
+1. **EP1 FIFO data register address (0x1e00424).** Pattern-based from
+   EP0's confirmed fixed FIFO at 0x1e00420 (item 1.7); no stock
+   instruction anywhere in main.dis touches it. If wrong, the first
+   symptom on real silicon is either a bus fault/exception or data
+   silently going nowhere (musb FIFO regions are sometimes aliased or
+   gated differently per endpoint on some silicon revisions). Only a
+   hardware test (or a datasheet read this pass did not have time/access
+   to re-verify beyond what recon/18 3.3 already cited) can confirm it.
+2. **TXCSR bit semantics beyond ISO (bit14).** TXPKTRDY=bit0 and
+   FLUSHFIFO=bit3 are standard-MUSB assumptions (SPRUFM9H, already cited
+   by recon/18 3.3/3.4) with zero stock cross-reference — stock never
+   PIO-kicks any TX endpoint (recon/17 B4: all stock TX is CPPI-driven).
+   Whether writing 0x4001 (ISO|TXPKTRDY) with every other bit zero
+   actually produces a valid isochronous IN packet — as opposed to
+   needing one of the DMA-adjacent bits stock sets (the unexplained bits
+   at positions 6/10/12/13 in stock's runtime-composed value 0x3440,
+   recon/18 3.3) even in a pure-PIO configuration — is unproven by static
+   analysis. This is the single highest-risk unknown in the whole design.
+3. **Worst-case SOF Hwi timing.** recon/18 3.4 already marks this
+   unknown; this pass's `usb_audio_sof_tick` adds a TXPKTRDY poll, a
+   bounded SPLOOP of up to 45 word stores, and counter updates — bus wait
+   states, cache misses, interrupt nesting/masking against the existing
+   CPU-interrupt-7 SOF top half (c011fca2..d36) and interference with the
+   priority-13 USB Swi / priority-15 audio Swi are not measurable
+   statically. No cycle count is claimed.
+4. **Host enumeration and class binding.** Whether Windows/macOS
+   usbaudio.sys / AppleUSBAudio actually binds the proposed UAC1
+   descriptor set (recon/17 B5's 192-byte config, four interfaces, two
+   alternates on IF3) is untestable without real hardware and a real
+   host, per B5's own citations (Microsoft usbaudio.sys docs, Apple
+   TN3190). Short/truncated wLength GET_DESCRIPTOR requests, alternate-
+   setting transition ordering during enumeration, and OS-specific
+   quirks are host-side behavior, not firmware behavior.
+5. **FIFO/CSR reconfiguration race safety.** `usb_audio_setup_ep1` is
+   designed to run once, in task context, while the bus is quiescent
+   (recon/20 2.3), but whether "quiescent" is actually guaranteed at the
+   point it would be called (no in-flight SETUP/control transfer, no
+   pending RX3/TX4 traffic) depends on exactly where in stock start-up it
+   is invoked — a question this pass left unresolved (2.2's blocked
+   item: c015c66c's actual callers were not located). Only a hardware
+   trace (or the follow-up disassembly read flagged in 2.2) can close
+   this.
+6. **Long-run clock drift and ring/underrun behavior.** The fixed 44/45
+   10-SOF pattern is explicitly silence-only (recon/17 B4's clock-design
+   caveat, restated in 3.6 point 5); whether a *real* codec source would
+   actually need producer-clock tracking against this same SOF hook, and
+   what the host does with an asynchronous IN endpoint that never adjusts
+   its own rate, is an owner hardware test, not a static question.
+7. **Alternate-setting transition correctness (alt0<->alt1, reset,
+   disconnect).** 3.6 point 2/3 require clean stop/flush on alt0 and
+   publish-after-success on alt1; this pass did not implement or trace
+   the alt-setting state machine beyond listing the stock call sites to
+   change (item 2.2), and could not resolve c015c66c's callers or the
+   c0151f5a..c0151f90 callback body within budget. Whether the actual
+   sequencing avoids a stale-FIFO/stale-ownership window is unverified
+   both statically (incomplete trace) and dynamically (no hardware test).
+8. **MIDI coexistence.** Whether adding IF2/IF3/IN1 and reconfiguring the
+   endpoint address allocator (c012146e..14c6, recon/18 3.3) leaves
+   OUT3/IN4 (MIDI) working unchanged is an integration question that
+   needs an actual enumerated device with both interfaces exercised
+   together — static analysis here only establishes the two endpoints'
+   address ranges don't overlap (recon/17 B2 finding 2 + recon/18 3.3's
+   tail-placement proposal), not that runtime behavior is unaffected.
+
+None of these were tested; no USB/MIDI hardware, pedal, or `.exe` other
+than cl6x/lnk6x/dis6x was touched in this run, per the brief's static-only
+constraint.
+
+Status: done.
