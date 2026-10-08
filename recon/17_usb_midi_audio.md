@@ -238,3 +238,18 @@ Minimal patch sequence:
 4. At B3's final-output point, copy the completed block into a bounded producer ring. Preserve audio deadlines and never wait on USB or the stock message queue. Define overrun/underrun counters and a documented discard/silence policy; do format conversion outside the audio-critical path where possible.
 5. Replace the empty SOF callback with bounded scheduling, plus TX completion bookkeeping. Keep the next packet ready before its IN token. Derive packet counts from codec sample production against USB SOFs, with buffering/phase estimation; nominally 44/45 samples, average 44.1. A fixed ten-frame pattern alone does not follow independent clock drift. Ring counters need atomic publication, wrap handling and cache coherence.
 6. Statically verify rewritten AIS, instructions, descriptors, memory bounds, FIFO packing, control requests and every call reachable in audio/interrupt context. Then have the owner test enumeration, alternate-setting transitions, long-run clock drift, audio under worst-case DSP load, MIDI coexistence and reset/disconnect recovery. No such hardware tests were run here.
+
+### A4 — conditional image build skipped (confirmed prerequisite failure)
+A1 is no for the traced stock boot path; A2 is unknown, not yes. The brief permits `make_controller_image.py` and the candidate only if both are yes. Accordingly neither was created. The existing prototype and nine-byte residency patch were read only. Relevant contradiction:
+```text
+c0203d50 STW A3,*B6[0] ; res5 writes L2CFG=3 before loading main
+c022bb68 CALLP c01fda8c,B3 ; direct flash copy into AIS destination
+```
+A later application-side L2CFG=2 cannot establish that an earlier 1182a000 section load reached SRAM. Missing prerequisites are a verified safe boot/staging path and exhaustive cave ownership/reference evidence.
+
+Read-only input SHA-256 checks:
+```text
+res1_493412.bin      43060686fce75e175a217194ab1be3aeffe0be7d59f9d3df4181d41b9d3cc5a7
+res5_163840.bin      5ee756a5dee51b4e790a6e6f6b6c0a8a1ea531c245a13124e8a5897530b01622
+controller-code.bin 2ac9a653fc09b5a4196a9fdcf8b10e9de26c7bc009bf916a9c444c34393c145f
+```
