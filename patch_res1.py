@@ -5,20 +5,27 @@ def patch_ais(input_path, output_path):
     with open(input_path, 'rb') as f:
         data = bytearray(f.read())
     
-    # 1. Patch L2CFG early initializer at 0x61008
-    # Original: f6 62 3c 00 (STW.D2T2 B0, *+B15[3])
-    # New: 27 44 05 fc (MVK.L2 2, B0; STW.D2T2 B0, *B15[3])
+    # 1. Patch L2CFG early initializer at 0x61008 (c016d08c)
+    # Original: f6 62 3c 00 (32-bit STW.D2T2 B0, *+B15[3])
+    # New: 27 44 05 fc (compact 16-bit MVK.L2 2, B0; STW.D2T2 B0, *B15[3])
     data[0x61008:0x6100c] = b'\x27\x44\x05\xfc'
     
-    # 2. Patch L2CFG late initializer table at 0x756b0
+    # 1b. Update .fphead at 0x61018 (c016d09c) to declare Slot 3 as compact!
+    # Original: 00 00 d0 e0 (0xe0d00000: mask 0000110b -> Slots 1, 2 compact)
+    # New: 00 00 d0 e1 (0xe1d00000: mask 0001110b -> Slots 1, 2, 3 compact)
+    data[0x61018:0x6101c] = b'\x00\x00\xd0\xe1'
+    
+    # 2. Patch L2CFG late initializer table at 0x756b0 (c0181728)
     # Original: 03 00 00 00
     # New: 02 00 00 00
     data[0x756b0:0x756b4] = b'\x02\x00\x00\x00'
     
-    # 3. Patch Active slot 0 base table (c01839a8) at 0x77EF4
-    # Original: 00 40 1f c0
-    # New: 00 00 82 11
-    data[0x77ef4:0x77ef8] = b'\x00\x00\x82\x11'
+    # 3. Patch Active slot 0 base table (c01839a8) in .cinit RLE stream
+    # Original in .cinit at 0x77efa: 1a 05 00 40 1f c0 (5 zeros + 40 1f c0 = 0xc01f4000)
+    # New at 0x77efd: 00 82 11 (5 zeros + 00 + 82 + 11 = 0x11820000)
+    # Preserves RLE stream length and surrounding data perfectly.
+    assert data[0x77efa:0x77f00] == bytes.fromhex('1a0500401fc0'), "Unexpected cinit stream signature!"
+    data[0x77efd:0x77f00] = b'\x00\x82\x11'
     
     # 4. Patch c016e380 L1P invalidate + tail call at 0x622FC
     # Replaces entire 32-byte packet
@@ -36,6 +43,7 @@ def patch_ais(input_path, output_path):
     
     with open(output_path, 'wb') as f:
         f.write(data)
+    print(f"Successfully generated {output_path}")
 
 if __name__ == '__main__':
     patch_ais('build/fw/res1_493412.bin', 'build/fw/res1_patched.bin')
