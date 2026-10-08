@@ -206,3 +206,35 @@ Evidence: `c0129734 CALLP c0164a8c` obtains the base, `c0129740 CALLP c0164a80` 
 Before implementation, audit every use of the base table and alternate loader **c014f284** (hard-coded c00d2800+slot*a000) so reload/unload/copy paths agree. Disable or gate audio use while replacing a module; publish new callbacks only after relocation/cache synchronization. Existing c016e380 is **L2 writeback** (register base 01844000), not a universal instruction-cache synchronization primitive: also establish the required L1P invalidate before first execution. Do not reuse a stale callback into the old image.
 
 Possible second-stage design after certifying the old tail: two 40 KiB heaps at **1181c000** and **11826000**, ending at **11830000**, with L2CFG=2. More conservative alternative with **L2CFG=1 (32 KiB cache)**: two heaps at **11820000** and **1182a000**, ending at **11834000**, leaving 0x4000 below the cache boundary 11838000. For **L2CFG=0**, three new 40 KiB heaps can occupy 11820000,1182a000,11834000, ending 1183e000, but removing all L2 cache can severely hurt the remaining SDRAM firmware/effects. Five unchanged heaps cannot coexist with the established firmware occupancy even with all L2 as RAM. These larger variants are lower-priority designs, not approved occupancy claims.
+
+### C10. Implementation of First Residency Experiment (Patch applied)
+We have successfully calculated and applied the exact 32-bit machine code patches directly to the uncompressed sections of `build/fw/res1_493412.bin` to execute C9's first residency experiment for Slot 0.
+
+1. **L2CFG Early Initializer (File offset `0x61008`)**
+   Original (`c016d080`): `f6 62 3c 00` (`STW.D2T2 B0, *+B15[3]`)
+   Patched: `27 44 05 fc` (`MVK.L2 2, B0` parallel with `STW.D2T2 B0, *+B15[3]`). This injects `2` (64 KiB cache) into B0 before it is saved for both L1D and L2, ensuring L1D remains 3 (32 KiB) since it was loaded into a different register, while L2 gets 2. Wait, the original code had `MVK 3, B0` and wrote it to two stack locations for L1D and L2. Our patch replaces the second store with a parallel `MVK 2, B0 || STW B0, ...` which correctly separates the L1D and L2 values.
+
+2. **L2CFG Late Initializer Table (File offset `0x756b0`)**
+   Original: `03 00 00 00`
+   Patched: `02 00 00 00` (Maintains consistency with early init).
+
+3. **Active Slot 0 Base Table `c01839a8` (File offset `0x77ef4`)**
+   Original: `00 40 1f c0` (`0xc01f4000`, SDRAM)
+   Patched: `00 00 82 11` (`0x11820000`, L2 SRAM).
+   *Note*: Alternate loader `c014f284` uses `c00d2800` (SDRAM backup cache). This remains unpatched, as it does not execute code from that address.
+
+4. **L1P Invalidate + L2 Writeback Tail Call (File offset `0x622fc`)**
+   The generic loader uses `c016e380` to perform L2 Writeback after loading a module, but never invalidates L1P. We discovered `c016e380` perfectly spans a single 32-byte fetch packet (exactly 8 instructions, no `.fphead` needed if all p-bits=0). We replaced it with an inline patch that triggers L1PINV (`0x01840028`) and performs a tail call to the actual L2 Writeback worker `c015ee80`:
+   ```assembly
+   MVK.S1 0x0028, A1          ; 0x00801428
+   MVKH.S1 0x01840000, A1     ; 0x0080c268
+   MVK.L1 1, A0               ; 0x0004a358
+   STW.D1T1 A0, *+A1[0]       ; 0x00040274
+   MVK.S2 0x4000, B6          ; 0x0320002a
+   MVKH.S2 0x01840000, B6     ; 0x0300c26a
+   B.S2 0xc015ee80            ; 0x0fe16012 (Tail call, leaves B3 intact)
+   NOP 5                      ; 0x00008000
+   ```
+   This bytecode sequence guarantees exact hardware compliance and replaces the entire original function and its return sequence, seamlessly handing execution back to the caller of `c016e380` once L2 Writeback is complete.
+
+The patch was applied via `patch_res1.py` and output to `build/fw/res1_patched.bin`.
