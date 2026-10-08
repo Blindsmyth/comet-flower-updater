@@ -261,3 +261,23 @@ honest guess beats a wrong confirmed."
 | c016d880 | sem_post_or_clear | conditional wrapper around c01628e0: if arg2(B4) != 0, writes 0 to *A4[1] and returns; if arg2 == 0, tail-branches into c01628e0 (bios_sem_post) with B4 loaded from a fixed global at approx 0xc017d36c -- i.e. complete an operation, optionally releasing a default lock | confirmed | c016d888 [A0] B 0xc016d8b0 (store-0 path); c016d890 [!A0] B 0xc01628e0 // c016d894 LDW *+B4[0],B4 loads the lock handle then tail-calls the post primitive; 38 callers |
 | c016d8c0 | wrapper_c016d8c0 | generic leaf routine, no further structure identified | guess | c016d8c0: n=32; 1 callers; first op MVK.S1 0x21ec,A3 |
 | c016d940 | tailcall_wrapper_c0166a80_c016d940 | small wrapper that tail-calls c0166a80 after a short setup | likely | c016d940: ...; B 0xc0166a80; 4 callers |
+| c016da00 | tailcall_wrapper_c0166a80_c016da00 | small wrapper that tail-calls c0166a80 after a short setup | likely | c016da00: ...; B 0xc0166a80; 2 callers |
+| c016db00 | wrapper_c016db00 | generic leaf routine, no further structure identified | guess | c016db00: n=16; 1 callers; first op MVK.S1 0x21ec,A3 |
+| c016db40 | wrapper_c016db40 | generic leaf routine, no further structure identified | guess | c016db40: n=18; 9 callers; first op MVK.S1 0x19f4,A3 |
+| c016db80 | tailcall_wrapper_c016dba8_c016db80 | small wrapper that tail-calls c016dba8 after a short setup | likely | c016db80: ...; B 0xc016dba8; 5 callers |
+| c016dc00 | wrapper_c016dc00 | generic leaf routine, no further structure identified | guess | c016dc00: n=32; 1 callers; first op MVK.S1 0x21ec,A3 |
+| c016dc80 | wrapper_c016dc80 | generic routine (calls c0161540) | guess | c016dc80: n=19; 0 callers; first op STW.D2T1 A10,*B15--[2] |
+| c016dcc0 | wrapper_c016dcc0 | generic routine (calls c016a560,c016cf60,c016e120) | guess | c016dcc0: n=68; 6 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016ddc0 | unk_ddc0 | large (81 instr) routine, prologue uses A15 frame pointer, only external call is c016cfc0; fact sheet B14-global list for this address looked anomalous (very large slot numbers) and was not trusted -- not traced further this wave | guess | callers=3; calls=c016cfc0; MV.L1X B15,A15 prologue |
+| c016df00 | region_bridge_1 | bridges the c0 and 1180 address spaces: enters via c016e020 (c0-region save helper) but calls 11805878 (1180-region) and c01636a0, c016e000; small (8 instr visible) but called 18 times | guess | calls=11805878,c01636a0,c016e000; entered via CALLP 0xc016e020,A3; 18 callers |
+| c016df20 | wrapper_c016df20 | generic routine (calls c01529c0; B14[184 ]) | guess | c016df20: n=8; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016df40 | wrapper_c016df40 | generic routine (calls c0168144) | guess | c016df40: n=5; 0 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016df54 | wrapper_c016df54 | generic leaf routine, no further structure identified | guess | c016df54: n=3; 0 callers; first op BNOP.S2 B3,5 |
+| c016df60 | rts_const_return_0_c016df60 | leaf stub, returns constant 0 | confirmed | c016df60 MVK.L1 0,A4; BNOP; 2 callers |
+| c016df64 | wrapper_c016df64 | generic routine (calls c0169fc0) | guess | c016df64: n=5; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016df74 | wrapper_c016df74 | generic routine (calls c016a060) | guess | c016df74: n=20; 1 callers; first op MVK.L1 0,A4 |
+| c016dfc0 | tailcall_wrapper_c016ac40_c016dfc0 | small wrapper that tail-calls c016ac40 after a short setup | likely | c016dfc0: ...; B 0xc016ac40; 1 callers |
+| c016e000 | rts_regs_restore | epilogue helper: pop B3:B2,A11:A10,B11:B10,A13:A12,B13:B12,A15:A14,B14 then BNOP B3,0 (return) | confirmed | c016e000 LDDW *++B15[1],B3:B2 ... BNOP B3,0; 853 refs; pairs with c016e020 |
+| c016e020 | rts_regs_save | prologue helper: push B14,A15:A14,B13:B12,A13:A12,B11:B10,A11:A10,B3:B2 then branch to A3 (entered via CALLP X,A3, not B3, so B3 stays free) | confirmed | c016e020 STW B14,*B15--[2]; B.S2X A3, then parallel/sequential STDW of A15:A14,B13:B12,A13:A12,B11:B10,A11:A10,B3:B2; 865 CALLP/branch refs, matches brief's CALLP ...,A3 save/restore shape |
+| c016e0c0 | wrapper_c016e0c0 | generic leaf routine, no further structure identified | guess | c016e0c0: n=16; 3 callers; first op BNOP.S2 B3,2 |
+| c016e100 | wrapper_c016e100 | generic leaf routine, no further structure identified | guess | c016e100: n=8; 2 callers; first op MV.D2X A4,B0 |
