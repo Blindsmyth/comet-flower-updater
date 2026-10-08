@@ -16,6 +16,13 @@ The sampler is not `u32(void)`: it writes through an output pointer supplied in 
 
 Proposed source fix (report only): declare the sampler as `void (*)(u32 *)`, allocate initialized local bitmap(s), and pass their addresses; consume the written bitmap, never the return register. Separately establish GPIO initialization before sampling, or move the latch after sampler/GPIO setup and before event processing. Two back-to-back reads are not timed debounce. Exact returned A4 and initialization ordering are traced separately below.
 
+### 1.3 Sampler returns its destination pointer and runs before normal GPIO setup
+Confidence: confirmed (A4 value, initialized base and call order); actual pre-setup pin levels unknown.
+
+`c0157020 MV A10,A4; c015702e STW A0,*A4[0]; c0157030 CALLP c016e000,A3` leaves A4 equal to the caller's output pointer. The restore helper c016e000..e00e restores saved registers/stack, not A4. Thus, if the bad call returns, startup tests bit 9 of that pointer twice, not switch state. The second bad call reuses the same pointer. It does not return a defined default/uninitialized bitmap.
+
+The GPIO reader uses an already C-initialized MMIO base: decoded `build/codex3/init_1180bd40.bin` has 11813214=01e26000; `118094a0 LDW *A5[0],A0; 118094b2 LDW *A5[8],A0` reads hardware directly. However, MainApp normally calls `c015d440 CALLP c0160ad8` inside stock startup; that routine programs GPIO (`c0160aea STH A0,*A4[10]`, further direction/output stores through c0160b4c). Normal sampler setup is later still: `c0134e18 CALLP c0134db8; c0134dc0 CALLP c01341e4; c0134200 CALLP c01570a4; c015710e CALLP c0156f00` with a real output pointer. The hook runs before both. Reading a pre-setup register is not proof of the eventual stable switch level; boot inheritance may make it work but is not a substitute for this order audit. Fix both defects: call stock startup first, then sample through valid local storage before entering the event loop, or place the latch after c015710e using its produced bitmap. Verify the intended hold timing for that later latch. No source was edited.
+
 ## 2. SDRAM gap c0187024..c01f4000
 
 ## 3. USB audio driver and silence-stream patch list
