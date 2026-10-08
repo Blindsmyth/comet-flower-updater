@@ -455,3 +455,9 @@ than cl6x/lnk6x/dis6x was touched in this run, per the brief's static-only
 constraint.
 
 Status: done.
+
+## Review by Claude (2026-10-08)
+
+- **The indexed TXCSR route is confirmed.** c0121334..c0121338 keep the INDEX register base (`MVKH 0x1e00000,B4`, then `STB A1,*+B7[0]`), and c0121444 `STH A0,*B4[0]` writes the per-endpoint CSR word (`MVK 209` <<6 with the ISO bit computed from the transfer type at c0121432..c012143a).
+- **Correction to item 1's "zero stock cross-reference" for the direct EP1 TXCSR.** c0122000..c0122014 use exactly `0x01e00512`: `MVK 0x0512,A4; MVKH 0x1e00000,A4; LDHU *A4,A0; EXTU A0,26,31,A0` (bit 5), and when it is set, `CLR A0,5,5,A0; STH A0,*A4`. Stock therefore reads and clears bit 5 (SENTSTALL in the MUSB layout) of EP1's TX CSR through the non-indexed block. Both the indexed (INDEX=1, +4) and the direct (0x500 + 0x10*ep + 2) forms are valid. The prototype may use either, but must not hold a stale INDEX value across an interrupt that changes it: the SOF Hwi and the USB Swi both use INDEX, so the Hwi should use the direct block.
+- **Status:** a design and compiled routines only; no image is built. The highest-risk unknowns are those in item 4 (TXPKTRDY/FLUSHFIFO semantics, SOF Hwi timing, FIFO relocation while MIDI is live, the c015c66c callers). No image will be built until a pedal test of the controller firmware succeeds.
