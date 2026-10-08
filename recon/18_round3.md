@@ -62,6 +62,11 @@ Confidence: confirmed on the inspected normal insertion path (assuming its initi
 
 A computed-user candidate really exists: `c014c118 MVK 0,A1; c014c120 MVKH c0000000,A1; c014c126 ADD A1,A0,A0; c014c12c CALLP c012b744` reads a file into c0000000 plus a running offset. But c014c0d0 obtains the previous entry end, and `c014c0d6 MVK 25,A1; c014c0d8 SHL A1,14,A1; c014c0e0 SUB A1,A0,A0; c014c0e4 CMPGTU B0,A0,B0; c014c0e8 [B0] BNOP c014c14c,5` rejects a file larger than remaining 0x64000-byte capacity. A separate 40-entry limit is checked at c014c0f0..f8. Initialization c014bef4 clears exactly 25<<14 bytes at c0000000 and c014bf0c clears 15<<6 bytes of descriptors at c0064000. The computed read/copy path is a bounded low-SDRAM pool, not evidence of occupation at c01a0000. This does not certify behavior with corrupted file metadata.
 
+### 2.3 Boot flash reads pass through the AIS destination, with no gap staging found
+Confidence: confirmed for the traced argument chain; all SPI/DMA side effects not exhausted.
+
+Normal res5 loading passes section destination/length directly: `c022bb62 LDW *B15[3],A6; c022bb66 LDW *B15[2],B4; c022bb68 CALLP c01fda8c`. That wrapper saves B4 in A13 and forwards it at c01fdacc to c01fd8b8. Flash-read command 0x0b is built in a 16-byte stack frame (`c01fd8c8 STB A0,*B15[8]`); its payload read supplies the saved destination and length: `c01fd8f2 MV A11,A6; c01fd8f4 CALLP c022b2dc; c01fd8f8 MV A10,B4`. The SPI routine preserves that destination in A14 at c022b2f0 and uses state at c022dd28/c022ddc8. There is no intermediate c0187024..c01f4000 flash buffer in this traced chain. Stock AIS has no section there; the controller AIS deliberately adds one. Boot executes before main, not concurrently as an updater overlay, but DMA completion/teardown still needs full transitive proof before excluding every residual writer. Merely observing disjoint res5 code is insufficient.
+
 ## 3. USB audio driver and silence-stream patch list
 
 ## 4. Slot 0 residency and remaining reload paths
