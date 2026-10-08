@@ -66,3 +66,31 @@ The return instructions include all five delay cycles, so these NOPs are not ord
 
 ### B1 finding 1 — descriptor templates (confirmed data; builder pending)
 Independent AIS mapping locates device descriptor at c017f3dc (res1 0x73364), duplicate at c017f3ee. Configuration headers are c017f400 and c017f40a; each is nine bytes plus alignment byte, **not** a contiguous 101-byte configuration. Device bytes: `12 01 10 01 00 00 00 40 86 16 a1 04 00 01 01 02 00 01`. Config bytes: `09 02 65 00 02 01 00 80 fa` (two interfaces, total 101, config 1, bus-powered, 500 mA). This is data evidence, not an instruction; no disassembly excerpt is invented for it. Reproduction: `build/codex7/descriptors.py`. Runtime copying/building and endpoint bytes are still to be traced.
+
+### B1 finding 2 — exact full-speed configuration reconstructed (confirmed)
+Builder **c0160ec0** clears a pointer array at c00643c0 and populates descriptor-fragment pointers. `c0160f2e STDW A7:A6,*A4[0]` installs device/config; c0160f4a,0f60,0f74,0f88 install interface/header/jacks; c0160fa0 installs FS OUT and c0160fd8 FS IN. B4==2 chooses alternate 512-byte packet templates at c017db34/db4e. Current-speed reader c0122710 supplies the selector to GET_DESCRIPTOR at c0134fe4. Configuration response copies each fragment's bLength bytes to c0119fb0, bounded by wTotalLength and host wLength:
+```text
+c0135014 CALLP c0160ec0,B3
+c013506c LDHU *A5[1],B3 ; config wTotalLength
+c01350a2 LDBU *A7[0],B1 ; fragment bLength
+c01350c6 LDB *B5++[1],B0
+c01350ca STB B0,*B4++[1]
+c01350ce ADD A4,4,A0    ; next descriptor pointer
+```
+Exact normal full-speed bytes, one descriptor per line (total **101**), reproduced in `config-False.bin` by `config.py`:
+```text
+09 02 65 00 02 01 00 80 fa
+09 04 00 00 00 01 01 00 00
+09 24 01 00 01 09 00 01 01
+09 04 01 00 02 01 03 00 00
+07 24 01 00 01 25 00
+06 24 02 01 0a 00
+06 24 02 02 1e 00
+09 24 03 01 14 01 1e 01 00
+09 24 03 02 28 01 0a 01 00
+09 05 03 02 40 00 00 00 00
+05 25 01 01 0a
+09 05 84 02 40 00 00 00 00
+05 25 01 01 14
+```
+Interface 0 alt0: class 1/subclass 1/protocol 0, zero endpoints, AC header version 1.00 linking interface 1. Interface 1 alt0: class 1/subclass 3/protocol 0, two endpoints. Embedded/external MIDI IN jacks 10/30; embedded/external MIDI OUT jacks 20/40. OUT endpoint **0x03**, bulk, 64 B, associated embedded IN jack 10; IN endpoint **0x84**, bulk, 64 B, associated embedded OUT jack 20. Intervals/refresh/synchronization-address bytes are zero. No AudioStreaming interface exists. Device descriptor uses interface-defined class (0), USB 1.10, EP0=64, VID/PID 1686:04a1. Alternate speed templates exist but do not establish high-speed capability on C6745. “Exact host bytes” here means the full normal FS descriptor response; host requests may truncate it by wLength.
