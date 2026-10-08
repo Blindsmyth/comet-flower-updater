@@ -75,6 +75,7 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
 | c0123778 | elf_stage_778 | ELF-loader stage calling c015f6c4/c015f6d0/c0163450 plus err_set_last_code; single caller c0123b34 | guess | calls=c015f6c4,c015f6d0,c0163450,c016be80; callers=c0123b34 |
 | c0123824 | elf_shdr_reloc_lookup | reads/uses the B14[132] relocation-handler slot; only caller is thin_arg_adapter (c0123a74, see 00), which reorders its return before calling the section-header-field dispatcher c0123b18 | likely | B14 132; callers=c0123a74=thin_arg_adapter |
 | c0123848 | elf_shdr_field_dispatch | large (556 instr) section-header field-populate routine: internally contains the label c012387c that the ten field-setting "arms" below (c0123a8c..c0123b12, via shared tail c0123b18) branch back into -- a switch-like loop over Elf32_Shdr fields (10 fields matches the 10 arms), not itself calling c012387c via CALLP since it's an internal label | confirmed | read: c012387c (`LDNW *+B4[0],B0`) sits 14 instr after c0123848's own prologue, inside c0123848's own span -- confirmed internal label, not a separate function; calls=thin_arg_adapter,c015f6c4,c015f6d0,c015f6e8,c0163324=field_extract_u8,c0163374,c016be80; callers=c0123b34 |
+| c0123a74 | thin_arg_adapter | see 00 | -- | already named in recon/map/00_library_kernel.md |
 | c0123a8c | elf_shdr_field_set_12 | switch-arm: loads a decoded field from *B4[1] and stores it at offset 0x12 (ADDAD-scaled) of the object pointed to by A10, then falls into the shared continuation c0123b18 | likely | read: `LDNW *+B4[1],B0; ADDAD A0,0x12,A4; STW B0,*A4[0]; BNOP 0xc0123b18` |
 | c0123aa4 | elf_shdr_field_set_const140 | switch-arm: stores the literal constant 140 (0x8c = EM_C6000) into a field of the object, then falls into c0123b18 -- stamping the machine-id field rather than copying a decoded value | likely | read: `MVK 140,A0; MV A11,B0; ADD A0,A10,A4; STW B0,*+A4[0]; BNOP 0xc0123b18` |
 | c0123ab4 | elf_shdr_field_set_156 | switch-arm: loads *B4[1], stores at offset 156 (0x9c) of the object, falls into c0123b18 | likely | read: `LDNW *B4[1],B0; MVK 156,A0; ADD A0,A10,A4; STW B0,*A4[0]; BNOP 0xc0123b18` |
@@ -142,6 +143,7 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
 | c0126624 | rhythm_calc_a | 700-instr routine using rhythm_calc_shared and the already-named signed-divide helper rts_sdiv32 (c01675c0, see 00) -- near-identical size to c01269d4, consistent with parallel timing-variant computations for RhythmService; reached only via orchestrator_c0126624 | guess | n=700; calls=c01265d8=rhythm_calc_shared,c01675c0=rts_sdiv32; callers=c0126c90=orchestrator_c0126624 |
 | c01268e0 | rhythm_calc_b | 244-instr sibling, only calls rhythm_calc_shared (no divide) -- likely a simpler/shorter timing-variant case | guess | n=244; calls=c01265d8=rhythm_calc_shared; callers=c0126c90=orchestrator_c0126624 |
 | c01269d4 | rhythm_calc_c | 700-instr routine, same size as rhythm_calc_a and same single callee (rhythm_calc_shared) -- near-duplicate code path | guess | n=700; calls=c01265d8=rhythm_calc_shared; callers=c0126c90=orchestrator_c0126624 |
+| c0126c90 | orchestrator_c0126624 | see 00 | -- | already named in recon/map/00_library_kernel.md |
 | c0126d40 | rhythm_draw_wrapper | 452-instr routine calling ui_draw_wrapper (c01251b0) and the already-named diag_mask_test (c0169fc0, see 00); single caller c01564b8 | likely | calls=c01251b0=ui_draw_wrapper,c0169fc0=diag_mask_test; callers=c01564b8 |
 | c0126f04 | rhythm_tiny_f04 | 12-instr routine, callers c0164960 and c01649f0 (outside this chunk), no recorded callees | guess | n=12; callers=c0164960,c01649f0 |
 | c0126f10 | rhythm_pattern_helper1 | 116-instr helper, single caller c0126ff8 | guess | callers=c0126ff8 |
@@ -151,6 +153,8 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
 | c01270b8 | ui_menu_screen_handler | large (904 instr) routine calling only ui_menu_step (c0127070); callers c0135b70, c0135c00, c0142420 -- likely a top-level menu/screen handler given size and MainApp/UpdateUI roots | guess | n=904; calls=c0127070=ui_menu_step; callers=c0135b70,c0135c00,c0142420 |
 | c0127440 | midi_checksum_update | table-driven byte-checksum/CRC step: XORs the high byte of arg A4 with the low byte of the running value B4, uses that as an index into a 256-entry table at 0xc0177fb0, then XORs the table byte with the second byte of A4 -- a one-step CRC/checksum update, called from 7 different MIDI message-building sites | likely | read: `EXTU A1,24,24,A0 (high byte); MVK 0x7fb0,B4; MVKH 0xc0170000,B4; XOR B0,A0,B0; LDW *B4[B0],B0 (table[idx]); SHRU A1,0x8,A0 (2nd byte); XOR A0,B0,A0`; 7 callers: 11802d80,c0128310,c0128598,c0128788,c012caf4,c012cd88,c012d728 |
 | c0127464 | midi_stage_464 | 104-instr routine, B14[38], single caller c01291ce (outside this chunk) | guess | B14 38; callers=c01291ce |
+| c01274cc | midi_tx_locked | see 00 | -- | already named in recon/map/00_library_kernel.md |
+| c0127500 | midi_tx_n | see 00 | -- | already named in recon/map/00_library_kernel.md |
 | c0127558 | midi_param_send_558 | 244-instr routine calling the already-named midi_tx_n (c0127500, see 00); B14 slots 38,112-117 -- a per-parameter MIDI send stage; single caller c0127cf4 | guess | calls=c0127500=midi_tx_n; B14 38,112,113,114,115,116,117; callers=c0127cf4 |
 | c012764c | midi_param_helper_64c | 104-instr helper, B14 34,35,37,144; callers c01276b4, c0127974, c0127a4c | guess | B14 34,35,37,144; callers=c01276b4,c0127974,c0127a4c |
 | c01276b4 | midi_param_send_6b4 | 532-instr routine calling midi_tx_n and midi_param_helper_64c; B14 slots 31,33,34,35,37,38,112-117 -- a wider per-parameter MIDI send stage; single caller c0127cf4 | guess | calls=c0127500=midi_tx_n,c012764c; B14 31,33,34,35,37,38,112,113,114,115,116,117; callers=c0127cf4 |
@@ -175,3 +179,94 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
 | c0127ec0 | midi_jtbl_entry_ec0 | jump-table entry, B14[38], table slot 0xc0183c08 | guess | ptr@ c0183c08; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
 | c0127eca | midi_jtbl_entry_eca | jump-table entry, B14[38], table slot 0xc0183c04 | guess | ptr@ c0183c04; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
 | c0127ed2 | midi_jtbl_entry_ed2 | jump-table entry, B14[38], table slot 0xc0183c00 | guess | ptr@ c0183c00; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127eda | midi_jtbl_entry_eda | jump-table entry, B14[38], table slot 0xc0183bf8 | guess | ptr@ c0183bf8; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127ee6 | midi_jtbl_entry_ee6 | jump-table entry, B14[38], table slot 0xc0183bf4 | guess | ptr@ c0183bf4; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127eee | midi_jtbl_entry_eee | jump-table entry, B14[38], table slot 0xc0183bf0 | guess | ptr@ c0183bf0; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127ef6 | midi_jtbl_entry_ef6 | jump-table entry, B14[38], table slot 0xc0183bec | guess | ptr@ c0183bec; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127f02 | midi_jtbl_entry_f02 | jump-table entry, B14[38], table slot 0xc0183bcc | guess | ptr@ c0183bcc; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127f0a | midi_jtbl_entry_f0a | jump-table entry called both directly via table slot 0xc0183bc4 and from midi_jtbl_entry_de8 (c0127de8); B14[38] | likely | ptr@ c0183bc4; B14 38; calls=c0127f58=epilogue_pop_b3_shared2; callers=c0127de8 |
+| c0127f32 | midi_jtbl_entry_f32 | jump-table entry, B14[38], table slot 0xc0183bc8 | guess | ptr@ c0183bc8; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127f3a | midi_jtbl_entry_f3a | jump-table entry, B14[38], table slot 0xc0183bc0 | guess | ptr@ c0183bc0; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127f48 | midi_jtbl_entry_f48 | jump-table entry, B14[38], table slot 0xc0183bbc -- last of the 0xc0183b74..3c table family | guess | ptr@ c0183bbc; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127f58 | epilogue_pop_b3_shared2 | see 00 | -- | already named in recon/map/00_library_kernel.md |
+| c0127f60 | midi_stage_f60 | 128-instr routine calling an out-of-range helper (11802fcc); B14 118,119; single caller c0129276 | guess | calls=11802fcc; B14 118,119; callers=c0129276 |
+| c0127fe0 | cfg_get_b14_27 | getter: returns B14[27]; heavily used (14 distinct callers spanning MIDI, PreLoad, RhythmService, SwitchNrmlSpdRead, UpdateUI) -- same mechanically-unambiguous shape as the other B14 getters already catalogued in 00 | confirmed | read: `c0127fe0 LDW *+B14[27],A4; BNOP B3,5` -- two-instruction getter, matches cfg_get_b14_26/cfg_get_b14_125 shape in 00; 14 callers incl. 118030d0,11803130,11803474,11803514,1180a380,1180a7ec,c0128e54,c012d2e4,c012f7a4,c0134db8,c013c54c,c013c6f8; recon:15,18 |
+| c0127fe8 | midi_pack_payload | 136-instr routine calling the already-named rts_sdiv32/rts_memset (see 00) plus an out-of-range helper c0168640; roots MIDI; single caller c0128070 -- likely formats a MIDI payload buffer (clear + scale/divide a value into it) | guess | calls=c01675c0=rts_sdiv32,c0167b00=rts_memset,c0168640; callers=c0128070 |
+| c0128070 | midi_compose_and_send | 196-instr routine composing and sending a MIDI message: calls the already-named midi_tx_locked (c01274cc, see 00) and field_extract_bit25 (c012c934, see 00) to pull a status bit from the source event, plus midi_pack_payload (c0127fe8) for buffer formatting and an out-of-range helper (1180b060); single caller c0128e54 | likely | calls=1180b060,c01274cc=midi_tx_locked,c0127fe8=midi_pack_payload,c012c934=field_extract_bit25,c012dab0,c013b7b4,c0167b00=rts_memset; callers=c0128e54 |
+
+## Data
+
+- ELF/dynamic-loader module creation (`c0123848`'s field-populate loop) is
+  driven by a ~10-entry function-pointer table at `0xc0183d04..0xc0183d3c`
+  (confirmed; see `c0123a74`=thin_arg_adapter and the ten `elf_shdr_field_set_*`
+  arms c0123a8c..c0123b12), matching the 10-field layout of an `Elf32_Shdr`.
+  All ten arms share one continuation, `c0123b18`, which is not a call target
+  but an unconditional branch back into `c0123848`'s own body at label
+  `c012387c` -- confirming `c0123848` is one large dispatching function, not
+  that these are independent routines calling out to it.
+- A second, larger function-pointer table at `0xc0183b74..0xc0183c3c` (~24
+  entries, confirmed via `ptr@` fields) drives the MIDI per-parameter
+  jump-table family `c0127daa..c0127f48`; every entry returns through the
+  already-named shared epilogue `epilogue_pop_b3_shared2` (c0127f58, see 00).
+  The B14 slots threaded through this family (30-38, 112-119, 144) look like
+  one slot per MIDI CC/parameter; B14[38] recurs in nearly every entry and is
+  the best candidate for a common "current parameter index" or "MIDI channel"
+  slot. Not matched to specific CC numbers this wave.
+- `B14[115]`: the "effect-load" lock, already named via `locked_subsystem_op_115`
+  (c0163118) / `validate_and_set_error` (c01630b4) in 00; guards most of the
+  ELF-loader stage functions in c0122b60..c0124f8c.
+- `B14[132]`: holds the selected relocation-handler object (set by
+  `c0123648`, outside this chunk, per recon/18); read/invoked by
+  `c01235ec`=elf_select_reloc_handler, `c0123824`=elf_shdr_reloc_lookup,
+  `c01240c8`=elf_stage2_0c8, and finally called via its word[4] by
+  `c0122d50`=elf_call_reloc_handler, reaching `c0133f28` (EM_C6000 handler,
+  outside this chunk) -- the full load chain recon/18 traced:
+  `c0124b2c -> c0124974 -> c012484c -> c0122d50 -> c0133f28`.
+- `0xc0177fb0`: a 256-entry byte table used by `c0127440`=midi_checksum_update
+  for a table-driven CRC/checksum step over 2 bytes of an argument word --
+  not previously documented; worth checking against a standard CRC-8 table
+  if the MIDI SysEx checksum algorithm needs confirming later.
+- `0xc0183ae4`: a second "set a run of bits" bitmap target (confirmed via
+  `c01256c4`=bitmap_set_bit_range_3ae4), structurally identical to the
+  already-named LCD primitive `gfx_set_bit_range` (c011c508, see 00) but a
+  distinct base address -- likely a "dirty"/"active" flags bitmap for the
+  UI/rhythm draw cluster (13 callers across c0125xxx/c0126xxx), not the LCD
+  framebuffer itself. Purpose of individual bits not established.
+- `0xc011297c` / `0xc011341c`: two parallel 168-byte-stride record tables
+  stepped by near-identical state-machine functions `c0122924`/`c0122988`
+  (confirmed), dispatching to `c0120650`/`c0120800` and `c0120904`/`c0120acc`
+  respectively (all four callees outside this chunk). Roots MainApp/Swi:USB/
+  SwitchNrmlSpdRead suggest these are USB-transfer and footswitch-read
+  per-channel state slots, but which table is which was not confirmed.
+- `__TI_STATIC_BASE` (c0124cf8) and `__TI_STACK_SIZE` (near c0124584) are
+  TI linker-generated special symbols looked up by the ELF loader's
+  symbol-resolution stage (c0146b14, outside this chunk) -- standard TI
+  COFF/ELF linker symbols, not application-specific.
+
+## Open questions
+
+- The exact semantics of the ~80 "elf_stage_*" guess-confidence rows
+  (c0122b60..c0124f8c) were inferred from call-graph position (lock/
+  error-check pattern, position relative to the named parse/create/
+  segment/reloc stages) rather than read line-by-line; a future pass
+  with more budget could trace a few of the larger ones (c0123128 at
+  552 instr, c0124974 at 252 instr) directly to firm up "likely" into
+  "confirmed" and to pin down what each B14 slot (17,18,109,134) means.
+- `c0124234`/`c0124244`/`c012428c`/`c01242a0` form a small internal
+  function-pointer table (`0xc0184554..0xc01855c`) inside the segment-
+  loading stage (`c0124178`/`c01242bc`); its dispatch key (segment type?
+  relocation class?) was not identified.
+- Whether `c0124fc0`'s linked-list key/value scan is actually the ELF
+  symbol-name lookup (its only caller, `c0133e38`, is outside this
+  chunk and was not read) is a plausible but unconfirmed inference.
+- The rhythm-timing trio `c0126624`/`c01268e0`/`c01269d4` (700/244/700
+  instructions) was classified by size/callee pattern only; given two
+  of the three are byte-identical in size, tracing one in detail next
+  wave would likely explain both at once.
+- The MIDI jump-table family's B14 slots (30-38, 112-119, 144) were not
+  matched to actual MIDI CC numbers or parameter names -- doing so would
+  need the same kind of config-table cross-reference 00's Open Questions
+  section proposes for the `g_Semaphore_*`/`g_Event_*` name strings.
+- `c0127440`'s checksum table at `0xc0177fb0` was not compared against a
+  known CRC-8/CRC-16 polynomial table; confirming the exact algorithm
+  (and whether it is in fact a MIDI SysEx checksum) is unresolved.
