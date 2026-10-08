@@ -301,3 +301,23 @@ honest guess beats a wrong confirmed."
 | c016e3e0 | wrapper_c016e3e0 | generic leaf routine, no further structure identified | guess | c016e3e0: n=24; 1 callers; first op MVC.S2 CSR,B4 |
 | c016e440 | wrapper_c016e440 | generic leaf routine, no further structure identified | guess | c016e440: n=8; 0 callers; first op MVK.L2 0,B4 |
 | c016e460 | wrapper_c016e460 | generic leaf routine, no further structure identified | guess | c016e460: n=26; 4 callers; first op MVC.S2 TSCL,B4 |
+| c016e4c0 | csr_get | reads CSR into B4 and returns; the raw mechanic behind an Hwi_disable-style get-old-interrupt-state helper, but it does not itself issue DINT, so any real interrupt-disable happens inline at the call site, not inside this helper | likely | c016e4c0 opens MVC.S2 CSR,B4 (per range overview); pairs with the c016e4e0 setter below |
+| c016e4e0 | csr_set | writes a caller-supplied value (B4) back into CSR and returns -- mechanically identical to Hwi_restore(key): restores a previously saved interrupt-enable state | likely | c016e4e0 opens MVC.S2 B4,CSR (per range overview); pairs with c016e4c0 |
+| c016e500 | wrapper_c016e500 | generic routine (calls c016da00) | guess | c016e500: n=17; 0 callers; first op MVK.L1 0,A4 |
+| c016e540 | wrapper_c016e540 | generic leaf routine, no further structure identified | guess | c016e540: n=8; 1 callers; first op MVK.L1 1,A4 |
+| c016e560 | wrapper_c016e560 | generic routine (calls c016d7c0) | guess | c016e560: n=8; 1 callers; first op MV.L1X B3,A2 |
+| c016e580 | wrapper_c016e580 | generic routine (calls c016e560) | guess | c016e580: n=11; 0 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e5a0 | wrapper_c016e5a0 | generic routine (calls c016e5c0) | guess | c016e5a0: n=11; 0 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e5c0 | wrapper_c016e5c0 | generic routine (calls c016db00) | guess | c016e5c0: n=32; 1 callers; first op MV.L1X B3,A2 |
+| c016e640 | tailcall_wrapper_c0161200_c016e640 | small wrapper that tail-calls c0161200 after a short setup | likely | c016e640: ...; B 0xc0161200; 3 callers |
+| c016e660 | tailcall_wrapper_c016d880_c016e660 | small wrapper that tail-calls c016d880 after a short setup | likely | c016e660: ...; B 0xc016d880; 3 callers |
+| c016e680 | tailcall_wrapper_c016ba40_c016e680 | small wrapper that tail-calls c016ba40 after a short setup | likely | c016e680: ...; B 0xc016ba40; 1 callers |
+| c016e6a0 | wrapper_c016e6a0 | generic routine (calls c016e540) | guess | c016e6a0: n=16; 0 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e6e0 | tailcall_wrapper_c016ba40_c016e6e0 | small wrapper that tail-calls c016ba40 after a short setup | likely | c016e6e0: ...; B 0xc016ba40; 2 callers |
+| c016e700 | struct_get_field_0_c016e700 | getter: returns field +0 of the struct pointed to by arg A4 | confirmed | c016e700: LDW.D1T1 *+A4[0],A4; 1 callers |
+| c016e720 | tailcall_wrapper_c016ba40_c016e720 | small wrapper that tail-calls c016ba40 after a short setup | likely | c016e720: ...; B 0xc016ba40; 1 callers |
+| c016e740 | wrapper_c016e740 | generic leaf routine, no further structure identified | guess | c016e740: n=16; 1 callers; first op MVK.S1 0x0714,A3 |
+| c016e780 | tailcall_wrapper_c0166a80_c016e780 | small wrapper that tail-calls c0166a80 after a short setup | likely | c016e780: ...; B 0xc0166a80; 2 callers |
+| c016e7c0 | wrapper_c016e7c0 | generic routine (calls c016e780) | guess | c016e7c0: n=17; 1 callers; first op LDW.D1T1 *+A4[0],A3 |
+| c016e800 | tailcall_wrapper_c016ba40_c016e800 | small wrapper that tail-calls c016ba40 after a short setup | likely | c016e800: ...; B 0xc016ba40; 4 callers |
+| c016e820 | struct_get_field_6_c016e820 | getter: returns field +6 of the struct pointed to by arg A4 | confirmed | c016e820: LDHU.D1T1 *+A4[6],A4; 1 callers |
