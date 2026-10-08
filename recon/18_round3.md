@@ -74,6 +74,8 @@ MAR setup does cover the gap: `c0159fa0 MVKH c0000000,A18; c0159fa8 B c016c420; 
 
 No destructive RAM test covering the gap was identified in the inspected startup/constant candidates; that is a scoped negative result, not whole-program exclusion. Candidate inventory is `build/codex8/computed-range-candidates.txt`. Known effect allocation, zeroing and file pools are disjoint, and no concrete stock owner of the gap was found. Verdict: **unknown because generic DMA destination provenance, indirect heap creation, every computed store/memory-test path, boot DMA teardown, address aliasing and loaded-effect behavior have not been exhaustively bounded**. Do not promote likely-free padding to a reserved runtime region or certify controller residency from this scan.
 
+Status: blocked: whole-program computed-address/DMA and loaded-module bounds are missing; scoped verdict is unknown, with no concrete stock owner found.
+
 ## 3. USB audio driver and silence-stream patch list
 
 ## 4. Slot 0 residency and remaining reload paths
