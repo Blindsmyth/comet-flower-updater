@@ -201,3 +201,23 @@ honest guess beats a wrong confirmed."
 | c016c090 | wrapper_c016c090 | generic routine (calls 1180a448,c0127fe0,c0129630; B14[99 125 174 ]) | guess | c016c090: n=43; 2 callers; first op STW.D2T2 B3,*B15--[2] |
 | c016c118 | cfg_get_b14_125 | getter: return B14[125] | confirmed | c016c118 LDW.D2T1 *+B14[125],A4; returns; 1 callers |
 | c016c120 | wrapper_c016c120 | generic routine (calls 1180950c,c0155290,c015576c) | guess | c016c120: n=56; 1 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016c1e0 | wrapper_c016c1e0 | generic routine (calls c0167b00,c016d4c0) | guess | c016c1e0: n=26; 1 callers; first op MVK.S2 0x0004,B4 |
+| c016c240 | rts_fp32_div_plus_strcopy | two unrelated routines merged into one coverage-detected span: (1) c016c240-c016c2fc is the single-precision float DIVIDE helper -- RCPSP reciprocal estimate plus two Newton-Raphson refinement passes (MPYSP/SUBSP), with a B-side entry at c016c240 and an A-side entry at c016c2a0; (2) c016c300 onward is an unrelated byte-copy-with-sentinel loop (LDB/STB loop comparing against A5). Only the divide half has the real external callers | confirmed | c016c240 RCPSP.S2 B4,B5; c016c248 MPYSP.M2 B4,B5,B6; c016c254/c016c270 SUBSP (Newton-Raphson refinement); matches the TI C6000 compiler fp32-divide shape exactly; c016c300 CMPLT 0,B6,B0 begins the unrelated copy loop |
+| c016c360 | fmt_render_wrapper | sets up an A15 frame pointer, forwards to c014fa40 with fixed pointer constants (approx 0xc015d580, 0xc015e080) plus a stack-passed record/string pointer -- a thin formatter wrapper; used by the error-message builder c016be88 and by c016a100 | likely | c016c360 MV B15,A15; c016c368 LDW *+A15[1],A3; c016c38c CALLP 0xc014fa40,B3; 29 callers |
+| c016c3c0 | wrapper_c016c3c0 | generic routine (calls c016e0c0) | guess | c016c3c0: n=52; 1 callers; first op STW.D2T2 B10,*B15--[2] |
+| c016c480 | wrapper_c016c480 | generic leaf routine, no further structure identified | guess | c016c480: n=30; 1 callers; first op MVC.S2 CSR,B6 |
+| c016c4e0 | wrapper_c016c4e0 | generic routine (calls c016d7c0) | guess | c016c4e0: n=27; 0 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016c540 | wrapper_c016c540 | generic routine (calls c0166a80) | guess | c016c540: n=24; 1 callers; first op MVK.S2 0x0dc0,B4 |
+| c016c5a0 | wrapper_c016c5a0 | generic leaf routine, no further structure identified | guess | c016c5a0: n=27; 1 callers; first op MVK.S1 0x201c,A3 |
+| c016c600 | wrapper_c016c600 | generic routine (calls c016b9c0) | guess | c016c600: n=24; 0 callers; first op STW.D2T1 A11,*B15--[2] |
+| c016c660 | wrapper_c016c660 | generic routine (calls c0166a80) | guess | c016c660: n=24; 0 callers; first op STW.D2T1 A11,*B15--[2] |
+| c016c6c0 | wrapper_c016c6c0 | generic routine (calls c016a380,c016b9c0) | guess | c016c6c0: n=51; 0 callers; first op STW.D2T1 A11,*B15--[2] |
+| c016c780 | wrapper_c016c780 | generic routine (calls c0166a80) | guess | c016c780: n=24; 0 callers; first op MVK.S2 0x0e00,B4 |
+| c016c7e0 | wrapper_c016c7e0 | generic routine (calls c015a7a0) | guess | c016c7e0: n=29; 0 callers; first op STW.D2T1 A10,*B15--[2] |
+| c016c840 | wrapper_c016c840 | generic leaf routine, no further structure identified | guess | c016c840: n=30; 0 callers; first op SUB.L2 B15,0x8,B15 |
+| c016c8a0 | wrapper_c016c8a0 | generic routine (calls c016b9c0) | guess | c016c8a0: n=24; 0 callers; first op STW.D2T1 A11,*B15--[2] |
+| c016c900 | wrapper_c016c900 | generic routine (calls c0166a80) | guess | c016c900: n=24; 1 callers; first op STW.D2T1 A11,*B15--[2] |
+| c016c960 | wrapper_c016c960 | generic routine (calls c0162be0,c0166a80) | guess | c016c960: n=55; 2 callers; first op STW.D2T1 A11,*B15--[2] |
+| c016ca20 | wrapper_c016ca20 | generic routine (calls c0166a80) | guess | c016ca20: n=24; 1 callers; first op MVK.S2 0x0ea0,B4 |
+| c016ca80 | wrapper_c016ca80 | generic routine (calls c0162be0,c0166a80) | guess | c016ca80: n=55; 2 callers; first op MVK.S2 0x0ee0,B4 |
+| c016cb40 | wrapper_c016cb40 | generic leaf routine, no further structure identified | guess | c016cb40: n=31; 0 callers; first op STW.D2T2 B10,*B15--[2] |
