@@ -189,3 +189,14 @@ In the Swi's command-7 path c01389ec.., submission details still need timing rev
 SOF already has a top-half hook: c011fca2 extracts wrapper interrupt bit19; c011fcb2 acknowledges it; **c011fcb4 calls c016f770 -> 11818e80**, currently only `BNOP B3,5`. Rearm c0121576 writes 0x01ff1e1f to 01e00030, including bit19. This is a concrete bounded SOF-hook candidate, not an implemented audio scheduler. At full speed, stage the next packet ahead of the host IN token; use SOF/frame counter plus TX completion to handle buffer ownership and missed intervals. Copying/converting in a bounded high-priority service and PIO-feeding a dedicated endpoint is a simple first design; CPPI is an alternative but needs exact ISO mode, descriptor lifetime, cache and short-packet behavior review. Do not call the semaphore/task-oriented bulk API in Hwi/audio Swi or assume bulk retries apply to ISO.
 
 Clock design (likely): asynchronous IN must derive packet counts from actual codec-produced frames/ring occupancy relative to USB SOF. Nominal sequence totals 441 frames/10 ms (44/45 per ms), but a fixed repeating sequence alone does **not** accommodate independent-clock drift. Track monotonic production/consumption and bounded ring fill; specify startup fill, underrun, overrun, suspend and reset behavior. No resampler is required solely to label the source asynchronous. Deadline/worst-case jitter remains an owner measurement, not closed by FIFO capacity.
+
+### B4 finding 3 — stock message enqueue is not a bounded producer primitive (confirmed argument; runtime saturation unknown)
+```text
+c01389f4 CALLP c014a228,B3    ; message allocation
+c0138a04 MVK 7,B0
+c0138a06 STW B0,*B15[5]      ; deferred USB command
+c0138a0c CALLP c014a174,B3    ; message enqueue
+c014a188 CALLP c0166780,B3
+c014a18c MVK -1,A6           ; timeout argument, in call delay slots
+```
+Do not reuse this stock command submission from the audio copy hook as a presumed nonblocking operation. Allocation capacity and queue saturation behavior in Swi context have not been proved. A new audio producer should only publish to a bounded ring; the SOF/completion consumer must use a specifically audited bounded wakeup or direct bounded service.
