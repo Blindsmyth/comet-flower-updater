@@ -67,6 +67,13 @@ Confidence: confirmed for the traced argument chain; all SPI/DMA side effects no
 
 Normal res5 loading passes section destination/length directly: `c022bb62 LDW *B15[3],A6; c022bb66 LDW *B15[2],B4; c022bb68 CALLP c01fda8c`. That wrapper saves B4 in A13 and forwards it at c01fdacc to c01fd8b8. Flash-read command 0x0b is built in a 16-byte stack frame (`c01fd8c8 STB A0,*B15[8]`); its payload read supplies the saved destination and length: `c01fd8f2 MV A11,A6; c01fd8f4 CALLP c022b2dc; c01fd8f8 MV A10,B4`. The SPI routine preserves that destination in A14 at c022b2f0 and uses state at c022dd28/c022ddc8. There is no intermediate c0187024..c01f4000 flash buffer in this traced chain. Stock AIS has no section there; the controller AIS deliberately adds one. Boot executes before main, not concurrently as an updater overlay, but DMA completion/teardown still needs full transitive proof before excluding every residual writer. Merely observing disjoint res5 code is insufficient.
 
+### 2.4 Cache coverage and generic DMA prevent an unconditional unused verdict
+Confidence: confirmed for cache coverage/generic destination support; overall unused status unknown.
+
+MAR setup does cover the gap: `c0159fa0 MVKH c0000000,A18; c0159fa8 B c016c420; c0159fc4 ADD A17,A18,A18` advances 16 MiB regions; `c016c454 STW A6,*A7++[1]` writes MAR attributes, not a destructive memory-test pattern. It neither allocates the gap nor proves ownership. Known audio PaRAM destinations are the 11f03xxx ping-pong buffers (recon/16 C1); PaRAM publication is generic: `1180a5a4 SHL B0,5,B0; 1180a5ae SET B0,14,14,B0; 1180a5b4 CALLP 1180ba70` copies 32 caller-provided bytes into 01c04000+32*index. Serial setup calls that builder at 11806724, so excluding audio buffers does not exclude all DMA destinations. USB likewise accepts a caller buffer (`c01202e2 STW A6,*B4[4]` in a CPPI descriptor), rather than hard-coding every target.
+
+No destructive RAM test covering the gap was identified in the inspected startup/constant candidates; that is a scoped negative result, not whole-program exclusion. Candidate inventory is `build/codex8/computed-range-candidates.txt`. Known effect allocation, zeroing and file pools are disjoint, and no concrete stock owner of the gap was found. Verdict: **unknown because generic DMA destination provenance, indirect heap creation, every computed store/memory-test path, boot DMA teardown, address aliasing and loaded-effect behavior have not been exhaustively bounded**. Do not promote likely-free padding to a reserved runtime region or certify controller residency from this scan.
+
 ## 3. USB audio driver and silence-stream patch list
 
 ## 4. Slot 0 residency and remaining reload paths
