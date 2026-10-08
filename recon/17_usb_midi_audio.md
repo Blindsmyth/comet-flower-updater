@@ -152,3 +152,24 @@ TX PaRAM1 source at **01c04024** selects which inactive 128-byte half packer **1
 Hook inside/around the packer, preserving its **selected destination base**, and copy after its last store, before returning to the audio Swi. Do not resample the live PaRAM source after return and assume it identifies the same half: DMA can advance. The scheduling chain from recon/16 is RX TCC0 c0151a90 -> c0164240(B14[141]) -> Swi object c0182a40 -> 11818ba0; this is audio **Swi**, not a place to wait for USB or take USB locks. Keep the audio producer bounded and the USB consumer independent.
 
 A raw copy costs 128 B read +128 B write per block: 352800 B/s copied at 2756.25 blocks/s, 705600 B/s aggregate memory traffic. A simple doubleword loop needs 16 loads plus 16 stores and pointer/control work; exact cycles depend on placement, cache misses, contention, and instruction scheduling and are **unknown**, not 32 guaranteed cycles. Deferred conversion yields 64 B/block for stereo 16-bit, 96 B/block for packed 24-bit. Preserve channel order, signed saturation and the codec's significant-bit alignment; establish the desired 16/24-bit extraction numerically from the packed words before shipping. Ring size/drop policy, SRAM or cache-coherent DMA placement, and worst-case audio deadline headroom remain unallocated/unmeasured.
+
+### B4 finding 1 — USB interrupt top half and CPPI descriptor path (confirmed)
+USB init c0122260 installs **c011fc8c** as callback with interrupt/event argument **19** (`c0122288..2290` callback pointer; `c0122296 MVK 19,A0`; `c01222a8 CALLP c014a524`). Top half reads 01e00038, services DMA completion queues 24..27, masks interrupt bits through 01e00034, and posts B14[181]'s Swi:
+```text
+c011fc9a LDW *A4[0],B0 ; 01e00038
+c011fcb8/c011fcc0 CALLP c011faa0 ; queues 24,25
+c011fcc4/c011fcc8 CALLP c011fb94 ; queues 26,27
+c011fd24 STW A0,*A4[0] ; interrupt mask clear
+c011fd28 CALLP c0164240
+c011fd2c LDW *B14[181],A4
+c011fd36 STW A0,*A4[0] ; EOI 01e0003c = 0
+```
+The driver is **not PIO-only**. c0120250 obtains a free descriptor from queue 28, builds a 32-byte CPPI host descriptor at **c87b9000 + 32*index**, writes length/buffer/original-buffer fields and enqueues it:
+```text
+c0120280 SHL B7,5,B0
+c01202b8 STW B0,*B4[0]
+c01202e2 STW A6,*B4[4] ; buffer pointer
+c01202ea STW A6,*B4[7] ; original buffer pointer
+c0120318 CALLP c011fa70 ; queue submission
+```
+RX refill c0120d44 calls this path. TX uses related descriptor routines, requiring continuation below. Presence of USB FIFO CPU accesses for EP0 must not be generalized to MIDI endpoints.
