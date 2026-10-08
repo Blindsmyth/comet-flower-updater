@@ -21,7 +21,7 @@ composers -- many small ones sharing the pattern `midi_tx_locked +
 c0129638 (device-ID range check) + field_extract_bit25`, plus several
 heavyweight "bulk" composers (`c012be20` 1876B, `c012b744` 796B, `c012bc18`
 520B, `c012c678` 456B) that build/clear a parameter-value buffer against
-two tables at `0xc0100062c4` (count/bound) and `0xc010aa78` (per-field
+two tables at `0xc01062c4` (count/bound) and `0xc010aa78` (per-field
 size/offset), confirmed via a direct read of the anchor `c012b3c0`.
 (5) `c0129db8..c012a8bc` is a MainApp patch/preset-file browser: flash
 filesystem calls (`c014bf2c/c014bfd4/c014c1d8/c014c350`) against literal
@@ -122,7 +122,7 @@ rows have only call-graph/size evidence.
 | c012b2c4 | patchlist_helper3 | small (96B) helper gated by B14[15], single caller | guess | B14[15]; caller c0141ac8; no calls listed |
 | c012b324 | usbdesc_fmt_helper | small (112B) helper used by a USB-descriptor formatter (usbdesc_fmt3, 11808320) and one other caller, gated B14[15] | guess | B14[15]; callers=11808320,c012e4b8 |
 | c012b394 | midi_small_coordinator2 | forwards into midi_small_coordinator1 (c012b1d8); callers span the MIDI param-dispatch veneer and 3 others | guess | calls(1)=c012b1d8; callers=midi_param_dispatch(1180738c),c0132af8,c0132b78,c01437b4 |
-| c012b3c0 | param_buf_validate_init | validates a parameter index against a count table at 0xc0100062c4, computes a per-field byte offset via a 4-byte-stride size/offset table at 0xc010aa78, then clears/inits that buffer region via c0141e50/c0141e68/buffer_clear_init | confirmed | read c012b3c0..c012b468 in full: `MVK 0x62c4,A4;MVKH 0xc0100000,A4;LDHU *A4[0],A0;CMPLT A1,A0,A0` (bound check); `MVK 0xffffaa78,A4;MVKH 0xc0100000,A4;LDHU *A4[2],A0` (field table); `CALLP 0xc0141f14,B3` (buffer_clear_init) |
+| c012b3c0 | param_buf_validate_init | validates a parameter index against a count table at 0xc01062c4, computes a per-field byte offset via a 4-byte-stride size/offset table at 0xc010aa78, then clears/inits that buffer region via c0141e50/c0141e68/buffer_clear_init | confirmed | read c012b3c0..c012b468 in full: `MVK 0x62c4,A4;MVKH 0xc0100000,A4;LDHU *A4[0],A0;CMPLT A1,A0,A0` (bound check); `MVK 0xffffaa78,A4;MVKH 0xc0100000,A4;LDHU *A4[2],A0` (field table); `CALLP 0xc0141f14,B3` (buffer_clear_init) |
 | c012b46c | param_buf_set_field | extends param_buf_validate_init to also set a field value via two unnamed 0xc0141xxx helpers | likely | calls=param_buf_validate_init,c0141d80,c014204c; callers c012b584,c012c678 |
 | c012b584 | param_buf_apply_locked | applies a parameter-buffer field update under the B14[6] lock (bios_sem_pend/post) | likely | calls=param_buf_set_field,c0141ce0,c0141d38,c0141de0,bios_sem_pend/post,diag_mask_test; B14[6]; size 448B |
 | c012b744 | param_buf_bulk_apply | large (796B) locked parameter-buffer update using the unsigned-divide/variant helpers (suggests a scaled multi-field or ranged update); recon/18 touches this family | likely | calls=c0141ce0,c0141d38,c0141de0,buffer_clear_init,c0142028,c01423ec,bios_sem_pend/post,rts_udiv32,rts_div32_variant,diag_mask_test; B14[6]; recon:18 |
@@ -201,7 +201,7 @@ rows have only call-graph/size evidence.
 - `0xc0183b48` (1 byte): the active MIDI device-ID/channel byte. Read by every SysEx reply builder (c0128134, c0128210, ...) as the message's `<devid>` field; written by `cfg_set_global_c0183b48` (c0129600); range-checked by `midi_devid_range_valid` (c0129638).
 - `0xc01844a8..c01844b8` (5 x 4-byte function pointers, ascending): the inbound-SysEx receive-state table, indexed by the running parser state; entries are `midi_rx_state_b/c/dispatch_entry/d/e` (c0129242,c0129214,c0129276,c01291f0,c01291ce).
 - `0xc0183c40..c0183d00` (48 x 4-byte function pointers): the "get/set effect parameter over MIDI" command table, indexed by `B14[284]` via `midi_param_cmd_dispatch48` (c012d9e0); entries are the `midi_cmd_veneer_to_*` thin wrappers.
-- `0xc0100062c4` (halfword): a parameter-count/bound table read by `param_buf_validate_init` (c012b3c0) to range-check an incoming parameter index.
+- `0xc01062c4` (halfword): a parameter-count/bound table read by `param_buf_validate_init` (c012b3c0) to range-check an incoming parameter index.
 - `0xc010aa78` (4-byte-stride halfword pairs): a per-field size/offset table used by the same function to compute a buffer offset.
 - `0xc0064528` (1 byte per slot): a small per-effect-slot flag table, accessed by `effect_slot_flag_copy`/`effect_slot_flag_set` (c0129680/c0129698).
 - `B14[15]`/`B14[16]`: patch-list entry count / current index (getter/setter pair `cfg_get_b14_16`/`cfg_set_b14_16`, c0129fb0/c01296ac).
@@ -217,3 +217,5 @@ rows have only call-graph/size evidence.
 - `c012b2c0` (4 bytes, 5 callers) was not read directly; flagged as a likely constant-return stub by size alone.
 - Several "generic_util"/"usbdesc_helper" leaves (c012ad1c, c012ad48, c012ad58, c012afa0, c012b024, c012b030) have no callees in the fact sheet and were not read; their exact role is unresolved beyond "small shared utility".
 - `param_buf_build_bulk_dump` (c012be20, 1876B, the largest function in this chunk) and its siblings `param_buf_bulk_apply`/`param_buf_init_all` were only read via their anchor `c012b3c0`'s shape, not instruction-by-instruction; whether they build a bulk SysEx dump, a flash-save record, or both is not established.
+## Review by Claude (2026-10-08)
+Address typo fixed throughout: the parameter-count table is **0xc01062c4** (`MVK 0x62c4,A4; MVKH 0xc0100000,A4` at c012b3d0/d4), not "0xc0100062c4". The field table c010aa78 comes from `MVK 0xffffaa78; MVKH 0xc0100000` (c012b410/14). Both lie in the SDRAM data region below the code image (c010xxxx), so they are filled at run time, not constant tables in the AIS. The 48-entry table base 0x3c40 is confirmed at c012da08.
