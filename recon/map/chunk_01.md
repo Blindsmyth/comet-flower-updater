@@ -35,3 +35,21 @@ and are skipped here (see 00): 118093c0, 1180a2a8, 1180ad68.
 | 11807c84 | wrapper_11807c84 | calls c0130a00,c01418ec; only reached from 11807d54/c0148c48 | guess | calls=c0130a00,c01418ec; 2 callers |
 | 11807d24 | effect_slot_dispatch1 | calls 11807ba8, mainapp_event_dispatch (c01537a8), c0155304, orchestrator_locked_small, effect_slot_lookup — ties into the effect-slot state-query chain | guess | calls=11807ba8,c01537a8,c0155304,c015c0f8,c015c164; 1 caller c0149004 |
 | 11807d54 | effect_slot_dispatch2 | large (18-call) B14[99,154] dispatcher chaining 11807ac0/aec/b48/c84, bios_sem_pend, cfg_ptr_11810000_325c, bridge_status_struct, orchestrator_locked_small, effect_slot_lookup, bios_sem_post — top of the effect-slot dispatch chain | guess | b14=99,154; calls incl. c0150b20,c0155328,c0156d68,c015c0f8,c015c164,c01628e0; 1 caller c0149010 |
+| 11807ea0 | usbstr_helper1 | 12-byte leaf, calls c013b7e8; 7 callers — part of a usb-descriptor/numeric-formatting cluster inferred from callee names (usb_desc_table_get, fmt_render_wrapper) below, not independently disassembled | guess | calls=c013b7e8; 7 callers |
+| 11807eac | usbstr_helper2 | 12-byte leaf, calls c013b828; sibling of 11807ea0, 4 callers | guess | calls=c013b828; 4 callers |
+| 11807eb8 | usbstr_builder1 | calls 11807ea0, rts_const_return_1, c012b048, c012f628 — part of the usb-descriptor string-formatting chain | guess | calls=11807ea0,c012af98,c012b048,c012f628; 1 caller 11807f04 |
+| 11807f04 | usbstr_builder2 | calls 11807ea0,11807eb8,c012b048, rts_udiv32 — division suggests decimal-digit formatting | guess | calls=11807ea0,11807eb8,c012b048,c0168580; 1 caller 11807f4c |
+| 11807f4c | usbstr_builder3 | calls 11807ea0,11807eac,11807f04, rts_const_return_1, c012ee80 | guess | calls incl. 11807f04,c012af98,c012ee80; 1 caller 11808200 |
+| 11807fe0 | usbstr_builder4 | calls 11807ea0,11807eac,c012b108,c012ee80,c0132510,c0132560 | guess | 1 caller 118080b4 |
+| 118080b4 | usbstr_builder5 | calls 11807ea0,11807eac,11807fe0,c012ad1c,c012ee80 | guess | 1 caller 1180814c |
+| 1180814c | usbstr_builder6 | calls 11807ea0,118080b4,c012b108,c0132510,c0132560 | guess | 1 caller 11808200 |
+| 118081e0 | usbstr_leaf1 | calls only c012ee80; 1 caller 11808200 | guess | n=12 |
+| 118081ec | usbstr_leaf2 | 4-byte stub, no calls recorded; 1 caller 11808200 | guess | n=4 |
+| 118081f0 | usbstr_leaf3 | calls only c012f040; 1 caller 11808200 | guess | n=16 |
+| 11808200 | usbstr_dispatch | dispatcher calling 11807ea0,11807eac,11807f4c,1180814c,118081e0/ec/f0 — top of the usb-string/descriptor formatting cluster; 2 callers 11808360/11808440 | guess | calls incl. the seven leaves above |
+| 11808280 | usbdesc_helper | calls usb_desc_table_get (c012afe0=c012b008 veneer); 2 callers 11808360/11808440 | guess | calls=c012b008 |
+| 118082b4 | usbdesc_fmt2 | thin wrapper around fmt_render_wrapper2 (c016a100); 1 caller 11808360 | guess | calls=c016a100 |
+| 118082f8 | usbdesc_fmt1 | thin wrapper around fmt_render_wrapper (c016c360); 1 caller 11808360 | guess | calls=c016c360 |
+| 11808320 | usbdesc_fmt3 | calls c012b324, fixed_scale_mul_84 (c0130d74), c013b7e8, fmt_render_wrapper; 1 caller 11808360 | guess | calls=c012b324,c0130d74,c013b7e8,c016c360 |
+| 11808360 | usbdesc_builder_main | orchestrates 11808200/280/82b4/82f8/8320 plus usb_desc_table_get, orchestrator_midi_compose, c012f068, fixed_scale_mul_84_div; builds a formatted USB-descriptor/MIDI string; 1 caller 1180af60 | likely | 12 calls incl. c012afe0,c012ee10,c0130d28; 1 caller |
+| 11808440 | usbdesc_builder_alt | sibling of 11808360 (calls 11808200,11808280,usb_desc_table_get,c012db40,c013b7e8); 1 caller 1180af8c | guess | calls=11808200,11808280,c012afe0,c012db40,c013b7e8 |
