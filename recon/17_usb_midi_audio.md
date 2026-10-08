@@ -107,3 +107,14 @@ c012138c STH B0,*B4[0] ; RXMAXP indexed 01e00414
 c012140c STH B0,*B4[0] ; TXMAXP indexed 01e00410
 ```
 Address allocation is rebuilt for endpoints 1..4 at c012146e..14c6: starts at byte 64, adds each TX then RX reservation, writes INDEX at c01214b2, TXFIFOADDR at c01214c0 (01e00464), RXFIFOADDR at c01214c6 (01e00466). `EXTU ...,16,19` converts byte offsets to 8-byte FIFO-address units. Endpoint table stride is 680 bytes. Current allocation totals require checking initialized/reserved endpoints, not merely counting descriptor endpoints.
+
+### B2 finding 2 — normal FS allocation: 320 B occupied, 3776 B available (confirmed traced configuration)
+Only direct setup caller c01358b4 consumes standard endpoint descriptor fields (`c01358ac LDHU *A4[2],A6; c01358b0 LDBU *A4[3],B4; c01358b2 LDBU *A4[2],A4`). Thus normal configuration requests RX3=64 and TX4=64. c011fe70(1), called by c0122280, clears the TX/RX reservation tables for all four endpoints before configuration: `c011feb8 STW A1,*B6[8]` and `c011feda STW B0,*B5[1]`, with 680-byte increments c011fef8/c011ff14 and bound 4 at c011ff0c. No other endpoint descriptor is configured in this normal configuration.
+
+| Active FIFO | Byte range | Size-register value | FIFOADDR units |
+|---|---|---:|---:|
+| EP0 shared | 000..03f | fixed 64 B | fixed 0 |
+| RX3 | 040..0bf | RXFIFOSZ=0x13 (64 B x2) | 0x008 |
+| TX4 | 0c0..13f | TXFIFOSZ=0x13 (64 B x2) | 0x018 |
+
+Inactive endpoints' address fields can coincide; zero software reservations do not mean they should be enabled at those overlapping addresses. [SPRUFM9H sections 2.6/4.55–4.58](https://www.ti.com/lit/ug/sprufm9h/sprufm9h.pdf) supplies the 4096-byte total, fixed EP0, power-of-two sizing and address units. Free FIFO on this path is **4096-64-128-128=3776 bytes**. A new ISO IN endpoint 1 or 2 fits: 180-byte packets need 256 B per bank (512 B double buffered, size 0x15); 270-byte packets need 512 B per bank (1024 B double buffered, size 0x16). Configure TXMAXP=180 or 270 independently of rounded FIFO size. These are capacity calculations, not measured service guarantees. Stock allocator repacks all endpoints numerically; adding TX1 moves RX3/TX4, so reconfigure while quiescent and preserve exclusive ranges rather than inserting a live overlapping FIFO.
