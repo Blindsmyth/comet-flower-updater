@@ -491,9 +491,9 @@ fc05          STW.D2T2      B0, *B15[3]        ; Write L2 mode to stack structur
             </tr>
             <tr>
                 <td><strong>L1P Invalidate Tail Call</strong></td>
-                <td><span class="pill pill-ready">Coded & Built</span></td>
+                <td><span class="pill pill-ready">Audited / Omitted</span></td>
                 <td><code>patch_res1.py</code></td>
-                <td>32-byte fetch packet replacement for <code>c016e380</code>.</td>
+                <td>Proved obsolete by native silence callback substitution; eliminated from 9-byte patch surface.</td>
             </tr>
             <tr>
                 <td><strong>Patched Firmware Binary</strong></td>
@@ -514,10 +514,10 @@ fc05          STW.D2T2      B0, *B15[3]        ; Write L2 mode to stack structur
                 <td>Measured 19%–25% cache refill penalty on physical hardware.</td>
             </tr>
             <tr>
-                <td><strong>USB MIDI Controller Hook</strong></td>
-                <td><span class="pill pill-plan">Blueprint Only</span></td>
-                <td><code>recon/15_controls_midi.md</code></td>
-                <td>Hardware pathways traced; firmware interception hook designed.</td>
+                <td><strong>USB MIDI Controller Core</strong></td>
+                <td><span class="pill pill-ready">Compiled & Verified</span></td>
+                <td><code>build/codex6/controller-code.bin</code></td>
+                <td>736-byte standalone C674x binary; maps footswitches, 10 buttons, 4 knobs, and expression pedal to USB MIDI CC.</td>
             </tr>
         </tbody>
     </table>
