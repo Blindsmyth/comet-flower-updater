@@ -78,6 +78,13 @@ Status: blocked: whole-program computed-address/DMA and loaded-module bounds are
 
 ## 3. USB audio driver and silence-stream patch list
 
+### 3.1 Descriptor pointers cannot simply grow in place; 192-byte response storage is likely sufficient
+Confidence: confirmed pointer bound/count check and wLength logic; likely 512-byte response allocation (original linker size unavailable).
+
+c0160ec0 builds at c00643c0 and writes through index 13 (`c0160ff6 STW A7,*A4[13]`), returns its pointer through A6, and rejects count >14 (`c0161044 CMPLT 14,B0,B0; c0161050 MVK ffff8acf,A0`). The next independently used object is c00643fc, explicitly cleared for four bytes at c0154c18/c0154c48; effect entries start c0064400. Thus the available interval is only 60 bytes, at most 15 pointer words including the null termination consumed by callers. The normal builder reports 14 descriptor pointers including device; stock configuration uses 13. Appending the ten UAC descriptors needs 24 populated pointers including device plus a null (100 bytes); relocate the array and raise its bound, or replace all fragment consumers coherently with a contiguous-descriptor design. Merely changing wTotalLength overruns the old pointer storage.
+
+Response buffer starts c0119fb0; next independently referenced object is the alternate-setting array at c011a1b0 (`c0134e7c MVK a1b0,A5; c0134e8c LDB *A4[A5],A0`). Their 0x200 spacing supports a 512-byte control buffer, but this stripped image does not supply its allocation symbol/size. No capacity guard appears in the inspected configuration copy. It selects min(wTotalLength,wLength): `c013506c LDHU *A5[1],B3; c0135070 LDHU *A7[3],B5; c0135076 CMPGTU B3,B0,B0; c0135080 EXTU B5,16,16,B3`, clips each fragment to bytes remaining and copies at c01350c6/50ca. c0135108 passes B3 as A6 to c015af48. A 192-byte result ends c011a070, below the next known object, and the loop can serve it after pointer-array expansion. Exact buffer capacity remains likely rather than linker-proved; reserve an explicit >=192-byte buffer in the new patch allocation if a proof is required, and clamp/validate lengths independently of host wLength.
+
 ## 4. Slot 0 residency and remaining reload paths
 
 ## 5. Effect exceeding its 40 KiB slot
