@@ -78,6 +78,20 @@ def recon_mentions():
     return hits
 
 
+MAPROW = re.compile(r"^\|\s*`?([0-9a-f]{8})`?\s*\|\s*`?([A-Za-z_][\w.$]*)`?\s*\|[^|]*\|\s*(confirmed|likely|guess)", re.I)
+
+
+def map_names():
+    """addr -> confidence from the firmware-map tables in recon/map/*.md."""
+    out = {}
+    for md in sorted((ROOT / "recon/map").glob("*.md")):
+        for line in open(md, encoding="utf-8", errors="replace"):
+            m = MAPROW.match(line)
+            if m and m[2] != "unknown":
+                out[int(m[1], 16)] = m[3].lower()
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dis", nargs="?", default=str(ROOT / "build/fw/map/main.dis"))
@@ -107,7 +121,14 @@ def main():
             if lo <= x < hi:
                 return hi
         return x + 4
-    ends = [min(n, sec_end(s)) for s, n in zip(starts, starts[1:] + [1 << 32])]
+    # Every jump stub is also a boundary, so a run of stubs is not swallowed
+    # by the function before it (recon/map/00, c016ec20).
+    bounds = sorted(set(starts) | set(stubs))
+
+    def next_bound(x):
+        i = bisect.bisect_right(bounds, x)
+        return bounds[i] if i < len(bounds) else 1 << 32
+    ends = [min(next_bound(s), sec_end(s)) for s in starts]
 
     strs = strings_by_addr()
     mentions = recon_mentions()
@@ -163,6 +184,13 @@ def main():
 
     print("functions found: %d (CALLP targets + code pointers in data; %d jump stubs folded)"
           % (len(rows), len(stubs)))
+    named = map_names()
+    conf = defaultdict(int)
+    for r in rows:
+        if r["addr"] in named:
+            conf[named[r["addr"]]] += 1
+    print("named in recon/map: %d of %d (confirmed %d, likely %d, guess %d)"
+          % (sum(conf.values()), len(rows), conf["confirmed"], conf["likely"], conf["guess"]))
     summary(rows, "all")
     summary([r for r in rows if r["addr"] >= 0xc0000000], "SDRAM (c0...)")
     summary([r for r in rows if r["addr"] < 0xc0000000], "L2 (118...)")
