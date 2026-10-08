@@ -73,3 +73,20 @@ and are skipped here (see 00): 118093c0, 1180a2a8, 1180ad68.
 | 11808ed0 | updateui_screen_switch | calls 11808d00,11808d50,c0150830; 2 callers 11808f00/c013c674 | guess | calls incl. 11808d00,11808d50 |
 | 11808f00 | updateui_screen_switch2 | calls 11808ed0,ptr_const_118130a0; 2 callers c01507d8/c0150844 | guess | calls=11808ed0,c016bff0 |
 | 11808f40 | task_ad_main | AD task body; registered task entry 11809004 (named verbatim in FWMAP.md task list) falls 196 bytes into this 544-byte block; calls the serial-read sequencer 1180abc0, locked_lookup_big, hwi_guarded_divide_update | confirmed | recon/15,18: "Task 11809004 calls read routine 1180abc0"; 11809004-11808f40=0xc4 < size 544 |
+| 11809160 | datastore_copy_helper | calls c0136720/744/7f8, bios_sem_post; B14[177]; 1 caller wrapper_c016d300 — DataStore/UpdateUI shared copy helper | guess | b14=177; roots DataStore,UpdateUI |
+| 11809224 | midi_lock_wait | calls bios_sem_pend, diag_mask_test; B14[177]; 1 caller wrapper_c016be20 | guess | calls=c0150b20,c0169fc0; b14=177 |
+| 118092a0 | midi_param_lock_op | takes/releases a lock (bios_sem_pend/post) around c01454f4; B14[177]; 8 callers across MIDI/MainApp/PreLoad/RhythmService/UpdateUI — generic locked-operation wrapper | likely | calls=c01454f4,c0150b20,c01628e0; b14=177; 8 callers |
+| 1180933c | datastore_copy2 | calls rts_memcpy_word_sploop only; 1 caller wrapper_c016d300 | guess | calls=c016d4c0 |
+| 118093c0 | sign_test_predicate | see 00_library_kernel.md | — | already named |
+| 11809420 | gpio_set_helper1 | thin wrapper around sign_test_predicate (118093c0); 4 callers incl. orchestrator_1180_region2,11805484,1180ab20,c0160b80 | likely | calls=118093c0 |
+| 1180942c | gpio_set_helper2 | sibling of 11809420 (calls 118093c0 only); 1 caller 1180ab20 | likely | calls=118093c0 |
+| 11809438 | gpio_set_helper3 | sibling of 11809420 (calls 118093c0); 2 callers orchestrator_1180_region2,11805484 | likely | calls=118093c0 |
+| 11809458 | batt_gpio_drive | drives/reads a GPIO pin via sign_test_predicate (118093c0), analogous to AD's 11809474 pattern; 1 caller 11809b80 (BatteryManagement) | likely | calls=118093c0; roots BatteryManagement |
+| 11809474 | ad_gpio90_drive | drives GPIO 90 low/high via sign_test_predicate (118093c0); part of the AD serial-converter handshake performed inside 1180abc0 | confirmed | recon/15: "drives GPIO 90 low via 11809474 -> 118093c0" |
+| 11809484 | gpio_read_bit | reads *(GPIO_base + 40*(pin>>5) + 32) and extracts bit pin&31; GPIO_base=01e26000 | confirmed | recon/15: `118094a2 SHR A4,5,B0; ...; 118094b2 LDW *A5[8],A0; 118094b6 SHRU A0,A1,A0` |
+| 118094c4 | gpio_pin_select_idx | indexed pin selector: maps index 0..5 to pins 27,24,26,37,38,86 (default 0 for index 6) then reads via 11809484; reached via veneer c016f1a0 | confirmed | recon/15: "118094c4..9504 selects pins 27,24,26,37,38,86 for indices 0..5 and defaults to 0 for index 6" |
+| 1180950c | gpio_read_fixed | thin wrapper calling 11809484 for one fixed pin; callers incl. task 118076c0, 11809d08, wrapper_c016c120 | guess | calls=11809484 |
+| 11809524 | gpio_read_direct1 | one of the three direct (non-indexed) normal-button GPIO readers feeding c0156f00's 10-bit sample; veneer c016f1b0 target | confirmed | recon/15: "assembles bits 0..9 from three direct readers and seven indexed readers" |
+| 11809530 | gpio_read_direct2 | second direct GPIO reader; veneer c016f1d0 target | confirmed | recon/15 veneer-resolution list |
+| 11809540 | gpio_read_direct3 | third direct GPIO reader; veneer c016f1c0 target | confirmed | recon/15 veneer-resolution list |
+| 1180954c | gpio_read_footsw | two-footswitch pin selector: index0=GPIO3, index1=GPIO5, via 11809484 | confirmed | recon/15: `11809550/54/56/58`: "index 0 reads GPIO3; index 1 reads GPIO5" (offsets fall inside this 36-byte function) |
