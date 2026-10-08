@@ -141,3 +141,23 @@ honest guess beats a wrong confirmed."
 | c016a740 | wrapper_c016a740 | generic routine (calls c0158ea0,c0158ea8) | guess | c016a740: n=7; 1 callers; first op STW.D2T2 B3,*B15--[2] |
 | c016a758 | wrapper_c016a758 | generic routine (calls 1180b020,c015908c) | guess | c016a758: n=8; 1 callers; first op STW.D2T2 B3,*B15--[2] |
 | c016a770 | wrapper_c016a770 | generic routine (calls c0139738,c0139a70,c0139b88; B14[108 109 ]) | guess | c016a770: n=20; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016a7c0 | wrapper_c016a7c0 | generic routine (calls 11800400,11800424) | guess | c016a7c0: n=52; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016a840 | wrapper_c016a840 | generic routine (calls 1180a954,c016e000,c016e020) | guess | c016a840: n=18; 1 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016a87c | wrapper_c016a87c | generic routine (calls c015c94c,c015c9a0) | guess | c016a87c: n=17; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016a8c0 | wrapper_c016a8c0 | generic routine (calls 11805e8c) | guess | c016a8c0: n=12; 2 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016a8e0 | wrapper_c016a8e0 | generic leaf routine, no further structure identified | guess | c016a8e0: n=17; 2 callers; first op MV.L1 A4,A5 |
+| c016a914 | wrapper_c016a914 | generic routine (calls c0150b20,c0160e74,c01628e0; B14[155 ]) | guess | c016a914: n=17; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016a94c | wrapper_c016a94c | generic routine (calls c012fb00,c0154564; string 'OUTPUT ') | guess | c016a94c: n=32; 0 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016a9ac | ptr_const_c0183740 | returns the fixed pointer constant 0xc0183740 (no load) | confirmed | c016a9ac: MVK/MVKH -> 0xc0183740; BNOP; 1 callers |
+| c016a9c0 | wrapper_c016a9c0 | generic routine (calls c0152240) | guess | c016a9c0: n=17; 1 callers; first op STW.D2T2 B3,*B15--[4] |
+| c016a9f0 | wrapper_c016a9f0 | generic routine (calls c015232c) | guess | c016a9f0: n=25; 1 callers; first op STW.D2T2 B3,*B15--[4] |
+| c016aa40 | wrapper_c016aa40 | generic routine (calls c011cb64,c0140320,c01563a0) | guess | c016aa40: n=21; 1 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016aa88 | wrapper_c016aa88 | generic routine (calls 1180710c,c0126ff8,c0144580; B14[165 ]) | guess | c016aa88: n=56; 2 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016ab40 | wrapper_c016ab40 | generic routine (calls c0159620,c015af0c,c016e000) | guess | c016ab40: n=7; 1 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016ab58 | wrapper_c016ab58 | generic routine (calls c015af00,c016ab40; B14[24 ]) | guess | c016ab58: n=8; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016ab70 | wrapper_c016ab70 | generic routine (calls c0159758,c015af18) | guess | c016ab70: n=9; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016ab8c | wrapper_c016ab8c | generic routine (calls c015b114,c016ab70; B14[24 ]) | guess | c016ab8c: n=14; 2 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016abc0 | wrapper_c016abc0 | generic routine (calls c01454f4,c0167b00,c016e000) | guess | c016abc0: n=26; 1 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016ac1c | ptr_const_c011ad75 | returns the fixed pointer constant 0xc011ad75 (no load) | confirmed | c016ac1c: MVK/MVKH -> 0xc011ad75; BNOP; 2 callers |
+| c016ac28 | ptr_const_c011ad7a | returns the fixed pointer constant 0xc011ad7a (no load) | confirmed | c016ac28: MVK/MVKH -> 0xc011ad7a; BNOP; 4 callers |
+| c016ac34 | wrapper_c016ac34 | generic routine (calls c0169f20) | guess | c016ac34: n=43; 2 callers; first op MVK.S1 0xffffad70,A4 |
