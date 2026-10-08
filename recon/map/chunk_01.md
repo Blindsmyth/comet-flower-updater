@@ -108,3 +108,21 @@ and are skipped here (see 00): 118093c0, 1180a2a8, 1180ad68.
 | 11809aac | midi_compose_wrap4 | calls 118099e4,11809a34; 2 callers 11807c08,1180a734 | guess | calls=118099e4,11809a34 |
 | 11809aec | midi_queue_post | calls 1180b06c (event-post veneer outside chunk); 1 caller 11809b34 | guess | calls=1180b06c |
 | 11809b04 | midi_sdiv_helper | thin wrapper around rts_sdiv32; 1 caller 11809b34 | likely | calls=c01675c0 |
+| 11809b34 | midi_expr_apply | calls 118099a0,11809a34,11809aec,11809b04,c01600c8; 1 caller c014aef4 — c014aef4/B14[155] is the stock expression-pedal acquisition site recon/18 flags, so this is plausibly part of the expression-value compose/apply path | likely | calls incl. 118099a0,11809a34,11809aec,11809b04; recon/18 names c014aef4's B14[155] acquisition |
+| 11809b80 | batt_gpio_read_step | calls 11809458 (battery GPIO drive/read step); 1 caller 11809bd4 (BatteryManagement task) | likely | calls=11809458; roots BatteryManagement |
+| 11809bd4 | task_battery_management | BatteryManagement task entry (named verbatim in FWMAP.md task list); calls 11809570,11809b80,locked_lookup_big; B14[112] | confirmed | FWMAP.md task list: "BatteryManagement ... 11809bd4"; calls=11809570,11809b80,c0158980 |
+| 11809d08 | repeat_event_handler_helper | calls 1180950c, knob/event post 1180b000, bios_sem_pend, locked_lookup_big, bios_sem_post, hwi_guarded_divide_update; B14[157]; 1 caller c01635c0 — roots incl. RepeatEventHandler/AD/MIDI/MainApp/UpdateUI | likely | calls incl. 1180950c,1180b000,c0150b20,c0158980,c01628e0; b14=157 |
+| 11809f00 | ad_subsystem_init | calls 11805e64, big_subsystem_init; B14[48,50,127,165]; 1 caller 1180abc0 — likely an AD one-time init path (multiple B14 slots touched) | guess | b14=48,50,127,165; calls=11805e64,c0155ac0 |
+| 1180a070 | rhythm_leaf1 | 16-byte leaf, no calls recorded; 2 callers 11806eb4,c015402c — RhythmService | guess | n=16; roots RhythmService |
+| 1180a080 | rhythm_leaf2 | 32-byte leaf, no calls recorded; same 2 callers as 1180a070 | guess | n=32; roots RhythmService |
+| 1180a0a0 | updateui_gfx_dispatch | calls big_subsystem_2 (c011d938), cfg_get_global_c011ad8c, 11804124, 118048fc; B14[184]; 1 caller c013c644 | guess | calls incl. c011d938,c0156e80; b14=184 |
+| 1180a130 | ad_init_path | calls orchestrator_1180_region (1180ad68), 1180af34, c01497d0, big_subsystem_init, cfg_get_global_c011ad8c, c0158f00, c01635f8/3640; B14[139]; 1 caller 1180abc0 — a second AD init/config branch alongside 11809f00, not distinguished further | guess | b14=139; calls incl. 1180ad68,1180af34,c0155ac0,c0156e80 |
+| 1180a220 | gain_ramp_core | calls locked_lookup_big; 1 caller 1180a2a8 (audio_gain_ramp_div) — the core per-step ramp iteration body | likely | calls=c0158980; 1 caller=1180a2a8; recon/16 |
+| 1180a2a8 | audio_gain_ramp_div | see 00_library_kernel.md | — | already named |
+| 1180a340 | ramp_flag_clear_1268c | clears flag word 0x1181268c (disables the audio-side ramp-update handshake); 9 callers | confirmed | recon/16: "the second clears 1181268c via 1180a340" |
+| 1180a350 | ramp_flag_set_1268c | sets flag word 0x1181268c=1; 9 callers | confirmed | recon/16: "1180a350 (sets 1181268c=1)" |
+| 1180a380 | preload_init_step | calls c0127fe0, c0144580, big_subsystem_init; B14[100,174]; 1 caller 1180a3d0 | guess | b14=100,174; calls=c0127fe0,c0144580,c0155ac0; roots PreLoad,RhythmService,UpdateUI |
+| 1180a3d0 | preload_init_main | calls 1180626c,1180a380,c0131698,c014c0b0,bios_sem_pend,bios_sem_post; B14[175]; 1 caller 1180a448 | guess | b14=175; calls incl. 1180a380,c0150b20,c01628e0 |
+| 1180a448 | preload_init_thunk | calls 1180a3d0, c014bfc8; 1 caller wrapper_c016c090 | guess | calls=1180a3d0,c014bfc8 |
+| 1180a4a0 | gain_ramp_up | ramps a parameter up to target, companion of the 1181268c clear path, calls audio_gain_ramp_div 1180a2a8; 6 callers | confirmed | recon/16: "ramps up via 1180a340" lineage; calls=1180a2a8 |
+| 1180a4c4 | gain_ramp_to_zero | zero-target gain ramp, companion of the 1181268c set path, calls audio_gain_ramp_div 1180a2a8; 6 callers | confirmed | recon/16: "1180a4c4 (zero-target gain ramp through 1180a2a8/1180a220)" |
