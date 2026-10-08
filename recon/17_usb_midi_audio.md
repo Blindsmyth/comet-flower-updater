@@ -135,3 +135,20 @@ No capacity wait occurs inside byte append: full returns ffff63be; bulk append r
 The overall send API **can block**, independently of ring capacity: `c01274d4 CALLP c0150b20` with B4=-1 at c01274e0 (B14[161]); `c0149df0 CALLP c014a094` (B14[89]); and `c014a096 MVK -1,B4; c014a098 CALLP c0150b20`. Worker c0149d40 waits for an event, then c0149c14 holds B14[89] while draining/normalizing into c0117318 and calling packetizer (`c0149c8c CALLP c01489a0`), releasing at c0149c98. Thus calling the stock wrapper directly from MainApp, as the prototype does, fails the requested nonblocking guarantee.
 
 Proposed rule: hooks only publish latest absolute 7-bit value plus dirty/version per (channel,CC), with four saturating knob accumulators and one expression slot; overwrite obsolete unsent motion. Use a short bounded critical section to synchronize MainApp and analog producer, with **no semaphore wait or send call in either hook**. Dedicated lower-priority transmitter takes a snapshot, round-robins at most a bounded number of CCs per activation, and keeps the dirty bit if version changed while sending. Under the existing serialization and ring lock, require at least three free bytes before appending a whole CC; otherwise release and retry later, retaining only latest unsent value. Do not call c0149de4 while already holding its nonrecursive lock: implement a reviewed atomic reserve/append path or refactor that boundary. Handle disconnect/reset by clearing partial transport state and publishing latest state on reconnect. Button edges need a separate bounded policy, not motion coalescing. The hook path is bounded by construction; actual critical-section timing and worker integration remain to implement. Do not blindly resend three bytes after a partial stock enqueue.
+
+### B3 — final packed audio tap (confirmed addresses/context; estimated cost)
+TX PaRAM1 source at **01c04024** selects which inactive 128-byte half packer **11818aa0** fills: **11f03630** or **11f036b0**. Each contains 16 interleaved stereo frames, two 32-bit words/frame. Planar inputs **11f038b0/11f038f0** are **not yet the exact DAC words**: packer applies fixed-point gain 0x4534fd79 and saturating shifts before storing.
+```text
+11818aa8 LDW *A3[0],A4      ; current DMA source
+11818ad4 CMPGTU B5,A4,B0    ; B5=11f036b0
+11818ad8 [B0] MV B5,A8      ; otherwise A8=11f03630
+11818b00 SMPY32 A6,A7,A3
+11818b04 SMPY32 B5,A7,B4
+11818b0c SSHL A3,2,A5
+11818b10 SSHL B4,2,A4
+11818b18 STNDW A5:A4,*A8++[1]
+11818c64 CALLP 11818aa0,B3  ; audio Swi final pack
+```
+Hook inside/around the packer, preserving its **selected destination base**, and copy after its last store, before returning to the audio Swi. Do not resample the live PaRAM source after return and assume it identifies the same half: DMA can advance. The scheduling chain from recon/16 is RX TCC0 c0151a90 -> c0164240(B14[141]) -> Swi object c0182a40 -> 11818ba0; this is audio **Swi**, not a place to wait for USB or take USB locks. Keep the audio producer bounded and the USB consumer independent.
+
+A raw copy costs 128 B read +128 B write per block: 352800 B/s copied at 2756.25 blocks/s, 705600 B/s aggregate memory traffic. A simple doubleword loop needs 16 loads plus 16 stores and pointer/control work; exact cycles depend on placement, cache misses, contention, and instruction scheduling and are **unknown**, not 32 guaranteed cycles. Deferred conversion yields 64 B/block for stereo 16-bit, 96 B/block for packed 24-bit. Preserve channel order, signed saturation and the codec's significant-bit alignment; establish the desired 16/24-bit extraction numerically from the packed words before shipping. Ring size/drop policy, SRAM or cache-coherent DMA placement, and worst-case audio deadline headroom remain unallocated/unmeasured.
