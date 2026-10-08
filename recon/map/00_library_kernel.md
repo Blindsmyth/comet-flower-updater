@@ -281,3 +281,23 @@ honest guess beats a wrong confirmed."
 | c016e020 | rts_regs_save | prologue helper: push B14,A15:A14,B13:B12,A13:A12,B11:B10,A11:A10,B3:B2 then branch to A3 (entered via CALLP X,A3, not B3, so B3 stays free) | confirmed | c016e020 STW B14,*B15--[2]; B.S2X A3, then parallel/sequential STDW of A15:A14,B13:B12,A13:A12,B11:B10,A11:A10,B3:B2; 865 CALLP/branch refs, matches brief's CALLP ...,A3 save/restore shape |
 | c016e0c0 | wrapper_c016e0c0 | generic leaf routine, no further structure identified | guess | c016e0c0: n=16; 3 callers; first op BNOP.S2 B3,2 |
 | c016e100 | wrapper_c016e100 | generic leaf routine, no further structure identified | guess | c016e100: n=8; 2 callers; first op MV.D2X A4,B0 |
+| c016e120 | wrapper_c016e120 | generic leaf routine, no further structure identified | guess | c016e120: n=8; 2 callers; first op NOP  |
+| c016e140 | wrapper_c016e140 | generic routine (calls c016dfc0) | guess | c016e140: n=11; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e160 | wrapper_c016e160 | generic routine (calls c013e4f4) | guess | c016e160: n=8; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e180 | tailcall_wrapper_c0169fc0_c016e180 | small wrapper that tail-calls c0169fc0 after a short setup | likely | c016e180: ...; B 0xc0169fc0; 0 callers |
+| c016e1a0 | wrapper_c016e1a0 | generic routine (calls c0161e60) | guess | c016e1a0: n=8; 0 callers; first op MV.L1X B3,A2 |
+| c016e1c0 | wrapper_c016e1c0 | generic routine (calls c016e2c0) | guess | c016e1c0: n=24; 2 callers; first op INTSP.L1 A4,A4 |
+| c016e220 | wrapper_c016e220 | generic leaf routine, no further structure identified | guess | c016e220: n=5; 1 callers; first op MV.L2 B4,B0 |
+| c016e22c | wrapper_c016e22c | generic routine (calls c0163118) | guess | c016e22c: n=7; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e240 | tailcall_wrapper_c0161200_c016e240 | small wrapper that tail-calls c0161200 after a short setup | likely | c016e240: ...; B 0xc0161200; 1 callers |
+| c016e280 | wrapper_c016e280 | generic leaf routine, no further structure identified | guess | c016e280: n=8; 2 callers; first op MVK.S1 0x1f60,A3 |
+| c016e2a0 | wrapper_c016e2a0 | generic leaf routine, no further structure identified | guess | c016e2a0: n=8; 1 callers; first op MVK.S1 0x1f60,A5 |
+| c016e2c0 | wrapper_c016e2c0 | generic leaf routine, no further structure identified | guess | c016e2c0: n=9; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e2e0 | wrapper_c016e2e0 | generic leaf routine, no further structure identified | guess | c016e2e0: n=24; 1 callers; first op BNOP.S2 B3,4 |
+| c016e340 | wrapper_c016e340 | generic routine (calls c015ee80) | guess | c016e340: n=10; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e360 | wrapper_c016e360 | generic routine (calls c015ee80) | guess | c016e360: n=10; 3 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e380 | wrapper_c016e380 | generic routine (calls c015ee80) | guess | c016e380: n=10; 3 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016e3a0 | tailcall_wrapper_c016ba40_c016e3a0 | small wrapper that tail-calls c016ba40 after a short setup | likely | c016e3a0: ...; B 0xc016ba40; 1 callers |
+| c016e3e0 | wrapper_c016e3e0 | generic leaf routine, no further structure identified | guess | c016e3e0: n=24; 1 callers; first op MVC.S2 CSR,B4 |
+| c016e440 | wrapper_c016e440 | generic leaf routine, no further structure identified | guess | c016e440: n=8; 0 callers; first op MVK.L2 0,B4 |
+| c016e460 | wrapper_c016e460 | generic leaf routine, no further structure identified | guess | c016e460: n=26; 4 callers; first op MVC.S2 TSCL,B4 |
