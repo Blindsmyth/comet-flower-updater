@@ -1,6 +1,43 @@
 # chunk_05: c012dab0..c0132430 (150 functions)
 
-Summary: (in progress)
+Summary: this range is almost entirely MIDI/MainApp/UpdateUI logic layered on
+top of the graphics and USB-descriptor primitives from earlier chunks, with
+five sub-clusters: (1) `c012dab0..c012e5a8` a generic scrollable-list
+row-render dispatcher (`ui_row_render_dispatch` c012e5a8) that picks among
+type-specific renderers for names, quoted strings, table values, a
+"page N/M" counter, a 5-glyph icon family (`ui_glyph_dispatch` c012e3a8,
+confirmed computed-jump dispatcher at table 0xc0184494) and a per-item
+custom-numeric-formatter table at 0x11811ca8 (same x*84 stride as recon/01's
+0x118115a0 table); (2) `c012ec80..c012fb28` a cascade of "try each setter
+type in turn" MIDI-value-apply helpers built on tag-dispatch leaves
+(midi_apply_type11/30/31_setter) feeding the already-named
+orchestrator_midi_compose, plus the USB-descriptor-table accessor family
+(usb_desc_table_entry_get and friends); (3) `c012fb9c..c01309da` a
+MIDI-controllable-parameter "assignment record" subsystem: search/apply
+cascades over the recon/01 value*84 table at 0x118115a0
+(cfg_record_find_by_id c012fd28, midi_assign_record_apply c012ff14,
+midi_assign_apply_variant1/1_locked/3 c01300a4/c0130138/c01303b8), all
+selected by a settings-menu action switch whose real body is
+`midi_settings_action_dispatch` (c01308e4) -- the ten addresses
+c0130950,c013098a..c01309da are confirmed NOT independent functions but
+switch case-arms reached only through the 24-entry pointer table at
+0xc0183e4c, per the FWMAP shared-epilogue pitfall; (4) `c0130a00..c0131800`
+a MIDI diagnostic-trace subsystem tagged by ROM strings EDTB/PPRM/PTCF/
+TXE1/TXJ1 (diag_record_build_edtb c0130ab4, midi_diag_trace_emit c0130e04 --
+the c0-region counterpart of the already-named 1180-region
+midi_send_diag_gated_1180 -- and midi_param_change_trace c013150c, called
+from midi_param_dispatch and PreLoad init), interleaved with more small
+cfg/custom-formatter-table accessors and a pair of near-identical SysEx
+senders (c0131138/c0131188); (5) `c0131800..c0132430` a USB MIDI
+descriptor/string "rebuild all slots" subsystem
+(usb_desc_rebuild_all_slots c01320e8, called from
+midi_assign_apply_and_rebuild_desc c01302d8 whenever a MIDI assignment
+changes) built from a large family of near-identical slot-get accessors
+and lock-guarded "write only if changed" slot setters over the USB
+descriptor table. Three functions in this range were already named by
+00_library_kernel.md (orchestrator_midi_compose c012ee10,
+fixed_scale_mul_84_div c0130d28, fixed_scale_mul_84 c0130d74) -- see that
+file; this report gives them "see" rows only.
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
@@ -135,3 +172,87 @@ Summary: (in progress)
 | c0131698 | preload_param_init_trace | PreLoad-time initializer that locks via midi_param_lock_op, calls c01296b4 and c012b180, then logs via midi_param_change_trace (c013150c); single caller preload_init_main (1180a3d0) | likely | calls=118092a0=midi_param_lock_op,c01296b4,c012b180,c013150c; roots=PreLoad,RhythmService,UpdateUI |
 | c0131740 | mainapp_struct_copy | thin wrapper around rts_memcpy_word_sploop (c016d4c0) only; roots MainApp; single caller c0134a80 | guess | calls=c016d4c0=rts_memcpy_word_sploop; roots=MainApp |
 | c01317c4 | midi_field_accessor | leaf with no calls listed, shared by 5 callers across midi_param_dispatch and MainApp/MIDI sites -- likely a fixed-field getter/setter | guess | roots=MIDI,MainApp; 0 calls; 5 callers |
+| c0131800 | usb_desc_slot_set_if_changed_a | fetches a USB-descriptor table entry (usb_desc_entry_get_wrap c012f040), scales it (fixed_scale_mul_84_div c0130d28), compares it against the current entry in the custom-formatter table at 0x11811ca8, and only if different takes bios_sem_pend (B14 155), installs the new value via c0141684, then bios_sem_post -- a "write slot handler only if it changed" setter | confirmed | CALLP 0xc012f040,0xc0130d28; CMPEQ.L1X against 0x118111ca8[idx]; [match] skip; else CALLP 0xc0150b20=bios_sem_pend,0xc0141684,0xc01628e0=bios_sem_post; B14 global 155 |
+| c0131870 | usb_desc_slot_get_a | fetches a USB-descriptor table entry via usb_desc_table_get + usb_desc_table_entry_get (c012efb0); called from the slot-get/rebuild family below | guess | calls=c012afe0=usb_desc_table_get,c012efb0=usb_desc_table_entry_get; 4 callers |
+| c0131918 | usb_desc_slot_get_b | sibling accessor: usb_desc_table_get + c012b008 (no c012efb0); 2 callers (c01319a4,c0156680) | guess | calls=c012afe0=usb_desc_table_get,c012b008; 2 callers |
+| c01319a4 | usb_desc_slot_resolve | combines rts_const_return_1 guard with usb_desc_slot_get_a/b (c0131870,c0131918) and c012afa0 -- resolves one descriptor slot's value, used throughout the rebuild family | likely | calls=c012af98=rts_const_return_1,c012afa0,c0131870,c0131918; 5 callers |
+| c0131ab0 | usb_desc_slot_get_c | wraps usb_desc_slot_resolve (c01319a4) with an extra usb_desc_table_entry_get (c012efb0) fetch; 5 callers incl. c01320e8 | guess | calls=c012afe0=usb_desc_table_get,c012efb0=usb_desc_table_entry_get,c01319a4; 5 callers |
+| c0131b44 | usb_desc_slot_set_if_changed_b | larger (320B) sibling of usb_desc_slot_set_if_changed_a: same get/scale/compare/lock-install shape (c012f040,fixed_scale_mul_84_div,c0131ab0,c0141784,bios_sem_pend/post), single caller c01320e8; B14 global 155 | likely | calls=c012af98=rts_const_return_1,c012f040,c0130d28=fixed_scale_mul_84_div,c0131ab0,c0141784,c0150b20=bios_sem_pend,c01628e0=bios_sem_post; B14 global 155 |
+| c0131c84 | usb_desc_slot_set_if_changed_c | third sibling of usb_desc_slot_set_if_changed_a, same shape, single caller c015756c; B14 global 155 | likely | calls=c012f040,c0130d28=fixed_scale_mul_84_div,c0141684,c0150b20=bios_sem_pend,c01628e0=bios_sem_post; B14 global 155 |
+| c0131d04 | usb_desc_slot_get_d | sibling of usb_desc_slot_get_c (usb_desc_table_get+usb_desc_table_entry_get+usb_desc_slot_resolve); 5 callers incl. the rebuild orchestrator's neighbors | guess | calls=c012afe0=usb_desc_table_get,c012efb0=usb_desc_table_entry_get,c01319a4; 5 callers |
+| c0131d64 | usb_desc_slot_set_if_changed_d | fourth sibling of usb_desc_slot_set_if_changed_a using usb_desc_slot_get_d (c0131d04); callers c01302d8,c0132498; B14 global 155 | likely | calls=c012af98=rts_const_return_1,c012f040,c0131d04,c0141684,c0150b20=bios_sem_pend,c01628e0=bios_sem_post; B14 global 155 |
+| c0131dd4 | usb_desc_slot_get_e | sibling accessor combining usb_desc_table_get+usb_desc_table_entry_get+usb_desc_slot_resolve; 5 callers | guess | calls=c012afe0=usb_desc_table_get,c012efb0=usb_desc_table_entry_get,c01319a4; 5 callers |
+| c0131e34 | usb_desc_slot_get_f | combines usb_desc_slot_get_d and usb_desc_slot_get_e (c0131d04,c0131dd4) plus c0141684; single caller c0143470 | guess | calls=c012af98=rts_const_return_1,c012f040,c0131d04,c0131dd4,c0141684; 1 caller |
+| c0131ea0 | usb_desc_slot_get_g | combines rts_const_return_1, c012afa0, usb_desc_slot_get_a (c0131870); single caller c01320e8 | guess | calls=c012af98=rts_const_return_1,c012afa0,c0131870; 1 caller |
+| c0131f84 | usb_desc_slot_get_h | thin wrapper around usb_desc_slot_get_c (c0131ab0) with an rts_const_return_1 guard; single caller c01320e8 | guess | calls=c012af98=rts_const_return_1,c0131ab0; 1 caller |
+| c0131fd4 | usb_desc_slot_get_i | sibling accessor (usb_desc_table_get+usb_desc_table_entry_get) with no further delegation; 2 callers (c01320e8,c015756c) | guess | calls=c012afe0=usb_desc_table_get,c012efb0=usb_desc_table_entry_get; 2 callers |
+| c0132080 | usb_desc_slot_set_combined | combines usb_desc_slot_get_d/e (c0131d04,c0131dd4) with c0141684/c0141784 writes; 2 callers (c01320e8,c015756c) | guess | calls=c012f040,c0131d04,c0131dd4,c0141684,c0141784; 2 callers |
+| c01320e8 | usb_desc_rebuild_all_slots | the master rebuild orchestrator (496B): calls the gain-ramp-clamped helpers (1180a9e0,1180aa28) plus every slot-get/slot-set sibling above (c0131870,c01319a4,c0131ab0,c0131b44,c0131ea0,c0131f84,c0131fd4,c0132080) and the config-table pointer c014ff44=cfg_table_ptr_11f03ad0, under bios_sem_pend/post (B14 155) -- rebuilds the whole USB MIDI descriptor/string table after an assignment change; single caller c01302d8 (midi_assign_apply_and_rebuild_desc) | likely | calls (19) incl. 1180a9e0=gain_ramp_slot_clamped,1180aa28=gain_ramp_slot_clamped2,c0131870,c01319a4,c0131ab0,c0131b44,c0131ea0,c0131f84,c0131fd4,c0132080,c014ff44=cfg_table_ptr_11f03ad0,c0150b20=bios_sem_pend,c01628e0=bios_sem_post; B14 global 155; not traced instruction-by-instruction given size |
+| c01322d8 | usb_desc_slot_get_plain | plain single-call wrapper around usb_desc_table_get only; single caller c01302d8 | guess | calls=c012afe0=usb_desc_table_get; 1 caller |
+| c0132364 | usb_desc_slot_get_j | sibling accessor (usb_desc_table_get+usb_desc_table_entry_get); single caller c015756c | guess | calls=c012afe0=usb_desc_table_get,c012efb0=usb_desc_table_entry_get; 1 caller |
+| c01323d8 | usb_desc_slot_get_k | sibling accessor (usb_desc_table_get+usb_desc_table_entry_get); 2 callers (c015756c,c01576c0) | guess | calls=c012afe0=usb_desc_table_get,c012efb0=usb_desc_table_entry_get; 2 callers |
+
+## Data
+
+- `0x118115a0` (recon/01's table, write side `midi_cfg_table_fill` 118072ac):
+  read side confirmed here by `cfg_record_find_by_id` (c012fd28, base
+  0x118115a0ish), `fixed_scale_mul_84`/`fixed_scale_mul_84_div`
+  (c0130d74/c0130d28) and `cfg_record_type_is_1` (c0130d50), all indexing
+  by `value*84`, base offset 0x159c -> records are (at least) read as a
+  first word compared/classified by small integer type codes (1, 30, 31,
+  39, 40 seen as distinct tag values dispatched differently).
+- `0x11811ca8` (+0x11811910 base per `custom_formatter_table_base_get`
+  c0130a70): a second value*84-strided table of per-item custom-numeric
+  formatter function pointers, read by `ui_row_render_numeric_custom`
+  (c012e474) and `custom_formatter_table_get` (c0130a98), written (lock-
+  guarded, only-if-changed) by the `usb_desc_slot_set_if_changed_*` family
+  (c0131800, c0131b44, c0131c84, c0131d64).
+- `0xc0184494..c01844a4` (5 words): glyph-draw jump table for
+  `ui_glyph_dispatch` (c012e3a8), entries point at c0181258/1240/1228/
+  1210/11f8 (fixed small bitmaps).
+- `0xc0183e4c..c0183eac` (24 words): settings-menu action-code jump table
+  for `midi_settings_action_dispatch` (c01308e4); several codes alias the
+  same case-arm (see Data below and the per-arm `ptr@` lists).
+- `0xc011abe4` (24-byte scratch buffer, "state buffer"): cleared by
+  `state_buf_clear` (c012fc18), read/written as flag bytes at offsets 0,
+  2(+variants) by `state_reset_and_elapsed` (c012fc40),
+  `settings_flag_consume_notify` (c01305e8) and
+  `settings_action_cfgptr_changed` (c0130654); also reused by
+  `cfg_type_classify_scan` (c012fe68) to mark per-entry type-classification
+  flags.
+- B14[155]: a semaphore-guarded "current MIDI-assign/USB-descriptor"
+  cache/handle, invalidated by `midi_apply_value_if_changed` (c012ec80) and
+  locked around every `usb_desc_slot_set_if_changed_*` write and the whole
+  `usb_desc_rebuild_all_slots` (c01320e8) pass.
+- B14[154]: a second semaphore-guarded handle used by the
+  `midi_assign_apply_variant1*` / `settings_action_dispatch_event`
+  (c01307d4) path (mainapp_event_dispatch c01537a8 sits behind the same
+  lock).
+- ROM tag strings `EDTB`,`PPRM`,`PTCF`,`TXE1`,`TXJ1`,`empty` at
+  0xc01810f2 area: read directly (inline byte compares, no strcmp call)
+  by `diag_tag_field_extract` (c01312c4); same tag set built into the
+  larger diagnostic record by `diag_record_build_edtb` (c0130ab4).
+
+## Open questions
+
+- Exact semantics of the type-tag values dispatched by
+  `midi_apply_type11/30/31_setter` (c012ed0c/ece0/ed44) and by
+  `cfg_type_classify` (c012fe18, codes 1/3 vs 39/40 vs other) are not
+  established -- likely map to MIDI-assignable parameter storage classes
+  (knob/switch/LED vs on/off) but no corroborating string evidence found
+  in this range.
+- `midi_settings_action_dispatch`'s (c01308e4) explicit non-table cases
+  (25-28 -> c01303b8, 31-32 -> c0130138, 33 -> c016f530, 39-40 -> c012ff14)
+  were decoded from the compare chain but the actual menu-item meaning of
+  each numeric code is unknown; a future pass over the settings-menu data
+  table near c0182b38 (per FWMAP.md) might cross-reference these codes to
+  on-screen menu labels.
+- `c016f520`/`c016f530`/`c016f540`/`c016f560`/`c016f570`/`c016f590`/
+  `c016f600`/`c016f610`/`c016f640`/`c016f650`/`c016f720`/`c016f730`/
+  `c016f740` are called repeatedly throughout this chunk's MIDI-apply and
+  diag-trace clusters but lie just outside this chunk's range (c016e020..)
+  and were not traced -- a worthwhile target for whoever maps that range,
+  since pinning them would sharpen several "likely"/"guess" rows here.
+- `c01311cc` (fmt_buffer_render) and its callers c015942c/c01594f0 look
+  unrelated to the rest of this chunk's MIDI focus; not investigated
+  further since they belong to a different, not-yet-mapped subsystem.
