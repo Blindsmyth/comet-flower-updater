@@ -341,3 +341,8 @@ honest guess beats a wrong confirmed."
 | c016eb20 | wrapper_c016eb20 | generic routine (calls c015b880) | guess | c016eb20: n=8; 0 callers; first op STW.D2T2 B3,*B15--[18] |
 | c016eb40 | wrapper_c016eb40 | generic leaf routine, no further structure identified | guess | c016eb40: n=8; 3 callers; first op MVK.S1 0x1a3c,A3 |
 | c016eb60 | tailcall_wrapper_c016e4c0_c016eb60 | small wrapper that tail-calls c016e4c0 after a short setup | likely | c016eb60: ...; B 0xc016e4c0; 1 callers |
+| c016eb80 | tailcall_wrapper_c016e4e0_c016eb80 | small wrapper that tail-calls c016e4e0 after a short setup | likely | c016eb80: ...; B 0xc016e4e0; 1 callers |
+| c016eba0 | wrapper_c016eba0 | generic routine (calls c0167940) | guess | c016eba0: n=17; 0 callers; first op MVK.L1 -1,A4 |
+| c016ebe0 | wrapper_c016ebe0 | generic routine (calls c016e140) | guess | c016ebe0: n=8; 0 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016ec00 | wrapper_c016ec00 | generic routine (calls c013c980) | guess | c016ec00: n=11; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016ec20 | wrapper_c016ec20 | generic routine (calls c0166f80) | guess | c016ec20: n=22238; 0 callers; first op STW.D2T2 B3,*B15--[8] |
