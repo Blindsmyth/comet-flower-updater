@@ -270,3 +270,7 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
 - `c0127440`'s checksum table at `0xc0177fb0` was not compared against a
   known CRC-8/CRC-16 polynomial table; confirming the exact algorithm
   (and whether it is in fact a MIDI SysEx checksum) is unresolved.
+
+## Review by Claude (2026-10-08)
+- c01234c4: confirmed, `MVK 140,A0; CMPEQ A4,A0` (EM_TI_C6000 = 140).
+- c0127440 is now identified as **CRC-32 (IEEE, reflected, poly 0xEDB88320) per-byte update**: `(crc >> 8) ^ T[(crc ^ byte) & 0xff]` (c0127444 EXTU byte; c0127450 XOR; c0127452 LDW *B4[B0]; c0127454 SHRU 8; c012745a XOR). Table at c0177fb0 = 00000000 77073096 ee0e612c 990951ba..., the standard CRC-32 table.
