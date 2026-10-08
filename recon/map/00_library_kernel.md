@@ -241,3 +241,23 @@ honest guess beats a wrong confirmed."
 | c016d200 | wrapper_c016d200 | generic routine (calls c0164684) | guess | c016d200: n=10; 4 callers; first op STW.D2T2 B3,*B15--[2] |
 | c016d220 | wrapper_c016d220 | generic routine (calls c0164684) | guess | c016d220: n=10; 4 callers; first op STW.D2T2 B3,*B15--[2] |
 | c016d240 | wrapper_c016d240 | generic leaf routine, no further structure identified | guess | c016d240: n=20; 2 callers; first op MVK.S1 50,A0 |
+| c016d280 | wrapper_c016d280 | generic leaf routine, no further structure identified | guess | c016d280: n=18; 1 callers; first op MVK.S1 65,A0 |
+| c016d2c0 | wrapper_c016d2c0 | generic routine (calls 11804124,c01502e0,c01505f4) | guess | c016d2c0: n=17; 2 callers; first op CALLP.S1 0xc016e020,A3 |
+| c016d300 | wrapper_c016d300 | generic routine (calls 11809160,1180933c,c011c508) | guess | c016d300: n=40; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016d380 | wrapper_c016d380 | generic leaf routine, no further structure identified | guess | c016d380: n=19; 1 callers; first op MVK.L2 0,B5 |
+| c016d3c0 | fixed_mul64_c016d3c0 | 32x32->64 fixed-point multiply helper (MPY32U), operands from A4/B4/B5 | likely | c016d3c0: MPY32U.M2X B4,A4,B7:B6; 1 callers |
+| c016d440 | wrapper_c016d440 | generic leaf routine, no further structure identified | guess | c016d440: n=17; 1 callers; first op SUB.D2 B15,0x10,B15 |
+| c016d480 | wrapper_c016d480 | generic leaf routine, no further structure identified | guess | c016d480: n=21; 3 callers; first op MVK.S2 0x0020,B5 |
+| c016d4c0 | rts_memcpy_word_sploop | software-pipelined word-granularity memcpy: SPLOOPD loop copying (A6>>2) words from B4 to A4 via LDW/STW; a second, unrelated bounded ring-buffer-append routine (LDW *B4[1]/[2] length/capacity compare, STB) starts immediately after at c016d540 and was folded into the same coverage-detected span | confirmed | c016d4c0 MV A4,A30 // SHR A6,0x2,B31; c016d4d0 SPLOOPD 1; c016d4d8 LDW *B30++[1],B31; c016d4e8 STW A31,*A30++[1]; 20 CALLP callers |
+| c016d5c0 | wrapper_c016d5c0 | generic leaf routine, no further structure identified | guess | c016d5c0: n=19; 1 callers; first op STW.D1T1 A6,*A4--[1] |
+| c016d600 | wrapper_c016d600 | generic leaf routine, no further structure identified | guess | c016d600: n=17; 2 callers; first op MVK.S1 0x1fb8,A0 |
+| c016d640 | wrapper_c016d640 | generic routine (calls c0167b00) | guess | c016d640: n=16; 1 callers; first op MVK.S1 0x1538,A3 |
+| c016d680 | wrapper_c016d680 | generic leaf routine, no further structure identified | guess | c016d680: n=19; 1 callers; first op MVK.L2 0,B4 |
+| c016d6c0 | tailcall_wrapper_c016d6ec_c016d6c0 | small wrapper that tail-calls c016d6ec after a short setup | likely | c016d6c0: ...; B 0xc016d6ec; 3 callers |
+| c016d780 | wrapper_c016d780 | generic routine (calls c0167da0,c016b740,c016bbc0) | guess | c016d780: n=16; 0 callers; first op MVK.S1 0xffffb0c0,A4 |
+| c016d7c0 | wrapper_c016d7c0 | generic leaf routine, no further structure identified | guess | c016d7c0: n=16; 2 callers; first op MVK.S1 0x21ec,A3 |
+| c016d800 | wrapper_c016d800 | generic leaf routine, no further structure identified | guess | c016d800: n=17; 3 callers; first op MVC.S2 CSR,B5 |
+| c016d840 | wrapper_c016d840 | generic leaf routine, no further structure identified | guess | c016d840: n=17; 2 callers; first op MVC.S2 CSR,B5 |
+| c016d880 | sem_post_or_clear | conditional wrapper around c01628e0: if arg2(B4) != 0, writes 0 to *A4[1] and returns; if arg2 == 0, tail-branches into c01628e0 (bios_sem_post) with B4 loaded from a fixed global at approx 0xc017d36c -- i.e. complete an operation, optionally releasing a default lock | confirmed | c016d888 [A0] B 0xc016d8b0 (store-0 path); c016d890 [!A0] B 0xc01628e0 // c016d894 LDW *+B4[0],B4 loads the lock handle then tail-calls the post primitive; 38 callers |
+| c016d8c0 | wrapper_c016d8c0 | generic leaf routine, no further structure identified | guess | c016d8c0: n=32; 1 callers; first op MVK.S1 0x21ec,A3 |
+| c016d940 | tailcall_wrapper_c0166a80_c016d940 | small wrapper that tail-calls c0166a80 after a short setup | likely | c016d940: ...; B 0xc0166a80; 4 callers |
