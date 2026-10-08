@@ -5,6 +5,7 @@
  *   c0134e14 CALLP c015d428 -> controller_start    (MainApp start-up)
  *   c0134df0 CALLP c0127fe0 -> controller_dispatch (MainApp event dispatch)
  *   c015ffd0 CALLP c014aef4 -> controller_analog   (calibrated expression)
+ *   c0134dc4 CALLP c01537f4 -> controller_housekeeping (MainApp loop pass)
  *
  * The state is initialised by the AIS load itself (mode 0 = stock), so any
  * hook that runs before controller_start takes the stock path.
@@ -16,11 +17,13 @@
  * absolute 0..127 starting at 64, expression CC11. Physical legends are
  * unverified (recon/17 A5).
  *
- * Transport: c01274cc is the stock serialized MIDI send. Its outer lock
- * (B14[161]) waits with no timeout, and what does not fit the 1024-byte ring
- * is dropped (recon/17 A3, recon/18 1.6). Both hooks run in tasks (MainApp,
- * AD task), so v1 calls it directly; a bounded transmitter task is the
- * planned replacement.
+ * Transport (recon/19): hooks never send. They record the latest knob and
+ * expression values and queue button edges; controller_drain sends them from
+ * MainApp's housekeeping call (fourth hook, c0134dc4 CALLP c01537f4), only
+ * when the stock ring c0117b28 has room for a whole message. The stock send
+ * c01274cc can still wait on its lock B14[161], but only in MainApp. The AD
+ * task wakes MainApp with a non-waiting idle event (42) when the expression
+ * value changes.
  */
 typedef unsigned char u8;
 typedef unsigned int u32;
@@ -36,14 +39,87 @@ State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
 #define READ_SWITCHES ((void (*)(u32 *))0xc0156f00u)
 #define MIDI_SEND ((void (*)(const u8 *, u32))0xc01274ccu)
 #define STOCK_ANALOG ((void (*)(u32))0xc014aef4u)
+#define STOCK_HOUSEKEEPING ((void (*)(void))0xc01537f4u)
+/* Mailbox post (handle, message, timeout); stock posts to MainApp's
+   mailbox B14[162] = *(c0185088) with timeout 0 at 1180a840. */
+#define MBX_POST ((int (*)(u32, void *, int))0xc0166780u)
+#define MAINAPP_MBX (*(volatile u32 *)0xc0185088u)
+#define EVENT_IDLE 42          /* the MainApp loop skips it, then runs housekeeping */
 
-static void cc(u32 control, u32 value)
+/* Stock MIDI ring c0117b28: read index +0, write index +4, 1025 positions
+   (wrap after index 1024), full when next write == read (recon/17 A3). */
+#define RING ((volatile u32 *)0xc0117b28u)
+#define RING_POSITIONS 1025u
+
+/* ---- Pending output: written by the hooks, sent by controller_drain ---- */
+
+#define BTN_QLEN 16u
+#pragma DATA_SECTION(tx, ".ctl_state")
+struct {
+    u8 knob_dirty;                     /* bit i: knob i value unsent */
+    u8 knob_value[4];
+    u8 btn_head, btn_tail;             /* MainApp task only */
+    u8 btn_cc[BTN_QLEN], btn_val[BTN_QLEN];
+    volatile u8 expr_dirty, expr_value; /* written by the AD task */
+} tx = { 0 };
+
+static u32 ring_free(void)
+{
+    u32 r = RING[0], w = RING[1];
+    u32 used = w >= r ? w - r : w + RING_POSITIONS - r;
+    return RING_POSITIONS - 1u - used;
+}
+
+static void send_cc(u32 control, u32 value)
 {
     u8 bytes[3];
     bytes[0] = 0xb0;
     bytes[1] = (u8)control;
     bytes[2] = (u8)value;
     MIDI_SEND(bytes, 3);
+}
+
+/* Runs in MainApp after every event (hook at c0134dc4). Sends at most four
+   CCs per pass and only while the ring has room for a whole message, so
+   nothing is dropped half-way. The stock send can still wait on its lock;
+   that wait is now confined to MainApp. */
+static void controller_drain(void)
+{
+    u32 sent = 0, i;
+    while (sent < 4 && tx.btn_head != tx.btn_tail && ring_free() >= 3) {
+        send_cc(tx.btn_cc[tx.btn_head], tx.btn_val[tx.btn_head]);
+        tx.btn_head = (u8)((tx.btn_head + 1) & (BTN_QLEN - 1));
+        sent++;
+    }
+    for (i = 0; i < 4 && sent < 4; i++) {
+        if ((tx.knob_dirty & (1u << i)) && ring_free() >= 3) {
+            tx.knob_dirty &= (u8)~(1u << i);
+            send_cc(40u + i, tx.knob_value[i]);
+            sent++;
+        }
+    }
+    if (sent < 4 && tx.expr_dirty && ring_free() >= 3) {
+        u32 v = tx.expr_value;
+        tx.expr_dirty = 0;
+        send_cc(11, v);
+    }
+}
+
+void controller_housekeeping(void)
+{
+    STOCK_HOUSEKEEPING();
+    if (ctl_state.mode)
+        controller_drain();
+}
+
+static void queue_button(u32 control, u32 value)
+{
+    u8 next = (u8)((tx.btn_tail + 1) & (BTN_QLEN - 1));
+    if (next == tx.btn_head)
+        return;                         /* full: drop the newest edge */
+    tx.btn_cc[tx.btn_tail] = (u8)control;
+    tx.btn_val[tx.btn_tail] = (u8)value;
+    tx.btn_tail = next;
 }
 
 /* Stock start-up runs first: it configures the GPIOs (c0160ad8) before
@@ -61,8 +137,6 @@ void controller_start(void)
     }
 }
 
-/* Called from controller_dispatch (controller_hooks.asm) in controller
- * mode only; event points at the stock event record. */
 void controller_event(const int *event)
 {
     int id = event[0];
@@ -80,12 +154,14 @@ void controller_event(const int *event)
         else
             value = old + d;
         ctl_state.knob[index] = (u8)value;
-        if (value != old)
-            cc(40u + (u32)index, (u32)value);
+        if (value != old) {
+            tx.knob_value[index] = (u8)value;
+            tx.knob_dirty |= (u8)(1u << index);
+        }
     } else if (id >= 0 && id <= 3) {
-        cc(20u + (u32)(id / 2), (id & 1) ? 0u : 127u);
+        queue_button(20u + (u32)(id / 2), (id & 1) ? 0u : 127u);
     } else if (id >= 5 && id <= 24) {
-        cc(22u + (u32)((id - 5) / 2), ((id - 5) & 1) ? 0u : 127u);
+        queue_button(22u + (u32)((id - 5) / 2), ((id - 5) & 1) ? 0u : 127u);
     }
     /* Combined gesture (4), sentinels, repeats and system events are
        consumed without output. */
@@ -97,6 +173,16 @@ void controller_analog(u32 value)
         STOCK_ANALOG(value);
         return;
     }
-    if (value <= 127u)
-        cc(11, value);
+    if (value <= 127u) {
+        u32 wake = !tx.expr_dirty;
+        tx.expr_value = (u8)value;
+        tx.expr_dirty = 1;
+        if (wake) {
+            /* One idle event per pending value wakes MainApp so the drain
+               runs; timeout 0 never waits, and a full mailbox just means
+               MainApp is already busy and will drain anyway. */
+            u32 msg[4] = { EVENT_IDLE, 0, 0, 0 };
+            MBX_POST(MAINAPP_MBX, msg, 0);
+        }
+    }
 }

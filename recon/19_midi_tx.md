@@ -278,3 +278,12 @@ into `c01274cc` above).
   scratch folder and Claude integrates it").
 
 Status: done.
+
+## Review and integration by Claude (2026-10-08)
+
+Integrated into `firmware/controller/controller.c` with two corrections:
+
+1. **Ring arithmetic.** The ring has 1025 positions (indices 0..1024, wrap after 1024, full when next write == read; recon/17 A3, c0149d84 forms 1024 as the last index). Masking with 0x3ff miscounts near the wrap. `ring_free()` now computes used = w >= r ? w - r : w + 1025 - r, and free = 1024 - used.
+2. **Expression stall.** MainApp's receive (c015350c -> c01534c4 -> c0166680 on mailbox B14[162]) waits with timeout -1. The AD task posts no MainApp event for analog changes, so with a drain-only design an expression change would wait for the next button or knob event. The fix: when the expression value becomes pending, controller_analog posts one event 42 with timeout 0 via c0166780(*(c0185088), &msg, 0), the same non-waiting post stock uses at 1180a840 (event 43, `MVK.L1 0,A6`). A received 42 goes c0153554 -> c01535ce (41/42) -> c01536a4, which zeroes two event words and returns. The MainApp loop then skips the handlers at c0134dec and runs housekeeping (c0134dc4), where the drain sends the value. B14 = c0184e00 (c0169a38/c0169a3c), so B14[162] is at c0185088.
+
+Fourth hook: c0134dc4 `CALLP c01537f4` (file 0x28d40, word 103d4692) -> controller_housekeeping, which calls c01537f4 and then, in controller mode, the drain. The payload is 1504 bytes. The disassembly shows no B14 use and no runtime-library calls. The message copy uses STDW to B15+8, which is 8-byte aligned. The test updater is rebuilt (SHA-256 c6317cac…).
