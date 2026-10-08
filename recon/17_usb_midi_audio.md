@@ -253,3 +253,25 @@ res1_493412.bin      43060686fce75e175a217194ab1be3aeffe0be7d59f9d3df4181d41b9d3
 res5_163840.bin      5ee756a5dee51b4e790a6e6f6b6c0a8a1ea531c245a13124e8a5897530b01622
 controller-code.bin 2ac9a653fc09b5a4196a9fdcf8b10e9de26c7bc009bf916a9c444c34393c145f
 ```
+
+### A5 — short owner-only checklist (likely physical associations; untested here)
+These checks require the physical pedal and are not performed by this analysis. Controller-mode checks apply only after its outstanding implementation and image-review blockers are resolved.
+
+- Map each panel legend to the ten normal-switch GPIO indices 4,2,6,27,24,26,37,38,86,0, and assign physical left/right to the separate GPIO3/5 footswitches. Record press/release, hold/repeat and simultaneous-foot behavior, rather than interpreting combined event 4 as another switch.
+- Turn each of the four knobs both ways; map physical position and clockwise sign to normalized event IDs 25..28. Check fast motion and saturation at 0/127 with CC40..43's proposed absolute-value policy.
+- Sweep the expression pedal heel-to-toe and confirm CC11 direction, endpoints, calibration and jitter. The statically identified source is calibrated 0..127, but its physical association and useful range need observation.
+- Identify the GPIO0 button used by the prototype startup latch. Confirm how long it must remain held, entry-button suppression until release, ordinary startup when released, and the separate both-foot update gesture's precedence. Two immediate reads in the prototype do not establish timed debounce. Do not perform a firmware update as part of this checklist.
+
+Static anchors from recon/15, supplied to distinguish known code from physical mapping:
+```text
+118094b2 LDW *A5[8],A0       ; GPIO input read
+118094b6 SHRU A0,A1,A0       ; select pin
+11818680 MVK -1,B4          ; quadrature negative delta
+11818698 MVK 1,B4           ; positive delta
+c0153642 STW A0,*B4[2]      ; normalized rotary delta
+c015ffd0 CALLP c014aef4,B3  ; calibrated analog consumer
+c022ba14 MVK 5,A4           ; boot foot input selection
+c022ba16 MVK 3,A4
+c022ba18 CALLP c022b928,B3
+```
+Boot code requires both foot inputs low and the ten normal inputs high for the update branch (c020a4d0..c020a560); an extra held normal button changes that branch. Physical labels, direction and user-visible startup timing cannot be established from static code alone.
