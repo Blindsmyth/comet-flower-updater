@@ -108,6 +108,13 @@ USB registration passes {callback=c011fc8c, CPU interrupt=7, event=19, enable=1,
 
 180 bytes require 45 word FIFO stores plus CSR/frame bookkeeping; that is a bounded loop, not a proved cycle budget. Bus wait states, interrupt masking/nesting, cache misses and audio deadline interference are not established by static instruction count. A Hwi delays Swis while running, including audio. Verdict on 'fits there': unknown without a worst-case bus/dispatch timing bound; do not claim 45 cycles or guaranteed 1 ms completion. For a silence prototype, precompute zeros, use fixed bounded PIO stores and direct endpoint registers where possible, avoid locks/allocators/bulk APIs, and retain overflow/missed-SOF counters. No timing or hardware test was run.
 
+### 3.5 Registered MIDI callback short-circuits SET_INTERFACE and rejects UAC class requests
+Confidence: confirmed for normal MIDI registration; supersedes the assumption that all interface requests reach the generic walker in 3.2.
+
+Registration at `c01521a8 MVK 137c,B4; c01521ac MVKH c0180000,B4; c01521b0 CALLP c015afa0 || MVK 6,A4` installs c018137c. Its request callback at +12 is c0151ed0 (word at c0181388). That routine defaults to ffff8a5b and immediately returns it for a nonzero request-type argument (`c0151ed4 MV A4,B0; c0151ed8 MVK ffff8a5b,A1; c0151ee4 [B0] BNOP c0151f90,5`). Therefore UAC class requests (type 0x20) on mapped interfaces reach common fallback and STALL as traced in 3.2. IF2/IF3's initial zero mapping may alias this same registered slot, which likewise rejects class type; invalid mapping also fails/stalls. No UAC class handler exists on this path.
+
+For standard type, however, `c0151eec CMPEQ 11,B1,B0; c0151ef0 [B0] BNOP c0151f5a,5` recognizes SET_INTERFACE and simply submits a zero-length status reply (`c0151f64 CALLP c015af48`, A4=128, A6=0), then returns success. It does not inspect wValue/wIndex or configure alternate endpoints. Common dispatch therefore does not reach c0135940 for these mapped interfaces. Stock has generic alternate matching code but normal MIDI registration treats SET_INTERFACE as a no-op ACK. The silence patch must change this callback/routing as well as the generic standard handlers, or IF3 alt1 will never activate. GET_INTERFACE falls through to the generic byte lookup. This clarifies actual normal behavior beyond the table-only trace.
+
 ## 4. Slot 0 residency and remaining reload paths
 
 ## 5. Effect exceeding its 40 KiB slot
