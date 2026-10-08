@@ -69,6 +69,184 @@ Status: done.
 
 ## 2. 3.6 turned into exact work items
 
+Convention: "new target" means the work item retargets a call/branch/data
+pointer to a new address; exact re-encoded instruction bits are produced by
+lnk6x at build/patch time, not hand-computed here (C6000 CALLP/BNOP use
+PC-relative fields). Where the stock code sets an address via an
+MVK-low16/MVKH-high16 immediate pair, I give the exact MVK operand to change
+(that half **is** a plain absolute-value word, independent of PC).
+
+### 2.1 Pointer-array relocation and bound (3.6 point 2) — new findings beyond 3.1/3.6
+- `c0160ec8 MVK.S1 0x43c0,A1` (+ `c0160ecc MVKH 0xc0060000,A1`): THIS is the
+  single place that hardcodes the stock pointer-array base c00643c0. Change
+  the MVK operand (and MVKH if moving out of the c0060000 1MB page) to the
+  new 25-word array's address in the CTL region (confirmed: A1 feeds A4,
+  which the rest of the function writes through — traced live, not just
+  cited).
+- `c0160ed0 MVK.L2 11,B0` feeding `MVC B0,ILC` then `SPLOOPD 1 / STW
+  *A4++[1] / SPKERNEL 1,0` (c0160ed6..e0): this is the array's **clear**
+  loop, trip-count source ILC=11. New finding: raising the pointer count to
+  25 without raising this clear count leaves words 11..24 unzeroed (stale
+  data if the new array is reused memory, undefined if freshly-allocated
+  static storage — low risk for a `.const`-backed array we zero at compile
+  time, but the loop itself must still cover every slot the new builder
+  writes before the explicit per-fragment stores, or skip the loop
+  entirely and zero-initialize the C array instead). Work item: either (a)
+  change the MVK 11 to MVK 24 (if keeping the SPLOOP clear), or (b) drop
+  the loop's relevance by having the new builder statically initialize all
+  25 words from a const template, never relying on a runtime clear. (b) is
+  simpler and is what build/sonnet4b/usb_audio.c below does.
+  Confidence: confirmed instruction addresses/values; the SPLOOPD/ILC exact
+  trip-count semantics (ILC=11 -> 11 or 12 iterations) are not independently
+  re-derived here — not needed for design (b).
+- `c0161044 CMPLT.L2 14,B0,B0`: change immediate 14 -> 24 (reject only
+  counts above the new bound). `c0161050 MVK.S1 0xffff8acf,A0` (error value)
+  is unaffected.
+- `c0160ff6 STW.D1T1 A7,*A4[13]`: this is the stock null-terminator write at
+  index 13 (14 pointers total, 0..13). New design needs the null at index
+  24 instead; this specific store either moves or the new builder simply
+  writes 25 slots (0..23 populated, 24 = null) from scratch.
+- Confirmed (new, this pass): the function's output parameter is register
+  **A6** at entry (`c0160ec2 MV.S1 A6,A5`), and the final `c0161040 STW.D1T1
+  A0,*+A5[0]` writes the array base through that same A5 — i.e. "returns
+  its pointer through A6" (3.1's phrasing) is precisely an output-parameter
+  write-through, not a return-register convention. This matters for the
+  replacement: any hook/replacement must honor the same A4=count-ish,
+  A6=out-pointer, B4=? calling convention when invoked from
+  c0135014 (`CALLP c0160ec0,B3`) — a stock caller — unless that call site
+  itself is also patched to supply the new pointer directly and skip the
+  stock builder.
+- New fragment data: 10 new UAC fragments (IF2 AC-interface, AC header,
+  IT1, OT2, IF3 alt0, IF3 alt1, AS-general, format-type-I, EP1-endpoint,
+  CS-endpoint — the recon/17 B5 91-byte block) need their own storage; they
+  are new `.const` bytes, not an "old word to change" since nothing stock
+  references them yet. Placed in build/sonnet4b/usb_audio.c (section 3
+  below) at c01a8000+.
+- Response buffer: `c0135094 MVK.S2 0xffff9fb0,B4` and `c01350f0 MVK.S2
+  0xffff9fb0,B4` (both confirmed, each paired with an MVKH c0110000 not
+  separately re-quoted) hardcode the response-buffer address c0119fb0.
+  Work item: change both MVK operands to point at a new >=512-byte buffer
+  allocated explicitly in the CTL region (avoids relying on the unproven
+  stock allocation size per 3.1). Any other reader/writer of c0119fb0 found
+  later must be retargeted identically; this pass found exactly these two
+  sites by grepping `main.dis` for the `0xffff9fb0` immediate — no third
+  site exists in the image.
+
+### 2.2 IF2/IF3/IN1 registration and routing (3.6 point 3)
+- Confirmed (new, this pass): `c015c638 MVK.S1 0xffffaac0,A4` +
+  `c015c64a STW.D1T1 A0,*A4++[1]` is a clear loop over the c011aac0
+  interface-ownership table (3.2's table), and `c015c66c MV.L1 A4,A0` is
+  registration-function entry taking (A4=interface pointer/value, A6=?,
+  B4=table) with an internal `CMPEQ 6,A0,A0` sanity check before writing
+  through c011aa4c/c011aac0/c011aa18-relative fields (addresses c015c678,
+  c015c68c, c015c698, all confirmed MVK/MVKH pairs resolving into the
+  c0110000 page). This confirms c015c66c is a **generic** one-registration
+  helper, not something that itself special-cases IF0/IF1 — the hardcoding
+  3.2 describes must live in c015c66c's caller(s), which call it once per
+  interface with fixed arguments.
+- Blocked (not resolved this pass, flagged honestly rather than guessed):
+  I did not locate and read the caller(s) of c015c66c (the code at/after
+  c015c638 that presumably loops a fixed 2 times for IF0/IF1 and OUT3/IN4).
+  Work item for a follow-up pass: disassemble forward from c015c638 past
+  c015c64a to find every `CALLP c015c66c` site, extract its fixed
+  arguments, and add two more calls (IF2->new AC handler, IF3->new AS
+  handler) plus an IN1 endpoint registration, all using the **same**
+  pattern. This is explicitly listed as unresolved in 3.2 already
+  ("Registration c015c66c hard-codes only IF0/IF1 and OUT3/IN4" was itself
+  not given call-site addresses in 3.2); I could not close that gap within
+  this run's token budget. Marking per-item status below.
+- `c0151ed0`/`c0151ed4`/`c0151ee4`/`c0151eec`/`c0151ef0`/`c0151f64`
+  (MIDI callback shortcut, confirmed in 1.5): work item is to replace this
+  routine's SET_INTERFACE branch (currently an unconditional ACK at
+  c0151f64 via `CALLP c015af48,B3`) with a call into a new checked
+  handler that (a) validates wValue is 0 or 1, (b) for IF3 only, defers to
+  the new alternate-setting handler (2.4) instead of ACKing blindly, (c)
+  for the stock-registered MIDI interfaces continues the existing ACK.
+  Old word: the branch target of c0151ee4's `[B0] BNOP .S1
+  0xc0151f90,5`/c0151ef0's `[B0] BNOP .S1 0xc0151f5a,5` stay as stock
+  routing; the new work is entirely inside the body reached after
+  c0151eec, i.e. c0151f5a..c0151f90's block gets a new conditional guard.
+  Exact byte patch requires re-disassembling c0151f5a..c0151f90, which
+  3.5/3.6 do not fully list and which I have not re-read in full this pass
+  (token economy) — flagged as needing the next pass to quote in full.
+- Table entries `c0180238`=0xc0134e68 (GET_INTERFACE) and
+  `c018023c`=0xc0135940 (SET_INTERFACE), both confirmed in 1.2: new target
+  for each is a wrapper that enforces configured-state/valid-interface/
+  alt range before falling into the existing c0134e68/c0135940 bodies (or
+  replaces them outright). These two words are the cleanest single-word
+  patch points in the whole plan: each is a plain `.word` (absolute
+  pointer, not PC-relative), so "new word" = the literal new handler
+  address, no re-encoding needed.
+- `c013566c`/`c01359cc` (both confirmed `MVK 0xffffa1b0,A4`, i.e. two
+  SPLOOP-based one-byte clears of the c011a1b0 per-interface alternate
+  array, matching 3.6 point 3's "one-byte alternate-array clearing...needs
+  replacement for all four interfaces"): work item is widening whatever
+  count feeds each SPLOOP's ILC so all 4 interface slots are cleared on
+  reset/disconnect, not just the interfaces stock cares about. I confirmed
+  the base-address instructions only; the ILC values at each site were not
+  re-read this pass (two more SPLOOPD sites beyond the one already read in
+  2.1) — flagged as a follow-up read, not guessed here.
+
+### 2.3 IN1 FIFO/endpoint reservation (3.6 point 4)
+- `c01358b4 CALLP.S2 0xc01212e0,B3` (confirmed in 1.2): this is the only
+  caller of the endpoint-setup routine c01212e0, invoked once per
+  descriptor endpoint found by the alt-setting walker. Work item: either
+  (a) let IF3 alt1's new endpoint descriptor (0x81, iso, 180) flow through
+  this same call unmodified and separately patch c012146e..14c6's address
+  allocator to special-case endpoint 1 with the fixed tail placement
+  (FIFOADDR=0x28, TXFIFOSZ=0x15, TXMAXP=180) instead of the generic
+  byte-64-forward repacking (3.3's recommendation), or (b) intercept
+  endpoint-1 setup before it reaches the generic allocator and hand-write
+  its FIFO registers directly, leaving c012146e..14c6 untouched for
+  endpoints 3/4. (b) is lower-risk (does not touch the shared allocator's
+  control flow for any existing endpoint) and is what section 3 implements
+  as a standalone routine, not a patch to c012146e.
+  Confidence: (a)/(b) design choice is mine (likely); the underlying
+  FIFOADDR/TXFIFOSZ/TXMAXP constants are 3.3/B2's confirmed arithmetic
+  (64-byte power-of-two rounding rule, confirmed at c0121352/68/78 in B2),
+  re-used, not re-derived.
+- `c0121444 STH.D2T1 A0,*B4[0]` (confirmed in 1.3, ISO/DMA-oriented TXCSR
+  write): explicitly NOT reused for the PIO producer per 3.6 point 4 and
+  3.3's own warning. Work item: new routine writes TXCSR directly with
+  ISO+MODE bits set and DMA bits clear, at the EP1 CSR address — this is
+  exactly the "likely, datasheet-only" gap flagged in 1.6 (01e00512); no
+  stock instruction confirms that literal address, so section 3's code
+  isolates it behind one named constant for easy correction.
+
+### 2.4 SOF hook (3.6 point 5)
+- `c011fcb4 CALLP.S2 0xc016f770,B3` (confirmed in 1.4): old target chain is
+  c016f770 (veneer) -> 11818e80 (`BNOP B3,5`, confirmed bit-exact in 1.4).
+  Work item: retarget c011fcb4's CALLP to a new bounded SOF routine
+  instead of the veneer. Because CALLP is PC-relative, the "new word" is
+  not hand-computable here; the work item is precisely "relink this call
+  site against the new routine's address," which is what a real patch tool
+  (not run in this pass) would do. Equivalently, and lower-risk: retarget
+  the **veneer** c016f770's `MVK 0xffff8e80,B31`/`MVKH 0x11810000,B31` pair
+  (both plain absolute-value immediates, confirmed in 1.4) to point at the
+  new SOF routine's address instead of 11818e80, leaving c011fcb4 itself
+  untouched. This second option only requires changing two MVK/MVKH
+  immediate words, not re-encoding a CALLP — the practical choice for a
+  hand-specified patch list. Old words: c016f770's `0fc7402a` (MVK
+  0xffff8e80,B31) and c016f774's `0f88c0ea` (MVKH 0x11810000,B31); new
+  words encode the new routine's address with the same MVK-low/MVKH-high
+  split.
+- New routine (section 3): runs in the SOF Hwi context identified in 1.4
+  (CPU interrupt 7, event 19) — i.e. it executes with Hwi semantics, not as
+  a Swi/Task; per 3.4/3.6 it must be a short, bounded, lock-free PIO
+  sequence (no semaphore, no stock send/message API), writing fixed-zero
+  frames and setting TXPKTRDY for endpoint 1 only when configured/alt1.
+
+### 2.5 Explicit non-goals carried over from 3.6 point 6
+Not attempted as "work items" because 3.6/B5 already mark them owner-only
+or unprovable statically: worst-case Hwi/PIO cycle budget, host
+enumeration behavior, long-run clock drift. These are restated in item 4.
+
+Status: done (2.2's two sub-points — c015c66c's caller arguments, and the
+c0151f5a..c0151f90 body, and the two alternate-array SPLOOP ILCs in 2.2's
+last bullet — are explicitly left as **blocked: not read this pass**,
+rather than guessed; everything else in 3.6 is turned into a concrete
+address-level item above).
+
 ## 3. New routines (C/asm) compiled for c01a8000, disassembly check
 
 ## 4. What can only be proven on hardware
