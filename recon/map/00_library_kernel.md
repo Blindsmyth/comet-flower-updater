@@ -161,3 +161,23 @@ honest guess beats a wrong confirmed."
 | c016ac1c | ptr_const_c011ad75 | returns the fixed pointer constant 0xc011ad75 (no load) | confirmed | c016ac1c: MVK/MVKH -> 0xc011ad75; BNOP; 2 callers |
 | c016ac28 | ptr_const_c011ad7a | returns the fixed pointer constant 0xc011ad7a (no load) | confirmed | c016ac28: MVK/MVKH -> 0xc011ad7a; BNOP; 4 callers |
 | c016ac34 | wrapper_c016ac34 | generic routine (calls c0169f20) | guess | c016ac34: n=43; 2 callers; first op MVK.S1 0xffffad70,A4 |
+| c016acc0 | tailcall_wrapper_c016ad20_c016acc0 | small wrapper that tail-calls c016ad20 after a short setup | likely | c016acc0: ...; B 0xc016ad20; 4 callers |
+| c016ad40 | wrapper_c016ad40 | generic leaf routine, no further structure identified | guess | c016ad40: n=36; 1 callers; first op MV.L1 A4,A3 |
+| c016adc0 | wrapper_c016adc0 | generic routine (calls c0169fc0) | guess | c016adc0: n=76; 2 callers; first op MVK.L1 0,A3 |
+| c016aec0 | wrapper_c016aec0 | generic leaf routine, no further structure identified | guess | c016aec0: n=34; 1 callers; first op STW.D2T2 B3,*B15--[12] |
+| c016af40 | wrapper_c016af40 | generic routine (calls 1180b060,c0167b00,c0169fc0) | guess | c016af40: n=68; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016b040 | wrapper_c016b040 | generic routine (calls c016e0c0,c016e2a0,c016e840) | guess | c016b040: n=74; 5 callers; first op MVK.S2 0x5140,B4 |
+| c016b140 | wrapper_c016b140 | generic routine (calls c016d5c0) | guess | c016b140: n=40; 2 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016b1c0 | wrapper_c016b1c0 | generic routine (calls c0169ca0) | guess | c016b1c0: n=106; 1 callers; first op MVC.S2 CSR,B4 |
+| c016b340 | wrapper_c016b340 | generic routine (calls c015a520) | guess | c016b340: n=32; 0 callers; first op MV.L1X B4,A6 |
+| c016b3c0 | wrapper_c016b3c0 | generic routine (calls c015a520) | guess | c016b3c0: n=32; 0 callers; first op MV.L1X B4,A6 |
+| c016b440 | wrapper_c016b440 | generic routine (calls c015a520) | guess | c016b440: n=32; 1 callers; first op MV.L1X B4,A6 |
+| c016b4c0 | wrapper_c016b4c0 | generic routine (calls c016d8c0) | guess | c016b4c0: n=35; 0 callers; first op STW.D2T1 A10,*B15--[2] |
+| c016b540 | hwi_guarded_divide_update | Hwi-protected (MVC CSR,B11; DINT ... MVC B11,CSR) update: reads struct fields at handle+6/+2/+0/+5, calls the unsigned-divide helper c0168580 on two of them -- likely a running-rate/average update guarded against preemption | likely | c016b56c MVC CSR,B11; c016b570 DINT; c016b598 CALLP 0xc0168580,B3; c016b5a8 MVC B11,CSR; 28 callers |
+| c016b5c0 | wrapper_c016b5c0 | generic routine (calls c015a520) | guess | c016b5c0: n=32; 2 callers; first op MV.L1X B4,A6 |
+| c016b640 | wrapper_c016b640 | generic routine (calls c015a520) | guess | c016b640: n=32; 3 callers; first op MV.L1X B4,A6 |
+| c016b6c0 | wrapper_c016b6c0 | generic routine (calls c016b7c0) | guess | c016b6c0: n=33; 3 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016b740 | wrapper_c016b740 | generic routine (calls c016b7c0) | guess | c016b740: n=33; 1 callers; first op STW.D2T2 B3,*B15--[2] |
+| c016b7c0 | unk_b7c0 | 140-instruction routine, prologue 'STW A10,*B15--[2]; STW B3,*B15[1]', only external call c0163c00 -- not traced in detail this wave despite 11 callers and being called by both c016b540's sibling wrappers (c016b6c0/c016b740) and c01529c0 | guess | n=140; calls=c0163c00; 11 callers; called by c016b6c0,c016b740,c01529c0,c016b9c0 |
+| c016b9c0 | wrapper_c016b9c0 | generic routine (calls c0169fc0) | guess | c016b9c0: n=111; 4 callers; first op STW.D2T1 A10,*B15--[2] |
+| c016bb40 | wrapper_c016bb40 | generic leaf routine, no further structure identified | guess | c016bb40: n=32; 0 callers; first op MV.L1X B4,A0 |
