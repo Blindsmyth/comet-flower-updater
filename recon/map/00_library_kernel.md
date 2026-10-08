@@ -345,4 +345,99 @@ honest guess beats a wrong confirmed."
 | c016eba0 | wrapper_c016eba0 | generic routine (calls c0167940) | guess | c016eba0: n=17; 0 callers; first op MVK.L1 -1,A4 |
 | c016ebe0 | wrapper_c016ebe0 | generic routine (calls c016e140) | guess | c016ebe0: n=8; 0 callers; first op STW.D2T2 B3,*B15--[2] |
 | c016ec00 | wrapper_c016ec00 | generic routine (calls c013c980) | guess | c016ec00: n=11; 1 callers; first op STW.D2T2 B3,*B15--[2] |
-| c016ec20 | wrapper_c016ec20 | generic routine (calls c0166f80) | guess | c016ec20: n=22238; 0 callers; first op STW.D2T2 B3,*B15--[8] |
+| c016ec20 | veneer_blob_c016ec20 | NOT one function: coverage.py's last detected start in the whole firmware, 2912 bytes (ends c016f7a0, just past this range) of mostly small long-branch veneers that stub-folding did not separate out; see summary above (c016ef60->1180a954, c016f1a0/b0/d0->118094xx, c016f450/460/4c0/4d0/740 already traced by recon/15,16,18). Its own opening also calls c0166f80 | guess | coverage.tsv: size=2912, ptr_refs=1 (c0181a64), recon=15,16,17,18,20; opening STW B3,*B15--[8]; CALLP 0xc0166f80,B3 |
+
+## Data
+
+- `c016e020`/`c016e000`: register save/restore pair, entered via
+  `CALLP X,A3` (not `B3`), saving/restoring B14, A15:A14, B13:B12,
+  A13:A12, B11:B10, A11:A10, B3:B2. 865/853 callers each -- the most-called
+  code in the firmware by a wide margin. The L2/1180-region code has its
+  own analogous save helper at `1180bd10` (seen as the entry convention
+  for `11805420`, `1180ad68`, `11805d20`, `11805fb0`, `11805878`).
+- `c0150b20` (pend) / `c01628e0` (post): a semaphore-like lock pair.
+  `c01628e0`'s body resolves an object pointer from a B14-slot table and
+  increments a count field inside a `MVC CSR,B11; DINT; ...; MVC B11,CSR`
+  critical section -- the classic SYS/BIOS `Semaphore_post` shape. Lock
+  order and specific B14 slots (161, 89, etc.) were already mapped in
+  recon/17-19.
+- `c016e4c0` (read CSR) / `c016e4e0` (write CSR): a raw get/set pair for
+  the control status register, the likely mechanic behind
+  Hwi_disable/Hwi_restore, though neither instruction alone issues DINT --
+  any real interrupt mask change happens inline at the call site.
+- A small status struct at `0xc011ad70`..`0xc011ad90` is read/written by
+  several of the tiny accessors found this wave: `c016ac1c` (+0x05),
+  `c016ac28` (+0x0a), `c0156e80`/`c0156d68` (+0x1c, i.e. 0xc011ad8c).
+  Purpose not established.
+- `0xc0182730`: FWMAP.md's documented "rhythm patterns" table, confirmed
+  by `c0166194` (a `table[index]` getter that goes on to read byte field
+  +117, with a second entry at `+118`).
+- `0xc0060000`/`0xc0064404`: the record table recon/20 ties to the USB
+  class-descriptor/response-buffer area (`0xc00643fc` noted there is 8
+  bytes from this base); `c012afe0` indexes a parallel 36-byte-record
+  table here.
+- `0xc017xxxx`: a rodata/config region below the string table proper
+  (strings start ~`c0171afe`); several functions this wave load fixed
+  words from addresses here (`c0150b20`'s own prologue reads
+  `0xc0181aac`/`0xc0181ac4` etc; `c016d880` reads a handle from
+  `~0xc017d36c`; `c0161200` reads three separate globals in this range).
+  Not mapped to named structures yet.
+- `0x11f03ad0`/`0x11f03b48`: a small table/buffer base in the 0x11f0xxxx
+  sample/coefficient region (recon/16 already flagged `0x11f039b0` here
+  as audio-buffer-adjacent); `c014ff44` indexes it with a 16-byte stride,
+  `c01502cc` just returns its address.
+- `0x11811900`/`0x1181191c`/`0x1181325c`: a word table in the 1180-region
+  (UI/app code+data), accessed by `c0140258`/`c0140320`/`c0155328`.
+- Settings/menu-item wrapper families (preload a constant pointer, then
+  tail-branch to a shared handler) found fanning into: `c016ba40`
+  (an internal entry point inside `c016b9c0`, 6 callers seen), `c0166a80`
+  (3 callers seen), `c015a520` (5 callers seen, one per rotary/encoder
+  slot at offsets 0x0de0/0x0e00/0x0e20/0x0e80/0x0ec0). These are very
+  likely per-item settings/menu accessors (FWMAP.md documents a settings
+  table around c0182b38), not kernel code.
+- `c0169fc0`: tests bits 0/1 of a flags word and is called from every
+  single task/ISR root in coverage.tsv; best guess this wave is an
+  XDC Diags-mask / Log-enabled test (the Log_*/Diags/g_Semaphore_*/
+  g_Event_* strings sit in the same c0171xxx-c0172exxx rodata block).
+  Matching the g_Semaphore_*/g_Event_* name strings (c0172a6c onward) to
+  actual B14 slot numbers via their config table order was not attempted
+  this wave -- see Open questions.
+
+## Open questions
+
+- `c016ec20` (2912 bytes, running to c016f7a0) is a run of un-split
+  long-branch veneers, not one function. A future helper should re-run
+  `tools/fwmap/coverage.py`'s stub-folding logic (or just walk the region
+  by hand) to list each individual veneer target in that span; recon/15,
+  16 and 18 already resolved several (c016ef60, c016f1a0/b0/d0, c016f450/
+  460/4c0/4d0, c016f740) but not the rest of the 728 instructions.
+- Several large routines in the 80-target list were only classified by
+  their callees/size this wave and not traced in detail:
+  `c0155ac0` (439 instr), `c01529c0` (262 instr), `c0146ee0` (391 instr),
+  `c011d938` (335 instr), `c011f8d8` (114 instr), `c016b7c0` (140 instr).
+  Given their caller counts and position in the priority list, they are
+  likely worth a dedicated pass.
+- `c016c240` and `c016d4c0` each turned out to be two unrelated routines
+  sharing one coverage-detected address span (a real runtime helper
+  followed by an unrelated byte-copy or ring-buffer routine that
+  coverage.py didn't split out because nothing calls the second half via
+  a literal CALLP target). Worth checking whether other large functions
+  in this report hide a second routine the same way -- `c0155ac0` and
+  `c01529c0` above are plausible candidates given their size.
+- The g_Semaphore_*/g_Event_*/g_Swi_* name strings at c0172a6c onward
+  look like they come from an XDC config table in the same declared
+  order as the actual Semaphore/Event/Swi handle array; if that handle
+  array can be located (it would sit near the B14 base c0184e00, or in
+  the c0182xxx/c0183xxx object-table region recon/16 already poked at),
+  matching names to B14 slot numbers would validate (or correct) several
+  "likely" rows above in one shot, e.g. confirm whether B14[161]
+  (`c01274cc`'s MIDI lock) really is `g_Semaphore_MIDI`.
+- `c0169980`'s likely-divide-variant body (130 instr, calls `c0166280`)
+  was not traced past its opening LMBD/CMPLTU normalization; whether it
+  is a 64-bit divide, a combined divide+remainder, or something else
+  entirely is unconfirmed.
+- The 197 "guess"-confidence rows (mostly the small SLOOP-prologue
+  wrappers in chunk_17/18 calling 1-3 callees) were named generically
+  (`wrapper_<addr>`) from callee/string/B14 evidence only, per the token
+  budget for this wave; a future pass with more budget could read each
+  one directly and replace the placeholder names with real ones.
