@@ -62,6 +62,31 @@ Summary: (in progress)
 | c013bf0c | midi_assign_record_delete_direct | thin wrapper calling midi_assign_record_delete (c013bd64) directly with the caller's index | guess | calls=c013bd64,rts_regs; not traced instruction-by-instruction given size (128B) |
 | c013bf8c | midi_assign_record_delete_dispatch | orchestrates a delete: calls midi_assign_freelist_count (c013b764), then either midi_assign_record_delete_by_freeidx (c013be68) or midi_assign_record_delete_direct (c013bf0c); callers midi_error_report_build (c0128788), midi_bulk_edit_tx (c0128d14) | guess | calls=c013b764,c013be68,c013bf0c,rts_regs; not traced instruction-by-instruction given size (84B) |
 
+| c013bfe0 | ui_row_commit_wrap_9a68 | pure forwarding wrapper: calls c0149a68 with the caller's args | confirmed | read in full: `CALLP 0xc0149a68; return`, no condition |
+| c013bfec | ui_row_commit_wrap_97c8 | pure forwarding wrapper: calls c01697c8 with the caller's args | confirmed | read in full: `CALLP 0xc01697c8; return`, no condition |
+| c013bff8 | ui_row_commit_wrap_d2c0 | pure forwarding wrapper: calls wrapper_c016d2c0 with the caller's args | confirmed | read in full: `CALLP 0xc016d2c0; return`, no condition |
+| c013c008 | ui_row_commit_clampneg_4878 | if A4 is negative, clamps it to 0 and calls c0154878(0); otherwise does nothing | confirmed | read in full: `EXTU A4,31,31,A0(sign bit); [!A0] skip; A4=0; CALLP 0xc0154878` |
+| c013c018 | ui_row_commit_guard_aa88 | if A4!=0, calls wrapper_c016aa88(A4); otherwise does nothing | confirmed | read in full: `MV A4,A0; [!A0] skip; CALLP 0xc016aa88` |
+| c013c02c | ui_row_commit_clampneg_95e4 | if A4 is negative, clamps it to 0 and calls c01595e4(0); otherwise does nothing | confirmed | read in full: same sign-bit-test shape as c013c008, target c01595e4 |
+| c013c044 | ui_row_commit_render | if A4 is negative, clamps it to 0, calls c016f650 to get a value, then calls ui_row_render_dispatch (c012e5a8) with that value; otherwise does nothing | confirmed | read in full: `EXTU A4,31,31,A0; [!A0] skip; A4=0; CALLP 0xc016f650; CALLP 0xc012e5a8(B4=result)` |
+| c013c060 | ui_menu_row_dispatch | menu-row command dispatcher: calls c014db58 as a pre-check/render; if it returns nonzero or the row index B4 is >7, skips the table; else tail-jumps through the 8-entry function-pointer table at 0xc018439c[rowindex] (slots 4 and 7 share the same handler) | confirmed | read in full: `CALLP c014db58; [A4!=0 \|\| B10>7] skip to cleanup; else B5=0xc018439c; LDW *B5[B4],B0; BNOP B0,5`; table entries match ptr@ fields of c013bfe0..c013c0ba below |
+| c013c090 | ui_menu_row_handler_3ac_3b8 | table slots 4 and 7 (ptr@ c01843ac, c01843b8): forwards to ui_row_commit_wrap_9a68 (c013bfe0) | confirmed | read in full: `CALLP 0xc013bfe0; MV A10,A4; return` |
+| c013c096 | ui_menu_row_handler_3b4 | table slot 6 (ptr@ c01843b4): forwards to ui_row_commit_wrap_97c8 (c013bfec) | confirmed | read in full |
+| c013c0a0 | ui_menu_row_handler_3b0 | table slot 5 (ptr@ c01843b0): forwards to ui_row_commit_wrap_d2c0 (c013bff8) | confirmed | read in full |
+| c013c0a6 | ui_menu_row_handler_3a8 | table slot 3 (ptr@ c01843a8): forwards to ui_row_commit_clampneg_4878 (c013c008) | confirmed | read in full |
+| c013c0ac | ui_menu_row_handler_3a4 | table slot 2 (ptr@ c01843a4): forwards to ui_row_commit_guard_aa88 (c013c018) | confirmed | read in full |
+| c013c0b2 | ui_menu_row_handler_3a0 | table slot 1 (ptr@ c01843a0): forwards to ui_row_commit_clampneg_95e4 (c013c02c) | confirmed | read in full |
+| c013c0ba | ui_menu_row_handler_39c | table slot 0 (ptr@ c018439c): forwards to ui_row_commit_render (c013c044) | confirmed | read in full |
+| c013c0c8 | ui_menu_row_dispatch_locked | semaphore-guarded wrapper around ui_menu_row_dispatch (c013c060): bios_sem_pend, call, bios_sem_post; roots UpdateUI | likely | read entry (sem_pend + CALLP c013c060) in full; exit sequence assumed symmetric per sibling pattern |
+
 ## Data
+- `c0183fcc`..`c0184020`: 21-entry (0..20) function-pointer jump table for LooperUI per-button/pad events, read by looper_event_table_dispatch (c013b38c); indices 1,2,14,18 point straight at event_dispatch_108_109 (c013b590, see 00_library_kernel.md).
+- `c018439c`..`c01843b8`: 8-entry (0..7) function-pointer jump table for a settings/menu-row "commit new value" dispatcher, read by ui_menu_row_dispatch (c013c060); slots 4 and 7 share one handler (c013c090).
+- `0x11811598`: fixed L2 SRAM base address of (at least) one MIDI-assign table instance -- an array of up to 225 84-byte records, with a 900-byte-offset (225 x halfword) header area giving an entry/type count, and a 7-row bitmap region at the 840-byte offset marking used/free record bits. midi_assign_build_freelist (c013b6c8) and friends operate on this table.
+- `~0xc00ae5c8`/`~0xc00ae5c4`: two fixed 56-byte scratch buffers (likely adjacent, one word apart) used as temporary result arrays by the MIDI-assign freelist/position-scan helpers (midi_assign_build_freelist c013b6c8, midi_assign_slot_find_position c013b86c); not re-entrant across calls.
+- B14[108]/[109]/[110]: generic "pending UI event code" slots shared between the LooperUI button table and the MIDI param-edit coordinator (c013b5fc); B14[155] is reloaded after most semaphore-guarded calls in this chunk (looks like a per-task context/handle pointer, not re-derived here).
 
 ## Open questions
+- Exact semantics of looper_transport_classify's (c013b2a0) 0..3 return code and which of looper_transport_dispatch's (c013b2e8) 6 targets (c015c004/014/028/038/04c/060) is play/record/stop/overdub -- none of those 6 targets were read this pass (out of chunk range, start of chunk_09/chunk_07 territory).
+- midi_assign_apply_record (c013b904, 304B) and several of its neighbours (midi_assign_record_delete c013bd64 and its two callers) were only read structurally (call graph + entry sequence), not instruction-by-instruction, given their size -- left as guess.
+- Whether the 0x11811598 MIDI-assign table is the only instance, or whether other fixed addresses (e.g. passed via B4 in midi_assign_slot_find_free/build_freelist) point at sibling tables for other assign types (CC vs note vs expression pedal) was not resolved.
