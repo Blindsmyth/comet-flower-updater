@@ -90,3 +90,21 @@ and are skipped here (see 00): 118093c0, 1180a2a8, 1180ad68.
 | 11809530 | gpio_read_direct2 | second direct GPIO reader; veneer c016f1d0 target | confirmed | recon/15 veneer-resolution list |
 | 11809540 | gpio_read_direct3 | third direct GPIO reader; veneer c016f1c0 target | confirmed | recon/15 veneer-resolution list |
 | 1180954c | gpio_read_footsw | two-footswitch pin selector: index0=GPIO3, index1=GPIO5, via 11809484 | confirmed | recon/15: `11809550/54/56/58`: "index 0 reads GPIO3; index 1 reads GPIO5" (offsets fall inside this 36-byte function) |
+| 11809570 | task_popup_time_counter | PopUpTimeCounter task entry 11809580 (named verbatim in FWMAP.md task list) falls 16 bytes inside this 296-byte block; reads a GPIO (11809484), pends/posts B14[159], calls locked_lookup_big; also reached from BatteryManagement | likely | 11809580-11809570=0x10 < size 296; task-table name match; b14=159 |
+| 11809698 | looper_mute_lock_op | locked op (bios_sem_pend/post) around B14[159]; 1 caller 1180ad40 — LooperUI/MainApp mute-group helper | likely | calls=c0150b20,c01628e0; b14=159; roots LooperUI,MainApp |
+| 11809718 | ui_ad_helper | 104-byte leaf, no calls recorded; 2 callers 1180ad58, orchestrator_1180_region (1180ad68) — roots AD/MainApp/UpdateUI | guess | n=104, calls=none |
+| 11809780 | updateui_list_render1 | calls orchestrator_1180_region, c0137708/18/28/38, c015e280/3b8 — UpdateUI list/menu render helper | guess | 2 callers 11809948,c013c5e8 |
+| 118097f8 | updateui_render_thunk | thin wrapper around orchestrator_c011c990 (gfx dispatch); 1 caller 11809830 | guess | calls=c011cb64 |
+| 11809830 | updateui_list_render2 | calls 118097f8, fixed_point_math_big, tailcall_wrapper_c016ad20_c016acc0 — sibling render routine | guess | calls=118097f8,c0146ee0,c016acc0 |
+| 11809948 | updateui_list_render_top | calls 11809780,11809830,c0158f00/38; 1 caller c01697c8 — top of the UpdateUI list-render pair | guess | calls=11809780,11809830 |
+| 11809980 | midi_scale_wrap | thin wrapper around fixed_scale_mul_84 (c0130d74); 5 callers across MIDI/MainApp/UpdateUI | likely | calls=c0130d74 |
+| 118099a0 | midi_compose_wrap1 | calls 11809980, orchestrator_midi_compose (c012ee10); 3 callers incl. 1180aea0 | likely | calls=11809980,c012ee10 |
+| 118099e4 | midi_compose_wrap2 | calls 118099a0; 3 callers 11809a0c/a8c/aac | guess | calls=118099a0 |
+| 11809a0c | midi_compose_wrap3 | calls 118099e4; 2 callers 11807c08,1180a734 | guess | calls=118099e4 |
+| 11809a34 | midi_ctl_helper1 | calls c01618ac/c0 (outside chunk); 3 callers 11809a58/aac/b34 | guess | calls=c01618ac,c01618c0 |
+| 11809a58 | midi_ctl_helper2 | calls 11809a34, c01618b4; 2 callers 11809a8c,c014abd0 | guess | calls=11809a34,c01618b4 |
+| 11809a8c | midi_ctl_helper3 | calls 118099e4,11809a58; 4 callers incl. 1180a6a0,c0143470,c0150738 | guess | calls=118099e4,11809a58 |
+| 11809aa0 | midi_ctl_thunk | thin wrapper calling 11809a8c; 1 caller c0141684 | guess | calls=11809a8c |
+| 11809aac | midi_compose_wrap4 | calls 118099e4,11809a34; 2 callers 11807c08,1180a734 | guess | calls=118099e4,11809a34 |
+| 11809aec | midi_queue_post | calls 1180b06c (event-post veneer outside chunk); 1 caller 11809b34 | guess | calls=1180b06c |
+| 11809b04 | midi_sdiv_helper | thin wrapper around rts_sdiv32; 1 caller 11809b34 | likely | calls=c01675c0 |
