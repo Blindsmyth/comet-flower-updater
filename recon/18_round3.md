@@ -23,6 +23,13 @@ Confidence: confirmed (A4 value, initialized base and call order); actual pre-se
 
 The GPIO reader uses an already C-initialized MMIO base: decoded `build/codex3/init_1180bd40.bin` has 11813214=01e26000; `118094a0 LDW *A5[0],A0; 118094b2 LDW *A5[8],A0` reads hardware directly. However, MainApp normally calls `c015d440 CALLP c0160ad8` inside stock startup; that routine programs GPIO (`c0160aea STH A0,*A4[10]`, further direction/output stores through c0160b4c). Normal sampler setup is later still: `c0134e18 CALLP c0134db8; c0134dc0 CALLP c01341e4; c0134200 CALLP c01570a4; c015710e CALLP c0156f00` with a real output pointer. The hook runs before both. Reading a pre-setup register is not proof of the eventual stable switch level; boot inheritance may make it work but is not a substitute for this order audit. Fix both defects: call stock startup first, then sample through valid local storage before entering the event loop, or place the latch after c015710e using its produced bitmap. Verify the intended hold timing for that later latch. No source was edited.
 
+### 1.4 Dispatcher preserves the event frame and loop bookkeeping
+Confidence: confirmed for the traced loop/compiled instructions; whole-program event-side effects are not claimed equivalent.
+
+At c0134db8 MainApp reserves 24 bytes. Queue receive uses `c0134dd4 ADD 4,B15,A4`; controller dispatch saves another 8 (`c01a0252 STW B3,*B15--[2]`) then forms `c01a0254 ADD 12,B15,A4`: exactly the original event pointer. `c01a0260 LDW *++B15[2],B3; c01a0262 NOP 4` restores both stack and return link before branching to c0134dc4. All stack deltas here are multiples of eight. Normal mode tail-branches to c0127fe0 with B3 intact and returns its B14[27] selector to c0134df4. The asm only additionally clobbers caller-scratch A0/B31; it does not change B14 or the A10..A15/B10..B13 preserved set.
+
+The controller-mode resume executes housekeeping c01537f4 before `c0134dcc STW 0,*B14[124]`, receives the next event, then `c0134de0 STW 1,*B14[124]`. That is the same cycle reached by both stock handler returns and the stock event-42 skip. No missing B14[124] restore is required in the wrapper. The loop retains no scratch-register result across that resume; the event lives on the preserved frame. Skipping handlers intentionally suppresses their screen/system actions too, and does not imply the whole application retains stock behavior. Housekeeping remains able to run c01537a8, including its system-event path; controller mode is not total isolation from all stock UI work.
+
 ## 2. SDRAM gap c0187024..c01f4000
 
 ## 3. USB audio driver and silence-stream patch list
