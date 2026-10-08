@@ -57,6 +57,11 @@ Scanned every existing `build/codex3/init_*.bin` destination plus decoded length
 
 Direct constructor inventory (`build/codex8/heap-callers.txt`) finds the custom heap initializer at c015fe78 consuming descriptor base/size (`c015fe76 LDW *B4[4],A6; c015fe80 LDW *B4[3],B4`). Its known effect descriptors are the five fixed 0xa000 regions starting c01f4000 (or the independently relocated Slot 0), and output-EQ c00d2800; none grows backward into the gap. The one direct HeapMem constructor call at c0163078 explicitly supplies c0184a00 and 0x400 (`c0163068 SET B0,10,10,B0; c016306a STW B0,*B15[6]; c0163074 STW B0,*B15[5]`). The static c00f1800+0x8000 heap is likewise disjoint. Indirect allocator constructors and arbitrary effect memory writes are not ruled out by this inventory.
 
+### 2.2 Computed c0000000 file-buffer offsets are bounded below the gap
+Confidence: confirmed on the inspected normal insertion path (assuming its initialized metadata is intact).
+
+A computed-user candidate really exists: `c014c118 MVK 0,A1; c014c120 MVKH c0000000,A1; c014c126 ADD A1,A0,A0; c014c12c CALLP c012b744` reads a file into c0000000 plus a running offset. But c014c0d0 obtains the previous entry end, and `c014c0d6 MVK 25,A1; c014c0d8 SHL A1,14,A1; c014c0e0 SUB A1,A0,A0; c014c0e4 CMPGTU B0,A0,B0; c014c0e8 [B0] BNOP c014c14c,5` rejects a file larger than remaining 0x64000-byte capacity. A separate 40-entry limit is checked at c014c0f0..f8. Initialization c014bef4 clears exactly 25<<14 bytes at c0000000 and c014bf0c clears 15<<6 bytes of descriptors at c0064000. The computed read/copy path is a bounded low-SDRAM pool, not evidence of occupation at c01a0000. This does not certify behavior with corrupted file metadata.
+
 ## 3. USB audio driver and silence-stream patch list
 
 ## 4. Slot 0 residency and remaining reload paths
