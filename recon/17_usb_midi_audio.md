@@ -200,3 +200,41 @@ c014a188 CALLP c0166780,B3
 c014a18c MVK -1,A6           ; timeout argument, in call delay slots
 ```
 Do not reuse this stock command submission from the audio copy hook as a presumed nonblocking operation. Allocation capacity and queue saturation behavior in Swi context have not been proved. A new audio producer should only publish to a bounded ring; the SOF/completion consumer must use a specifically audited bounded wakeup or direct bounded service.
+
+### B5 — verdict: **hard**, with implementation blocked on memory and service-path proofs (likely feasibility; proposed design)
+The hardware budget works: B2 establishes 3,776 free FIFO bytes and one unused IN endpoint is enough. Stereo 16-bit carries 176,400 B/s; 24-bit carries 264,600 B/s. Their maximum packets need respectively 512 or 1,024 bytes of double-buffered FIFO. With the existing MIDI allocations, total FIFO use becomes 832 or 1,344 bytes. B3's raw tap costs 128 bytes read plus 128 bytes written per 16-frame block (705,600 B/s aggregate memory traffic). That is a modest bandwidth demand, **not a measured CPU deadline margin**. Conversion, cache maintenance, queue handling, and worst-case effects processing must be budgeted separately.
+
+Code/ring placement is unresolved. The proposed mode-2 layout exposes 1182a000..1182ffff (24 KiB); the existing controller prototype already claims state at 1182a000 and 736 code bytes at 1182a100..1182a3df. A combined allocation needs a single explicit memory map. A1 prevents loading this region directly through the stock res5 path. A possible design stages payload in a verified reserved SDRAM region, switches cache mode, then copies/initializes it after stock initialization and before hooks execute; neither a safe staging reservation nor this execution sequence is proved here. Do not label unreferenced SDRAM or zero padding free without allocator, overlay, and C-initialization checks. Final code size and cycle count require an implementation; no executable is produced for Part B.
+
+Evidence anchors for this judgment:
+```text
+c0121380 SET ... bit 4       ; RX double buffering (B2)
+c0121402 SET ... bit 4       ; TX double buffering (B2)
+11818b18 STNDW A5:A4,*A8++[1] ; final stereo output (B3)
+c0203d50 STW A3,*B6[0]       ; boot L2CFG=3 (A1)
+```
+
+**Concrete proposed full-speed configuration, initially 16-bit only:** preserve stock interfaces 0/1 and MIDI endpoints OUT3/IN4 byte-for-byte. Append a second AudioControl interface (2), describing AudioStreaming interface 3; interface 3 alternate 0 has no endpoint, alternate 1 has stereo PCM at 44.1 kHz on asynchronous isochronous IN1. Separate AudioControl collections preserve the stock MIDI topology. Proposed class compatibility follows UAC1, but actual Windows/macOS binding is untested; those systems provide built-in USB audio class drivers ([Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/usb-audio-class-system-driver--usbaudio-sys-), [Apple TN3190](https://developer.apple.com/documentation/technotes/tn3190-usb-audio-device-design-considerations)).
+
+Replace the stock configuration header with `09 02 c0 00 04 01 00 80 fa`, retain its other 92 bytes, then append these 91 bytes:
+```text
+09 04 02 00 00 01 01 00 00       ; IF2 AudioControl
+09 24 01 00 01 1e 00 01 03       ; UAC1, AC total 30, collection IF3
+0c 24 02 01 01 06 00 02 03 00 00 00 ; IT1 analog connector, stereo FL/R
+09 24 03 02 01 01 00 01 00       ; OT2 USB streaming, source IT1
+09 04 03 00 00 01 02 00 00       ; IF3 alt0, zero endpoints
+09 04 03 01 01 01 02 00 00       ; IF3 alt1, one endpoint
+07 24 01 02 01 01 00             ; terminal OT2, delay 1, PCM
+0b 24 02 01 02 02 10 01 44 ac 00 ; Type I, 2ch, 2 bytes, 16bit, 44100 Hz
+09 05 81 05 b4 00 01 00 00       ; async ISO IN1, max180, interval1
+07 25 01 00 00 00 00             ; CS endpoint, no frequency/pitch control
+```
+Total 192 bytes, four distinct interfaces, two alternate settings on interface 3. Terminal IDs are scoped to their AudioControl collection. Endpoint 0x81 has no separate feedback endpoint: the source conveys its clock through variable packet sample counts. A 24-bit-only variant changes subframe size/bit resolution to `03 18` and wMaxPacketSize to `0e 01` (270), with all lengths unchanged. The fixed-rate descriptor advertises no sampling-frequency control; implement coherent standard/alternate-setting behavior and properly reject unsupported class requests. Descriptor semantics follow [UAC1](https://www.usb.org/sites/default/files/audio10.pdf) and the [terminal types specification](https://www.usb.org/sites/default/files/termt10.pdf). These are design bytes, not bytes recovered from stock firmware or a tested host capture.
+
+Minimal patch sequence:
+1. Resolve boot staging/cache order and prove code, ring, state and veneer reservations. Integrate the residency change with startup/C-initialization and cache coherency; do not append a direct L2 load to stock res5.
+2. Expand c0160ec0's descriptor pointer storage (currently c00643c0) and audit c0119fb0's control-response capacity for 192 bytes. Update descriptor selection and bounds, GET/SET_INTERFACE, configuration/reset/disconnect handling and endpoint dispatch tables for IF3/IN1. Start streaming only on alt1; alt0 must cancel pending traffic cleanly. Full-speed is the target; prevent advertising an unsupported alternate-speed configuration.
+3. Allocate IN1 FIFO and endpoint state through the audited B2 path, retaining MIDI reservations. Configure actual ISO TX semantics and max packet size; the stock bulk descriptor flag path alone does not prove ISO support. Audit CPPI descriptor mode/completion/underrun behavior, or implement a bounded PIO ISO path. Handle reset without stale DMA ownership.
+4. At B3's final-output point, copy the completed block into a bounded producer ring. Preserve audio deadlines and never wait on USB or the stock message queue. Define overrun/underrun counters and a documented discard/silence policy; do format conversion outside the audio-critical path where possible.
+5. Replace the empty SOF callback with bounded scheduling, plus TX completion bookkeeping. Keep the next packet ready before its IN token. Derive packet counts from codec sample production against USB SOFs, with buffering/phase estimation; nominally 44/45 samples, average 44.1. A fixed ten-frame pattern alone does not follow independent clock drift. Ring counters need atomic publication, wrap handling and cache coherence.
+6. Statically verify rewritten AIS, instructions, descriptors, memory bounds, FIFO packing, control requests and every call reachable in audio/interrupt context. Then have the owner test enumeration, alternate-setting transitions, long-run clock drift, audio under worst-case DSP load, MIDI coexistence and reset/disconnect recovery. No such hardware tests were run here.
