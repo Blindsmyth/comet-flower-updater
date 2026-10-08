@@ -142,3 +142,139 @@ deliberate, disclosed compromise: it is **not** a proven non-blocking send
 no non-blocking stock entry point exists to call instead. Status: done.
 
 ## 3. Bounded producer/consumer design (C/asm in build/sonnet4a/)
+
+Files: `build/sonnet4a/controller_drain.c`, `build/sonnet4a/controller_drain.cmd`.
+Compiled and linked for `c01a4000` (16 KiB window) with the exact `cl6x`
+flags from `tools/make_controller_fw.py`'s `build_payload()`
+(`--silicon_version=6740 --abi=eabi --c99 --opt_level=2
+--mem_model:data=far --mem_model:const=data`), own `lnk6x`, own `dis6x` to
+`build/sonnet4a/controller_drain.dis`. Status: compiles and links clean
+(only the two benign warnings `make_controller_fw.py`'s own build also
+emits: no `libc.a`, no `_c_int00` -- re-verified by building the real
+`controller.c`/`controller.cmd` the same way as a control). Confidence:
+confirmed (built artifact, not a design sketch).
+
+Build note for whoever links this in: `controller.cmd` needed no
+`--retain`, but because this module has more than one data object the
+linker, run alone with `--ram_model` and no entry point, dropped every
+section ("no input section is linked in") until I added
+`--retain="*(.text)"` and `--retain="*(.drain_state)"` to
+`controller_drain.cmd` -- same mechanism as `controller.cmd`'s existing
+`--retain="*(.ctl_state)"`/`*(.text:dispatch)"`, just covering a whole
+section instead of one symbol. If this module is merged into
+`controller.cmd` instead of linked standalone, that existing file's
+retains plus the reachability from the three already-hooked entry points
+should make a separate retain for this module unnecessary -- not verified
+here since I did not edit `firmware/controller/controller.cmd`.
+
+### Design
+
+Producer hooks publish latest-value+dirty state with **no locks, no
+waits** (brief requirement), split by which task actually produces them:
+
+- Knobs (CC40-43) and buttons: produced by `controller_event()` in the
+  MainApp task. The chosen drain hook (item 1) also runs in the MainApp
+  task, so these need no lock at all -- same-task, not reentrant.
+  `drain_publish_knob()` sets a value byte and a dirty bit.
+  `drain_publish_button()` pushes into a bounded 16-slot ring
+  (`btn_q`, power-of-two length, wrap via `& BTN_QMASK`, never `%`). Policy
+  for a full queue: **drop the new edge**, not an old one -- keeps
+  press/release ordering for whatever is already queued, at the cost of
+  losing the newest edge under sustained overflow. Buttons are not
+  coalesced into a latest-value slot, per recon/17 A3's explicit rule.
+- Expression (CC11): produced by `controller_analog()` in the **AD task**
+  (recon/18 1.6), genuinely concurrent with the MainApp-task drain. Only
+  this field uses `volatile` single-byte reads/writes
+  (`drain_publish_expr`, consumed as snapshot-then-clear in
+  `controller_drain`). The snapshot-then-clear order can drop at most one
+  superseded sample if the AD task writes a newer value in the narrow
+  window between the drain's read and its clear; that is the same
+  "overwrite obsolete unsent motion" coalescing the brief explicitly
+  allows for continuous controls, so it is accepted, not closed.
+
+Consumer (`controller_drain()`, called from `controller_housekeeping_hook`,
+item 1's hook target) sends at most `MAX_PER_DRAIN` (4) CCs per MainApp
+loop pass: drains queued button edges first (FIFO order), then any dirty
+knobs, then expression if a slot remains, **each gated by
+`ring_free_estimate() >= 3`** before calling `send_cc()`, and returns
+immediately (without sending) the first time there isn't room, retaining
+whatever is left dirty/queued for the next pass.
+
+```c
+static int ring_free_estimate(void)         /* item 2's lock-free peek */
+{
+    u32 read_idx  = RING_OBJ[0];
+    u32 write_idx = RING_OBJ[1];
+    u32 used = (write_idx - read_idx) & RING_MASK;  /* RING_MASK = 0x3FF */
+    return (int)(RING_MASK - used);
+}
+```
+Verified in `controller_drain.dis` to compile to mask/subtract only, no
+divide-library call:
+```text
+c01a4098 MVK.S2  0x7b28,B4   ; &ring_obj (c0117b28)
+c01a40a4 LDW.D2T2 *B4[0],B5  ; read_idx
+c01a40a8 LDW.D2T2 *+B4[0],B4 ; write_idx (B4 += 4 first)
+c01a40ac MVK.S1  0x03ff,A3  ; RING_MASK
+c01a40b4 SUB.L2  B4,B5,B4
+c01a40b8 EXTU.S2 B4,22,22,B4 ; & 0x3FF, no division
+c01a40c2 SUB.L1X A3,B4,A4   ; RING_MASK - used
+```
+Confidence: confirmed (disassembly of the actual build, matches the hand
+read of the stock test in item 2).
+
+### The one call that can still block (disclosed per the brief)
+
+`send_cc()` still reaches the real stock send:
+```text
+c01a40c4 send_cc:
+c01a40c4 MVK.S1  0x74cc,A5
+c01a40c8 MVKH.S1 0xc0120000,A5   ; A5 = 0xc01274cc
+c01a40cc STW.D2T2 B3,*B15--[4]
+c01a40d0 B.S2X   A5               ; tail-call into stock MIDI_SEND
+```
+This is a deliberate choice (item 2): going through `c01274cc` means the
+stock worker-wake/callback behavior inside `c0149de4` happens automatically
+(the appended byte(s) are not just stored, the worker is actually woken),
+which a raw bypass of `c0149d74` would have to reimplement and was not
+attempted here. The cost is that `c01274cc` still acquires `B14[161]`
+(timeout -1) and `B14[89]` (timeout unknown, likely -1) before touching the
+ring -- **this is the one call in the whole design that is not provably
+non-blocking.** The `ring_free_estimate()` gate only avoids making this
+call when there is visibly no room; it does not bound how long the call
+takes once there is. No stock non-blocking/zero-timeout entry point was
+found to replace it with (item 2). Confidence: confirmed (disassembly);
+the blocking risk itself is inherited from recon/17 A3 / recon/18 1.6,
+confirmed there.
+
+No asm was needed: `controller_housekeeping_hook` and every other function
+compiled from plain C, and the disassembly confirms it (grep for `CALLP`
+and `B14\[` across `controller_drain.dis` both return nothing -- the whole
+module uses absolute branches it builds itself, never the stock far-data
+page register or a stock lock-acquire routine, except via the one tail-call
+into `c01274cc` above).
+
+### What is missing (not invented, stated)
+
+- No fixed-period bound on drain latency (item 1).
+- No proof that `send_cc`'s call into `c01274cc` is bounded-time, only that
+  it should usually be short (item 2 / this section).
+- Whether any stock code path other than this design's own `send_cc`
+  still produces into the same MIDI ring while controller mode is active
+  was not re-checked here; if one does, the single-producer assumption
+  behind treating `ring_free_estimate()`'s peek as safe to act on (without
+  itself taking a lock) would need revisiting. This design never writes
+  the ring directly, only peeks it read-only and then goes through the
+  real stock send, so a second producer would race the stock locks against
+  each other as before, not against this peek -- but it was not proven
+  that no second producer exists.
+- `ctl_mode`, `knob_dirty`, `knob_value`, `btn_q`, `expr_dirty`,
+  `expr_value` here are standalone copies for the compile check; wiring
+  `controller_event`/`controller_analog`/`ctl_state.mode` in
+  `firmware/controller/controller.c` to call `drain_publish_*`/
+  `drain_set_mode` instead of calling `cc()`/`MIDI_SEND` directly, and
+  merging this module's `.cmd` into the real build, is integration work
+  left to the owner (brief: "do not edit firmware/... code goes in your
+  scratch folder and Claude integrates it").
+
+Status: done.
