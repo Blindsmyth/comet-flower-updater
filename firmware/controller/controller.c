@@ -9,15 +9,18 @@
  * The state is initialised by the AIS load itself (mode 0 = stock), so any
  * hook that runs before controller_start takes the stock path.
  *
- * Policy (v1): hold GPIO0 (switch bitmap bit 9) at power-up to enter
+ * Policy (v1): hold GPIO0 (switch bitmap bit 9; likely the Rhythm/Looper
+ * button, recon/15) at power-up to enter
  * controller mode for this boot. MIDI channel 1. Footswitches CC20/21,
  * the ten normal buttons CC22..31 (127 press, 0 release), knobs CC40..43
  * absolute 0..127 starting at 64, expression CC11. Physical legends are
  * unverified (recon/17 A5).
  *
- * Transport: c01274cc is the stock serialized MIDI send. It may wait briefly
- * on its locks and drops what does not fit the 1024-byte ring (recon/17 A3).
- * Both hook contexts are tasks, so a short wait is acceptable for v1.
+ * Transport: c01274cc is the stock serialized MIDI send. Its outer lock
+ * (B14[161]) waits with no timeout, and what does not fit the 1024-byte ring
+ * is dropped (recon/17 A3, recon/18 1.6). Both hooks run in tasks (MainApp,
+ * AD task), so v1 calls it directly; a bounded transmitter task is the
+ * planned replacement.
  */
 typedef unsigned char u8;
 typedef unsigned int u32;
@@ -28,7 +31,9 @@ typedef struct { volatile u8 mode, entry_held; u8 knob[4]; } State;
 State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
 
 #define STOCK_STARTUP ((void (*)(void))0xc015d428u)
-#define READ_SWITCHES ((u32 (*)(void))0xc0156f00u)
+/* Writes the ten-button bitmap (bit set = released) through its argument;
+   it does not return it (recon/18 1.2). */
+#define READ_SWITCHES ((void (*)(u32 *))0xc0156f00u)
 #define MIDI_SEND ((void (*)(const u8 *, u32))0xc01274ccu)
 #define STOCK_ANALOG ((void (*)(u32))0xc014aef4u)
 
@@ -41,17 +46,19 @@ static void cc(u32 control, u32 value)
     MIDI_SEND(bytes, 3);
 }
 
+/* Stock start-up runs first: it configures the GPIOs (c0160ad8) before
+   the switches are read. MainApp enters its event loop after we return. */
 void controller_start(void)
 {
-    u32 a, b;
-    a = READ_SWITCHES();
-    b = READ_SWITCHES();
-    /* Two agreeing reads, not a timed debounce. */
+    u32 a = ~0u, b = ~0u;
+    STOCK_STARTUP();
+    READ_SWITCHES(&a);
+    READ_SWITCHES(&b);
+    /* GPIO0 (bit 9) low on two reads; not a timed debounce. */
     if (((a | b) & 512u) == 0) {
         ctl_state.entry_held = 1;
         ctl_state.mode = 1;
     }
-    STOCK_STARTUP();
 }
 
 /* Called from controller_dispatch (controller_hooks.asm) in controller
