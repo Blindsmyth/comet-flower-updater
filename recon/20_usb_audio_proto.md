@@ -284,4 +284,101 @@ address-level item above).
 
 ## 3. New routines (C/asm) compiled for c01a8000, disassembly check
 
+Files (scratch, not referenced by firmware/tools, no image built):
+- `build/sonnet4b/usb_audio.c` — state, MMIO constants with per-register
+  confidence comments, `usb_audio_setup_ep1`, `usb_audio_sof_tick`,
+  descriptor fragments (recon/17 B5 + recon/17 B1's stock bytes),
+  `usb_audio_build_descriptors`, `usb_audio_copy_descriptors`.
+- `build/sonnet4b/usb_audio_hooks.asm` — `usb_audio_descriptor_veneer`
+  (adapts the C builder to c0160ec0's A6-out-pointer convention,
+  recon/20 2.1).
+- `build/sonnet4b/usb_audio.cmd` — linker command file, CTL2 region
+  c01a8000, length 0x8000, with explicit `--retain` lines (see below).
+- `build/sonnet4b/count_desc.sh` — the byte-count check from item 1.6.
+
+Compiled with the exact flags from `tools/make_controller_fw.py`'s
+`build_payload()` (silicon_version=6740, abi=eabi, c99, opt_level=2,
+mem_model:data=far, mem_model:const=data):
+```text
+cl6x --silicon_version=6740 --abi=eabi --c99 --opt_level=2 \
+     --mem_model:data=far --mem_model:const=data \
+     --compile_only usb_audio.c usb_audio_hooks.asm
+```
+Both files compiled with **zero warnings/errors**. (The .c and .asm files
+needed distinct basenames — `usb_audio.c`/`usb_audio_hooks.asm`, not two
+files both named `usb_audio.*` — cl6x's default `--obj_directory` output
+naming collided and silently overwrote one `.obj` with the other when I
+first tried matching basenames; this is a build-script pitfall, not a
+code issue, noted in case it recurs.)
+
+lnk6x needed one addition beyond controller.cmd's pattern: at
+`--opt_level=2`, cl6x emits one subsection per symbol (`.text`,
+`.ua_state:init`, `.ua_state:uninit`, `.const:<name>` etc., confirmed via
+`ofd6x --obj_display=sections`), and with no `_c_int00` entry point
+lnk6x's default reachability analysis discarded all of them
+("no input section is linked in"). Adding explicit `--retain="<symbol>"`
+lines for every routine/global (`usb_audio_descriptor_veneer`,
+`usb_audio_setup_ep1`, `usb_audio_sof_tick`, `usb_audio_build_descriptors`,
+`usb_audio_copy_descriptors`, `desc_ptrs`, `usb_audio_state`,
+`usb_audio_resp_buf`) fixed it; controller.cmd did not need this because
+it only retains `.text:dispatch`/`.ctl_state` by *section* name, but this
+file's per-symbol subsections needed per-symbol retains instead. This is
+new, generally-useful information for any later helper hitting the same
+linker error.
+
+Link result fits easily in the 32 KiB window:
+```text
+CTL2   origin c01a8000  length 00008000  used 000007d5  unused 00007b2b
+.text     c01a8000  0x360   (usb_audio.obj .text + usb_audio_hooks.obj .text)
+.ua_state c01a8360  0x20c   (usb_audio_resp_buf 512B + usb_audio_state 12B)
+.const    c01a8570  0x205   (descriptor fragments, silence_frame, etc.)
+.far      c01a8778  0x064   (desc_ptrs[25])
+```
+
+dis6x (`dis6x usb_audio.elf`) placed and disassembled all five routines
+correctly:
+```text
+c01a8000  usb_audio_sof_tick
+c01a80c8  usb_audio_setup_ep1
+c01a8100  usb_audio_copy_descriptors
+c01a8204  usb_audio_build_descriptors
+c01a8340  usb_audio_descriptor_veneer
+```
+Spot-checked disassembly confirms the source's intent was compiled
+exactly as designed — every MMIO address used by the SOF routine and the
+setup routine resolves to the constant intended, matching the confirmed
+values from items 1.3/1.7:
+```text
+c01a8044 MVK.S2 0x040e,B8 / c01a8048 MVKH.S2 0x1e00000,B8   ; B8=USB_INDEX (0x1e0040e)
+c01a805c STH.D2T2 B31,*+B8[0]                               ; INDEX=1 (B31=1, c01a802c)
+c01a8054 ADD.S2 4,B8,B7                                     ; B7=USB_TXCSR (0x1e00412)
+c01a8060 LDHU.D2T2 *+B7[0],B9                                ; read TXCSR (TXPKTRDY poll)
+c01a807c ADDAH.D2 B8,0xb,B5                                  ; B5=USB_EP1_FIFO (0x1e0040e + 0xb*2 = 0x1e00424)
+c01a8094 LDW.D1T1 *A4++[1],A3 / c01a8098 MV.L2X A3,B4 / c01a80a0 STW.D2T2 B4,*B5[0]
+                                                              ; SPLOOP: n words from silence_frame[] into EP1 FIFO
+c01a80a4 MVK.S1 0x4001,A4 / c01a80ac STH.D1T1 A4,*+A5[0]     ; TXCSR = ISO(0x4000)|TXPKTRDY(0x0001)
+```
+```text
+c01a80c8 MVK.S1 0x040e,A5 / c01a80cc MVKH.S1 0x1e00000,A5    ; A5=USB_INDEX
+c01a80d8 MVK.S1 180,A5 ... c01a80ec STH.D1T1 A5,*+A3[0]      ; TXMAXP=180, A3=INDEX+2
+c01a80e4 STH.D1T2 B5,*A5[0] (B5=40=0x28) -> TXFIFOADDR=0x28  ; (A5 here is the +4-offset reuse seen in the fuller excerpt)
+c01a80f0 STB.D2T2 B5,*+B4[0] (B5=21=0x15) -> TXFIFOSZ=0x15
+c01a80f8/fa STH.D1T1 A3,*A4[0] twice (8 then 0)              ; FLUSHFIFO then clear, A4=INDEX+4=TXCSR
+```
+```text
+c01a8340 usb_audio_descriptor_veneer:
+  STW B3,*B15--[2]; CALLP usb_audio_build_descriptors,B3; LDW *++B15[2],B3
+  MVK 0xffff8778,A0 / MVKH 0xc01a0000,A0   ; A0 = &desc_ptrs (0xc01a8778, matches the .far entry in the map)
+  STW A0,*A6[0]                            ; write through the caller's A6, per c0160ec0's own convention (recon/20 2.1)
+  BNOP B3,5
+```
+Every constant (0x1e0040e, +2, +4, +0xb*2=0x16 byte offset giving 0x424,
+180, 0x28, 0x15, 0x4001, the desc_ptrs address matching the map file) is
+exactly what the C source specified — i.e. the compiler did not
+mis-resolve any of the hand-reasoned MMIO addresses from items 1.3/1.7/2.3.
+This confirms the *code I wrote* is internally consistent with my own
+design, not that the design is correct on real hardware (see item 4).
+
+Status: done.
+
 ## 4. What can only be proven on hardware
