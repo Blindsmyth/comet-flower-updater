@@ -1,6 +1,39 @@
 # chunk_08: c013b1f4..c013eeec (150 functions)
 
-Summary: (in progress)
+Summary: this range holds five separated subsystems. (1) c013b1f4..c013b690 is
+the LooperUI footswitch/pad event layer: a 21-entry function-pointer jump
+table at 0183fcc (looper_event_table_dispatch c013b38c) whose slots either
+default straight to a generic event poster (event_dispatch_108_109 c013b590,
+already named in 00_library_kernel.md) or run a small semaphore-guarded prep
+call first, plus a 4-word bitmap-scan helper and a 6-way transport dispatcher
+(c013b2e8) feeding low-level handlers outside this chunk. (2) c013b5fc..c013bf8c
+is a MIDI-assignment-record allocator/table manager operating on a fixed
+84-byte-record table at L2 address 0x11811598 (up to 225 records, a 900-byte
+header giving a count, and a 7-row bitmap at the 840-byte offset marking
+used/free records): freelist build/count/get, slot-position lookup,
+availability-check, record init/delete/backfill, all feeding the
+midi_assign_record_apply family already analysed in chunk_05. (3)
+c013bfe0..c013c980 is the UpdateUI settings-screen layer: an 8-entry
+"commit new value" jump table (0x18439c, ui_menu_row_dispatch c013c060), a
+second 5-entry "field-type" jump table (0x1844d0) feeding a bitfield-pack
+loop with its own 5-entry case-arm table (0x1844bc..cc), and a cluster of
+large, only-structurally-traced screen-builder orchestrators
+(ui_settings_screen_render/build/dispatch and 5 variants) culminating in a
+2464-byte routine (c013c980) whose callers/callees are shared library
+plumbing rather than one subsystem. (4) c013d320..c013dbf8 continues the
+MIDI-assignment machinery: a 32x9 alias/lookup table at 0xc0112508, three
+small "is this typecode 11/30/31" predicates feeding a type-check dispatcher,
+a generic 32-entry table-search utility at 0xc016d578 unrelated to MIDI, two
+MIDI-assign row formatters sharing the string `  | %-11s`, and several
+large alias-apply routines left at guess confidence given their size. (5)
+c013dca0..c013e634 is the TLV320AIC3101 audio-codec I2C driver already
+confirmed in full by recon/16_audio_hw.md (codec_write/select_page/
+setbits/clrbits, codec_reset, the 7-function PLL sub-setter family behind
+codec_set_samplerate, and codec_init/codec_mute); this report adds names
+for the individual PLL sub-setters and the R82/R92 volume split that
+recon/16 only described in aggregate. The trailing c013e634..c013eeec block
+(battery/buffer-ring init plus one float-divide helper) was left at guess
+confidence, not traced in detail given size.
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
