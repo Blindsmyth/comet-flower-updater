@@ -48,7 +48,26 @@ c014a5a0 MVK.D2   0,B4
 c014a5a2 MVK.S1   24,A6
 ```
 
+**Finding 4 — confirmed.** `c014a58c` touches none of
+`c01819bc/c0181ae4/c0181ae8/c0181f74` and contains no DINT/RINT region.
+Those accesses are all after the hidden start `c014a5e0`.  Consequently the
+brief's critical-section and global questions apply to that separate routine,
+not to USB interface activation.
+
+```text
+c014a5d8 CALLP.S1 c016e000,A3       ; c014a58c ends
+c014a5e0 STW.D2T1 A11,*B15--[2]     ; separate entry
+c014a5f0 MVK.S2   0x19bc,B4
+c014a5f8 LDW.D2T1 *B4[0],A10
+c014a608 DINT
+c014a60c CALLP.S2 c016e460,B3
+```
+
 ## 3. The critical section
+
+There is no critical section in `c014a58c`.  For completeness, the sections
+formerly attributed to it are analyzed below under the hidden `c014a5e0`
+entry.
 
 ## 4. Callees
 
