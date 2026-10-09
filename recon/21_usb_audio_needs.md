@@ -72,6 +72,10 @@ c0160ec0. It walks it for a type-4 (interface) descriptor with matching
 bInterfaceNumber (+2) and bAlternateSetting (+3), then configures that
 alternate's endpoints through c01212e0, the FIFO/CSR path that sets the ISO
 bit from bmAttributes (recon/18 3.3).
+Its only other caller is c01356fa inside SET_CONFIGURATION c0135660, which
+loops over the interfaces with alt 0 (found by the gpt-5.6-sol calibration run,
+checked by Claude). So after SET_CONFIGURATION, IF3 starts at alt 0 (no
+endpoints) through the same path.
 
 What this means:
 - **No new alt-setting code is needed for the endpoint side.** Once the
