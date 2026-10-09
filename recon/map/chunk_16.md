@@ -150,6 +150,17 @@ Summary: TBD
 | c016846c | param_change_midi_notify_4 | Family member (28B): midi_send_variant7_1180 + unk_1180_5bf8 + cfg_get_b14_26. Sole caller effect_param_update_apply (c015e6d8) -- confirms effect-parameter edits echo to MIDI too | likely | calls=11802cd4=midi_send_variant7_1180,11805bf8=unk_1180_5bf8,c0129630=cfg_get_b14_26 |
 | c0168488 | param_change_midi_notify_5 | Family member (248B): midi_send_variant8_1180 + unk_1180_5c78 + cfg_get_b14_26 + a tailcall wrapper. ptr@ c0185d38 (registered as a per-field-type callback, like the settings_field_type_veneer entries above) | likely | calls=11802cec=midi_send_variant8_1180,11805c78=unk_1180_5c78,c0129630=cfg_get_b14_26,c016d6c0 |
 | c0168580 | rts_udiv32 | (already named) TI RTS unsigned 32-bit divide runtime routine | confirmed | standard RTS library sibling of rts_sdiv32/rts_memset |
+| c0168640 | numeric_pack_shared | Shared numeric-formatting/packing utility (576B): calls magnitude_compare_dispatch_64 (c015b3c0), obj_field_cleanup_dispatch (c0165140) and rts_udiv32. Reused by both the rhythm draw/render family (11803d50 etc.) and the MIDI packing/edit-coordinator family (midi_pack_payload, midi_edit_tx_coordinator1/2, midi_send_channel_dispatch) -- likely a "convert a value to digits via divide" primitive used by both display and MIDI-payload code | guess | calls=c015b3c0=magnitude_compare_dispatch_64,c0165140=obj_field_cleanup_dispatch,c0168580=rts_udiv32; 14 callers spanning rhythm and MIDI |
+| c0168880 | numeric_pack_shared_sub_a | 192B helper. Callers txt_buffer_linescan, auto_init (tail-branch, see c0165140's Open-questions entry), obj_field_cleanup_dispatch (tail-branch), c0168940 | guess | 4 callers, mixed contexts |
+| c0168940 | numeric_pack_shared_sub_b | 384B helper: calls numeric_pack_shared_sub_a (c0168880) and c0168ac0. Sole caller list_walk_dispatch_big (c0158440) | guess | calls=c0168880,c0168ac0 |
+| c0168ac0 | numeric_pack_shared_sub_c | 192B helper. Sole caller c0168940 | guess | callers(1)=c0168940 |
+| c0168b80 | numeric_pack_shared_sub_d | 192B helper. Callers list_walk_dispatch_big, auto_init | guess | callers=c0158440=list_walk_dispatch_big,c01636cc=auto_init |
+| c0168c40 | menu_row_handler_c40 | 384B settings-row-style handler (ptr@ c01819f8): calls shared_dispatch_core_b, c01604a0, c0169ca0, wrapper_c016db40, wrapper_c016e0c0. recon 18 | guess | ptr@ c01819f8; calls=c015a7a0,c01604a0,c0169ca0,c016db40,c016e0c0 |
+| c0168dc0 | heapmem_get_stats | Confirmed: the SYS/BIOS HeapMem-family allocator vtable's "getStats" method at offset +20 of the vtable c0180848 (alloc=c0143f60 at +8, free=c0143900 at +12, per recon/14_effect_memory.md:124). Tail-calls cfg_locked_dispatch (c0161200) and sem_post_or_clear (c016d880) via trampolines. ptr@ c018085c | confirmed | recon/14_effect_memory.md:124 "getStats c0168dc0 at +20"; calls=c016e640->c0161200,c016e660->c016d880 |
+| c0168e80 | menu_row_handler_e80 | 192B handler. Sole caller wrapper_c016a2e0 | guess | callers(1)=c016a2e0=wrapper_c016a2e0 |
+| c0168f40 | menu_row_handler_f40 | 192B handler, no CALLP callers found -- reached only via its callback-table slot (ptr@ c0185544) | guess | ptr@ c0185544; no callers in facts |
+| c0169000 | menu_row_handler_000 | 192B handler: calls wrapper_c016d800. Sole caller c0160660 | guess | callers(1)=c0160660; calls=c016d800=wrapper_c016d800 |
+| c01690c0 | menu_row_handler_0c0 | 192B handler (ptr@ c0180654): calls wrapper_c016e460 | guess | ptr@ c0180654; calls=c016e460=wrapper_c016e460 |
 
 ## Data
 
