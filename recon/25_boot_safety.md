@@ -109,7 +109,126 @@ this reading of `c020a4d0`/`c022ba40`.
 
 ## 3. Update mode (c0201404)
 
+### Can update mode overwrite res5 itself? Yes — confirmed by the stock updater's own stage table (confirmed, host-side)
+`tools/make_fs_restore_updater.py` (read as text only, not run) hard-codes
+the exact 8-stage table it found in Zoom's official "ZOOM G1X FOUR System
+v2.00 Updater.exe" at PE `.rdata` VA `0x43AC88` (16-byte entries
+`[op, flash_addr, size, resource]`; op 1 = erase, op 2 = write):
+```python
+EXPECTED = [(1, 0xBF000, 0x1000, 0), (1, 0x28000, 0xB000, 0), (2, 0x28000, 0, 0x85),
+            (1, 0x0, 0x28000, 0), (2, 0x0, 0, 0x8E), (1, 0x33000, 0x8C000, 0),
+            (2, 0x33000, 0, 0x81), (2, 0xBF000, 0, 0x8B)]
+```
+Stages 4 and 5 are `erase 0x0, size 0x28000` then `write resource 0x8E
+(142) at 0x0` — **resource 142 is the 163,840-byte boot program**, i.e.
+res5 itself, and 0x28000 is exactly its region size. This is not an inferred
+capability: it is a stage Zoom's own shipped updater *routinely executes* on
+every normal boot-program update. The script's own docstring independently
+corroborates this from docs/RECOVERY_G1.md's updater-table reading: "boot
+program | 0x000000-0x028000 | 142 (163,840 B)". Since the *host* tool is
+the one sending `(op,address,size,resource)` over the wire and the pedal's
+update-mode firmware (`c0201404` et al.) must execute exactly this stage
+for Zoom's own self-update to work, update mode's flash-write path is
+address-driven by the host, with at least this one officially-used address
+being inside the boot program region.
+
+**What is confirmed vs. not directly disassembled:** the *host-side* stage
+table and its semantics (op/address/size/resource) are confirmed by reading
+the updater .exe's own data (via the script's `EXPECTED` check, which
+`main()` verifies against the live PE before trusting it — see
+`make_fs_restore_updater.py` lines 217-222). The *firmware-side* code in
+`c0201404`'s call tree that receives the address and performs the
+erase/program over SPI was not traced instruction-by-instruction to find an
+explicit bounds check (or its absence) in `build/codex7/boot.dis` — budget
+was spent instead on the higher-value, already-conclusive host-table
+evidence above, since Zoom's own tool using address 0 settles the yes/no
+question regardless of whether a firmware-side guard also exists. **Gap:**
+no disassembly-level confirmation of whether `c0201404` validates the
+incoming address at all (e.g. rejects a request to write below 0x28000 from
+a non-Zoom host); only that it must accept at least the legitimate
+Zoom-boot-program write to work as shipped.
+
+### Our own tooling's self-imposed restriction (confirmed, host-side, defence in depth)
+Separately from what the pedal *can* accept, `make_fs_restore_updater.py`
+itself refuses to ever emit a stage touching the boot or settings regions
+when building `--patch-fw`/`--controller-fw` images:
+```python
+if patch_fw is not None or grown is not None:
+    # Boot/update-mode program [0, 0x28000), settings/recovery sector
+    # [0xbf000, 0xc0000), and all unused flash regions remain untouched.
+    allowed = {(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES),
+               (1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES),
+               (1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)}
+    if len(new) > 8 or any(stage not in allowed for stage in new):
+        sys.exit("unsafe update stages: refused")
+```
+This is a **host-tool-level allowlist**, not a pedal-firmware guarantee: it
+protects us only if we keep using this script unmodified to build test
+images. It does not, by itself, prove the pedal would reject an
+out-of-allowlist stage if one were sent by some other means.
+
 ## 4. Flash layout
+
+### Confirmed from two independent sources: the stock updater table and the firmware's own region table
+The updater stage table above gives, for the regions it touches:
+
+| Region | Flash range | Size | Updater resource |
+|---|---|---|---|
+| boot program (res5) | 0x000000-0x028000 | 0x28000 | 0x8E (142) |
+| graphics/presets | 0x028000-0x033000 | 0xB000 | 0x85 (133) |
+| main firmware (res1) | 0x033000-0x0BF000 | 0x8C000 | 0x81 (129) |
+| settings | 0x0BF000-0x0C0000 | 0x1000 | 0x8B (139) |
+
+This matches docs/RECOVERY_G1.md's table exactly (confirmed, cross-source).
+
+**New, directly-read evidence — the firmware's own internal region table.**
+`build/fw/res1_493412.bin` at file offset `0x77C82` (cited by
+`make_fs_restore_updater.py`'s docstring as "the firmware's own region
+table") contains, read directly as little-endian 32-bit words:
+```
+0x77C82: 00033000 0008C000   -> main firmware:   base 0x033000, size 0x8C000
+0x77C92: 000BF000 00001000   -> settings:        base 0x0BF000, size 0x1000
+0x77C9A: 00102000 002FE000   -> file system:     base 0x102000, size 0x2FE000
+```
+(hex dump: `xxd -s 0x77C82 -l 0x18 build/fw/res1_493412.bin` ->
+`00 30 03 00 00 c0 08 00 00 f0 0b 00 00 10 00 00 00 20 10 00 00 e0 2f 00`,
+read little-endian 4 bytes at a time.) Immediately after these three
+(address,size) pairs the table continues with what read as **code
+pointers** (`c0164cc0`, `c0164d20`, `c0164d44`, `c0133f28`, ...), consistent
+with a small dispatch table of three regions the main firmware itself knows
+how to erase/write (self, settings, file system) plus per-region handler
+addresses. **This table does not contain an entry for the boot program
+(0x0-0x28000) or the graphics/presets region (0x28000-0x33000).**
+Confidence: confirmed for the table's contents (direct file read, no
+disassembly needed); likely (not fully proven) that this table is what
+gates every main-firmware-side flash write — see section 5's gap note.
+
+The known unaccounted range `0x0C0000-0x102000` (0x42000 bytes, between
+settings and the file system) is untouched by both the stock updater table
+and this internal region table; its purpose remains unconfirmed (recon/17
+flagged it only as "(patches?)").
+
+### Shared low-level SPI engine, boot vs. main firmware (confirmed engine identity; command bytes not isolated)
+Main firmware's flash/ADC serial engine is `1180673c=serial_xfer_entry`
+(recon/15's already-documented "1180673c"), which calls `11801498`,
+`118015f4` (`serial_phase2`), `118017b8` (`serial_phase3`), `118019b8`
+(`serial_phase4`) using MMIO bases **0x01c10000** and **0x01e27000**
+(`build/fw/map/facts/chunk_00.md`). The *same* two bases appear as operand
+targets in `build/codex7/bootrefs.txt` (e.g. `c01f4424 B4 01c14038`,
+`c01f4444 A4 01c14184`, `c01f4464 A6 01e27804`, `c01f44b0 A4 01e27a04`),
+i.e. **res5 drives the identical peripheral cluster** rather than a
+separate boot-only SPI block. This supports (does not by itself prove) that
+update-mode flash writes go through genuine SPI transactions to the same
+IS25LP032 chip the main firmware uses, not a different mechanism. **Gap:**
+the actual SPI command bytes (0x02 page program, 0x20/0xD8 erase, 0x03
+read, write-enable 0x06) were not isolated at specific instruction
+addresses in either `boot.dis` or `main.dis` — this would need a further
+pass reading `serial_xfer_entry`/`serial_phase3` and their boot-side
+counterparts byte-by-byte, which was not done here. GPIO90, found earlier
+(recon/15) toggling around the serial transfer, is the **expression-pedal
+ADC's chip-select**, not flash CS (confirmed: its only caller in main
+firmware is `1180abc0=ad_serial_read`, matching recon/15's pedal-read
+path) — the flash chip's own CS line was not identified.
 
 ## 5. Main-firmware reach
 
