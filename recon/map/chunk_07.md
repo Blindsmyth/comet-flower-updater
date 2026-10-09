@@ -149,6 +149,22 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c013a810 | ui_numeric_panel_draw_helpers | Draw numeric/boxed panel; fact range merges multiple text-centering wrapper entries. | guess | c013a838 CALLP c011d938; c013a878 CMPEQDP; c013a88c double constant high 0x404a0000; new prologue c013ab4c |
 | c013abc0 | looper_event_receive | Receive one event byte from B14[172] object, returning default 22 on unsuccessful receive. | likely | c013abc2 MVK 22; c013abc8 CALLP c0166680; c013abd6 CMPEQ 1,A4; c013abf4 LDBU result |
 
+| c013ac04 | looper_record_action_dispatch | Dispatch record/capture transitions based on looper flags and mode, then finalize capture when appropriate. | likely | c013ac14 snapshots flags to B14 halfword[110]; c013ad40 CALLP c015d774; c013ad6c CALLP c0139cb8 |
+| c013ad78 | looper_play_action_dispatch | Handle state-dependent play/resume transitions with guarded parameter updates. | guess | c013ad8e AND flags,199; c013ada0 compare masked state 8; calls c015d660/c015d6ec; c013ae34 dispatch B14[138],3 |
+| c013ae48 | looper_stop_reset_dispatch | Stop/reinitialize transport according to looper mode and refresh timing/UI. | likely | c013ae6c CALLP c015d674; c013ae84/c013aea4 CALLP c015d7c0; c013ae98 CALLP c01397d8 |
+| c013aeb0 | looper_state1_refresh | Invoke c0159070 only when looper flags equal 1. | confirmed | c013aeb4 LDHU B14[108]; c013aeba CMPEQ 1; c013aec4 CALLP c0159070 |
+| c013aed0 | looper_state_transition_allowed | Return current-state==5 for nonzero input, otherwise previous-state in {0,5}. | confirmed | c013aee0 branches on input; c013aee4 LDHU B14[110]; c013aeea/c013aeec compare 5/0; c013aef6 compare current 5 |
+| c013af08 | looper_stop_action_dispatch | Resolve stop/reset action from current/previous state and mode, then update transport/UI. | likely | c013af50 CALLP c013aed0; fact calls c015d64c/c015d674; c013b038 CALLP c015d7c0; c013b05a CALLP c013aeb0 |
+| c013b064 | looper_transition_set_bit1 | Invoke transport transition c015d748 and set looper flag bit 1. | confirmed | c013b068 CALLP c015d748; c013b070 SET B0,1,1; c013b074 STH B14[108] |
+| c013b080 | looper_transition_mode2 | Apply mode 2 through two helpers, then execute bit-1 transition. | confirmed | c013b084/c013b088 CALLP c015402c/c015408c with A4=2; c013b08e CALLP c013b064 |
+| c013b098 | looper_transition_guard_dispatch | Gate stop and mode-2/bit-1 transitions using state masks and caller input. | likely | c013b0ac AND flags,39; c013b0ae compare 7; c013b0ec CALLP c013b064; c013b0fa CALLP c013b080 |
+| c013b104 | looper_event_drain | Poll and discard queued looper events until receive returns zero. | confirmed | c013b108 CALLP c0166680 on B14[172] with A6=0; c013b118 branch back while result nonzero |
+| c013b124 | looper_action_c015d72c | Forward looper event to transport helper c015d72c. | confirmed | c013b128 CALLP c015d72c; sole caller c013b464 |
+| c013b130 | looper_stop_if_bit6 | If looper flag bit 6 is set, invoke stop helper and clear bits 1 and 6. | confirmed | c013b138 EXTU B0,25,31; c013b144 CALLP c015d674(0,0); c013b156 AND -67; c013b158 STH |
+| c013b164 | looper_state5_to6 | Change exact state 5 to 6, clear update byte and reset transport ramps. | confirmed | c013b16c CMPEQ 5; c013b178 STH 6,B14[108]; c013b184 STB 0,B14[76]; c013b188 CALLP c01398f4 |
+| c013b194 | looper_state4_transition | In low-bit state 4, conditionally set bit 1/call transition and clear two event latches. | confirmed | c013b1a4 AND flags,7; c013b1a6 compare 4; c013b1c0 CALLP c015d734; c013b1c8/c013b1cc clear bytes 223/222 |
+| c013b1d4 | looper_start_if_state5 | Invoke transport start configuration only in exact looper state 5. | confirmed | c013b1e0 CMPEQ 5; c013b1e4 skip if unequal; c013b1e8 CALLP c0139978 |
+
 ## Data
 
 ## Open questions
