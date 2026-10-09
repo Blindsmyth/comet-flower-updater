@@ -290,7 +290,7 @@ recon/22, recon/23, recon/map/chunk_19.
 
 | # | site | change | status |
 |---|---|---|---|
-| P1 | c0160ec8 MVK 0x43c0 (+MVKH) | point the descriptor pointer array at a new 25-word array (the old one has room for 15) | as 2.1 |
+| P1 | c0160ec8 MVK 0x43c0 (+MVKH) | point the descriptor pointer array at a new 25-word array (the old one has room for 15); if the stock clear loop is kept, c0160ed0 MVK 11 -> 21 (ILC+4 = 25) | as 2.1 |
 | P2 | c0161044 CMPLT 14 | bound 14 -> 24 | as 2.1 |
 | P3 | c0160ff6 STW *A4[13] | null terminator at 24 (or the new builder writes all 25) | as 2.1 |
 | P4 | c0119fb0 response buffer | **no change**: 9 references, probably 512 B of room (recon/21 3.5) | 2.1 item dropped |
@@ -301,7 +301,7 @@ recon/22, recon/23, recon/map/chunk_19.
 | P9 | c01358b4 -> c01212e0 for EP1 | **not reached** in design (b) (SET_CONFIGURATION only walks IF3 alt 0, which has no endpoints). EP1 FIFO is set by `usb_audio_setup_ep1` (tail 0x140, 2 x 256 B) | 2.3 option (b), automatic |
 | P10 | c016f770 MVK/MVKH 0x11818e80 | retarget to the new SOF routine. Runs in Hwi context (CPU int 7, chunk_19 S2). Use direct EP1 registers 0x01e00512 / 0x01e00424 only | as 2.4 |
 | P11 | audio tap (new, for real audio after the silence test) | after `CALLP 11818aa0` at 11818c64, or inside 11818aa0 after the STNDW at 11818b18; source buffers 11f03630 / 11f036b0, 2 x 32-bit int words x 16 frames | recon/21 S1 |
-| P12 | alt-array clears c013566c / c01359cc | check the ILC counts cover interfaces 0..3 | open (small read) |
+| P12 | alt-array clears c013566c / c01359cc | **no change**: both are `MVK 0 -> ILC; SPLOOPD 1; STB *A4++` = 4 bytes = alt[0..3] (SPLOOPD ii=1 runs ILC+4 times; cross-check: c0160ed0 ILC=11 clears 15 words, exactly the room before c00643fc) | answered (likely) |
 
 The silence-stream image needs P1..P3, P5, P6, P10 and the prototype code.
 It is built only after the controller-mode test passes on the pedal.

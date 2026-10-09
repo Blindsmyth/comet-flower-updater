@@ -73,3 +73,8 @@ better than a wrong "confirmed".
 - **CALLP has no exposed delay slots.** Code after a CALLP runs after the callee
   returns, so a wrapper that reloads B3 after CALLP is a plain call, not a tail call. A `||`
   instruction beside the CALLP sets up its arguments.
+- **SPLOOPD trip count.** `MVC Bn,ILC` + `SPLOOPD 1` runs ILC + 4 iterations
+  (the delayed form starts 4 cycles before the counter is checked). Examples:
+  c01359ca ILC=0 clears 4 bytes (alt[0..3]); c0160ed0 ILC=11 clears 15 words.
+  Plain `SPLOOP` runs ILC iterations. (Claude, 2026-10-09: likely, from these
+  two cross-checks; confirm against the C674x CPU guide SPRUFE8 if it matters.)
