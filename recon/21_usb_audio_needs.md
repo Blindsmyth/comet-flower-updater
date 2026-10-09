@@ -46,7 +46,7 @@ plus c014f594 (chunk 20), mapped by a helper now.
 | S2 | How the SOF top half reaches 11818e80, and what may run there (registers saved, nesting with USB Swi prio 13 / audio Swi prio 15) | the SOF handler sends one ISO packet per 1 ms frame | chunk 19 + c011fc8c (chunk 02) | helper running |
 | S3 | Alternate-setting state machine | streaming only on alt 1, clean stop on alt 0 | see 3.1 below | **answered** (routing: record callback first, design (b)) |
 | S4 | When the USB interfaces are registered, and whether the bus is quiet then | safe point to register IF2/IF3 and set up EP1 | see 3.2 below | **answered** (confirmed call order) |
-| S5 | `usb_interface_activate_core` c014a58c: only about 90 of its 349 instructions read; a DINT section touches c01819bc/c0181ae4/c0181ae8/c0181f74 | probably the configure/attach path that our new interfaces pass through | chunk_11 | open |
+| S5 | `usb_interface_activate_core` c014a58c: only about 90 of its 349 instructions read; a DINT section touches c01819bc/c0181ae4/c0181ae8/c0181f74 | probably the configure/attach path that our new interfaces pass through | chunk_11 | **answered** (recon/22): not on the interface path; UAC interfaces need not pass through it |
 | S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | see 3.3 below | **likely answered** (MUSB layout); confirm against the SPRUFM9H table |
 | S7 | Descriptor capacity for 192 B, the pointer array at c00643c0 and response buffer c0119fb0 | the new configuration descriptor is 192 B (stock 101 B) | recon/20 2.1 has the plan; re-check against the new disassembly | mostly done |
 | S8 | Free cycles in the audio Swi with 5 slots loaded | the ring copy costs 128+128 B per block | measured budget 96-102k cycles (recon/04); tap cost small | measure on the pedal |
@@ -218,7 +218,7 @@ alt-setting transitions, MIDI coexistence.
 
 1. Chunk 19 (S1, S2): helper running.
 2. S3 and S4: short targeted reads (a helper, or Claude).
-3. S5: read c014a58c in full.
+3. S5: read c014a58c in full. **Done (recon/22).**
 4. S6: read the TXCSR bit table in SPRUFM9 and compare with 0x3440.
 5. Update recon/20's patch list with the results, then build a
    **silence-stream** test image (recon/20). It waits until the

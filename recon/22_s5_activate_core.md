@@ -317,3 +317,10 @@ c014a5d0 MVK.L1   -5,A0
 c014a5d8 CALLP.S1 c016e000,A3
 c014a5e0 STW.D2T1 A11,*B15--[2]
 ```
+
+## Review (Claude, 2026-10-09)
+Spot-checked: the split at c014a5d8 CALLP c016e000 / c014a5e0 prologue, the
+entry branch c015fd68 `[!A0] B c014a5e0`, and c016e460 = `MVC TSCL,B4; MV
+B4,A4; return`. All confirmed. c014a5e0's per-mode TSCL deltas (modes 0/1/2
+with flags c0181ae4/ae8/aec) look like a BIOS CPU-load (idle/Hwi/Swi)
+accounting hook (guess). The CPPI reuse question (finding 14) stays open.
