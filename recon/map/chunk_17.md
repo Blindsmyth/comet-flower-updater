@@ -91,6 +91,16 @@ Summary: TBD (fill in after mapping).
 | c016be90 | (hidden start) err_format_last_code | Format the current error: codes 0..10 select a message pointer from c0183608; other codes use the Unknown/error-code format path, rendered into c0183868. | likely | c016be98 CMPGT 11,A4; c016bea4-c016beac table c0183608 indexed by code; c016beb0-c016bec4 format pointer c017c13e and CALLP c016c360 |
 | c016bee0 | mainapp_runtime_state_init | Run the main application startup initializer sequence for audio parameters, effect state/heaps, SDRAM work buffers, and related runtime globals. | likely | c016bee4-c016bf20 sixteen sequential initializer CALLPs; sole caller mainapp_startup_init |
 | c016bf40 | set_global_ptr_326c | Store A4 into global pointer c018326c. | confirmed | c016bf44/c016bf48 form c018326c; c016bf4c STW A0,*A4 |
+| c016bf50 | install_ptr_and_init_services | Save A4 in c018326c, then initialize two dependent services using B14 slots 154 and 139 (the latter with argument 0x80). | likely | c016bf52 CALLP set_global_ptr_326c; c016bf54 CALLP c01628e0 with B14[154]; c016bf64 CALLP c0155ac0 with B14[139],B4=0x80 |
+| c016bf74 | get_global_ptr_326c | Return the pointer stored at c018326c. | confirmed | c016bf74-c016bf80 form c018326c and LDW *A4,A4 |
+| c016bfa0 | record_array_index_init | Validate a record count, clear count*16 bytes at A4, then write sequential byte values starting at A6 into the first byte of each 16-byte record. | likely | c016bfae-c016bfb8 range check; c016bfc2 SHL count,4; c016bfc8 CALLP memset; c016bfe0 SPLOOP and c016bfe8 STB *A4++[16] |
+| c016bff0 | get_const_ptr_118130a0 | Return constant SDRAM pointer 118130a0. | confirmed | c016bff0 MVK 0x30a0,A4; c016bff4 MVKH 0x11810000,A4 |
+| c016c000 | return_zero | Return integer zero. | confirmed | c016c000 MVK 0,A4; immediate return |
+| c016c004 | cfg_decode_nibble | Store A4>>4 to the output word at B4 and return the byte selected by twice A4's low nibble from table c0180d61. | confirmed | c016c008 SHRU A1,4,A0; c016c00c STW A0,*B4; c016c014 AND 15; c016c020 LDBU *A4[c0180d61] after doubling index |
+| c016c024 | cfg_parse_prefixed_value | Decode the first byte through cfg_decode_nibble; when nonzero, pass the remaining bytes and decoded value to c016df64, then return the decoded byte. | likely | c016c030 LDBU *A6 and CALLP c016c004; c016c038 CALLP c016df64 with B4=A6+1; c016c04c returns A10 |
+| c016c060 | service_request_0ea6 | Initialize a service, run c0168580 for code 0x0ea6, obtain the 118130a0 buffer, and submit a two-word stack request through c016ec80. | guess | c016c064/c016c068 calls; c016c078 CALLP c016bff0; c016c080 CALLP c016ec80 with B4=stack+4 |
+| c016c090 | preload_mode_supported | Return true when c0156e80 returns mode 1, 2, or 5; false otherwise. Host row excludes hidden start c016c0c0. | confirmed | c016c094 CALLP c0156e80; c016c098-c016c0b2 comparisons select A0=1 only for range 1..2 or value 5 |
+| c016c0c0 | (hidden start) preload_service_loop | Repeatedly submit a three-unit request, set B14[125] while active, and conditionally invoke c016ec70 when two readiness checks pass and a saved status bit is set. | likely | c016c0c4-c016c0d4 request arguments and active flag; c016c0e4/c016c0ec checks; c016c0f8 tests bit 0; c016c104 CALLP c016ec70; c016c114 loops |
 
 ## Data
 
