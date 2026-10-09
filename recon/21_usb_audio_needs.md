@@ -44,12 +44,50 @@ plus c014f594 (chunk 20), mapped by a helper now.
 |---|---|---|---|---|
 | S1 | Audio Swi order and the output block: buffer address, format (STNDW = two 32-bit words per frame?), 16 frames, which slot runs last | the producer side of the ring (recon/17 B5 step 4) | chunk 19 (11818b20.., 11818aa0) | helper running |
 | S2 | How the SOF top half reaches 11818e80, and what may run there (registers saved, nesting with USB Swi prio 13 / audio Swi prio 15) | the SOF handler sends one ISO packet per 1 ms frame | chunk 19 + c011fc8c (chunk 02) | helper running |
-| S3 | Alternate-setting state machine: GET/SET_INTERFACE handlers behind c0180238/c018023c, and how SET_INTERFACE alt 1/0 should start or stop streaming | streaming only on alt 1, clean stop on alt 0 | chunk_14 rows near c015af48; table c0180238 | open |
+| S3 | Alternate-setting state machine | streaming only on alt 1, clean stop on alt 0 | see 3.1 below | **mostly answered**; the routing order is open |
 | S4 | When usbmidi_open runs (c0145124 is its only caller, and that task-entry name looks wrong) and whether the bus is quiet then | safe point to register IF2/IF3 and set up EP1 | chunk_09 c0145124, caller c0159758 | open |
 | S5 | `usb_interface_activate_core` c014a58c: only about 90 of its 349 instructions read; a DINT section touches c01819bc/c0181ae4/c0181ae8/c0181f74 | probably the configure/attach path that our new interfaces pass through | chunk_11 | open |
 | S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | c0121432..c0121444 plus the SPRUFM9 bit table | open (datasheet read) |
 | S7 | Descriptor capacity for 192 B, the pointer array at c00643c0 and response buffer c0119fb0 | the new configuration descriptor is 192 B (stock 101 B) | recon/20 2.1 has the plan; re-check against the new disassembly | mostly done |
 | S8 | Free cycles in the audio Swi with 5 slots loaded | the ring copy costs 128+128 B per block | measured budget 96-102k cycles (recon/04); tap cost small | measure on the pedal |
+
+### 3.1 S3 findings (Claude, read in full 2026-10-09)
+
+Standard-request table c0180210 (4 bytes per bRequest): slot 10 = c0134e68
+GET_INTERFACE, slot 11 = c0135940 SET_INTERFACE, slot 9 = c0135660
+SET_CONFIGURATION, slot 12 = c0134e60 SYNCH_FRAME.
+
+`c0135940` SET_INTERFACE:
+```text
+c0135948 LDW *+B14[11],B0        ; configured flag (byte offset 44); 0 -> error ffff8acc
+c013595c LDHU *+A5[2],A4         ; wIndex (setup byte offset 4) = interface
+c0135960 LDHU *+A5[1],A0         ; wValue (byte offset 2) = alternate setting
+c0135964 MVK 0xffffa1b0 / MVKH 0xc0110000,A5
+c013596e STB A0,*A4[A5]          ; alt[interface] = wValue, NO bounds check on wIndex
+c0135970 CALLP c01357c8          ; usb_interface_altsetting_configure(cfg, iface, alt)
+c0135988 CALLP c015af48          ; zero-length status ACK when it returned 0
+```
+`c01357c8` (shared with SET_CONFIGURATION) gets the descriptor list from
+c0160ec0. It walks it for a type-4 (interface) descriptor with matching
+bInterfaceNumber (+2) and bAlternateSetting (+3), then configures that
+alternate's endpoints through c01212e0, the FIFO/CSR path that sets the ISO
+bit from bmAttributes (recon/18 3.3).
+
+What this means:
+- **No new alt-setting code is needed for the endpoint side.** Once the
+  192-byte descriptor (recon/17 B5) is served, SET_INTERFACE(IF3, alt 1)
+  configures EP1 IN as isochronous through the stock path, and alt 0 (no
+  endpoints) configures nothing.
+- The stream still needs a **start/stop signal**. The MIDI interface's
+  handler record (c018137c, callback c0151ed0) receives bRequest 11, so an
+  IF3 record registered the same way (c015afa0) should see SET_INTERFACE and can
+  switch the SOF producer on (alt 1) or off and flush (alt 0). Still unchecked:
+  whether the record callback runs before or after c0135940, and on which
+  interface number the dispatcher routes it.
+- Hardening: c0135940 does not bound-check wIndex against the 0xc011a1b0
+  array. The patch should check `wIndex < 4`.
+- Alt-setting state also clears on bus reset: c01359b8..c01359da zero
+  B14[10], B14[11] and the alt array (SPLOOP STB).
 
 ## 4. Hardware-only (owner tests, after controller mode passes)
 
