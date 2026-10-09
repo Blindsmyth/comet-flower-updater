@@ -255,3 +255,71 @@ transparent mode; **unknown** for stock underrun recovery because none was
 found in the traced submit/completion path.
 
 ## 5. Verdict for USB audio
+
+### Finding 6 — stock CPPI can carry EP1 ISO packets, but PIO is the safer first implementation (likely)
+
+**Answer:** the stock CPPI TX machinery is not hard-wired to MIDI/EP4.  It can
+build and route a single exact-length 176- or 180-byte host descriptor for
+EP1/CPPI channel 0, while EP4/channel 3 remains active.  What it does **not**
+provide is the frame scheduler, bounded producer handoff, ISO underrun check,
+or alt-setting teardown needed for audio.  Therefore “reuse CPPI” is feasible,
+but it is not a call-only patch.
+
+For a CPPI implementation, configure endpoint `0x81` through `c01212e0` with
+attributes `0x05` and max packet 180; explicitly set EP1 DMA transfer mode to
+transparent; reserve its double-buffer FIFO; and keep the next descriptor
+queued before the host's IN token.  Submit exact packet buffers through the
+audited leaf equivalent of `c0120f64(A4=1,B4=buffer,A6=len)` (or
+`c012116c(A4=0x81,...)`) from the serialized USB task/service context, **not**
+from the audio Swi or SOF Hwi.  The SOF hook should only publish a bounded
+wakeup/phase tick; completion queues 24/25 own buffer recycling.  Maintain at
+least two owned packet buffers, check EP1 TXCSR UNDERRUN after each frame, and
+perform CPPI channel teardown plus FIFO flush on alt0/reset/disconnect.
+
+```text
+c011fca2 EXTU  B0,12,31,B0    ; SOF wrapper bit 19
+c011fcb2 STW   B0,*A4[0]      ; acknowledge SOF
+c011fcb4 CALLP c016f770,B3    ; existing empty SOF hook
+c011fcb8 CALLP c011faa0,B3    ; then TX completion queue 24
+c011fcc0 CALLP c011faa0,B3    ; TX completion queue 25
+```
+
+For the first silence/audio proof, prefer bounded **PIO** on EP1.  The packet is
+only 176/180 bytes per millisecond, and PIO makes the USB packet boundary and
+TXCSR underrun check explicit.  Crucially, do not merely OR TXPKTRDY into the
+stock `0x7440`: `c01212e0` has already enabled DMA and then calls the generic
+DMA service.  The PIO setup must bypass that branch or undo it by tearing down
+and disabling EP1 CPPI TX, flushing both FIFO banks, and programming EP1 TXCSR
+to ISO|MODE with DMAEN and DMAMODE clear before writing FIFO data and setting
+TXPKTRDY.  Preserve MODE on every 16-bit TXCSR write and use direct EP1
+registers (`FIFO 0x01e00424`, `TXCSR 0x01e00512`) to avoid shared-INDEX races.
+
+```text
+c0121444 STH   A0,*B4[0]      ; stock ISO write is 0x7440 (DMA on)
+c0121454 CALLP c011fd98,B3    ; ISO-side DMA/channel setup
+c0121460 CALLP c011fd40,B3    ; non-ISO sibling setup
+c012146a CALLP c0121224,B3    ; generic endpoint DMA service
+```
+
+PIO scheduling should stage one packet ahead using the existing SOF hook,
+alternate 44/45 stereo frames (176/180 bytes), set TXPKTRDY once per packet,
+read/clear UNDERRUN every frame, and reset phase/ownership on alt0 or bus reset.
+If there is no packet ready, record/drop the missed frame rather than spin;
+never “retry” an ISO packet.  For real audio, drive the 44/45 choice from
+producer/consumer fill or clock estimation rather than assuming a permanently
+fixed ten-frame sequence.
+
+Principal CPPI risks are unproved stock transparent-mode constants, completion
+latency relative to 1 ms, races if the leaf is called outside the USB task,
+cache ownership, teardown with descriptors in flight, and missing underrun
+inspection.  Principal PIO risks are Hwi execution time, accidentally leaving
+DMA bits/channel active, shared INDEX races, double-buffer flush ordering, and
+writing TXPKTRDY too late or too early (POWER.ISOUPDATE policy also needs an
+explicit decision).  Neither route is validated on hardware by this static
+report.
+
+Confidence: **likely** that CPPI can transmit EP1 ISO correctly with the added
+mode/scheduling/teardown work; **confirmed** that stock primitives provide the
+necessary channel, exact-length descriptor, and completion queues; **likely**
+that PIO is the lower-risk first proof because it makes the required per-frame
+TXCSR handling explicit.
