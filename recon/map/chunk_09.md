@@ -106,6 +106,8 @@ Summary: (in progress)
 | c01421d8 | param_buf_alloc_and_clear | computes two buffer-size estimates from B14[15] (item count) and fixed 12-bit-scaled constants at 0xc01062c0/0xc01062bc/0xc01062ca, then for each size calls param_buf_op_shim_a/b (c0141e50/c0141e68) to obtain a pointer and buffer_clear_init (c0141f14) to zero it -- the allocate-and-clear step for (likely) two param-buf working areas | likely | read c01421d8..c0142296 (60 lines): two parallel size-compute/shim/clear sequences; b14=15; 2 callers param_buf_dispatch, c01538f4 |
 | c01423ec | param_buf_op_shim_c | thin pass-through shim over c01454f4 (outside this chunk) | guess | fact sheet calls=c01454f4 only, same shim shape as c0141e50/c0141e68; 8 callers param_buf_bulk_apply, param_buf_clear_range, param_buf_build_bulk_dump, c013e634, c013e7a8, c013ea38, c0153820, c01581a0 |
 
+| c0142420 | ui_dp_value_format_dispatch | very large (2724B) MainApp/UpdateUI routine opening with double-precision comparisons (CMPLTDP/CMPEQDP/DPTRUNC/INTDP) against a constructed boundary constant and zero, branching to one of several handlers (c0165380, c0163d40, or continuing locally) depending on the value's range -- likely a general floating-point display-value formatter/range-dispatcher feeding ui_draw_wrapper and fixed_point_math_big; only its opening was traced given its size | guess | read c0142420..c01424fc (60 lines): DP compare/branch opening confirmed; fact sheet calls=c01251b0=ui_draw_wrapper,c0126c90=orchestrator_c0126624,c01270b8=ui_menu_screen_handler,c0146ee0=fixed_point_math_big,c01698e0,c016a060=wrapper_c016a060; 2 callers c014b06c, c014db00 |
+
 ## Data
 
 ## Open questions
