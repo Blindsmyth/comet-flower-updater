@@ -48,6 +48,35 @@ c014a5a0 MVK.D2   0,B4
 c014a5a2 MVK.S1   24,A6
 ```
 
+**Finding 6 — confirmed (types by access width; semantic labels likely).**
+The four alleged `c014a58c` globals are scalars used by hidden `c014a5e0`,
+not endpoint/interface records:
+
+- `c01819bc`: one 32-bit callback pointer, loaded only at `c014a5f8` and
+  invoked indirectly at `c014aac4..c014aad0` when non-null.  `refs.txt` has
+  no other materialization.
+- `c0181ae4`: unsigned 16-bit enable/state flag.  References are
+  `c014a614` and `c014ed10`; hidden `c014a5e0` uses it as a boolean selecting
+  one accounting-field group.
+- `c0181ae8`: unsigned 16-bit flag/mask.  References are `c014a624`,
+  `c014ed84`, `c014edcc`, `c014edf4`; hidden `c014a5e0` uses its nonzero
+  state and `c014ed00` ANDs it with other masks.
+- `c0181f74`: 32-bit mode enum/state, loaded at `c014a620` and dispatched
+  as values 0/1/2 (other values take the default).  Other `refs.txt`
+  users are `c0140e7c`, `c0144944`, `c0144978`, `c014b690`, `c0150d98`,
+  `c01526ac`, `c015a0cc`, `c015e0ac`, `c0161298`, and `c016404c`; the first
+  of these stores value 3.  No member offsets are used at any of these four
+  addresses, so describing them as structured objects would be wrong.
+
+```text
+c014a5f8 LDW.D2T1  *B4[0],A10       ; callback
+c014a620 LDW.D1T1  *A5[0],A1        ; 32-bit mode
+c014a622 LDHU.D2T2 *B4[0],B4        ; 16-bit flag
+c014a62c LDHU.D1T1 *A3[0],A3        ; 16-bit mask
+c014a638 CMPEQ.L1  1,A1,A2
+c014a648 [A1] CMPEQ.L1 2,A1,A0
+```
+
 **Finding 4 — confirmed.** `c014a58c` touches none of
 `c01819bc/c0181ae4/c0181ae8/c0181f74` and contains no DINT/RINT region.
 Those accesses are all after the hidden start `c014a5e0`.  Consequently the
