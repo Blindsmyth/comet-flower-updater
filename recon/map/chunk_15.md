@@ -126,16 +126,16 @@ Summary: TBD
 | c0160820 | audio_buffer_setup_stage2 | (hidden start, found by the improved hidden_starts.py, inside audio_buffer_setup's (c0160660) declared range.) Second stage: calls c0169000 then transport_flag_state_eval (c015f9e0) again, using table c0180000+0x2120. | guess | (hidden start) c016082c CALLP 0xc0169000; c0160840 CALLP 0xc015f9e0=transport_flag_state_eval (reviewed) |
 | c01609e0 | gpio_write_pin1 | Write a caller-supplied value to GPIO pin 1: forwards the incoming arg as B4 and passes the fixed pin number 1 as A4 to c016eea0 (a generic GPIO-write primitive, outside this chunk, not yet named). Sole caller mainapp_frame_update (c01341e4). | confirmed | c01609e2 MV.L2X A4,B4; c01609e4 CALLP 0xc016eea0; c01609e8 MVK 1,A4 (|| delay slot, fixed pin const) (reviewed) |
 | c01609f0 | gpio_write_pin42 | Same gpio-write-via-c016eea0 pattern as gpio_write_pin1, fixed pin 42. Callers ad_gpio_setup (1180856c), mainapp_bigsetup (118086e4). | confirmed | c01609f8 MVK 42,A4 (fixed pin const); same CALLP 0xc016eea0 pattern (reviewed) |
-| c0160a04 | gpio_write_pin39 | Same pattern, fixed pin 39. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a0c MVK 39,A4 |
-| c0160a14 | gpio_write_pin29 | Same pattern, fixed pin 29. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a20 MVK 29,A4 |
-| c0160a28 | gpio_write_pin30 | Same pattern, fixed pin 30. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a30 MVK 30,A4 |
-| c0160a38 | gpio_write_pin18 | Same pattern, fixed pin 18. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a44 MVK 18,A4 |
-| c0160a4c | gpio_write_pin25 | Same pattern, fixed pin 25. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a54 MVK 25,A4 |
-| c0160a60 | gpio_write_pin28 | Same pattern, fixed pin 28. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a68 MVK 28,A4 |
-| c0160a70 | gpio_write_pin77 | Same pattern, fixed pin 77. Sole caller mainapp_bigdispatch (1180ab20). | confirmed | c0160a78 MVK 77,A4 |
-| c0160a84 | gpio_write_pin83 | Same pattern, fixed pin 83. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a8c MVK 83,A4 |
-| c0160a94 | gpio_write_pin84 | Same pattern, fixed pin 84. Sole caller cfg_apply_and_notify (1180b040). | confirmed | c0160aa0 MVK 84,A4 |
-| c0160aa8 | gpio_write_pin48 | Same pattern, fixed pin 48. Callers mainapp_bigdispatch (1180ab20), c015d428. | confirmed | c0160ab0 MVK 48,A4 |
+| c0160a04 | gpio_write_pin39 | Same pattern, fixed pin 39. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a0c MVK 39,A4 (reviewed) |
+| c0160a14 | gpio_write_pin29 | Same pattern, fixed pin 29. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a20 MVK 29,A4 (reviewed) |
+| c0160a28 | gpio_write_pin30 | Same pattern, fixed pin 30. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a30 MVK 30,A4 (reviewed) |
+| c0160a38 | gpio_write_pin18 | Same pattern, fixed pin 18. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a44 MVK 18,A4 (reviewed) |
+| c0160a4c | gpio_write_pin25 | Same pattern, fixed pin 25. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a54 MVK 25,A4 (reviewed) |
+| c0160a60 | gpio_write_pin28 | Same pattern, fixed pin 28. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a68 MVK 28,A4 (reviewed) |
+| c0160a70 | gpio_write_pin77 | Same pattern, fixed pin 77. Sole caller mainapp_bigdispatch (1180ab20). | confirmed | c0160a78 MVK 77,A4 (reviewed) |
+| c0160a84 | gpio_write_pin83 | Same pattern, fixed pin 83. Callers ad_gpio_setup, mainapp_bigsetup. | confirmed | c0160a8c MVK 83,A4 (reviewed) |
+| c0160a94 | gpio_write_pin84 | Same pattern, fixed pin 84. Sole caller cfg_apply_and_notify (1180b040). | confirmed | c0160aa0 MVK 84,A4 (reviewed) |
+| c0160aa8 | gpio_write_pin48 | Same pattern, fixed pin 48. Callers mainapp_bigdispatch (1180ab20), c015d428. | confirmed | c0160ab0 MVK 48,A4 (reviewed) |
 | c0160ab8 | gpio_write_pin50 | Same pattern, fixed pin 50. Sole caller switch_speed_gate (1180adc0). | confirmed | c0160ac4 MVK 50,A4 |
 | c0160acc | gpio_read_pin61 | Read-style variant: calls c016ee90 (a generic GPIO-read primitive, outside this chunk) with fixed pin 61 and no value argument forwarded. Sole caller c015d7e0=mainapp_model_detect. | confirmed | c0160ace MVK 61,A4; c0160ad0 CALLP 0xc016ee90 (no MV A4->B4 forward, unlike the write-style siblings) |
 | c0160ad8 | effect_default_param_table_init | Initialize a default parameter/preset table (base pointer loaded from memory c0183214) with roughly 15 hardcoded 16-bit field values at scattered offsets (8,9,10,11,56,60,61,96,100,114,140,...). Sole caller mainapp_startup_init (c015d428). | likely | c0160ae0 MVKH 0x11810000,A4; c0160ae4 LDW *A4[0],A4 (table base); repeated MVK+STH pairs at offsets 8/9/10/11/56/60/61/96/100/114/140/141 |
