@@ -125,6 +125,15 @@ Summary: TBD (fill in after mapping).
 | c016ca20 | menu_commit_0ea0 | Commit the caller object through menu_item_commit_shared using descriptor c0180ea0 and callback c0167cc0. | likely | c016ca20-c016ca24 descriptor; c016ca2c/c016ca4c callback; c016ca40 CALLP c0166a80 |
 | c016ca80 | menu_commit_0ee0 | Commit the caller object through menu_item_commit_shared using descriptor c0180ee0 and callback c016e7e0; own code ends before hidden c016cae0. | likely | c016ca80-c016ca84 descriptor; c016ca8c/c016caac callback; c016caa0 CALLP c0166a80 |
 | c016cae0 | (hidden start) guarded_pair_publish_b | Byte-near-identical twin of guarded_pair_publish_a: under DINT, cross-publish fields [0]/[1] when state [4] is 2, clear state, and log field [2]. | likely | c016cae4/c016caec CSR/DINT; c016cafa state compare; c016cb00-c016cb1a stores; c016cb20 B c0162be0; c016cb28 clears [4] |
+| c016cb40 | retry_da40_counter | While signed global c01812f4 is positive, call c016da40 with zero arguments and count iterations. | likely | c016cb48-c016cb50 global load; c016cb60 positive test; c016cb68 B c016da40; B10 initialized zero |
+| c016cba0 | menu_commit_0f00 | Commit the caller object through menu_item_commit_shared using descriptor c0180f00 and callback c014b500. | likely | c016cba0-c016cba4 descriptor; c016cbac/c016cbcc callback; c016cbc0 CALLP c0166a80 |
+| c016cc00 | csr_enable_and_delay | Set CSR bit 0, then execute a stack-counter software delay loop; own code ends before hidden c016cc60. | likely | c016cc04-c016cc0c read/OR/write CSR; c016cc10 initializes counter; c016cc24 SPLOOPW and c016cc30 increments |
+| c016cc60 | (hidden start) menu_state_clear_or_dispatch | If halfword c01820e4 is nonzero, tail-call c015de40; otherwise clear the related halfword at c01820dc under CSR protection. | likely | c016cc6c LDHU flag; c016cc74 B c015de40; c016cc84-c016cc98 CSR update and STH 0 at A10-8 |
+| c016ccc0 | record_status_classify | Classify a record using field [5], global c01820ec, and field [2], returning a small status code. | guess | c016ccc4 LDW field [5]; c016ccd2 compare 1; c016ccd4 global load; c016cce0 pointer compare; c016cce8 field [2] load |
+| c016cd20 | fixed_field_copy_5140 | Store A4 as a tag in c0185144, set length 4, and copy four bytes from B4 into c0185144 onward. | likely | c016cd20-c016cd2a base/tag store; c016cd30 SPLOOPD count 4; c016cd38 LDBU source; c016cd48 STB destination |
+| c016cd80 | cfg_record_init_8009 | Initialize a record with caller pointer and type 0x8009, then pass it to cfg_lookup_or_arena_copy. | likely | c016cd90/c016cd98 form 0x8009; c016cd9c/c016cda4 stores; c016cda0 CALLP c016b9c0 |
+| c016cde0 | menu_commit_0f20 | Commit the caller object through menu_item_commit_shared using descriptor c0180f20 and callback c016dbc0. | likely | c016cde0-c016cde4 descriptor; c016cdec/c016ce0c callback; c016ce00 CALLP c0166a80 |
+| c016ce40 | alloc_or_clear | Call c0167f60; on success clear A10 bytes at the returned pointer with memset and return it, otherwise return the allocator result unchanged. | likely | c016ce48 CALLP c0167f60; c016ce50 branch on result; c016ce54 B c0167b00 with B4=0,A6=A10 |
 
 ## Data
 
