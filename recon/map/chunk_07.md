@@ -1,6 +1,6 @@
 # chunk_07: c0136674..c013b1f4 (150 functions)
 
-Summary: mapping in progress; this range begins with MainApp screen helpers and configuration persistence routines.
+Summary: the 150 fact-sheet entries cover MainApp screen/configuration persistence helpers (c0136674..c0137340), UpdateUI settings and assignment panels (c0137388..c0137f20), USB endpoint records and worker command dispatch (c0137f60..c0138a78), save-screen state/rendering/events (c0138b40..c013962c), audio transport and looper-related buffer/control state (c0139640..c013a094), shared text/bitmap layout helpers (c013a0cc..c013a810), and LooperUI event/state transitions (c013abc0..c013b1d4). Simple instruction-level roles are confirmed; higher-level transport and UI semantics remain likely or guess. Several fact-sheet entries merge independent routines or describe switch-case arms, as noted below. End address c013b1f4 is exclusive.
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
@@ -93,12 +93,12 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c0139610 | ui_descriptor_3248_get | Return descriptor pointer c0183248. | confirmed | c0139610 MVK 0x3248,A4; c0139614 MVKH 0xc0180000,A4 |
 | c0139620 | ui_descriptor_3200_get | Return descriptor pointer c0183200. | confirmed | c0139620 MVK 0x3200,A4; c0139624 MVKH 0xc0180000,A4 |
 | c013962c | ui_descriptor_3224_get | Return descriptor pointer c0183224. | confirmed | c013962c MVK 0x3224,A4; c0139630 MVKH 0xc0180000,A4 |
-| c0139640 | rhythm_clock_state_reset | Snapshot B14[0] into rhythm state and clear a control word; range includes a second reset entry. | likely | c0139640 LDW B14[0]; c013964e STW 11f03c98; c0139666 CALLP back to c0139640 after new prologue |
-| c01396b8 | rhythm_ramp_state_reset | Clear rhythm control state and initialize two ramp/filter objects. | likely | c01396ca zero 11f03cd0; c01396ec/c0139708 CALLP c0164600 with constant 0x003deb7d |
-| c0139714 | rhythm_reset_and_notify | Reset ramp state, clear flag bits 1/7 and post UI event 14. | confirmed | c0139716 CALLP c01396b8; c0139726 AND -131; c0139728 STH B14[108]; c013972c bridge with A4=14 |
-| c0139738 | rhythm_gain_enable | Ramp gain at 11f03c44 toward 0.0 or 1.0 according to enable input. | confirmed | c0139750/c0139774 bridge to audio_gain_ramp_div; c0139756 B4=0; c013976c/c013976e form 0x3f800000 |
-| c0139784 | rhythm_control_flag_set | Set word at 11f03c58 to 1. | confirmed | c0139784/c0139788 form address; c013978e STW 1 |
-| c0139794 | rhythm_control_flag_clear | Clear word at 11f03c58. | confirmed | c0139794/c0139798 form address; c01397a2 STW zero |
+| c0139640 | transport_position_snapshot_reset | Snapshot B14[0] into 11f03c98 and set 11f03c74 to INT_MAX; range also contains two deferred callbacks. | likely | c013964e STW snapshot; c0139654 subtract 36 bytes; c0139658 SET 0,30; c0139660 STW INT_MAX; entries c0139664/c013968c |
+| c01396b8 | transport_control_state_reset | Clear transport words 11f03cd0/3cc8 and request zero values for two control objects. | likely | c01396ca zero 11f03cd0; c01396ec/c0139708 CALLP c0164600 with constant 0x003deb7d |
+| c0139714 | transport_reset_and_notify | Call control-state reset, clear flag bits 1/7 and post UI event 14. | confirmed | c0139716 CALLP c01396b8; c0139726 AND -131; c0139728 STH B14[108]; c013972c bridge with A4=14 |
+| c0139738 | transport_gain_enable | Ramp gain at 11f03c44 toward 0.0 or 1.0 according to enable input. | confirmed | c0139750/c0139774 bridge to audio_gain_ramp_div; c0139756 B4=0; c013976c/c013976e form 0x3f800000 |
+| c0139784 | transport_control_flag_set | Set word at 11f03c58 to 1. | confirmed | c0139784/c0139788 form address; c013978e STW 1 |
+| c0139794 | transport_control_flag_clear | Clear word at 11f03c58. | confirmed | c0139794/c0139798 form address; c01397a2 STW zero |
 | c01397a8 | rhythm_playback_flag_clear | Clear word at 11f03cb0 from rhythm playback. | confirmed | c01397a8/c01397ac form address; c01397b2 STW zero; caller rhythm_playback_step |
 
 | c01397b8 | transport_mode_value_get | Query mode and return one of two mode-dependent values. | confirmed | c01397c0 CALLP c0158eec; c01397c6 branches to c01397d0; calls c0158eb8 or c0158eb0 |
@@ -112,8 +112,8 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c0139a70 | transport_level_apply | Scale a menu-derived level and apply it to the ramp at 11f03c5c. | likely | c0139a74 menu-record bridge; c0139a88 CALLP c0151ac0 with 101; c0139aa0 CALLP c0164600 |
 | c0139ab0 | transport_buffer_layout_init | Populate transport buffer layout globals from mode and table c01834ac. | likely | c0139ab4 CALLP c0158eec; c0139ae8 LDW c01834ac; c0139b68/c0139b72 store c011acc0 |
 | c0139b88 | transport_state_init | Copy transport defaults, clear trailing state and initialize B14 counters/buffer state. | likely | c0139b9c memcpy 104 bytes c017d510 to 11f03c5c; c0139bae size 20; c0139bd0..c0139bf8 stores B14[0..5,111] |
-| c0139c04 | transport_ramp_3c8c_zero | Set ramp at 11f03c8c toward zero using coefficient 0x003deb7d. | confirmed | c0139c08/c0139c10 form object; c0139c14 CALLP c0164600; c0139c20 MVK 0,B4 |
-| c0139c28 | transport_ramp_3c8c_full | Set ramp at 11f03c8c toward INT_MAX using coefficient 0x003deb7d. | confirmed | c0139c38 SET B4,0,30; c0139c44 CALLP c0164600 with object 11f03c8c |
+| c0139c04 | transport_ramp_3c8c_zero | Request value zero at 11f03c8c through c0164600 with third argument 0x003deb7d. | confirmed | c0139c08/c0139c10 form object; c0139c14 CALLP c0164600; c0139c20 MVK 0,B4 |
+| c0139c28 | transport_ramp_3c8c_full | Request value INT_MAX at 11f03c8c through c0164600 with third argument 0x003deb7d. | confirmed | c0139c38 SET B4,0,30; c0139c44 CALLP c0164600 with object 11f03c8c |
 | c0139c50 | transport_capture_stop_reset | Zero capture ramp and reset position/control fields after capture. | likely | c0139c64 CALLP c0164600 at 11f03c70; c0139c94/c0139c98 store -1; c0139ca4/c0139caa clear fields |
 | c0139cb8 | transport_capture_finalize | Finalize captured length with threshold 0x204cc, update length state and notify. | likely | c0139ccc/c0139cd0 form threshold; c0139ce2 CALLP c0139c50; c0139cf2/c0139d02 STW 11f03c6c; c0139d08 STB B14[76] |
 
@@ -121,7 +121,7 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c0139d68 | transport_capture_start_fresh | Clear capture counters, start capture and schedule callback c0139664 with delay 1000. | likely | c0139d76/c0139d86 clear fields; c0139d8c CALLP c0139d10; c0139d90/c0139d98 callback address; c0139d94 SHL 125,3 |
 | c0139dac | transport_position_copy_next | Copy 11f03cb0 into adjacent word 11f03cb4. | confirmed | c0139db4 LDW *A4[0]; c0139db6 ADD A4,4; c0139dba STW |
 | c0139dc4 | transport_capture_start_resume | Snapshot position, start capture and schedule callback c013968c with delay 1000. | likely | c0139dd4 CALLP c0139dac; c0139df2 CALLP c0139d10; c0139df8/c0139e04 form c013968c; c0139e00 callback bridge |
-| c0139e10 | transport_capture_disable | Clear B14[111] and zero the ramp at 11f03c70. | confirmed | c0139e14 STW zero,B14[111]; c0139e28 CALLP c0164600; c0139e30 MV zero,B4 |
+| c0139e10 | transport_capture_disable | Clear B14[111] and request value zero at 11f03c70 through c0164600. | confirmed | c0139e14 STW zero,B14[111]; c0139e28 CALLP c0164600; c0139e30 MV zero,B4 |
 | c0139e38 | transport_buffer_clear_regions | Clear transport buffer regions computed from saved counters and configured length. | likely | c0139e40/c0139e4c load B14[5]/[3]; c0139e64 LDW 11f03c6c; c0139e78/c0139e84 CALLP memset |
 | c0139e94 | transport_capture_prepare | Rotate saved counters, prepare/clear buffer regions and reset capture timing. | likely | c0139ea0/c0139eac copy to B14[3]/[5]; c0139eb8 STW B14[2]; c0139f48 CALLP c0139640; c0139f64 STH flags |
 | c0139f6c | transport_capture_clamp_and_stop | Store min(configured length, captured count) in B14[4], then reset capture. | confirmed | c0139f80/c0139f82 load 11f03c6c/3ccc; c0139f86 CMPLT; c0139f8c/c0139f90 selected STW B14[4]; c0139f94 CALLP c0139c50 |
@@ -133,9 +133,9 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c013a080 | transport_reinitialize | Initialize transport state, cancel deferred work and reconfigure timing. | likely | c013a082 CALLP c0139b88; c013a084 bridge to 1180aaf4; c013a088 CALLP c01397d8 |
 | c013a094 | transport_capture_position_reset | Copy B14[1] into 11f03c9c, set 11f03c78 to INT_MAX and reset clock snapshot. | confirmed | c013a0aa STW B14[1]; c013a0b0 subtract 36 bytes; c013a0b8 STW INT_MAX; c013a0c0 CALLP c0139640 |
 
-| c013a0cc | transport_gain_draw_helpers | Initialize gain state then perform UI drawing; fact range merges several separate entry points. | guess | c013a0cc asset c017d4f8; c013a0e4 object 11f03c44; new prologue c013a100; c013a128 CALLP c01251b0; another prologue c013a1cc |
+| c013a0cc | transport_gain_state_init | Copy 24-byte defaults into gain state; fact range also contains separate drawing routines. | confirmed | c013a0d4/c013a0d8/c013a0e0 LDNDW c017d4f8; c013a0ec/c013a0f0/c013a0f4 STNDW 11f03c44; return c013a0f8 |
 | c013a218 | ui_ascii_uppercase_inplace | Uppercase ASCII a..z in a NUL-terminated buffer and return original pointer. | confirmed | c013a224 MVK 97,A2; c013a22e CMPLTU difference,26; c013a236 subtract 32; c013a238 STB |
-| c013a248 | ui_row_double_value_draw | Draw a row using double-precision value checks and shared graphics calls. | guess | c013a270/c013a2cc CALLP c011cb64; c013a284 CMPEQDP; c013a294 constant high word 0x40380000 |
+| c013a248 | ui_row_fraction_bar_draw | Draw a small bar whose position/extent is derived from a double value times 24, with 1.0 special case. | likely | c013a280 SET high double word to 0x3ff00000; c013a284 CMPEQDP; c013a298 MPYDP by 24.0; c013a2ac DPTRUNC; c013a2cc CALLP c011cb64 |
 | c013a2d8 | ui_text_draw_centered_6px | Center NUL-terminated text using x=center-3*length+1 and draw it. | confirmed | c013a2f4 LDB scan; c013a30c MPYLI 3,length; c013a316 SUB center,width; c013a31a ADD 1; c013a320 CALLP c011d4d8 |
 | c013a328 | ui_header_draw_half_width | Center text at x=32 and draw a 63-wide header region. | likely | c013a32e CALLP c013a2d8 with A6=32; c013a334 MVK 63,B6; c013a338 CALLP c011cb64 |
 | c013a34c | ui_header_draw_full_width | Center text at x=64 and draw a 127-wide header region. | likely | c013a352 CALLP c013a2d8 with A6=64; c013a358 MVK 127,B6; c013a360 CALLP c011cb64 |
@@ -167,6 +167,27 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 
 ## Data
 
+All offsets below are bytes. B14 indices retain the instruction's access width: LDW/STW index n means offset 4*n; LDHU/STH means 2*n; byte accesses mean n.
+
+- **Confirmed:** B14 word[177] (+0x2c4) is a semaphore used as a pend/post barrier (c01369d4 `LDW *+B14[177],A4`; c01369d8/c01369e0 pend/post). **Likely:** word[178] (+0x2c8) is a persistence status/event object (c0137320 `LDW`; c0137318 dispatcher call).
+- **Likely:** 11813448/1181344c hold persistence state; c0136804/c0136808 and c0136a24/c0136a28 construct the addresses. c0137332 `STW 1` marks the latter. Table c0183a50 is used for configuration section descriptors (c0136824/c0136828); section stride includes eight-byte indexing (c013682e `SHL A0,3,A4`).
+- **Confirmed structure, likely field meanings:** USB endpoint table c011a4e8 has six records of 52 bytes (c0138082 `MVK 6`; c0138090 `LDW *A10++[13]`). Byte lookup map c011a620 maps normalized endpoint/direction identifiers (c0137fca `AND ...15`; c0137fd8 `LDB`). -1 means invalid mapping; -2 marks unused endpoint records (c0138014/c0138094 compares).
+- **Confirmed:** USB record +8 is a semaphore handle/sentinel, +36 completion payload, +40 a dispatch-mode sentinel, +44 callback and +48 callback argument. Evidence c013840a `LDW *A4[10]`, c0138416 `LDW *A4[2]`, c0138424 `STW ...*A4[9]`, c0138448 `LDW *A4[11]`, c0138454 `LDW *+A4[12]`. +16/+20 are transfer bookkeeping values; +28 selects special completion handling (c0138466..c0138482).
+- **Likely, supported by recon/17:** B14 word[94..96] (+0x178/+0x17c/+0x180) are USB worker resources: task/control handle, incoming command object and completion/synchronization object. c013826c tears them down; c0138318 receives using word[95]; c013834c uses word[96]. Command callback table c0180d40 appears at c0138330/c0138334 and c0138a40/c0138a44. Event table c01807a0 appears at c01383d8/c01383e0.
+- **Likely:** c0118b60 is 28-byte save-screen state (c0138b70 `memset`, A6=28); +0 is mode (7/8/14 comparisons), +8 selection (c0138c2c `LDW` from c0118b68), +16 busy/change state (c0139100 and c0139182), +24 pending flag (c0138c92 `STW 1` to c0118b78). B14 word[99] (+0x18c) is current slot, explicitly replaced at c01395f8.
+- **Confirmed usage:** save-screen B14 word[149] (+0x254) is passed to paired display/config synchronization helpers (c01390cc/c01390e0); word[154] (+0x268) guards save execution (c0139114/c0139170); word[155] (+0x26c) guards refresh (c0138ba0/c0138bb0).
+- **Confirmed:** save event jump table c0183de4 contains 26 entries for IDs 0..25 (c013940a/c013940e bounds check, c0139438 indexed LDW). c0139444..c013948c are case-arm blocks and c0139490 is shared return, not independent ordinary call frames.
+- **Confirmed storage, likely semantic grouping:** transport defaults c017d510 copy 104 bytes to 11f03c5c (c0139b9c `CALLP memcpy`, A6=0x68), followed by 20-byte clear at 11f03cc4. Gain defaults c017d4f8 copy 24 bytes to 11f03c44 (c013a0d4..c013a0f4 `LDNDW`/`STNDW`).
+- **Confirmed:** 11f03c58 is a set/clear word (c013978e/c01397a2). 11f03c98 receives B14 word[0], while 11f03c74 receives INT_MAX (c013964e/c0139660); deferred entries c0139664 and c013968c additionally update 11f03c9c/3c78. 11f03ca0 snapshots 11f03cb0 (c01398ca); 11f03cb4 also snapshots 11f03cb0 (c0139dba).
+- **Likely:** 11f03c6c is configured transport length, 11f03ccc captured count, and 11f03cb8/3cbc/3cc0 envelope/control values. c0139f80/c0139f82 load the first pair and c0139f8c/c0139f90 store their minimum to B14 word[4] (+0x10). c01398e4/c01398e8 store INT_MAX to the envelope pair and c01398ee clears the third word.
+- **Confirmed:** B14 halfword[108] (+0xd8) holds current looper flags; halfword[110] (+0xdc) saves previous flags (c013ac10/c013ac14). State tests use exact 1/5, low bits masked with 7, and further masks 24/39/199. Byte[76] (+0x4c) is an update flag; bytes[222]/[223] (+0xde/+0xdf) are cleared event latches (c013b1c8/c013b1cc). Word[111] (+0x1bc), set at c0139d44 and cleared at c0139e14, is distinct from byte/halfword slots with similar indices.
+- **Likely:** B14 word[172] (+0x2b0) is the LooperUI event queue/mailbox; c013abc8 reads a byte with default 22, and c013b108 polls it with zero timeout until empty.
+- **Confirmed:** bitmap descriptor is signed 16-bit width at +0, signed 16-bit height at +2, pixel pointer at +4 (c013a7e4/c013a7fa/c013a7e6). Text c013a2d8 uses six-pixel glyph spacing for centered x; c013a370 accepts glyph width and renderer callback.
+
 ## Open questions
 
-- Mapping in progress.
+- Fact-sheet boundaries are a lower-bound inventory. Confirmed separate entries include c01366b8 after return c01366b6, c0139664/c013968c inside the c0139640 range, and c013a100 after return c013a0f8. Further prologues occur inside c013a0cc, c013a3cc, c013a4ec, c013a648, c013a710 and c013a810. Rows preserve the requested 150-entry inventory rather than silently splitting it.
+- The transport state is shared with LooperUI and rhythm-related callers. Exact record/play/overdub/undo meanings of individual state bits and counters remain unproven; names describing capture/stop are likely, and c013ad78 remains guess.
+- c0164600 is a synchronized control-value setter: c0164628 stores destination, c0164632 target, c0164638 third argument, then c016464a sets a request flag and waits; c016467a directly writes the target in another mode. Ramp interpretation of its third argument 0x003deb7d needs DSP-consumer tracing. No ramp-rate units are asserted.
+- Persistence record schemas, callback meanings in the USB command table, and UI assignment-panel variants require deeper tracing. The large c0136a18 writer and merged c013a810 UI region are not exhaustively decoded.
+- c0136720 is likely round-up-to-multiple, contingent on c0169980 returning remainder; its observed arithmetic is input + divisor - result for nonzero result. Negative-input behavior is unspecified here.
