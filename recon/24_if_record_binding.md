@@ -283,3 +283,13 @@ the three-entry scan/replay bounds in `c015c6b4`; this patch does not need
 that.  Within the binding path, the only IF0/IF1 hard-code is the `STDW` at
 `c015c696`; `c015c788` itself accepts interface keys 0..5 and does not encode
 0/1.  **Confidence: confirmed.**
+
+## Review (Claude, 2026-10-09)
+Checked c015c66c..c015c6ac: `CMPEQ 6` gate, then the slot (A4) is stored at
+c011aa4c (EP3), c011aa4c+68 = c011aa90 (EP 0x84), STDW at c011aac0 (IF0 and
+IF1), and the record at c011aa18[slot]; other selectors return 0xffff8a5c.
+The finding that a second selector-6 record would take over IF0/IF1 is
+right. Capacity is 3 slots, so MIDI + IF2 + IF3 fills the registry exactly.
+EP1 gets no ownership entry, so endpoint requests to 0x81 (for example
+CLEAR_FEATURE) fall through to the standard handlers; that is fine for the
+PIO design.

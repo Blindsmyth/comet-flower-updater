@@ -294,7 +294,7 @@ recon/22, recon/23, recon/map/chunk_19.
 | P2 | c0161044 CMPLT 14 | bound 14 -> 24 | as 2.1 |
 | P3 | c0160ff6 STW *A4[13] | null terminator at 24 (or the new builder writes all 25) | as 2.1 |
 | P4 | c0119fb0 response buffer | **no change**: 9 references, probably 512 B of room (recon/21 3.5) | 2.1 item dropped |
-| P5 | new IF2 / IF3 handler records | register like MIDI: `c015afa0(A4=6, B4=&record)` (c01521a8..b4); record = 5 function words, +12 = request callback (c018137c layout) | **open**: how a record is bound to an interface number (c015afa0 -> c0138a6c -> c015c6b4 -> c015c66c, table c011aac0; lookup c015c788 by (recipient, wIndex)) |
+| P5 | IF2 / IF3 handler records (recon/24) | two 5-word records {ret0, ret0, ret0, callback, ret0}; register with `c015afa0(6, &rec)` in task context right after `usbmidi_open` returns (c0145158), in order IF2 then IF3 (slots 1, 2; the registry holds 3). **Also patch c015c66c** (c015c684..c015c696): it writes IF0/IF1/EP3/EP 0x84 ownership for every selector-6 slot; make those writes slot 0 only, and map interface 2 -> slot 1, interface 3 -> slot 2 | answered (recon/24, reviewed) |
 | P6 | IF3 request callback (new code) | bRequest 11: `usb_audio_set_alt(wValue)`, ACK via c015af48(128, 0, 0), return 0; bRequest 10: reply 1 byte (current alt) from c0119fb0; anything else: return 0xffff8a5b | design (b), recon/21 3.1 |
 | P7 | c0180238 / c018023c (GET/SET_INTERFACE table words) | **no change needed**: the IF3 record callback runs first and replaces them. Optional hardening: wIndex < 4 in c0135940 | 2.2 item reduced |
 | P8 | c0151ed0 (MIDI callback) | **no change**: it only serves the MIDI record | 2.2 item dropped |
@@ -303,7 +303,7 @@ recon/22, recon/23, recon/map/chunk_19.
 | P11 | audio tap (new, for real audio after the silence test) | after `CALLP 11818aa0` at 11818c64, or inside 11818aa0 after the STNDW at 11818b18; source buffers 11f03630 / 11f036b0, 2 x 32-bit int words x 16 frames | recon/21 S1 |
 | P12 | alt-array clears c013566c / c01359cc | **no change**: both are `MVK 0 -> ILC; SPLOOPD 1; STB *A4++` = 4 bytes = alt[0..3] (SPLOOPD ii=1 runs ILC+4 times; cross-check: c0160ed0 ILC=11 clears 15 words, exactly the room before c00643fc) | answered (likely) |
 
-The silence-stream image needs P1..P3, P5, P6, P10 and the prototype code.
+The silence-stream image needs P1..P3, P5 (including the c015c66c patch), P6, P10 and the prototype code.
 It is built only after the controller-mode test passes on the pedal.
 
 ## 3. New routines (C/asm) compiled for c01a8000, disassembly check
