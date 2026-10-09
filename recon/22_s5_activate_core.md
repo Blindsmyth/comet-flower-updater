@@ -98,6 +98,33 @@ There is no critical section in `c014a58c`.  For completeness, the sections
 formerly attributed to it are analyzed below under the hidden `c014a5e0`
 entry.
 
+**Finding 7 — confirmed.** Hidden `c014a5e0`'s first critical section is
+`c014a608..c014a750`.  `c016e460` is not a lock/dispatch wrapper: it returns
+the CPU `TSCL` cycle counter in `A4`.  With base `S=0xc0182130`, the section
+always performs `S[2] += now-S[26]; S[26]=now`, and conditionally performs:
+
+- mode 0 and `c0181ae4 != 0`: `S[19] += now-S[14]; S[14]=now`;
+- mode 1 and `c0181ae8 != 0`: `S[10] += now-S[5]; S[5]=now`;
+- mode 2 and `c0181aec != 0`: set `S[1]=now`; a table lookup through
+  `c01820ec`, indexed by `S[0]`, can additionally add `now-old_S[1]` to the
+  selected record's word 4.
+
+Other mode values receive only the common `S[26]/S[2]` update.  No link
+pointer is written and no list is linked in this section.  The timestamp/
+accounting interpretation is **likely**; the loads, stores, and arithmetic
+above are confirmed.
+
+```text
+c014a608 DINT
+c014a60c CALLP.S2 c016e460,B3       ; A4 = TSCL
+c014a734 LDW.D1T1 *+A14[26],A3
+c014a738 LDW.D1T1 *+A14[2],A5
+c014a740 STW.D1T1 A4,*+A14[26]
+c014a746 SUB.L1   A4,A3,A3
+c014a748 ADD.L1   A3,A5,A3
+c014a750 MVC.S2   B10,CSR
+```
+
 ## 4. Callees
 
 **Finding 5 — confirmed.** The direct callees of the real `c014a58c` are:
