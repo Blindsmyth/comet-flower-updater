@@ -24,6 +24,16 @@ Summary: Mapping in progress.
 | c016e340 | l2_cache_writeback_invalidate | write back and invalidate an L2 address range | confirmed | c016e342 moves input B6 to A6; c016e344-c016e34c pass operation registers at 01844018 to `l2_cache_wbinv_or_wb` |
 | c016e360 | l2_cache_invalidate | invalidate an L2 address range | confirmed | c016e362 moves input B6 to A6; c016e364-c016e36c pass operation registers at 01844010 to `l2_cache_wbinv_or_wb` |
 | c016e380 | l2_cache_writeback | write back an L2 address range | confirmed | c016e382 moves input B6 to A6; c016e384-c016e38c pass operation registers at 01844000 to `l2_cache_wbinv_or_wb`; used before USB TX submission |
+| c016e3a0 | arena_copy_default_descriptor | tail-call the arena/ring copy body, supplying descriptor c0180600 when B4 is null | confirmed | c016e3a0 branches to `arena_copy_body`; B4!=0 -> preserve caller B4; B4==0 -> c016e3b0 selects c0180600 into B4 |
+| c016e3e0 | interrupts_enable | set the global-interrupt-enable bit in CSR | confirmed | c016e3e0 reads CSR; c016e3e4 ORs bit 0; c016e3e8 writes CSR |
+| c016e440 | timestamp_counter_start | clear TSCL and return -1 | confirmed | c016e440-c016e444 write zero to TSCL; c016e448 returns -1 |
+| c016e460 | timestamp_counter_low_get | return the low 32 bits of the timestamp counter | confirmed | c016e460 reads TSCL into B4; c016e468 moves it to A4 |
+| c016e4c0 | interrupts_disable_save_csr | disable interrupts and return the previous CSR | confirmed | c016e4c0 reads CSR; c016e4c8 returns it in A4 in parallel with c016e4cc `DINT` |
+| c016e4e0 | csr_restore | restore CSR from B4 | confirmed | c016e4e0 `MVC B4,CSR`; c016e4e8 returns |
+| c016e500 | return_false | return 0 | confirmed | c016e500 sets A4=0 and c016e504 returns |
+| c016e520 | menu_commit_0ee0_global_offset | add the base from c017d36c to A4 and commit through the 0ee0 menu descriptor | likely | hidden start; c016e524-c016e52c load `*c017d36c`; c016e530 calls `menu_commit_0ee0` with c016e534 `ADD A3,A4,A4` |
+| c016e540 | return_true_540 | return 1 | confirmed | c016e540 sets A4=1 and c016e544 returns |
+| c016e560 | global_object_invalid_get | return whether global object c01821ec is absent or has a negative field 4 | confirmed | c016e564 calls `global_object_field4_negative_or_missing`; c016e568 returns its result unchanged |
 
 ## Data
 
