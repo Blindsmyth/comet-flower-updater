@@ -85,6 +85,22 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c0139486 | ui_save_event_case_direction | Dispatch table case to direction handler and shared return. | confirmed | c0139486 CALLP c013930c; c013948a BNOP c0139490 |
 | c013948c | ui_save_event_case_config_step | Dispatch table case to configuration-step handler and fall into shared return. | confirmed | c013948c CALLP c0139398; c013948e MV A4,A3 |
 
+| c0139490 | epilogue_return_a3 | Shared dispatcher epilogue returning A3 in A4. | confirmed | c0139490 MV A3,A4; c0139492 LDW saved B3; c0139496 BNOP B3,5 |
+| c0139498 | ui_save_draw_toggle_icon | Select between save-screen graphics c01815d8 and c01815e8. | likely | c01394a8/c01394c8 select assets; c01394b0/c01394d0 CALLP c011c508 |
+| c01394e8 | ui_save_draw_current_slot | Render current slot from B14[99] using record 11811910. | confirmed | c01394ec/c01394f0 form 11811910; c01394f4 LDW B14[99]; c01394f8 CALLP c0138ea8 |
+| c0139504 | ui_save_screen_refresh | Refresh save screen by mode and conditionally reset state under semaphore. | likely | c0139514/c013952c compare 8/14; c0139522 CALLP icon draw; c01395c8 refresh under B14[155] |
+| c01395dc | midi_select_current_slot | Apply assignment state, replace current slot B14[99], then apply new slot parameters. | likely | c01395ec CALLP c012f7e4 with table 11811598; c01395f8 STW B14[99]; c0139608 CALLP c012f878 |
+| c0139610 | ui_descriptor_3248_get | Return descriptor pointer c0183248. | confirmed | c0139610 MVK 0x3248,A4; c0139614 MVKH 0xc0180000,A4 |
+| c0139620 | ui_descriptor_3200_get | Return descriptor pointer c0183200. | confirmed | c0139620 MVK 0x3200,A4; c0139624 MVKH 0xc0180000,A4 |
+| c013962c | ui_descriptor_3224_get | Return descriptor pointer c0183224. | confirmed | c013962c MVK 0x3224,A4; c0139630 MVKH 0xc0180000,A4 |
+| c0139640 | rhythm_clock_state_reset | Snapshot B14[0] into rhythm state and clear a control word; range includes a second reset entry. | likely | c0139640 LDW B14[0]; c013964e STW 11f03c98; c0139666 CALLP back to c0139640 after new prologue |
+| c01396b8 | rhythm_ramp_state_reset | Clear rhythm control state and initialize two ramp/filter objects. | likely | c01396ca zero 11f03cd0; c01396ec/c0139708 CALLP c0164600 with constant 0x003deb7d |
+| c0139714 | rhythm_reset_and_notify | Reset ramp state, clear flag bits 1/7 and post UI event 14. | confirmed | c0139716 CALLP c01396b8; c0139726 AND -131; c0139728 STH B14[108]; c013972c bridge with A4=14 |
+| c0139738 | rhythm_gain_enable | Ramp gain at 11f03c44 toward 0.0 or 1.0 according to enable input. | confirmed | c0139750/c0139774 bridge to audio_gain_ramp_div; c0139756 B4=0; c013976c/c013976e form 0x3f800000 |
+| c0139784 | rhythm_control_flag_set | Set word at 11f03c58 to 1. | confirmed | c0139784/c0139788 form address; c013978e STW 1 |
+| c0139794 | rhythm_control_flag_clear | Clear word at 11f03c58. | confirmed | c0139794/c0139798 form address; c01397a2 STW zero |
+| c01397a8 | rhythm_playback_flag_clear | Clear word at 11f03cb0 from rhythm playback. | confirmed | c01397a8/c01397ac form address; c01397b2 STW zero; caller rhythm_playback_step |
+
 ## Data
 
 ## Open questions
