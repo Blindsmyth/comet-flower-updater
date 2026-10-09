@@ -166,7 +166,7 @@ Summary: (in progress)
 ## Data
 - Global flags word `0x1181312c`: multi-bit status/flags word touched by several functions in this range -- bit31 tested (EXTU 31,31) as a "MIDI-assignable" gate in effect_param_apply_full/_broadcast_all_slots (c0143470, c01435b4) before they call the midi_assign_table_rescan_a/b pair; bit2 is SET/CLR as a critical-section marker around the 5-slot loop in slot_callback_offset8_refresh_pass (c0143720).
 - Per-slot enable bitmask at `0x11810000+0x18e0`: tested bit-by-bit (`1<<slot_idx`) in effect_param_apply_broadcast_all_slots (c01435b4) to decide which of the 5 slots to touch.
-- Two words `0xc01152cc` / `0xc01152d0`: written by the record-distribution half of c0144ba0 (midi_tx_dual_reg_distribute, bit7-of-flag-byte selected: bit7 set -> 0x52d0, confirmed by direct branch-target lookup; bit7 clear -> 0x52cc, less certain, see that row's evidence) and read back by the getter c0145174 (cfg_dual_reg_get: arg==0 -> 0x52d0, arg!=0 -> 0x52cc, confirmed) -- a flag-selected pair of MIDI TX config words.
+- Two words `0xc01152cc` / `0xc01152d0`: written by the record-distribution half of c0144ba0 (midi_tx_dual_reg_distribute, bit7-of-flag-byte selected: bit7 set -> 0x52d0, confirmed by direct branch-target lookup; bit7 clear -> 0x52cc, confirmed by Claude: `BNOP c0144bf6,2` at c0144bda leaves 3 delay slots, so MVK/MVKH/STW 0x52cc at c0144be0..be8 execute before the jump lands) and read back by the getter c0145174 (cfg_dual_reg_get: arg==0 -> 0x52d0, arg!=0 -> 0x52cc, confirmed) -- a flag-selected pair of MIDI TX config words.
 - 7-entry function-pointer table at `0xc01843d8..0xc01843f4` (4-byte stride, indices 2..8 via `(A1*4-8)+0xc01843d8`): the "MIDI TX port op" table, dispatched from the second code block embedded in c0144ba0 (at +0x6c / address 0xc0144c0c). Entries: 2=c0144cc6, 3=c0144c88, 4=c0144d1a(noop), 5=c0144c38, 6=c0144d2c(default/cleanup), 7=c0144d14, 8=c0144d0c(state reset).
 - 4-entry function-pointer table at `0xc01844e4..0xc01844f0` (indices via `(A1*4-0x14)+0xc01844e4`, A1=4 or A1>=8): the "proportional bar segment case" table dispatched from c0142ec4; entries at 0x44e4=c01431f2, 0x44e8=c01431e0, 0x44ec=c0142fec, 0x44f0=c0142f30. Small counts (0-3, 5-7) instead branch directly into mid-function labels inside c01431f2 (0xc0143208, 0xc0143220) rather than through the table.
 - Two near-identical ~1550-1600B "gate" bodies (c0143900, c0143f60) both read config-table bitfields from constant addresses 0xc017e1ac/0xc017e13c/0xc017e21c-ish and exit via the same two tailcall veneers (tailcall_wrapper_c0161200_c016e640, tailcall_wrapper_c016d880_c016e660); a third, c0144580, shares the opening bitfield-check shape (tables at 0xc0180000+0x12c/0x7c, 0xc0170000-relative) but exits locally and is called from almost every subsystem task -- these three were only opening-traced given their size (see Open questions).
@@ -200,3 +200,8 @@ Corrections from spot-checks against main.dis:
   c0141ff0 (filled below or in a follow-up).
 - The "orphaned" dispatcher at c0144c0c is a function boundary the map tool
   missed (code after c0144ba0's return); treat it as its own function.
+- c0144ba0 writer polarity, settled (C64x+ branch timing): at c0144bda
+  `BNOP c0144bf6,2` is unconditional with only 2 NOP cycles, so 3 of the 5
+  delay slots run the next packets: MVK 0x52cc / MVKH / `STW A1,*A5` (c0144be0
+  ..be8). The jump then skips the 0x52d0 store. So **bit 7 clear -> 0xc01152cc,
+  bit 7 set -> 0xc01152d0** (`[A0] BNOP c0144bec,5`). Both halves confirmed.
