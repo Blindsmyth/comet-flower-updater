@@ -112,6 +112,51 @@ the intermediate 32--35 queues and deferred-recycle boundary.
 
 ## 2. Channel selection
 
+### Finding 3 — endpoint N uses software slot N and TX hardware channel N-1 (confirmed)
+
+Endpoint setup accepts low nibbles 1 through 4.  It uses the endpoint number
+itself for the 680-byte TX state table and writes it to MUSB `INDEX`.  The TX
+service then forms `1 << (endpoint-1)` for the CPPI TX-channel mask.  Therefore
+EP1 is software slot 1 but **CPPI TX channel 0**; MIDI IN4 is software slot 4
+and CPPI TX channel 3.  It would be wrong to pass channel 0 to the public
+endpoint submission API: `c012116c` derives slot 1 from endpoint address
+`0x81`, and the lower layer performs the minus one conversion.
+
+```text
+c01212ec AND   A3,15,A1       ; endpoint low nibble
+c01212f4 CMPLT 4,A1,A0       ; reject endpoint > 4
+c012130c MPYLI 680,A1,...     ; state slot N
+c0121338 STB   A1,*B7[0]      ; MUSB INDEX = N
+```
+
+```text
+c012069a MV    A10,A0         ; endpoint/software channel N
+c01206a0 MVK   1,B0
+c01206a2 ADD   A0,-1,A0
+c01206a4 SHL   B0,A0,A0       ; CPPI channel mask 1 << (N-1)
+```
+
+The descriptor template is likewise selected with a 12-byte stride from
+`0xc01805c4 + 12*N`; submission reads its word 0 as the queue number.  TX
+completion service uses a separate nine-word-per-endpoint table at
+`0xc01805d0 + 36*N`.  No observed address or branch is hard-wired to EP4.
+The code and tables cover endpoints 1--4; exact constant values in the data
+templates were not recoverable from the text disassembly, so the precise
+submit-queue number for EP1 remains unproved here.
+
+```text
+c0120484 MVK/MVKH c01805c4,B0
+c012048c SHL   A1,3,A6
+c0120490 ADDAW A6,A1,A6       ; 12*N
+c0120494 CALLP c0120250,B3
+c0120496 ADD   A6,B0,A4       ; per-N template
+```
+
+Confidence: **confirmed** for endpoint/software/CPPI-channel mapping and the
+generic four-endpoint tables; **likely** that every table entry is fully
+initialized for an otherwise unused EP1; **unknown** for EP1's exact queue
+constant without decoding the data image.
+
 ## 3. Coexistence
 
 ## 4. ISO behaviour
