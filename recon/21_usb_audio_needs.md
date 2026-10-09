@@ -224,6 +224,13 @@ routing question:
    is not indexed. The prototype's comment that 0x01e00512 "has zero stock
    cross-reference" is wrong.
 
+### 3.4 CPPI or PIO for EP1 (recon/23, gpt-5.6-sol, reviewed)
+Stock CPPI TX is generic over endpoints 1..4 (EP N = CPPI TX channel N-1,
+per-N templates at c01805c4 + 12N). It could carry EP1 ISO, but it brings no
+frame scheduler, underrun check or alt-0 teardown. **Decision: PIO first**,
+as SPRUFM9H also advises for ISO. With design (b), stock never sets up EP1
+DMA, so nothing has to be torn down.
+
 ## 4. Hardware-only (owner tests, after controller mode passes)
 
 From recon/20 section 4: EP1 FIFO address 0x01e00424, TXPKTRDY/ISO bit

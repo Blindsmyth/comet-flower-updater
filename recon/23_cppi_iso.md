@@ -323,3 +323,13 @@ mode/scheduling/teardown work; **confirmed** that stock primitives provide the
 necessary channel, exact-length descriptor, and completion queues; **likely**
 that PIO is the lower-risk first proof because it makes the required per-frame
 TXCSR handling explicit.
+
+## Review (Claude, 2026-10-09)
+Spot-checked: the CPPI channel mask `1 << (N-1)` (c012069a..a4), the endpoint
+bound (c01212f4 CMPLT 4), and c01212e0's DMA calls c011fd98 / c011fd40 /
+c0121224 (c0121454..6a). All confirmed. The verdict (PIO first, CPPI possible
+later with its own scheduler and teardown) matches recon/21. Note: with design
+(b) in recon/21 3.1, the IF3 callback handles SET_INTERFACE itself, so
+c01212e0 never runs for EP1 and no CPPI channel 0 set-up has to be undone.
+That holds only if stock never configures EP1 elsewhere (SET_CONFIGURATION
+reaches IF3 alt 0 only, which has no endpoints).
