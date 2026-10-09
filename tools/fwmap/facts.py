@@ -34,6 +34,39 @@ def load_names():
     return names
 
 
+# Chunks 00..18 were handed out to helpers on 2026-10-08/09; their membership is
+# frozen in chunk_members.tsv so later changes to the function list never
+# renumber them. Starts not in that list go to new chunks: functions in the L2
+# code sections first added on 2026-10-09 (0x118164c0..0x1181a1a0) to chunk 19,
+# any others to chunk 20 onward.
+MEMBERS = Path(__file__).with_name("chunk_members.tsv")
+L2_ADDED = (0x118164c0, 0x1181a1a0)
+
+
+def frozen_chunks(starts, per):
+    if not MEMBERS.exists():
+        return {n: starts[i:i + per] for n, i in enumerate(range(0, len(starts), per))}
+    member = {}
+    for line in open(MEMBERS, encoding="utf-8"):
+        n, addr = line.split()
+        member[int(addr, 16)] = int(n)
+    chunks = defaultdict(list)
+    l2, other = [], []
+    for x in starts:
+        if x in member:
+            chunks[member[x]].append(x)
+        elif L2_ADDED[0] <= x < L2_ADDED[1]:
+            l2.append(x)
+        else:
+            other.append(x)
+    nxt = max(member.values()) + 1
+    for group in (l2, other):
+        for i in range(0, len(group), per):
+            chunks[nxt] = group[i:i + per]
+            nxt += 1
+    return dict(chunks)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--per", type=int, default=150)
@@ -98,8 +131,8 @@ def main():
 
     outdir = ROOT / "build/fw/map/facts"
     outdir.mkdir(parents=True, exist_ok=True)
-    chunks = [starts[i:i + a.per] for i in range(0, len(starts), a.per)]
-    for n, ch in enumerate(chunks):
+    chunks = frozen_chunks(starts, a.per)
+    for n, ch in sorted(chunks.items()):
         lo, hi = ch[0], ch[-1] + sub[ch[-1]]["size"]
         with open(outdir / ("chunk_%02d.md" % n), "w", encoding="utf-8") as f:
             f.write("# Fact sheet chunk %02d: %08x..%08x (%d functions)\n\n" % (n, lo, hi, len(ch)))
