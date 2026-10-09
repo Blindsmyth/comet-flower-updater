@@ -95,7 +95,7 @@ Bitmaps drawn with a computed pointer or size are not in the list yet.
   glyphs.py (render glyph runs).
   ```
   P=.venv/Scripts/python.exe
-  $P tools/fwmap/mkelf.py build/fw/res1_493412.bin build/fw/map/main.elf 0x11800400,0xc011adc0
+  $P tools/fwmap/mkelf.py build/fw/res1_493412.bin build/fw/map/main.elf 0x11800400,0x118164c0,0x11819820,0x11819d20,0xc011adc0
   ~/ti/ti-cgt-c6000_8.5.0.LTS/bin/dis6x.exe build/fw/map/main.elf build/fw/map/main.dis
   $P tools/fwmap/refs.py build/fw/map/main.dis > build/fw/map/refs.txt
   $P tools/fwmap/calls.py build/fw/map/main.dis c011c508 B4 A6 B6 A8 B8
