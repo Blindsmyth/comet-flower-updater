@@ -70,3 +70,6 @@ better than a wrong "confirmed".
   calls and callers to its host. Rewrite the host row from its own code only.
 - **c016fXXX CALLP targets are trampolines** (`MVK/MVKH ...,B31; B B31`) into SDRAM
   code (118xxxxx). facts.py already names the final target; use that name.
+- **CALLP has no exposed delay slots.** Code after a CALLP runs after the callee
+  returns, so a wrapper that reloads B3 after CALLP is a plain call, not a tail call. A `||`
+  instruction beside the CALLP sets up its arguments.
