@@ -159,6 +159,37 @@ constant without decoding the data image.
 
 ## 3. Coexistence
 
+### Finding 4 — EP1 TX and EP4 TX are structurally independent and share a large pool (likely)
+
+The driver allocates distinct TX state records at `c011297c + 680*N`, distinct
+template entries, and distinct per-channel hardware mask bits.  The common
+descriptor pool contains 4096 descriptors, initialized on queue 28, so it is
+not a one-channel or EP4-sized pool.  Completion records encode a channel/tag
+and are demultiplexed by the shared interrupt drain; the Hwi services four
+completion queues rather than an EP4-only queue.
+
+```text
+c01221c2 MVK   0,A3
+c01221c4 SET   A3,12,12,A3    ; limit 4096
+c01221cc CALLP c011fa70,B3
+c01221d0 MVK   28,A4          ; shared free queue
+c01221d2 ADD   A2,1,A2
+c01221d4 CMPLT A2,A3,A0
+```
+
+There is no lock in the leaf enqueue `c0120f64`; serialization therefore
+depends on its higher-level USB worker/task and interrupt/deferred-service
+design.  Stock MIDI submission is task-oriented and its upper API can block.
+An EP1 audio producer must not call that upper message path from the SOF Hwi or
+audio Swi.  Coexistence is **likely** if EP1 submission is performed in the
+same serialized USB service context (or with a new bounded ownership scheme),
+but concurrent direct mutation of the shared queue/state machinery from Hwi
+and task context is not proved safe.
+
+Confidence: **likely** for simultaneous EP1/EP4 hardware and pool capacity;
+**confirmed** that storage/pool sizing is not EP4-only; **unknown** for
+race-free direct submission from a new Hwi context.
+
 ## 4. ISO behaviour
 
 ## 5. Verdict for USB audio
