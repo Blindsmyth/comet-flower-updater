@@ -256,4 +256,39 @@ c014aaf0 BNOP.S2  B3,5
 
 ## 5. For USB audio
 
+**Finding 13 — confirmed.** `c014a58c` is not the interface-request-record
+registration used by MIDI/UAC.  That confirmed chain is
+`c015afa0 usb_request_handler_register -> c0138a6c -> c015c6b4 ->
+c015c66c`; `c014a58c` calls none of it.  It is also not endpoint hardware
+setup: it contains no MUSB `0x01e0xxxx` access, no call to
+`c01212e0`, no FIFO allocation, and no CPPI/DMA channel operation.  Its
+single fixed caller passes the one global control object `0xc0180534`, so it
+is not repeated once per USB interface or endpoint.
+
+Therefore added interfaces 2/3 do **not** have to pass through this wrapper.
+They still need the already identified configuration-descriptor entries,
+alt-setting entries consumed by `c01357c8 -> c01212e0`, interface request
+records installed through `c015afa0`, and sufficient alt-state/table
+capacity.  No new `c0180534`-style object or field is justified by this
+routine.  If someone elects to add another object to the fixed
+`c0149ef8` orchestration anyway, its known minimum shape is only “word +4
+must initially be zero”; the source type and the 24-byte library record made
+by `c016ba40` remain missing, so inventing further fields would be unsafe.
+
+```text
+c0149f74 MVK.S1   0x0534,A4
+c0149f78 CALLP.S2 c014a58c,B3
+c014a5a8 LDW.D1T1 *A4[1],A0         ; only input field read
+c014a5b0 CALLP.S2 c016b5c0,B3
+```
+
+**Finding 14 — open, with the missing evidence stated exactly.** This pass
+does not establish that the stock CPPI TX path used by MIDI IN can submit
+isochronous EP1 packets.  `c014a58c` never reaches CPPI.  Closing that
+question requires tracing the TX-channel allocation/submission path below
+`c01212e0` for (1) endpoint-number/channel selection, (2) whether an EP1 TX
+channel can coexist with MIDI IN4, (3) per-frame isochronous packet length
+and completion/requeue behavior, and (4) how the path treats the ISO bit and
+SOF cadence.  Until those four items are read, reuse is a guess, not a fix.
+
 ## 6. Proposed map row
