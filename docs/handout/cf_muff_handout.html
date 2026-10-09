@@ -1,0 +1,1268 @@
+<title>CF Muff Datasheet</title>
+<!-- Design Style: 1970s-80s Electronics Component Datasheet (off-white technical paper, ruled tables, condensed technical typography, '74 Ram's Head violet spot color) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans+Condensed:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-page: #fbf9f4;
+    --bg-surface: #ffffff;
+    --bg-subtle: #f3efe6;
+    --bg-muted: #ece7da;
+    --text-primary: #141414;
+    --text-secondary: #48453e;
+    --text-muted: #726e64;
+    --border-strong: #141414;
+    --border-medium: #7a766c;
+    --border-light: #d6d0c2;
+    --spot-violet: #632375;
+    --spot-violet-light: #f5edf7;
+    --spot-violet-border: #9950ab;
+    --pending-color: #7d786e;
+    --pending-bg: #eae5d9;
+    --pass-color: #1b5e20;
+    --pass-bg: #edf6ef;
+    --font-heading: 'IBM Plex Sans Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-body: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg-page: #151413;
+      --bg-surface: #1e1d1a;
+      --bg-subtle: #272522;
+      --bg-muted: #302e2a;
+      --text-primary: #edeae2;
+      --text-secondary: #beb9ac;
+      --text-muted: #8e897e;
+      --border-strong: #edeae2;
+      --border-medium: #8e897e;
+      --border-light: #3d3a34;
+      --spot-violet: #bb72d9;
+      --spot-violet-light: #2b1832;
+      --spot-violet-border: #bb72d9;
+      --pending-color: #a49f94;
+      --pending-bg: #2b2824;
+      --pass-color: #55ba66;
+      --pass-bg: #18281b;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg-page: #151413;
+    --bg-surface: #1e1d1a;
+    --bg-subtle: #272522;
+    --bg-muted: #302e2a;
+    --text-primary: #edeae2;
+    --text-secondary: #beb9ac;
+    --text-muted: #8e897e;
+    --border-strong: #edeae2;
+    --border-medium: #8e897e;
+    --border-light: #3d3a34;
+    --spot-violet: #bb72d9;
+    --spot-violet-light: #2b1832;
+    --spot-violet-border: #bb72d9;
+    --pending-color: #a49f94;
+    --pending-bg: #2b2824;
+    --pass-color: #55ba66;
+    --pass-bg: #18281b;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    line-height: 1.5;
+    padding: 24px 16px;
+    display: flex;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .datasheet-container {
+    width: 100%;
+    max-width: 860px;
+    background-color: var(--bg-page);
+    border: 2px solid var(--border-strong);
+    padding: 24px 20px;
+    box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.08);
+  }
+
+  /* Header Masthead */
+  .header-masthead {
+    border-bottom: 3px double var(--border-strong);
+    padding-bottom: 14px;
+    margin-bottom: 20px;
+  }
+
+  .masthead-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+  }
+
+  .masthead-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .title-block h1 {
+    font-family: var(--font-heading);
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .title-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--spot-violet);
+    border: 1.5px solid var(--spot-violet);
+    background-color: var(--spot-violet-light);
+    padding: 2px 7px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    vertical-align: middle;
+  }
+
+  .device-classification {
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--spot-violet);
+    margin-top: 3px;
+  }
+
+  .masthead-specs-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface);
+    margin-top: 12px;
+  }
+
+  .masthead-spec-cell {
+    padding: 6px 10px;
+    border-right: 1px solid var(--border-light);
+  }
+
+  .masthead-spec-cell:last-child {
+    border-right: none;
+  }
+
+  .spec-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    display: block;
+  }
+
+  .spec-val {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .model-description-card {
+    background-color: var(--bg-subtle);
+    border-left: 3px solid var(--spot-violet);
+    padding: 10px 12px;
+    margin-top: 12px;
+    font-size: 12.5px;
+  }
+
+  .model-description-card strong {
+    font-family: var(--font-heading);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-primary);
+  }
+
+  /* Section Framing */
+  .section-block {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .section-block:last-of-type {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1.5px solid var(--border-strong);
+    padding-bottom: 4px;
+    margin-bottom: 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .section-title {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-primary);
+  }
+
+  .section-subtitle {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .section-source {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    padding-top: 4px;
+    border-top: 1px dashed var(--border-light);
+  }
+
+  /* Ruled Technical Tables */
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 10px 0;
+  }
+
+  table.ruled-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  table.ruled-table th {
+    font-family: var(--font-heading);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-primary);
+    background-color: var(--bg-subtle);
+    padding: 6px 10px;
+    border-top: 2px solid var(--border-strong);
+    border-bottom: 1.5px solid var(--border-strong);
+  }
+
+  table.ruled-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--text-primary);
+  }
+
+  table.ruled-table tr:last-child td {
+    border-bottom: 2px solid var(--border-strong);
+  }
+
+  table.ruled-table .num-cell {
+    font-family: var(--font-mono);
+    text-align: right;
+  }
+
+  .pending-cell {
+    color: var(--pending-color);
+    font-style: italic;
+    font-family: var(--font-body);
+  }
+
+  .reading-callout {
+    background-color: var(--bg-subtle);
+    border-left: 3px solid var(--border-medium);
+    padding: 8px 12px;
+    margin: 10px 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  /* Figure Title */
+  .fig-title {
+    font-family: var(--font-heading);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* SVG Chart Container */
+  .chart-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 8px 0;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    padding: 8px;
+  }
+
+  .chart-wrap svg {
+    display: block;
+    min-width: 580px;
+    width: 100%;
+    height: auto;
+  }
+
+  /* Key Metric Cards */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 12px 0;
+  }
+
+  .metric-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    padding: 10px;
+  }
+
+  .metric-card-title {
+    font-family: var(--font-heading);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+
+  .metric-card-val {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--spot-violet);
+    line-height: 1.1;
+  }
+
+  .metric-card-sub {
+    font-family: var(--font-body);
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* Progress / Allocation Bar */
+  .slot-bar-wrap {
+    margin: 10px 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    padding: 12px;
+  }
+
+  .slot-bar-header {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    margin-bottom: 6px;
+  }
+
+  .progress-track {
+    height: 20px;
+    width: 100%;
+    background-color: var(--bg-subtle);
+    border: 1px solid var(--border-medium);
+    display: flex;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .progress-fill-used {
+    background-color: var(--spot-violet);
+    height: 100%;
+  }
+
+  .progress-fill-free {
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 5px,
+      var(--border-light) 5px,
+      var(--border-light) 10px
+    );
+    height: 100%;
+    flex-grow: 1;
+  }
+
+  .slot-bar-footer {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    margin-top: 6px;
+  }
+
+  /* Checklists */
+  .check-list {
+    list-style: none;
+    margin: 8px 0;
+  }
+
+  .check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 12.5px;
+  }
+
+  .check-item:last-child {
+    border-bottom: none;
+  }
+
+  .badge-pass {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--pass-color);
+    background-color: var(--pass-bg);
+    border: 1px solid var(--pass-color);
+    padding: 1px 6px;
+    border-radius: 2px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+
+  .badge-pending {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--pending-color);
+    background-color: var(--pending-bg);
+    border: 1px dashed var(--pending-color);
+    padding: 1px 6px;
+    border-radius: 2px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+
+  .caution-box {
+    background-color: var(--bg-subtle);
+    border-left: 3px solid var(--spot-violet);
+    border-top: 1px solid var(--border-light);
+    border-right: 1px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
+    padding: 10px 12px;
+    margin-top: 10px;
+    font-size: 12px;
+  }
+
+  .caution-box strong {
+    font-family: var(--font-heading);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--spot-violet);
+    display: block;
+    margin-bottom: 3px;
+  }
+
+  /* Footer */
+  .datasheet-footer {
+    border-top: 2px solid var(--border-strong);
+    padding-top: 14px;
+    margin-top: 24px;
+    text-align: center;
+    font-family: var(--font-body);
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  /* Responsive Rules */
+  @media (max-width: 680px) {
+    .masthead-specs-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .masthead-spec-cell:nth-child(2) {
+      border-right: none;
+    }
+    .masthead-spec-cell:nth-child(3) {
+      border-top: 1px solid var(--border-light);
+    }
+    .masthead-spec-cell:nth-child(4) {
+      border-top: 1px solid var(--border-light);
+    }
+    .metrics-row {
+      grid-template-columns: 1fr;
+    }
+    body {
+      padding: 12px 16px;
+    }
+    .datasheet-container {
+      padding: 16px 12px;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .datasheet-container {
+      border-left: none;
+      border-right: none;
+      padding: 12px 8px;
+    }
+    .title-block h1 {
+      font-size: 32px;
+    }
+  }
+</style>
+
+<div class="datasheet-container">
+  <!-- Section 1: Title Block -->
+  <header class="header-masthead">
+    <div class="masthead-meta">
+      <span>Specification Sheet &bull; Hardware Bench Log</span>
+      <span id="masthead-platform"></span>
+    </div>
+    <div class="masthead-title-row">
+      <div class="title-block">
+        <h1>
+          <span id="effect-name"></span>
+          <span class="title-badge" id="effect-badge"></span>
+        </h1>
+        <div class="device-classification">Circuit Model Effect for Zoom Multi-Effects DSP</div>
+      </div>
+    </div>
+
+    <div class="masthead-specs-grid">
+      <div class="masthead-spec-cell">
+        <span class="spec-label">Target Binary File</span>
+        <span class="spec-val" id="spec-file"></span>
+      </div>
+      <div class="masthead-spec-cell">
+        <span class="spec-label">Effect ID</span>
+        <span class="spec-val" id="spec-id"></span>
+      </div>
+      <div class="masthead-spec-cell">
+        <span class="spec-label">Version</span>
+        <span class="spec-val" id="spec-version"></span>
+      </div>
+      <div class="masthead-spec-cell">
+        <span class="spec-label">Target Hardware</span>
+        <span class="spec-val" id="spec-target-hw"></span>
+      </div>
+    </div>
+
+    <div class="model-description-card">
+      <strong>Modelled Circuit Architecture:</strong> <span id="model-description"></span>
+    </div>
+
+    <div style="margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);">
+      <strong>Exposed Parameters:</strong> <span id="spec-knobs"></span> &bull; <strong>Test Signal:</strong> <span id="spec-test-signal"></span>
+    </div>
+  </header>
+
+  <!-- Section 2: Comparison -->
+  <section class="section-block">
+    <div class="section-header">
+      <h2 class="section-title">Comparison: CF Muff vs. Real Big Muff</h2>
+      <span class="section-subtitle">Signal: <span id="hdr-signal-tone"></span> &bull; Settings: Sustain <span id="hdr-sustain"></span>, Tone <span id="hdr-tone"></span>, Volume <span id="hdr-volume"></span></span>
+    </div>
+
+    <div class="fig-title">
+      <span>Fig. 1 &mdash; Harmonic Spectrum (H2&ndash;H10 Relative to Fundamental at 440 Hz Input)</span>
+      <span style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);">dB rel. fundamental</span>
+    </div>
+
+    <div class="chart-wrap">
+      <svg id="harmonic-svg" viewBox="0 0 760 280" aria-label="Harmonic Spectrum Bar Chart"></svg>
+    </div>
+
+    <div class="table-wrap">
+      <table class="ruled-table">
+        <thead>
+          <tr>
+            <th>Hardware / Condition</th>
+            <th class="num-cell">THD</th>
+            <th class="num-cell">Level Change</th>
+            <th class="num-cell">Aliasing (Inharmonic > 2 kHz)</th>
+            <th>Measurement Status</th>
+          </tr>
+        </thead>
+        <tbody id="comparison-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="reading-callout" id="harmonic-reading"></div>
+    <div class="section-source" id="source-pedal"></div>
+  </section>
+
+
+  <!-- Section 2b: Published reference -->
+  <section class="section-block">
+    <div class="section-header">
+      <h2 class="section-title">Check Against a Published Analysis</h2>
+      <span class="section-subtitle">Tone control at noon: mid-scoop centre and depth</span>
+    </div>
+    <div class="table-wrap">
+      <table class="ruled-table">
+        <thead>
+          <tr><th>Source</th><th class="num-cell">Scoop Centre</th><th class="num-cell">Depth at Notch</th><th>Basis</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>CF Muff</td><td class="num-cell">830 Hz</td><td class="num-cell">&minus;13.3 dB</td><td>Computed from the effect's own tone tables</td></tr>
+          <tr><td>ElectroSmash, Big Muff V3 (1976&ndash;77)</td><td class="num-cell">~1 kHz</td><td class="num-cell">&minus;13.5 dB</td><td>Published circuit analysis (7 dB overall loss + 6.5 dB notch)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="reading-callout">Different versions: CF Muff models the 1974 Ram's Head; the article analyses the later V3. Stage gains are deliberately not compared: CF Muff's input-booster gain (16.7 dB) and filter corners (94 Hz, 1.2 kHz) were taken from the same article, so that comparison would only check the article against itself.</div>
+    <div class="section-source">Source: ElectroSmash, &ldquo;Big Muff Pi Analysis&rdquo;, www.electrosmash.com/big-muff-pi-analysis. CF Muff: effects/muffx/blob.bin (MUFF_TONE), biquad response at 176.4 kHz.</div>
+  </section>
+
+  <!-- Section 3: Accuracy on the bench -->
+  <section class="section-block">
+    <div class="section-header">
+      <h2 class="section-title">Accuracy on the Bench</h2>
+      <span class="section-subtitle" id="bench-tolerance-hdr"></span>
+    </div>
+
+    <div class="metrics-row">
+      <div class="metric-card">
+        <div class="metric-card-title">Tests in Tolerance</div>
+        <div class="metric-card-val" id="card-tests-compliance"></div>
+        <div class="metric-card-sub" id="card-tests-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-title">Worst Harmonic Error</div>
+        <div class="metric-card-val" id="card-worst-harmonic"></div>
+        <div class="metric-card-sub" id="card-worst-harmonic-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-title">Worst Inharmonic Aliasing</div>
+        <div class="metric-card-val" id="card-worst-alias"></div>
+        <div class="metric-card-sub" id="card-worst-alias-sub"></div>
+      </div>
+    </div>
+
+    <div class="fig-title">
+      <span>Fig. 2 &mdash; Hardware DSP Model Error vs. Reference Mobile Core</span>
+      <span style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);">Host Bench Verification</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="ruled-table">
+        <thead>
+          <tr>
+            <th>Measurement Criterion</th>
+            <th>Tolerance Threshold</th>
+            <th class="num-cell">CF Muff (Zoom DSP)</th>
+            <th class="num-cell">Comet Flower Mobile Core</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="accuracy-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="section-source" id="source-bench"></div>
+  </section>
+
+  <!-- Section 4: Cost and memory -->
+  <section class="section-block">
+    <div class="section-header">
+      <h2 class="section-title">Cost and Memory</h2>
+      <span class="section-subtitle">Measured DSP Execution Cycles, Slot Allocation & Declared Load</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="ruled-table">
+        <thead>
+          <tr>
+            <th>Execution Metric</th>
+            <th>Audio Block Size</th>
+            <th class="num-cell">Measured Cycles / Block</th>
+            <th class="num-cell">Static Estimate</th>
+            <th>Diagnostic Source & Notes</th>
+          </tr>
+        </thead>
+        <tbody id="dsp-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="fig-title" style="margin-top: 14px;">
+      <span>Fig. 3 &mdash; Slot Memory Allocation (17,024 of 40,960 Bytes)</span>
+      <span style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);" id="slot-memory-label"></span>
+    </div>
+
+    <div class="slot-bar-wrap">
+      <div class="slot-bar-header">
+        <span><strong>Used:</strong> <span id="slot-used-text"></span></span>
+        <span><strong>Spare:</strong> <span id="slot-free-text"></span></span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill-used" id="slot-bar-fill"></div>
+        <div class="progress-fill-free"></div>
+      </div>
+      <div class="slot-bar-footer">
+        <span>0 bytes</span>
+        <span id="slot-state-text"></span>
+        <span id="slot-total-text"></span>
+      </div>
+    </div>
+
+    <div style="margin-top: 16px;">
+      <div class="fig-title">
+        <span>Declared Load (DSPLOAD 53) & Zoom Load Ratios</span>
+        <span style="font-family: var(--font-mono); font-size: 10px; color: var(--spot-violet); font-weight: 700;" id="declared-load-val"></span>
+      </div>
+      <div class="reading-callout" style="border-left-color: var(--spot-violet); margin-bottom: 10px;">
+        <p><strong>Declared Load Rule:</strong> <span id="load-rule-text"></span></p>
+        <p style="margin-top: 4px;"><strong>Overload Protection:</strong> <span id="load-why-text"></span></p>
+      </div>
+
+      <div class="table-wrap">
+        <table class="ruled-table">
+          <thead>
+            <tr>
+              <th>Effect Model</th>
+              <th class="num-cell">Declared Ratio (Units / 1k Cycles)</th>
+              <th class="num-cell">Declared DSPLOAD</th>
+              <th>Reference / Source</th>
+            </tr>
+          </thead>
+          <tbody id="ratios-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-source" id="source-cost"></div>
+  </section>
+
+  <!-- Section 5: Safety -->
+  <section class="section-block">
+    <div class="section-header">
+      <h2 class="section-title">Safety</h2>
+      <span class="section-subtitle">Checks Passed & Pending Tests</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0;">
+      <div>
+        <div class="fig-title" style="color: var(--pass-color);">Checks Passed</div>
+        <ul class="check-list" id="checks-passed-list"></ul>
+      </div>
+      <div>
+        <div class="fig-title" style="color: var(--pending-color);">Pending Tests (Open)</div>
+        <ul class="check-list" id="checks-pending-list"></ul>
+      </div>
+    </div>
+
+    <div class="caution-box">
+      <strong>Installation Note:</strong>
+      <span id="install-note-text"></span>
+    </div>
+  </section>
+
+  <!-- Section 6: Footer -->
+  <footer class="datasheet-footer">
+    <p>Measured on a Zoom G1X Four, October 2026. Not affiliated with or endorsed by Zoom Corporation or Electro-Harmonix.</p>
+  </footer>
+</div>
+
+<script type="application/json" id="data">
+{
+  "_note": "Every number here is measured or computed from a file in this repo. Do not add numbers that are not here. null = not measured yet.",
+  "effect": {
+    "name": "CF Muff",
+    "models": "1974 'Violet Ram's Head' Big Muff Pi (circuit model by Comet Flower): asymmetric-rail Q1 booster, two diode + 560 pF feedback clip stages, exact tone network, recovery stage",
+    "platform": "Zoom G1X Four (TI C6745 DSP), stock effect format (.ZD2), 44.1 kHz",
+    "file": "MUFFX.ZD2",
+    "id": "03000f84",
+    "version": "1.00",
+    "knobs": [
+      "Sustain",
+      "Tone",
+      "Volume"
+    ]
+  },
+  "test_signal": "440 Hz sine from the Probe 10 diagnostic effect in slot 0, recorded dry through VPE at 44.1 kHz",
+  "pedal_measurements": {
+    "source": "recon/04_hardware_log.md, take VPB_2026-10-08_214128_dry.wav, analysed with tools/tone_harmonics.py method",
+    "settings": {
+      "Sustain": 60,
+      "Tone": 50,
+      "Volume": 80
+    },
+    "bypassed": {
+      "thd_db": -66.4,
+      "non_harmonic_above_2k_db": -60.3
+    },
+    "cf_muff": {
+      "level_change_db": 5.2,
+      "thd_db": -6.1,
+      "harmonics_db_rel_fundamental": {
+        "H2": -34.8,
+        "H3": -10.2,
+        "H4": -32.7,
+        "H5": -12.9,
+        "H6": -31.5,
+        "H7": -15.2,
+        "H8": -31.2,
+        "H9": -17.3,
+        "H10": -31.2
+      },
+      "non_harmonic_above_2k_db": -65.9,
+      "reading": "Odd harmonics dominate (symmetric clipping, as in a Big Muff). Aliasing (inharmonic content above 2 kHz) at the recording's noise floor even at -6 dB THD."
+    },
+    "real_big_muff": {
+      "status": "pending: owner records a physical Big Muff with the same 440 Hz tone and settings",
+      "model": null,
+      "level_change_db": null,
+      "thd_db": null,
+      "harmonics_db_rel_fundamental": null,
+      "non_harmonic_above_2k_db": null
+    }
+  },
+  "dsp_cost": {
+    "source": "recon/04, take VPB_2026-10-08_231435_dry.wav, CF MuffT cycle-counter diagnostic (tools/decode_memprobe.py), 2 frames agreeing to 0.01%",
+    "cold_cycles_per_block": 14143,
+    "warm_cycles_per_block": 13508,
+    "cache_refill_cycles": 635,
+    "block": "16 samples",
+    "static_estimate_cycles": 14300,
+    "note": "Static code count matched the pedal for CF Muff, CF RAT (17.2k) and CF 808 (17.4k). The total per-block budget is still under investigation; do not state a percentage of the DSP."
+  },
+  "memory": {
+    "slot_bytes_used": 17024,
+    "slot_bytes_total": 40960,
+    "state_bytes": 220,
+    "file_bytes": 20307,
+    "source": "tools/check_slot_mem.py, manifest"
+  },
+  "declared_load": {
+    "dspload": 53,
+    "rule": "Zoom's own effects declare 3.3-3.7 load units per 1,000 cycles/block (TS Drive 3.65, Gold Drive 3.41, Zen Drive 3.37, DS-1 3.33, NYC Muff 3.42, Squeak 3.69; recon/11). CF Muff = 3.7 x 14.14k = 53, the top of Zoom's range. Zoom's NYC Muff declares 34.86.",
+    "why": "The stock firmware sums declared loads and refuses an overloaded patch (PROCESS OVERFLOW). Declaring honestly keeps a patch from overrunning the DSP."
+  },
+  "bench_accuracy": {
+    "source": "docs/helpers/MUFF_RESULT.md (host bench vs Comet Flower's reference circuit model)",
+    "tests": 54,
+    "within_tolerance": 54,
+    "tolerance": "harmonics within 1.5 dB, aliasing below -50 dB",
+    "worst_fundamental_error_db": 0.08,
+    "worst_harmonic_error_db": 0.61,
+    "worst_alias_db": -60.2,
+    "mobile_core_reference": {
+      "fundamental_error_db": 0.07,
+      "harmonic_error_db": 3.34,
+      "alias_db": -37.6,
+      "label": "Comet Flower's own mobile core, same bench"
+    }
+  },
+  "safety": {
+    "checks_passed": [
+      "Fits its 40 KiB load slot with 23,936 bytes spare",
+      "Valid file CRC and standard DRIVE effect header",
+      "Effect file only: does not modify the pedal firmware",
+      "Runs on the G1X Four: played and timed 2026-10-08"
+    ],
+    "pending": [
+      "Overflow-guard test: with heavy stock effects the pedal must show PROCESS OVERFLOW, not freeze",
+      "Install test on an unmodified stock firmware (our pedal's firmware differs from stock only in the start-up logo and text)"
+    ],
+    "install_note": "Install through update-mode images where possible; an interrupted USB file transfer bricked our test pedal once (recovered, docs/RECOVERY_G1.md)."
+  },
+  "published_reference": {
+    "source": "ElectroSmash, 'Big Muff Pi Analysis' (www.electrosmash.com/big-muff-pi-analysis): 1976-77 'V3' red/black Big Muff, circuit analysis",
+    "cf_muff_source": "CF Muff tone tables (effects/muffx/blob.bin, MUFF_TONE), biquad response computed at 176.4 kHz, Tone at noon",
+    "tone_noon": {
+      "cf_muff": {
+        "notch_hz": 830,
+        "notch_total_db": -13.3
+      },
+      "electrosmash_v3": {
+        "notch_hz": 1000,
+        "notch_total_db": -13.5
+      }
+    },
+    "caveat": "Different version: CF Muff models the 1974 Ram's Head, ElectroSmash analyses the 1976-77 V3. Stage gains are not compared: CF Muff's input-booster gain (16.7 dB) and filter corners (94 Hz, 1.2 kHz) were taken from the same article, so comparing them would be circular."
+  }
+}
+</script>
+
+<script>
+(function() {
+  const data = JSON.parse(document.getElementById('data').textContent);
+
+  function formatDb(val) {
+    if (val === null || val === undefined) return '<span class="pending-cell">Pending measurement</span>';
+    return val + ' dB';
+  }
+
+  // 1. Title Block
+  document.getElementById('effect-name').textContent = data.effect.name;
+  document.getElementById('effect-badge').textContent = 'v' + data.effect.version;
+  document.getElementById('masthead-platform').textContent = data.effect.platform;
+  document.getElementById('spec-file').textContent = data.effect.file;
+  document.getElementById('spec-id').textContent = data.effect.id;
+  document.getElementById('spec-version').textContent = data.effect.version;
+  document.getElementById('spec-target-hw').textContent = data.effect.platform;
+  document.getElementById('model-description').textContent = data.effect.models;
+  document.getElementById('spec-knobs').textContent = data.effect.knobs.join(', ');
+  document.getElementById('spec-test-signal').textContent = data.test_signal;
+
+  // 2. Comparison Section
+  const settings = data.pedal_measurements.settings;
+  document.getElementById('hdr-signal-tone').textContent = data.test_signal.split(',')[0];
+  document.getElementById('hdr-sustain').textContent = settings.Sustain;
+  document.getElementById('hdr-tone').textContent = settings.Tone;
+  document.getElementById('hdr-volume').textContent = settings.Volume;
+  document.getElementById('harmonic-reading').textContent = data.pedal_measurements.cf_muff.reading;
+  document.getElementById('source-pedal').textContent = 'Source: ' + data.pedal_measurements.source;
+
+  // Harmonic Spectrum SVG Bar Chart (H2..H10)
+  const svg = document.getElementById('harmonic-svg');
+  const cfHarmonics = data.pedal_measurements.cf_muff.harmonics_db_rel_fundamental;
+  const realHarmonics = data.pedal_measurements.real_big_muff.harmonics_db_rel_fundamental;
+  const harmonicKeys = ['H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10'];
+
+  const svgW = 760;
+  const svgH = 280;
+  const marginLeft = 60;
+  const marginRight = 24;
+  const marginTop = 36;
+  const marginBottom = 48;
+  const plotW = svgW - marginLeft - marginRight;
+  const plotH = svgH - marginTop - marginBottom;
+  const baselineY = marginTop + plotH; // -40 dB line
+  const minDb = -40;
+  const maxDb = 0;
+
+  let svgHtml = `
+    <defs>
+      <pattern id="hatchPattern" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="0" x2="0" y2="8" stroke="var(--pending-color)" stroke-width="1.5" stroke-opacity="0.6"/>
+      </pattern>
+    </defs>
+    <rect x="${marginLeft}" y="${marginTop}" width="${plotW}" height="${plotH}" fill="var(--bg-subtle)" stroke="var(--border-light)" stroke-width="1"/>
+  `;
+
+  // Grid lines on Y-axis
+  const yTicks = [0, -10, -20, -30, -40];
+  yTicks.forEach(tickDb => {
+    const yPos = marginTop + ((tickDb - maxDb) / (minDb - maxDb)) * plotH;
+    const isBaseline = tickDb === minDb;
+    const isCeiling = tickDb === maxDb;
+    svgHtml += `
+      <line x1="${marginLeft}" y1="${yPos}" x2="${marginLeft + plotW}" y2="${yPos}" 
+            stroke="${isBaseline || isCeiling ? 'var(--border-medium)' : 'var(--border-light)'}" 
+            stroke-width="${isBaseline || isCeiling ? '1.5' : '1'}" 
+            stroke-dasharray="${isBaseline || isCeiling ? 'none' : '3,3'}"/>
+      <text x="${marginLeft - 8}" y="${yPos + 3.5}" 
+            font-family="var(--font-mono)" font-size="10" font-weight="600" 
+            text-anchor="end" fill="var(--text-muted)">${tickDb} dB</text>
+    `;
+  });
+
+  const slotW = plotW / harmonicKeys.length;
+  const barW = 24;
+  const barGap = 4;
+
+  harmonicKeys.forEach((hKey, i) => {
+    const slotCenterX = marginLeft + (i + 0.5) * slotW;
+    const cfVal = cfHarmonics[hKey];
+    const realVal = (realHarmonics && realHarmonics[hKey] !== null) ? realHarmonics[hKey] : null;
+
+    // Bar 1: CF Muff
+    const bar1X = slotCenterX - barW - (barGap / 2);
+    const clampedCf = Math.max(minDb, Math.min(maxDb, cfVal));
+    const bar1Y = marginTop + ((clampedCf - maxDb) / (minDb - maxDb)) * plotH;
+    const bar1H = Math.max(2, baselineY - bar1Y);
+
+    svgHtml += `
+      <rect x="${bar1X}" y="${bar1Y}" width="${barW}" height="${bar1H}" 
+            fill="var(--spot-violet)" stroke="var(--border-strong)" stroke-width="1"/>
+      <text x="${bar1X + barW / 2}" y="${bar1Y - 4}" 
+            font-family="var(--font-mono)" font-size="9" font-weight="700" 
+            text-anchor="middle" fill="var(--text-primary)">${cfVal}</text>
+    `;
+
+    // Bar 2: Real Big Muff (driven by data; pending hatch when null)
+    const bar2X = slotCenterX + (barGap / 2);
+    if (realVal !== null) {
+      const clampedReal = Math.max(minDb, Math.min(maxDb, realVal));
+      const bar2Y = marginTop + ((clampedReal - maxDb) / (minDb - maxDb)) * plotH;
+      const bar2H = Math.max(2, baselineY - bar2Y);
+      svgHtml += `
+        <rect x="${bar2X}" y="${bar2Y}" width="${barW}" height="${bar2H}" 
+              fill="var(--border-strong)" stroke="var(--border-strong)" stroke-width="1"/>
+        <text x="${bar2X + barW / 2}" y="${bar2Y - 4}" 
+              font-family="var(--font-mono)" font-size="9" font-weight="700" 
+              text-anchor="middle" fill="var(--text-primary)">${realVal}</text>
+      `;
+    } else {
+      const pendingH = 38;
+      const bar2Y = baselineY - pendingH;
+      svgHtml += `
+        <rect x="${bar2X}" y="${bar2Y}" width="${barW}" height="${pendingH}" 
+              fill="url(#hatchPattern)" stroke="var(--pending-color)" stroke-width="1.2" stroke-dasharray="3,3"/>
+        <text x="${bar2X + barW / 2}" y="${bar2Y - 4}" 
+              font-family="var(--font-mono)" font-size="8.5" font-style="italic" 
+              text-anchor="middle" fill="var(--pending-color)">&mdash;</text>
+      `;
+    }
+
+    // X-axis label
+    svgHtml += `
+      <text x="${slotCenterX}" y="${baselineY + 16}" 
+            font-family="var(--font-heading)" font-size="11.5" font-weight="700" 
+            text-anchor="middle" fill="var(--text-primary)">${hKey}</text>
+    `;
+  });
+
+  // Legend
+  const legendY = marginTop + 14;
+  svgHtml += `
+    <g transform="translate(${marginLeft + plotW - 325}, ${legendY})">
+      <rect x="0" y="-10" width="320" height="24" fill="var(--bg-surface)" stroke="var(--border-light)" stroke-width="1"/>
+      <rect x="10" y="-5" width="14" height="14" fill="var(--spot-violet)" stroke="var(--border-strong)" stroke-width="0.8"/>
+      <text x="30" y="6" font-family="var(--font-mono)" font-size="10" font-weight="600" fill="var(--text-primary)">CF Muff (Zoom DSP)</text>
+      
+      <rect x="165" y="-5" width="14" height="14" fill="url(#hatchPattern)" stroke="var(--pending-color)" stroke-width="0.8" stroke-dasharray="2,2"/>
+      <text x="185" y="6" font-family="var(--font-mono)" font-size="10" font-style="italic" fill="var(--pending-color)">Real Big Muff (Pending)</text>
+    </g>
+  `;
+
+  svg.innerHTML = svgHtml;
+
+  // Comparison Table
+  const cfMuff = data.pedal_measurements.cf_muff;
+  const realMuff = data.pedal_measurements.real_big_muff;
+  const bypassed = data.pedal_measurements.bypassed;
+
+  document.getElementById('comparison-tbody').innerHTML = `
+    <tr>
+      <td><strong>${data.effect.name}</strong></td>
+      <td class="num-cell">${formatDb(cfMuff.thd_db)}</td>
+      <td class="num-cell">${cfMuff.level_change_db !== null ? '+' + cfMuff.level_change_db + ' dB' : '<span class="pending-cell">Pending measurement</span>'}</td>
+      <td class="num-cell">${formatDb(cfMuff.non_harmonic_above_2k_db)}</td>
+      <td><span class="badge-pass">Measured Hardware</span></td>
+    </tr>
+    <tr>
+      <td><strong>Real Big Muff</strong> ${realMuff.model ? '(' + realMuff.model + ')' : ''}</td>
+      <td class="num-cell">${formatDb(realMuff.thd_db)}</td>
+      <td class="num-cell">${realMuff.level_change_db !== null ? formatDb(realMuff.level_change_db) : '<span class="pending-cell">Pending measurement</span>'}</td>
+      <td class="num-cell">${formatDb(realMuff.non_harmonic_above_2k_db)}</td>
+      <td><span class="badge-pending">${realMuff.status}</span></td>
+    </tr>
+    <tr style="background-color: var(--bg-subtle);">
+      <td><strong>Bypassed Reference</strong></td>
+      <td class="num-cell">${formatDb(bypassed.thd_db)}</td>
+      <td class="num-cell">&mdash; <span style="font-size: 10px; color: var(--text-muted);">(Ref)</span></td>
+      <td class="num-cell">${formatDb(bypassed.non_harmonic_above_2k_db)}</td>
+      <td><span class="badge-pass">Noise Floor Baseline</span></td>
+    </tr>
+  `;
+
+  // 3. Accuracy on the Bench
+  const bench = data.bench_accuracy;
+  document.getElementById('bench-tolerance-hdr').textContent = 'Tolerance: ' + bench.tolerance;
+  document.getElementById('card-tests-compliance').textContent = bench.within_tolerance + ' of ' + bench.tests;
+  document.getElementById('card-tests-sub').textContent = 'Tolerance: ' + bench.tolerance;
+  document.getElementById('card-worst-harmonic').textContent = bench.worst_harmonic_error_db + ' dB';
+  document.getElementById('card-worst-harmonic-sub').textContent = 'Tolerance: harmonics within 1.5 dB';
+  document.getElementById('card-worst-alias').textContent = bench.worst_alias_db + ' dB';
+  document.getElementById('card-worst-alias-sub').textContent = 'Tolerance: aliasing below -50 dB';
+  document.getElementById('source-bench').textContent = 'Source: ' + bench.source;
+
+  const mob = bench.mobile_core_reference;
+  document.getElementById('accuracy-tbody').innerHTML = `
+    <tr>
+      <td><strong>Worst Harmonic Error</strong></td>
+      <td>harmonics within 1.5 dB</td>
+      <td class="num-cell"><strong>${bench.worst_harmonic_error_db} dB</strong></td>
+      <td class="num-cell" style="color: var(--text-muted);">${mob.harmonic_error_db} dB</td>
+      <td><span class="badge-pass">In Tolerance</span></td>
+    </tr>
+    <tr>
+      <td><strong>Worst Aliasing Peak</strong></td>
+      <td>aliasing below -50 dB</td>
+      <td class="num-cell"><strong>${bench.worst_alias_db} dB</strong></td>
+      <td class="num-cell" style="color: var(--text-muted);">${mob.alias_db} dB</td>
+      <td><span class="badge-pass">In Tolerance</span></td>
+    </tr>
+    <tr>
+      <td><strong>Worst Fundamental Error</strong></td>
+      <td>Reference sweep</td>
+      <td class="num-cell"><strong>${bench.worst_fundamental_error_db} dB</strong></td>
+      <td class="num-cell" style="color: var(--text-muted);">${mob.fundamental_error_db} dB</td>
+      <td><span class="badge-pass">In Tolerance</span></td>
+    </tr>
+    <tr style="background-color: var(--bg-subtle);">
+      <td><strong>Bench Tests in Tolerance</strong></td>
+      <td>${bench.tests} of ${bench.tests} tests</td>
+      <td class="num-cell"><strong>${bench.within_tolerance} of ${bench.tests}</strong></td>
+      <td class="num-cell" style="color: var(--text-muted);">${mob.label}</td>
+      <td><span class="badge-pass">${bench.within_tolerance} of ${bench.tests} Pass</span></td>
+    </tr>
+  `;
+
+  // 4. Cost and Memory
+  const dsp = data.dsp_cost;
+  const mem = data.memory;
+  const load = data.declared_load;
+
+  document.getElementById('source-cost').textContent = 
+    'DSP Source: ' + dsp.source + ' | Memory Source: ' + mem.source;
+
+  document.getElementById('dsp-tbody').innerHTML = `
+    <tr>
+      <td><strong>Cold Cycles per Block</strong></td>
+      <td>${dsp.block}</td>
+      <td class="num-cell"><strong>${dsp.cold_cycles_per_block.toLocaleString()}</strong></td>
+      <td class="num-cell">${dsp.static_estimate_cycles.toLocaleString()}</td>
+      <td>Measured with cycle-counter diagnostic (2 frames agreeing to 0.01%)</td>
+    </tr>
+    <tr>
+      <td><strong>Warm Cycles per Block</strong></td>
+      <td>${dsp.block}</td>
+      <td class="num-cell"><strong>${dsp.warm_cycles_per_block.toLocaleString()}</strong></td>
+      <td class="num-cell">&mdash;</td>
+      <td>Steady-state inner block processing</td>
+    </tr>
+    <tr style="background-color: var(--bg-subtle);">
+      <td><strong>Cache Refill Cycles</strong></td>
+      <td>${dsp.block}</td>
+      <td class="num-cell"><strong>${dsp.cache_refill_cycles}</strong></td>
+      <td class="num-cell">&mdash;</td>
+      <td>Cold minus warm execution overhead</td>
+    </tr>
+  `;
+
+  // Memory Bar
+  const spareBytes = mem.slot_bytes_total - mem.slot_bytes_used;
+  const usedWidthPct = (mem.slot_bytes_used / mem.slot_bytes_total) * 100;
+  document.getElementById('slot-memory-label').textContent = 
+    mem.slot_bytes_used.toLocaleString() + ' of ' + mem.slot_bytes_total.toLocaleString() + ' bytes';
+  document.getElementById('slot-used-text').textContent = 
+    mem.slot_bytes_used.toLocaleString() + ' bytes';
+  document.getElementById('slot-free-text').textContent = 
+    spareBytes.toLocaleString() + ' bytes';
+  document.getElementById('slot-bar-fill').style.width = usedWidthPct + '%';
+  document.getElementById('slot-state-text').textContent = 
+    'State Memory: ' + mem.state_bytes + ' bytes | Binary File: ' + mem.file_bytes.toLocaleString() + ' bytes';
+  document.getElementById('slot-total-text').textContent = 
+    'Slot Total: ' + mem.slot_bytes_total.toLocaleString() + ' bytes';
+
+  // Declared Load & Zoom Ratios
+  document.getElementById('declared-load-val').textContent = 'DSPLOAD: ' + load.dspload;
+  document.getElementById('load-rule-text').textContent = load.rule;
+  document.getElementById('load-why-text').textContent = load.why;
+
+  document.getElementById('ratios-tbody').innerHTML = `
+    <tr>
+      <td><strong>TS Drive</strong></td>
+      <td class="num-cell">3.65</td>
+      <td class="num-cell">&mdash;</td>
+      <td>Zoom stock effect (recon/11)</td>
+    </tr>
+    <tr>
+      <td><strong>Gold Drive</strong></td>
+      <td class="num-cell">3.41</td>
+      <td class="num-cell">&mdash;</td>
+      <td>Zoom stock effect (recon/11)</td>
+    </tr>
+    <tr>
+      <td><strong>Zen Drive</strong></td>
+      <td class="num-cell">3.37</td>
+      <td class="num-cell">&mdash;</td>
+      <td>Zoom stock effect (recon/11)</td>
+    </tr>
+    <tr>
+      <td><strong>DS-1</strong></td>
+      <td class="num-cell">3.33</td>
+      <td class="num-cell">&mdash;</td>
+      <td>Zoom stock effect (recon/11)</td>
+    </tr>
+    <tr>
+      <td><strong>NYC Muff</strong></td>
+      <td class="num-cell">3.42</td>
+      <td class="num-cell">34.86</td>
+      <td>Zoom stock NYC Muff</td>
+    </tr>
+    <tr>
+      <td><strong>Squeak</strong></td>
+      <td class="num-cell">3.69</td>
+      <td class="num-cell">&mdash;</td>
+      <td>Zoom stock Squeak</td>
+    </tr>
+    <tr style="background-color: var(--spot-violet-light);">
+      <td><strong>CF Muff</strong></td>
+      <td class="num-cell"><strong>3.7</strong></td>
+      <td class="num-cell"><strong>${load.dspload}</strong></td>
+      <td><strong>Top of Zoom range: 3.7 &times; 14.14k = 53</strong></td>
+    </tr>
+  `;
+
+  // 5. Safety Section
+  const safety = data.safety;
+  document.getElementById('checks-passed-list').innerHTML = safety.checks_passed.map(item => `
+    <li class="check-item">
+      <span class="badge-pass">Passed</span>
+      <span>${item}</span>
+    </li>
+  `).join('');
+
+  document.getElementById('checks-pending-list').innerHTML = safety.pending.map(item => `
+    <li class="check-item">
+      <span class="badge-pending">Open</span>
+      <span>${item}</span>
+    </li>
+  `).join('');
+
+  document.getElementById('install-note-text').textContent = safety.install_note;
+})();
+</script>

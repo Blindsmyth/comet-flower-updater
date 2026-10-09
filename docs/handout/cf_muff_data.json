@@ -1,0 +1,118 @@
+{
+  "_note": "Every number here is measured or computed from a file in this repo. Do not add numbers that are not here. null = not measured yet.",
+  "effect": {
+    "name": "CF Muff",
+    "models": "1974 'Violet Ram's Head' Big Muff Pi (circuit model by Comet Flower): asymmetric-rail Q1 booster, two diode + 560 pF feedback clip stages, exact tone network, recovery stage",
+    "platform": "Zoom G1X Four (TI C6745 DSP), stock effect format (.ZD2), 44.1 kHz",
+    "file": "MUFFX.ZD2",
+    "id": "03000f84",
+    "version": "1.00",
+    "knobs": [
+      "Sustain",
+      "Tone",
+      "Volume"
+    ]
+  },
+  "test_signal": "440 Hz sine from the Probe 10 diagnostic effect in slot 0, recorded dry through VPE at 44.1 kHz",
+  "pedal_measurements": {
+    "source": "recon/04_hardware_log.md, take VPB_2026-10-08_214128_dry.wav, analysed with tools/tone_harmonics.py method",
+    "settings": {
+      "Sustain": 60,
+      "Tone": 50,
+      "Volume": 80
+    },
+    "bypassed": {
+      "thd_db": -66.4,
+      "non_harmonic_above_2k_db": -60.3
+    },
+    "cf_muff": {
+      "level_change_db": 5.2,
+      "thd_db": -6.1,
+      "harmonics_db_rel_fundamental": {
+        "H2": -34.8,
+        "H3": -10.2,
+        "H4": -32.7,
+        "H5": -12.9,
+        "H6": -31.5,
+        "H7": -15.2,
+        "H8": -31.2,
+        "H9": -17.3,
+        "H10": -31.2
+      },
+      "non_harmonic_above_2k_db": -65.9,
+      "reading": "Odd harmonics dominate (symmetric clipping, as in a Big Muff). Aliasing (inharmonic content above 2 kHz) at the recording's noise floor even at -6 dB THD."
+    },
+    "real_big_muff": {
+      "status": "pending: owner records a physical Big Muff with the same 440 Hz tone and settings",
+      "model": null,
+      "level_change_db": null,
+      "thd_db": null,
+      "harmonics_db_rel_fundamental": null,
+      "non_harmonic_above_2k_db": null
+    }
+  },
+  "dsp_cost": {
+    "source": "recon/04, take VPB_2026-10-08_231435_dry.wav, CF MuffT cycle-counter diagnostic (tools/decode_memprobe.py), 2 frames agreeing to 0.01%",
+    "cold_cycles_per_block": 14143,
+    "warm_cycles_per_block": 13508,
+    "cache_refill_cycles": 635,
+    "block": "16 samples",
+    "static_estimate_cycles": 14300,
+    "note": "Static code count matched the pedal for CF Muff, CF RAT (17.2k) and CF 808 (17.4k). The total per-block budget is still under investigation; do not state a percentage of the DSP."
+  },
+  "memory": {
+    "slot_bytes_used": 17024,
+    "slot_bytes_total": 40960,
+    "state_bytes": 220,
+    "file_bytes": 20307,
+    "source": "tools/check_slot_mem.py, manifest"
+  },
+  "declared_load": {
+    "dspload": 53,
+    "rule": "Zoom's own effects declare 3.3-3.7 load units per 1,000 cycles/block (TS Drive 3.65, Gold Drive 3.41, Zen Drive 3.37, DS-1 3.33, NYC Muff 3.42, Squeak 3.69; recon/11). CF Muff = 3.7 x 14.14k = 53, the top of Zoom's range. Zoom's NYC Muff declares 34.86.",
+    "why": "The stock firmware sums declared loads and refuses an overloaded patch (PROCESS OVERFLOW). Declaring honestly keeps a patch from overrunning the DSP."
+  },
+  "bench_accuracy": {
+    "source": "docs/helpers/MUFF_RESULT.md (host bench vs Comet Flower's reference circuit model)",
+    "tests": 54,
+    "within_tolerance": 54,
+    "tolerance": "harmonics within 1.5 dB, aliasing below -50 dB",
+    "worst_fundamental_error_db": 0.08,
+    "worst_harmonic_error_db": 0.61,
+    "worst_alias_db": -60.2,
+    "mobile_core_reference": {
+      "fundamental_error_db": 0.07,
+      "harmonic_error_db": 3.34,
+      "alias_db": -37.6,
+      "label": "Comet Flower's own mobile core, same bench"
+    }
+  },
+  "safety": {
+    "checks_passed": [
+      "Fits its 40 KiB load slot with 23,936 bytes spare",
+      "Valid file CRC and standard DRIVE effect header",
+      "Effect file only: does not modify the pedal firmware",
+      "Runs on the G1X Four: played and timed 2026-10-08"
+    ],
+    "pending": [
+      "Overflow-guard test: with heavy stock effects the pedal must show PROCESS OVERFLOW, not freeze",
+      "Install test on an unmodified stock firmware (our pedal's firmware differs from stock only in the start-up logo and text)"
+    ],
+    "install_note": "Install through update-mode images where possible; an interrupted USB file transfer bricked our test pedal once (recovered, docs/RECOVERY_G1.md)."
+  },
+  "published_reference": {
+    "source": "ElectroSmash, 'Big Muff Pi Analysis' (www.electrosmash.com/big-muff-pi-analysis): 1976-77 'V3' red/black Big Muff, circuit analysis",
+    "cf_muff_source": "CF Muff tone tables (effects/muffx/blob.bin, MUFF_TONE), biquad response computed at 176.4 kHz, Tone at noon",
+    "tone_noon": {
+      "cf_muff": {
+        "notch_hz": 830,
+        "notch_total_db": -13.3
+      },
+      "electrosmash_v3": {
+        "notch_hz": 1000,
+        "notch_total_db": -13.5
+      }
+    },
+    "caveat": "Different version: CF Muff models the 1974 Ram's Head, ElectroSmash analyses the 1976-77 V3. Stage gains are not compared: CF Muff's input-booster gain (16.7 dB) and filter corners (94 Hz, 1.2 kHz) were taken from the same article, so comparing them would be circular."
+  }
+}
