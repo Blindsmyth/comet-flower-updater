@@ -232,4 +232,117 @@ path) — the flash chip's own CS line was not identified.
 
 ## 5. Main-firmware reach
 
+### Main firmware's flash-write call graph, traced from the shared SPI engine (confirmed graph; address bound not fully closed)
+Every caller of `1180673c=serial_xfer_entry` that is not the expression-
+pedal read (`1180abc0=ad_serial_read`) is a `cfg_locked_write_*` function
+(`build/fw/map/facts/chunk_00.md`): `c01451a0=cfg_locked_write_5byte_core`,
+`c0145220=cfg_locked_write_6byte_core`, `c0145270=cfg_write_packet_build_32`,
+`c01452ac=cfg_locked_write_chunked_step`, `c0145320=cfg_locked_write_small_step`,
+`c0145378=cfg_write_packet_build_216`, plus two small orchestrators
+(`11805420`, `11805484`). These are the leaves; the mid-level entry points
+actually called from task code are `c01453b4=cfg_locked_write_chunked`,
+`c01454f4=cfg_locked_write_small`, `c0145568=cfg_locked_write_chunked2`
+(`build/fw/map/facts/chunk_10.md`), all tagged root `DataStore` (plus
+MainApp/MIDI/PreLoad/RhythmService/UpdateUI, i.e. reachable from several
+tasks).
+
+Their callers resolve to three families:
+- **Boot-time settings init**, `c0136a18=cfg_mainapp_write_sections` and
+  `c0137204=cfg_mainapp_write_finalize`, both called only from
+  `c015d428=mainapp_startup_init` (recon/15's already-identified MainApp
+  startup hook) — writing default/migrated settings once per boot
+  (`build/fw/map/facts/chunk_07.md`).
+- **Effect/patch file installs**, `c01367f8=cfg_datastore_write_sections`
+  called from `11809160=datastore_copy_helper`, root `DataStore,UpdateUI` —
+  this is the normal DIY-effect-install path (recon/13/14), consistent with
+  `tools/pedal_g1.py`'s MIDI file-upload protocol, not a firmware
+  re-flasher.
+- **Service menu and MIDI-triggered writes**: `118092a0=midi_param_lock_op`,
+  `c012d80c=midi_param_reply_build23`, `c015d7e0=mainapp_model_detect`, and
+  notably `c0165db0=sysmenu_checksum_write_locked` — the service menu's
+  **"CheckSum"** item (named in docs/RECOVERY_G1.md) reaches
+  `cfg_locked_write_small`, i.e. the CheckSum screen can itself write
+  through this same path (likely a calibration/checksum value store, not
+  yet disassembled further).
+
+**None of these call chains were found to pass a flash address inside
+0x0-0x28000 (boot) or 0x28000-0x33000 (graphics).** The firmware's own
+region table (section 4) only enumerates main-firmware-self, settings and
+file-system regions as targets, and no function on this call graph is named
+or shaped like a boot-region writer. **This is "likely", not "confirmed":**
+I did not trace `cfg_locked_dispatch` (`c0161200`, the common dispatcher
+all three write-size variants pass through) down to the actual absolute
+address computation to verify it is bounded to the three region-table
+entries. That would be the remaining step to fully close this question.
+
+**Gap:** the file-system calls docs/RECOVERY_G1.md names
+(`f_findfirst`, `f_unlink`, `ffs_format`) were not located by name in
+`build/fw/map/facts/` (likely stripped/inlined library symbols) and so were
+not re-verified here; only the `cfg_locked_write_*`/`DataStore` graph above
+was traced. A full answer to "can *any* normal-firmware code path reach the
+boot region" would need `cfg_locked_dispatch`'s address arithmetic and the
+`ffs_format`-equivalent code, neither of which was reached.
+
 ## 6. Verdict for pedal tests
+
+### What can brick the pedal beyond update-mode recovery
+1. **A corrupted/incompatible res1 (main firmware) hangs, it does not
+   recover (confirmed, section 2).** If flash 0xBFFF0's 16-byte signature
+   does not match what was just read via `c01fda8c`, or if the AIS stream
+   from 0x33000 reaches 0xbf000 without a jump command, res5 shows an
+   indicator and loops forever (`c022bc14`/`c022bbe0`). It does **not**
+   fall back into the GPIO-decision/update-mode path on its own. Recovery
+   still works because **this failure is confined to flash 0x33000-0xbf000
+   (res1)**: update mode is reached again by power-cycling with both
+   footswitches held, which re-enters `c020a4d0` fresh and does not depend
+   on anything res1 touched. So a bad *main-firmware* image is recoverable
+   via update mode (as already proven in practice, docs/RECOVERY_G1.md),
+   but it will hang rather than silently reboot into update mode if you
+   forget the footswitch gesture.
+2. **A bad image that targets the boot region (0x0-0x28000) is the one
+   thing that is not update-mode-recoverable (confirmed capability exists,
+   section 3)**: update mode accepts host-specified erase/write stages,
+   and Zoom's own stage 4/5 (erase+write 0x0, size 0x28000) proves the
+   pedal firmware executes writes there when told to. If such a write were
+   interrupted (power loss, USB drop) or sent a corrupt boot image,
+   there would be no software fallback — update mode itself is what would
+   be destroyed. This is the one region where our tooling's own allowlist
+   (section 3) is the only thing standing between "a bug in a patch
+   script" and "no recovery path at all," since it is host-tool discipline,
+   not a pedal-side guarantee (gap noted in section 3).
+3. **A bad effect file-system image is recoverable (confirmed in
+   practice):** this is exactly the 2026-10-06 incident (docs/RECOVERY_G1.md)
+   — hang at the ZOOM logo, fixed by writing a fresh FS image at 0x102000
+   via update mode. res5 and res1 were untouched throughout.
+4. **A bad settings-sector write is likely recoverable** (erase+rewrite of
+   0xBF000-0xC0000 is a normal updater/boot-init stage; it is 4 KB and not
+   on the path res5 or res1 depend on to load), but this was not stress-
+   tested here.
+
+### Checks to run before each test image (confirmed from the evidence above; follow for every image we flash)
+- **Never include an erase/write stage at flash address 0x0 or inside
+  0x0-0x28000.** Verify with the same check `make_fs_restore_updater.py`
+  already enforces for `--patch-fw`/`--controller-fw` (section 3's
+  `allowed` set) — re-run that script unmodified, and additionally inspect
+  the final stage table it prints (`main()`'s "wrote ...; stages:" output)
+  before running the image, rather than trusting the allowlist silently.
+- **Never include a stage at 0x28000-0x33000 (graphics/presets)** unless
+  that is explicitly the intent (`--splash`/`--presets`), for the same
+  reason: it is adjacent to the boot region and only known-safe because the
+  stock updater also touches it routinely (section 4's table).
+- **Confirm the main-firmware (res1) image passes the 0xBFFF0 signature
+  check** the stock boot program expects (section 2) before relying on
+  update mode alone as the safety net — a signature mismatch hangs rather
+  than re-offering update mode, so the *only* recovery if that happens is
+  the user remembering to power-cycle with both footswitches held, not a
+  self-healing fallback.
+- **Keep file-system (0x102000+) and settings (0xBF000+) changes inside
+  their known sizes** (0x2FE000 and 0x1000 respectively, per both the
+  updater table and the firmware's own region table in section 4) — an
+  oversized write would spill into the unexplained 0x0C0000-0x102000 gap
+  or past the 4 MB flash end, neither of which has been characterized.
+- **Treat "can update mode overwrite res5" as yes-by-design** (section 3):
+  the safety property we actually rely on is that *our* tooling never asks
+  it to, not that the pedal would refuse if asked. Any new or edited tool
+  that emits update-mode stages should be checked against the same
+  allowlist before it is ever pointed at the real pedal.
