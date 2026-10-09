@@ -45,7 +45,7 @@ plus c014f594 (chunk 20), mapped by a helper now.
 | S1 | Audio Swi order and the output block: buffer address, format (STNDW = two 32-bit words per frame?), 16 frames, which slot runs last | the producer side of the ring (recon/17 B5 step 4) | chunk 19 (11818b20.., 11818aa0) | helper running |
 | S2 | How the SOF top half reaches 11818e80, and what may run there (registers saved, nesting with USB Swi prio 13 / audio Swi prio 15) | the SOF handler sends one ISO packet per 1 ms frame | chunk 19 + c011fc8c (chunk 02) | helper running |
 | S3 | Alternate-setting state machine | streaming only on alt 1, clean stop on alt 0 | see 3.1 below | **mostly answered**; the routing order is open |
-| S4 | When usbmidi_open runs (c0145124 is its only caller, and that task-entry name looks wrong) and whether the bus is quiet then | safe point to register IF2/IF3 and set up EP1 | chunk_09 c0145124, caller c0159758 | open |
+| S4 | When the USB interfaces are registered, and whether the bus is quiet then | safe point to register IF2/IF3 and set up EP1 | see 3.2 below | **answered** (confirmed call order) |
 | S5 | `usb_interface_activate_core` c014a58c: only about 90 of its 349 instructions read; a DINT section touches c01819bc/c0181ae4/c0181ae8/c0181f74 | probably the configure/attach path that our new interfaces pass through | chunk_11 | open |
 | S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | c0121432..c0121444 plus the SPRUFM9 bit table | open (datasheet read) |
 | S7 | Descriptor capacity for 192 B, the pointer array at c00643c0 and response buffer c0119fb0 | the new configuration descriptor is 192 B (stock 101 B) | recon/20 2.1 has the plan; re-check against the new disassembly | mostly done |
@@ -93,6 +93,37 @@ What this means:
   usb_endpoint_records_reset c0138660 and usb_ifmap_set_default_ptr c015c804,
   so it is probably the bus-reset/deconfigure event handler. The stream must
   stop there too.
+
+### 3.2 S4 findings (Claude, 2026-10-09)
+
+USB bring-up runs in **task context**, from the SwitchNrmlSpdRead task, not at
+boot:
+```text
+118076c0 task_switch_nrml_spd_read
+ -> 1180a7ec switch_repeat_notify
+   -> c016ab8c: c016ab90 STW 1,*+B14[24]      ; "USB started" gate (byte offset 96)
+                c016ab94 CALLP c015b114 -> c0138a78 usb_endpoint_layer_init
+                c016ab98 CALLP c016ab70:
+                  c016ab78 CALLP c0159758      ; creates "UsbTestMidi_Task" and calls
+                     c0145124 (ctx): clear 40 B at 0xc01152b8, ctx -> word 0,
+                     c0145154 MVK 0x4c0c / MVKH 0xc0140000,A4 ; callback = c0144c0c
+                     c0145158 CALLP c0152410 usbmidi_open    ; installs MIDI IF record c018137c
+                  c016ab80 CALLP c015af18 -> c0138720 usb_worker_start
+                     -> c0120dd0: c0120e10 MVK 0x0401 / MVKH 0x1e00000,A4
+                                  c0120e1a SET A0,6,6,A0 ; c0120e20 STB A0,*A4
+                                  ; POWER.SOFTCONN = 1: the device appears on the bus
+```
+So every interface is registered **before** the soft-connect. That is the
+quiet window: registering the IF2/IF3 records and reserving the EP1 FIFO just
+after usbmidi_open, for example by chaining from c0145124's return, happens
+before the host can enumerate. That closes recon/20 item 4.5 statically.
+
+Corrections that follow: c0145124 is the USB MIDI device init
+(`usbmidi_device_init`), not a switch-speed task entry. The callback it
+registers, c0144c0c, is the MIDI TX port-op dispatcher chunk_09 found
+embedded in c0144ba0 (table 0xc01843d8, ops 2..8), so the halt-recovery codes
+7 and 8 from c0151ed0 land in that table. What makes 1180a7ec take the
+c016ab8c branch (first switch scan? USB VBUS?) is not read yet.
 
 ## 4. Hardware-only (owner tests, after controller mode passes)
 
