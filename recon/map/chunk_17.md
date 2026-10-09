@@ -31,6 +31,12 @@ Summary: TBD (fill in after mapping).
 | c016a97a | (hidden start) sysmenu_entry_register_4 | Register settings-menu entry id 4: pass menu table c0182b00 (FWMAP: "settings menu entries around c0182b38"), label/data pointers c01810e3 and c0181548, flag 1, to c0154564. | likely | c016a984/94 B4=0xc0182b00; c016a980/8c B6=0xc01810e3; c016a990/a0 A6=0xc0181548; c016a988 B8=1; c016a998 CALLP 0xc0154564,B3 A4=4 |
 | c016a9ac | get_const_ptr_c0183740 | Trivial accessor: returns the fixed pointer 0xc0183740 in A4. | confirmed | c016a9ac/b0 MVK 0x3740,A4;MVKH 0xc0180000,A4; c016a9b4 BNOP B3,5 (no other work) |
 
+| c016a9c0 | fwd_c0152240 | Forwarding adapter: save args (A4,B4,A6) on stack, call c0152240, return its result (or 0 on a null check). | likely | c016a9cc CALLP 0xc0152240,B3; c016a9d8 null-check then either return loaded A0 or 0 |
+| c016a9f0 | fwd_c015232c | Same adapter shape as c016a9c0 but targets c015232c. | likely | c016aa00 CALLP 0xc015232c,B3 |
+| c016aa40 | ui_value_draw_helper | Save regs (c016e020); fetch a value via c0140320(0), extract a bitfield (EXTU 24,24), draw it via c01563a0 and c011cb64 with halfwords from the stack and A8=0x1f; restore regs (c016e000). | guess | c016aa4c CALLP 0xc0140320,B3; c016aa50 EXTU.S1 A4,24,24,A0; c016aa64 CALLP 0xc01563a0,B3; c016aa6c CALLP 0xc011cb64,B3 (c011exxx range matches ui_render_* family from chunk_07) |
+| c016aa88 | ui_check_and_fallback_draw | Host's own code is only 56 bytes (ends before hidden start c016aac0): run c0126ff8/c0156648/c0164a54/c01490e0; if the last returns 0, fall back to ui_value_draw_helper (c016aa40) with A4=0. | likely | c016aaa8 CALLP 0xc01490e0,B3; c016aaac MV A4,A0; c016aaae [!A0] fallthrough else CALLP 0xc016aa40,B3; fact sheet callers usb_ctrl_setup_common_decoder, ui_row_commit_guard_aa88 |
+| c016aac0 | (hidden start) event_flag_pump | Drain a pending-event bitmask from B14[165] (via c0144580): for each set bit (1,2,4,8, bit 0x20, or the 5-bit field at bits 27-31) call its handler (c016eca0, c015402c, c01540e4, c0154118, c015414c) then loop back to re-check remaining bits. Reached from both the USB control-setup decoder and a UI row-commit path (host aa88's caller list). | likely | c016aacc CALLP 0xc0144580,B3; c016aad4/e0/e8/f0 AND A4,1/2/4/8; c016aaf6 EXTU A4,27,31,A0; c016ab00 AND 0x20,A4; each branch target CALLPs then BNOP back to c016aac4 |
+
 ## Data
 
 ## Open questions
