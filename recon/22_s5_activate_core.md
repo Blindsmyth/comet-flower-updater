@@ -187,6 +187,26 @@ c014a984 STW.D1T1 A4,*+A15[5]       ; now
 c014a998 LDW.D2T2 *+B10[0],B10      ; next
 ```
 
+**Finding 11 — confirmed.** After the walk (or immediately when
+`c0181aec == 0`), the hidden routine increments `S[23]`, then its final
+critical section `c014aa0c..c014aa68` reads `TSCL` and snapshots two
+conditional accounting groups.  If saved `c0181ae8 != 0`, it performs
+`S[8]=now-S[11]; S[9]=S[10]; S[10]=0; S[11]=now`.  If saved
+`c0181ae4 != 0`, it performs
+`S[17]=now-S[20]; S[18]=S[19]; S[19]=0; S[20]=now`.  CSR is restored before
+any subsequent config/callback dispatch.
+
+```text
+c014aa08 STW.D1T1 A3,*+A14[23]      ; incremented before DINT
+c014aa0c DINT
+c014aa10 B.S1     c016e460           ; TSCL
+c014aa40 [B0] STW.D1T1 A4,*+A14[11]
+c014aa44 [A0] STW.D1T1 A4,*+A14[20]
+c014aa60 [B0] STW.D1T1 A6,*+A14[10]
+c014aa64 [A0] STW.D1T1 A6,*+A14[19]
+c014aa68 MVC.S2   B10,CSR
+```
+
 ## 4. Callees
 
 **Finding 5 — confirmed.** The direct callees of the real `c014a58c` are:
