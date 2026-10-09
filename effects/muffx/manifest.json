@@ -6,7 +6,7 @@
   "display": "CF Muff",
   "badge": "CF",
   "description": "'74 Violet Ram's Head Big Muff, port of Comet Flower's circuit model: asymmetric-rail Q1 booster, two diode-and-560pF feedback clip stages (finite loop gain), exact tone network, recovery stage.",
-  "dspload": 30,
+  "dspload": 53,
   "allow_any_id": true,
   "kernel": "muffx.c",
   "kernel_section": "text",
