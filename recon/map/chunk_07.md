@@ -193,3 +193,18 @@ All offsets below are bytes. B14 indices retain the instruction's access width: 
 - c0136720 is likely round-up-to-multiple, contingent on c0169980 returning remainder; its observed arithmetic is input + divisor - result for nonzero result. Negative-input behavior is unspecified here.
 
 Validation: 150/150 fact-sheet addresses appear exactly once, in order, with five table columns, valid C identifiers, allowed confidence labels and instruction-address evidence. Confidence totals: 68 confirmed, 80 likely, 2 guess. `tools/fwmap/coverage.py` completed with output directed to the designated scratch directory; its global touched metric is distinct from this exact chunk-row validation. Report-only commits were made after each 15-row batch; no push was performed.
+
+## Review by Claude (2026-10-09)
+
+Spot-checked against main.dis:
+- c0138070 `usb_endpoint_prepare_all_or_one`: correct. Table base is
+  0xc011a4e8 (MVK 0xffffa4e8 + MVKH 0xc0110000), `LDW *A10++[13]` = 52-byte
+  stride, 6 records. Detail missing from the row: the loop **skips** records
+  whose first word is -2 (c0138094 CMPEQ -2) and calls c0137fe4 for the rest.
+- c013b164 `looper_state5_to6`: correct. LDHU/STH `*+B14[108]` = byte offset
+  0xd8 (halfword, scaled x2); STB `*+B14[76]` = byte offset 76 (unscaled).
+  Rows cite the scaled index; the Data section gives the byte offsets.
+- Open point: B14+0xd8 is compared exactly (==1, ==5, 5->6) in some rows and
+  bit-edited (SET bit 1, AND -131) in others. It is probably a state code in
+  the low 3 bits (`& 7` tests) with flag bits above, so the exact compares only
+  hold when no flag bits are set. Treat "state" vs "flags" names here as likely.
