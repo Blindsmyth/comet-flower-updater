@@ -101,6 +101,12 @@ Summary: TBD (fill in after mapping).
 | c016c060 | service_request_0ea6 | Initialize a service, run c0168580 for code 0x0ea6, obtain the 118130a0 buffer, and submit a two-word stack request through c016ec80. | guess | c016c064/c016c068 calls; c016c078 CALLP c016bff0; c016c080 CALLP c016ec80 with B4=stack+4 |
 | c016c090 | preload_mode_supported | Return true when c0156e80 returns mode 1, 2, or 5; false otherwise. Host row excludes hidden start c016c0c0. | confirmed | c016c094 CALLP c0156e80; c016c098-c016c0b2 comparisons select A0=1 only for range 1..2 or value 5 |
 | c016c0c0 | (hidden start) preload_service_loop | Repeatedly submit a three-unit request, set B14[125] while active, and conditionally invoke c016ec70 when two readiness checks pass and a saved status bit is set. | likely | c016c0c4-c016c0d4 request arguments and active flag; c016c0e4/c016c0ec checks; c016c0f8 tests bit 0; c016c104 CALLP c016ec70; c016c114 loops |
+| c016c118 | cfg_get_b14_125 | Return B14 slot 125. | confirmed | c016c118 LDW *+B14[125],A4; immediate return |
+| c016c120 | preload_ready_flag_init | Initialize the word at 1181349c and byte at 118134a0, setting the word according to c016ec60 readiness and triggering the fallback event pump when not ready. | likely | c016c130 clears 4 bytes at 1181349c; c016c140 CALLP c016ec60; c016c148/c016c150 fallback calls; c016c158/c016c164 store 0/1; c016c172 stores 1 at 118134a0 |
+| c016c1e0 | sdram_region_reset | Copy 60 bytes from c0180004 to 11f03d84, clear four bytes at 11f03dc0, then clear 28 bytes at 11f03dc4. | confirmed | c016c1e0-c016c1f4 memcpy arguments; c016c208 CALLP memset; c016c210 tail-branches to memset with A4=11f03dc4,A6=28 |
+| c016c240 | fp32_div | Single-precision division using reciprocal estimates and two Newton refinements, with explicit handling for exceptional exponents. | confirmed | c016c240/c016c2a0 RCPSP; repeated MPYSP/SUBSP refinement; c016c24c/c016c2b0 exponent extraction; later branches select exceptional results |
+| c016c360 | fmt_render_wrapper | Render a formatted string via c014fa40 using stack-built varargs, then null-terminate the destination byte. | likely | c016c368 loads stack argument; c016c38c CALLP c014fa40; c016c3b8 STB 0,*B4 |
+| c016c3c0 | lazy_register_d740 | If registration flag c0181f70 is clear, register descriptor c01654a0 through c016e0c0; otherwise branch to c016e0a0. | likely | c016c3c4-c016c3cc flag load; c016c3d0-c016c3e0 constants; c016c3e8 B c016e0a0 when set; c016c3f8 CALLP c016e0c0 |
 
 ## Data
 
