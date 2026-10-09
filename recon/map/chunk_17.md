@@ -1,6 +1,6 @@
 # chunk_17: c0169f20..c016e020 (150 fact-sheet functions + hidden starts)
 
-Summary: TBD (fill in after mapping).
+Summary: This range is a dense firmware support layer: RTOS/interrupt primitives and numeric run-time helpers sit beside menu/configuration adapters, fixed-address SDRAM initializers, callback registries, MIDI/PreLoad/DataStore service loops, and many thin descriptor-driven dispatch wrappers. Repeated patterns include menu-item commits, guarded record publication under DINT, arena copies, and lazy one-time registration; hidden starts split several folded fact-sheet bodies into independently addressed callbacks and task entries.
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
@@ -63,6 +63,8 @@ Summary: TBD (fill in after mapping).
 
 | c016b1c0 | hwi_ctrl_ready_init | Lazy-init gate on interrupt-controller-ready flag at MMIO 0x01844004 (DINT-protected): on first use, writes 1 to 0x01845028 and busy-polls/SPLOOPW-copies words from it until the controller acknowledges ready. Own code ends at c016b23c; the rest of the fact sheet's "size 384" is a separate hidden function (c016b240, below). | likely | c016b1c4/e4 DINT; c016b1c8/d0 A3=0x01844004 flag; c016b1f0/fc A4=0x01845028; c016b210 SPLOOPW 6 poll loop |
 | c016b240 | (hidden start) hwi_vector_enable | Search a 16-entry event-id table at c0181fd8 for a free/matching slot (A4=event id); under CSR/IER critical section, clear/set that bit in IER (two code shapes depending on size thresholds <0x10/>4, one using a shift-value table at c0180104), calling the chunk-16 vector-install helper c0169ca0 partway through (which pokes a branch opcode into the ISTP-relative vector table and itself calls back into hwi_ctrl_ready_init c016b1c0). Spans the full b240-b33c range the fact sheet folded into c016b1c0's "size 384". Mutual c0169ca0<->c016b1c0 call relationship is an open question. | likely | c016b254 LDW *++A3[1],A6 / CMPEQ loop over 16 entries; c016b274/94 CSR/IER save-clear-restore; c016b2ac CALLP 0xc0169ca0,B3; c016b2c0/c8 size checks <0x10,>4; c016b2f8/00 A7=0xc0180104 shift table; c016b32c STW B4,*+A7[A5] |
+| c016b340 | pend_then_dispatch_0de0_b7c0 | Pend descriptor c0180de0 through c015a520 and dispatch to the shared continuation on success. | likely | c016b344/c016b354 descriptor; c016b364 CALLP c015a520; same template as neighboring wrappers |
+| c016b3c0 | pend_then_dispatch_0e00_c720 | Pend descriptor c0180e00 through c015a520 and dispatch to c016c720 on success. | likely | c016b3c4/c016b3d4 descriptor; c016b3e4 CALLP c015a520 |
 
 | c016b3cc | (hidden start, found by updated hidden_starts.py, inside c016b3c0) pend_then_dispatch_0e00_c720_body | The updated script splits every pend_then_dispatch instance at its register-save instruction (STW A11,*B15--[8], 12 bytes in); there is no return before this point, so it is likely a heuristic artifact rather than an independently-reachable function - but per instructions it gets its own row. This is simply the body of c016b3c0 (pend descriptor 0xc0180e00, dispatch to c016c720 on success) from the save onward. | guess | c016b3cc STW A11,*B15--[8] (flagged split point, no preceding RETURN); rest identical to c016b3c0's logic already described |
 | c016b440 | pend_then_dispatch_0e20_2760 | pend_then_dispatch template (same shape as c016b340/b3c0): pend fixed descriptor 0xc0180e20 via c015a520, tail-branch to handler c0162760 on success else return 0. | likely | c016b444/54 B5=0xc0180e20; c016b464 CALLP 0xc015a520,B3; c016b494 [A0] B 0xc0162760 |
@@ -71,11 +73,13 @@ Summary: TBD (fill in after mapping).
 | c016b540 | table_dispatch_if_state1 | If global state at 0xc017fbcc equals 1, enter a CSR/DINT critical section over the shared dispatch table (B10=0xc0182054 per field offsets 0,2,5,6), tail-branch to c016e5e0 on one path or call c0168580 on the other. | guess | c016b548/54 A3=0xc017fbcc; c016b562 CMPEQ 1,A3,A0; c016b56c/70 CSR/DINT; c016b576 B10=B4(0xc0182054); c016b58c B 0xc016e5e0; c016b598 CALLP 0xc0168580,B3 |
 | c016b5c0 | pend_then_dispatch_0e80_d980 | Same pend_then_dispatch template, descriptor 0xc0180e80, handler c016d980. | likely | c016b5c4/d4 B5=0xc0180e80; c016b614 [A0] B 0xc016d980 |
 | c016b640 | pend_then_dispatch_?_e760 | Same pend_then_dispatch template, handler c016e760 (descriptor constant at c016b654's MVK not individually captured, same shape as neighbors). | likely | c016b654 MVKH 0xc0180000,B5; c016b694 [A0] B 0xc016e760 |
+| c016b64c | (hidden start) pend_then_dispatch_e760_body | Hidden body start of c016b640 at its register-save instruction; it pends via c015a520 and dispatches to c016e760. | guess | c016b64c STW A11,*B15--[8]; c016b664 CALLP c015a520; no return before split |
 | c016b6c0 | lazy_init_two_flags_a | One-time-init gate guarding two flags at c01820b4 and c01820dc under CSR/DINT: if unset, call c0162a60 and set both flags; if already set, tail-branch into the shared continuation c016b7c0. Near-byte-identical twin of c016b740. | likely | c016b6cc/d0 A3=0xc01820b4; c016b6e8 A3=0xc01820dc; c016b708 B 0xc0162a60; c016b6f0/718 B 0xc016b7c0 |
 | c016b740 | lazy_init_two_flags_b | Byte-identical duplicate of c016b6c0 (same flags 0x20b4/0x20dc, same target c0162a60, same fallthrough into c016b7c0); likely two inlined copies from the same source. | likely | c016b74c/50 A3=0xc01820b4; c016b788 B 0xc0162a60; c016b770/798 B 0xc016b7c0 |
 | c016b7c0 | menu_item_data_resolve | Shared continuation for the two lazy-init twins: if arg A4 is null, just clear a flag at 0x20e2 under CSR and return; else check flags at 0x20e4/0x20b4 and either tail-call c015de40 or fall into a table lookup (c0182118-based, computing a 2D index via EXT/ADDAD/SHL) that resolves a menu/widget data pointer. | guess | c016b7cc/d0 A10=0xc01820e4; c016b7d8 B4=0xc01820b4; c016b7f4 B 0xc015de40; c016b840/44 A3=0xc0182118; c016b858 EXT.S1 A5,2,3,A4 (field extract); c016b878/90 table dereference with A0-selected stride |
 
 | c016b9c0 | cfg_lookup_or_arena_copy | Two-part function (384 bytes, no confirmed independent entry at the midpoint so kept as one row): first half is a settings-table accessor (tables at c0181a54/58/5c) that stores a result into struct fields [6]/[2] of A10, with a path to c016d020; second half computes available space in an arena/ring (B4 descriptor, A6/B6 limits) and either calls variant_record_copy (c0169fc0) to copy data in, or takes the fallback path when space is short. | guess | c016b9c8/d0 tables at 0xc0181a54/58/5c; c016b9fc [B0] B 0xc016d020; c016ba4c/50 B13=B4+3,B5=*B4[0]; c016ba70 CMPLTU B5,B12,B0; c016ba78 CALLP 0xc0169fc0,B3 |
+| c016ba40 | (hidden start) arena_copy_body | Arena/ring copy body folded into c016b9c0: compute available capacity, copy through variant_record_copy when it fits, and update cursor state. | likely | c016ba4c/c016ba50 descriptor loads; c016ba54 length difference; c016ba60 cursor load; later CALLP c0169fc0 |
 
 | c016bb40 | iterate_call_c0168340 | If B4 (arg) is non-null, loop calling c0168340 once per element (count A10, pointer B10/A4), decrementing the remaining count each pass. | likely | c016bb5c B c0168340; c016bb80 SUB A10,A4,A10; c016bb8c/90 loop-back/exit branches |
 | c016bbc0 | cbarray_push_bounded | Push element A11 onto the registered-callback array at c0182200 (limit at c0182204, running count at c0181a4c) via the c016e980/c016e9a0 index-reserve/commit pair; own code ends at c016bc3c (fact sheet's "size 384" folds in two more missed hidden functions below). | likely | c016bbc8 CALLP 0xc016e980,B3; c016bbcc/d0 limit=0xc0182204, count=0xc0181a4c; c016bc08 STW A11,*+A5[A7]; c016bc0c CALLP 0xc016e9a0,B3 |
@@ -180,7 +184,29 @@ Summary: TBD (fill in after mapping).
 | c016dc80 | dispatch_1540_zeroed | Call c0161540 with the auxiliary argument registers cleared and return zero. | likely | c016dc84 CALLP c0161540; c016dc88-c016dc94 clear A10/B8/A8/B6 |
 | c016dcc0 | object_release_or_global | Call c016eae0 for A4; when A4 is null, substitute global c0181a24 for the release path. Host excludes hidden c016dd40. | guess | c016dcc4-c016dccc global/input; c016dcd0 CALLP c016eae0; conditional global load in parallel |
 | c016dd40 | token_validate_commit | Reserve an index through c016e980, validate the token with c016a560, then finalize via c016e120. | likely | c016dd44 CALLP c016e980; c016dd4c CALLP c016a560; c016dd54 CALLP c016e120 |
+| c016ddc0 | updateui_request_bridge | Forward a request and stack output slot through updateui_dispatch_flag0, then continue through the returned callback/state path. | guess | c016ddd0 CALLP c016cfc0; c016ddd4 loads caller argument; c016ddd8 passes stack+8 |
+| c016df00 | object_prepare_and_run | Preserve A4, call c01636a0, then invoke the SDRAM trampoline c016f420 on the original object. | likely | c016df04 saves A4; c016df08 CALLP c01636a0; c016df0c CALLP c016f420 with A4=A10 |
+| c016df20 | service184_call3 | Call c01529c0 with handle B14[184] and argument 3. | confirmed | c016df28 LDW B14[184],A4; c016df2c MVK 3,B4; c016df24 CALLP c01529c0 |
+| c016df40 | call_c0168144 | Plain wrapper around c0168144. | confirmed | c016df44 CALLP c0168144; restore and return |
+| c016df54 | return_stub | Immediate return without changing result registers. | confirmed | c016df54 BNOP B3,5 |
+| c016df60 | return_zero_df60 | Return integer zero. | confirmed | c016df60 MVK 0,A4; immediate return |
+| c016df64 | variant_copy_wrapper | Plain call wrapper around variant_record_copy. | confirmed | c016df68 CALLP c0169fc0; restore and return |
+| c016df74 | u64_negate | Negate the 64-bit value A5:A4 using subtract-from-zero with borrow and return A5:A4. | likely | c016df84 zero; c016df88 SUBU 0-A4; c016df8c subtracts high word; subsequent borrow combine |
+| c016dfc0 | callback_broadcast_tailcall | Tail-call callback broadcaster c016ac40. | confirmed | c016dfc0 B c016ac40 |
+| c016e000 | regs_restore | Restore B3:B2, A11:A10, B11:B10, A13:A12, B13:B12, A15:A14, and B14 from the stack, then return through restored B3. | confirmed | c016e000-c016e00e consecutive LDDW/LDW restores and BNOP B3 |
 
 ## Data
 
+- `c0181f70`: shared lazy-registration flag used by descriptor wrappers.
+- `c0182054`: shared dispatch-table structure; nearby `c01820b4`, `c01820dc`, `c01820e4`, and `c01820ec` are menu/configuration state flags.
+- `c0182200` / `c0182204`: callback array and count/limit; `c0181a4c` is its reservation count.
+- `c01821ec`: global service object whose word fields 0, 4, 8, and 9 are queried by thin accessors.
+- `B14[114]` is the last error code; `B14[125]` is the PreLoad active flag; `B14[179]` and `B14[184]` are service handles.
+- Fixed SDRAM work areas initialized here include `118130a0`, `1181349c..118134a0`, and `11f03d84..11f03ebc`.
+
 ## Open questions
+
+- Confirm the exact semantic names of the descriptor-driven `menu_item_commit_shared` wrappers and their callbacks; their mechanics are clear but subsystem ownership is often not.
+- Resolve whether hidden starts at `c016b3cc`, `c016b44c`, and `c016b64c` are independently reachable entries or scanner artifacts inside prologues.
+- Identify the full structure semantics behind `c0182054`/`c01820xx`, the global object at `c01821ec`, and the arena descriptors used by `variant_record_copy`.
+- Clarify the mutual `c0169ca0`/`c016b1c0` interrupt-vector initialization relationship noted in the earlier rows.
