@@ -233,6 +233,27 @@ c014a5a4 || MVK.L2  8,B6
 c014a5b0 CALLP.S2 c016b5c0,B3
 ```
 
+**Finding 12 — confirmed.** For separation from the USB wrapper, the hidden
+`c014a5e0` routine's calls are: `c016e460` (`TSCL` getter, three sites),
+`c0168580` (map-confirmed `rts_udiv32`), `c0161200` (map name
+`cfg_locked_dispatch`), `c016a420` (map name
+`cfg_option_resolve_dispatch`), `c01628e0` (map-confirmed `bios_sem_post`),
+hidden/unmapped `c014ed00` (flag/mask-controlled config dispatch), and the
+optional function pointer from `c01819bc`.  It has one return at
+`c014aaf0`; no stable scalar return value is established, so it is a
+void/callback-style routine.  Its only discovered entry reference is the
+conditional tail branch at `c015fd68`, inside map row
+`c015fbc0` (`tailcall_dispatch_e280_e460`, itself only guess-named).
+
+```text
+c014a96c B.S1     c016e460
+c014a948 [A0] B.S2 c016a420
+c014a9e0 [!A0] B.S1 c01628e0
+c014aaa8 [A0] B.S1 c014ed00
+c014aac8 [A0] B.S2 B4              ; B4 = callback c01819bc
+c014aaf0 BNOP.S2  B3,5
+```
+
 ## 5. For USB audio
 
 ## 6. Proposed map row
