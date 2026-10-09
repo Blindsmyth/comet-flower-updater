@@ -232,3 +232,30 @@ corroborating string or recon evidence.
 - recon/map/00_library_kernel.md:125 names c0163324 "field_extract_u8" based on a 2-instruction partial read; this chunk's full read shows it is actually a 32-bit byte-swap (bswap32) in place, not an 8-bit field extractor. The name is kept for cross-chunk consistency (it is already referenced from chunk_03.md and chunk_06.md) but the role text here should be treated as the correction.
 - Business meaning of the "0183ae8/0183aec installed-handler" indirection (shared_callback_dispatch_tree, midi_msg_build_242/245/243) and of the three numeric constants 242/243/245 (MIDI status-like bytes vs. internal message-type IDs) is a guess.
 - `unk_1180_5xxx` and `midi_send_variantN_1180` companions (the param_change_midi_notify_1..5 family) are named only by their trampoline target addresses; their actual per-variant semantics (which parameter group / MIDI message each covers) were not traced into the 0x1180xxxx overlay region.
+
+## Review by Claude (2026-10-09)
+
+- Gap check: zero missing (150 fact-sheet + 18 script + 10 manual hidden starts).
+- c0163324: a full read confirms an in-place 32-bit byte swap (LDNW, then the
+  4-byte shuffle with EXTU/SHL/SHRU, then STNW). The name `field_extract_u8`
+  in 00_library_kernel.md is wrong. Keep the role text here; rename it
+  `bswap32_in_place` in the clean-up pass.
+- **c01636cc `auto_init` row is wrong on two points.** (1) It has a real
+  caller: `c012f858 CALLP 0xc01636cc` in c012f840. refs.txt lists address
+  loads, not CALLPs, so "zero hits there" proves nothing. (2) recon/16 F1
+  puts auto_init (cinit table c0186ef4..c0187024) at **c0163700**, inside this
+  1012-byte range. So c01636cc..c01636ff is probably a separate entry (or a
+  wrapper) and c0163700 is a hidden start. Re-read both in the clean-up pass.
+  c012f840 ("switch_speed_gate_wrapper") calls c0163648, then c01636cc, then
+  c016f5c0 and c0155290; with cinit in that sequence it looks like a start-up
+  step, so its name is doubtful too.
+- The helper found two gaps in hidden_starts.py (delay-slot instructions after
+  a return, and prologues that save another register first). The script is
+  fixed in the same commit.
+  After the fix the script finds 43 hidden starts in this chunk. 20 of them
+  still have no row: c0163700 (= recon/16 auto_init) c0163840 c0163fc0
+  c0164100 c01644c0 c0164cc0 c01654a0 c0165b60 c0165f80 c0166880 c0166d80
+  c0167080 c0167780 c0167cc0 c01684c0 c0168700 c0168a00 c0168d00 c0169300
+  c0169c00. Spot-checked c0164100 and c0169c00: both are real (BNOP B3, NOP
+  padding, then STW A11 / STW B12 prologues). They go to the clean-up pass,
+  together with the host rows that currently absorb them.
