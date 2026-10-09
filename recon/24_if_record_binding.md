@@ -206,3 +206,76 @@ c013590c ADDKPC c0135910,B3,3  ; indirect call
 ```
 
 ## 5. USB audio registration recipe
+
+### Finding 5.1 — exact registration sequence and required map-writer patch
+
+Create two five-word records:
+
+```text
+IF2 record = { ret0, ret0, ret0, ac_request_callback, ret0 }
+IF3 record = { ret0, ret0, ret0, as_request_callback, ret0 }
+```
+
+Using a return-zero +8 lifecycle stub and +16 endpoint stub is safe for the
+planned design in which the audio patch owns stream state and EP1 setup.  If
+later code needs USB lifecycle notification, replace +8; its calling
+convention is documented in §4.  **Confidence: confirmed** for dispatch
+safety; **likely** for sufficiency with the planned custom EP1 path.
+
+In task context, immediately after the successful `c0152410`/`usbmidi_open`
+call returns at `c0145158`, call, in this order:
+
+```text
+c015afa0(A4=6, B4=&IF2_record)   ; must return 0; allocates slot 1
+c015afa0(A4=6, B4=&IF3_record)   ; must return 0; allocates slot 2
+```
+
+The existing MIDI registration has already allocated slot 0 through
+`c0152410 -> c01520f4(0) -> c01521a8`.  Check each return against zero and
+abort USB bring-up on `ffff8a5c`.  This hook is before `c016ab70` calls
+`c015af18`, whose worker path asserts POWER.SOFTCONN (as established in
+`recon/21` §3.2), so all records and maps exist before enumeration.
+**Confidence: confirmed.**
+
+```text
+c0145158 CALLP c0152410,B3      ; installs stock MIDI record
+c0145164 MV    A4,A0            ; registration result is available here
+c016ab78 CALLP c0159758,B3      ; task-side MIDI/open path containing above
+c016ab80 CALLP c015af18,B3      ; USB worker/soft-connect follows
+```
+
+Those two calls are **not sufficient without patching `c015c66c`**.  Stock
+code writes IF0 and IF1 on every selector-6 replay, so the last registration
+would otherwise make both interfaces point to slot 2.  Replace its fixed
+ownership writes with this slot-dependent mapping while retaining the
+existing `record_vector[slot] = record` write:
+
+```text
+slot 0: interface_map[0]=0; interface_map[1]=0;
+        endpoint_map[3]=0; endpoint_map[20]=0     ; stock MIDI
+slot 1: interface_map[2]=1                         ; AudioControl IF2
+slot 2: interface_map[3]=2                         ; AudioStreaming IF3
+all:    record_vector[slot]=record
+```
+
+This makes recipient-1 SETUP packets with `wIndex=2` resolve slot 1 and call
+IF2 `record[3]`, while `wIndex=3` resolves slot 2 and calls IF3 `record[3]`.
+It also survives `c015c6b4`'s normal reset-and-replay because replay supplies
+slot numbers 0, 1, 2 in registry order.  Registration order is therefore a
+required invariant.  `c015afa0(6,0)` removes all selector-6 entries, not one
+individual record.  **Confidence: confirmed.**
+
+```text
+c015c684 STW   slot,*c011aa4c   ; stock fixed EP3 ownership
+c015c68a STW   slot,*c011aa90   ; stock fixed EP4 ownership
+c015c696 STDW  slot:slot,*c011aac0 ; stock fixed IF0/IF1 ownership
+c015c6a4 STW   record,*c011aa18[slot]
+```
+
+No capacity increase is needed: the registry and record vector have exactly
+three usable slots, consumed by MIDI, IF2, and IF3.  A fourth record would
+require enlarging the `c011aa28` registry, the `c011aa18` pointer vector, and
+the three-entry scan/replay bounds in `c015c6b4`; this patch does not need
+that.  Within the binding path, the only IF0/IF1 hard-code is the `STDW` at
+`c015c696`; `c015c788` itself accepts interface keys 0..5 and does not encode
+0/1.  **Confidence: confirmed.**
