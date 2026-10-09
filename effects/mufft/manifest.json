@@ -1,0 +1,22 @@
+{
+  "name": "CF MuffT",
+  "filename": "MUFFT",
+  "id": "07000f87",
+  "version": "1.00",
+  "display": "CF MuffT",
+  "badge": "CF",
+  "description": "Times the CF Muff kernel cold and warm on the pedal; reports by tone code (tools/decode_memprobe.py). Mutes the guitar. Never save it in a patch.",
+  "dspload": 40,
+  "allow_any_id": true,
+  "kernel": "mufft.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 320,
+  "scaffold": "cleanroom",
+  "const_blob": { "symbol": "muff_blob", "words": 2573, "init": "blob.bin" },
+  "params": [
+    { "name": "Level", "max": 100, "default": 50,
+      "explanation": "Tone level (0..0.5 of full scale)." }
+  ]
+}
