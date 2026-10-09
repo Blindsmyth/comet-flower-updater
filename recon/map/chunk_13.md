@@ -155,7 +155,8 @@ Summary: this range covers several distinct clusters. (1) A MainApp/MIDI event-d
 | c015772c | fwupdate_leaf_helper_a | Leaf helper (28B; sole caller c0157814); not traced in detail. | guess | no calls recorded; sole caller c0157814 |
 | c0157748 | midi_param_apply_dispatch | MIDI param-apply dispatcher (128B; B14[99]; callers c01390f8, midi_item_switch_and_apply c01577c8): calls wrapper_11807ac0, midi_param_apply_leaf (c012f878), param_value_wrap_and_apply (c01418ec), c0148b30, c0148c20. | likely | calls=11807ac0,c012f878,c01418ec,c0148b30,c0148c20; B14=99 |
 | c01577c8 | midi_item_switch_and_apply | Switch the active item and apply its MIDI param (76B; sole caller c015786c): calls ui_active_item_switch (c0149664), status_struct_notify (c0156e8c), then midi_param_apply_dispatch (c0157748). | likely | calls=c0149664,c0156e8c,c0157748 |
-| c0157814 | fwupdate_leaf_helper_b | Leaf helper (88B; sole caller c0157870): calls fwupdate_leaf_helper_a (c015772c). | guess | calls(1)=c015772c; sole caller c0157870 |
+| c0157814 | flag_table_ad10_set_half | Leaf: index = (*A4)/2 (signed, rounds toward 0); sets word[index] of the table at 0xc011ad10 to 1; returns 0. Makes no calls (the fact sheet's call to c015772c belongs to the hidden start c0157838). | confirmed | c0157818/20 MVK 0xffffad10+MVKH 0xc0110000; SHRU 0x1f+ADD+SHR 1; STW 1,*A5[A4] (x4); MVK 0,A4; BNOP B3 (corrected by Claude) |
+| c0157838 | event_code_dispatch_4514 | Reads event code *A4: codes 0..3 branch through the 4-entry table at 0xc0184514 (LDW *A5[A1], x4); code 25 goes to c0157868; any other code goes to c0157864. Owns the c015772c call the fact sheet put on c0157814. | likely | (hidden start) prologue after c0157836 BNOP B3; c0157840 CMPLTU 3,A1 (3 < code -> not table); c0157846 CMPEQ 25; c0157850 MVK 0x4514/MVKH 0xc0180000 |
 | c015786c | midi_item_switch_dispatch_518 | 4B table-callback stub (ptr@ c0184518, c0184520): tail-calls midi_item_switch_and_apply (c01577c8). | likely | calls(1)=c01577c8; ptr@=c0184518,c0184520 |
 | c0157870 | fwupdate_dispatch_514 | 6B table-callback stub (ptr@ c0184514, c018451c): tail-calls fwupdate_leaf_helper_b (c0157814); last function in this chunk's range. | likely | calls(1)=c0157814; ptr@=c0184514,c018451c |
 
@@ -180,3 +181,17 @@ Summary: this range covers several distinct clusters. (1) A MainApp/MIDI event-d
 - c0156960 (736B, roots MIDI/MainApp/UpdateUI) has only rts_memset as a recorded callee -- its size strongly suggests unrecorded conditional logic or multiple unrolled memset call sites; not traced.
 - The bounds of the rhythm pattern-field table at c0182730 (how many patterns, what each 0x78-byte-offset field holds) are not established here, only that c015408c reads it.
 - usb_string_descriptor_build's (c0154ec0) "cascading self-rebuild" recursive call (B4=1) and its range-check (0,5) trigger condition are read from the disassembly but the business reason for the recursion is not nailed down.
+
+## Review by Claude (2026-10-09)
+
+- Gap check: all 150 fact-sheet starts have rows. hidden_starts.py lists **5**
+  hidden starts here; the helper reported using 5 but added only 4. The fifth,
+  c0157838, is added above, and the c0157814 row is corrected (it was named
+  from its folded neighbour's calls).
+- **c016fXXX veneers, resolved:** these are long-branch trampolines into
+  SDRAM code, e.g. c016f510 = `MVK 0xffff92a0 / MVKH 0x11800000, B31; B B31`
+  -> 0x118092a0 (`midi_param_lock_op`). facts.py names the final target, so
+  both the CALLP target and the fact-sheet callee are right. Name such calls
+  after the target.
+- Only 15 of 154 rows are confirmed. The likely rows mostly come from call
+  lists plus short reads, so they carry less weight than in chunks 07-11.
