@@ -1,0 +1,554 @@
+<title>Comet Flower Status Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F3F5F7; --panel:#FFFFFF; --ink:#16202B; --ink-2:#4A5868; --ink-3:#7B8794;
+  --rule:#D6DCE3; --rule-2:#E7EBEF;
+  --accent:#1E5BB8; --accent-soft:#E2EBF8;
+  --done:#2F7D4F; --done-soft:#DCEFE3;
+  --part:#C98512; --part-soft:#FAEBCC;
+  --todo:#9AA5B1; --todo-soft:#EBEEF1;
+  --fail:#B83A3A; --fail-soft:#F6DEDE;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#0F151C; --panel:#17202A; --ink:#E6ECF2; --ink-2:#A9B6C3; --ink-3:#77869A;
+    --rule:#2A3644; --rule-2:#202B37;
+    --accent:#6FA3F0; --accent-soft:#1B2D48;
+    --done:#5CC08A; --done-soft:#173326;
+    --part:#E9AE4A; --part-soft:#3A2C12;
+    --todo:#66727F; --todo-soft:#222C37;
+    --fail:#EE7B7B; --fail-soft:#3D1D1F;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#0F151C; --panel:#17202A; --ink:#E6ECF2; --ink-2:#A9B6C3; --ink-3:#77869A;
+  --rule:#2A3644; --rule-2:#202B37;
+  --accent:#6FA3F0; --accent-soft:#1B2D48;
+  --done:#5CC08A; --done-soft:#173326;
+  --part:#E9AE4A; --part-soft:#3A2C12;
+  --todo:#66727F; --todo-soft:#222C37;
+  --fail:#EE7B7B; --fail-soft:#3D1D1F;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:15.5px;line-height:1.6;margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:40px 64px;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.08;text-wrap:balance;margin:0;letter-spacing:.005em}
+h1{font-size:clamp(40px,7vw,68px);font-weight:700}
+h2{font-size:clamp(28px,4vw,36px)}
+h3{font-size:21px}
+p{margin:0;max-width:68ch}
+code,.mono{font-family:var(--mono);font-size:.88em}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.lede{font-size:18px;color:var(--ink-2);max-width:62ch}
+section{display:flex;flex-direction:column;gap:20px}
+.sec-head{display:flex;flex-direction:column;gap:8px;border-top:2px solid var(--ink);padding-top:14px}
+.muted{color:var(--ink-2)}
+.small{font-size:13.5px}
+
+/* header */
+header{display:flex;flex-direction:column;gap:18px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
+.meta b{color:var(--ink);font-weight:500}
+
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.p-done{color:var(--done);background:var(--done-soft)}
+.p-part{color:var(--part);background:var(--part-soft)}
+.p-todo{color:var(--ink-3);background:var(--todo-soft)}
+.p-fail{color:var(--fail);background:var(--fail-soft)}
+.p-now{color:var(--accent);background:var(--accent-soft)}
+
+/* stat strip */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.stat{background:var(--panel);padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.stat .n{font-family:var(--display);font-size:38px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.stat .l{font-size:13px;color:var(--ink-2)}
+
+/* diagram boxes */
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fig{background:var(--panel);border:1px solid var(--rule);padding:18px}
+.fig svg{display:block;width:100%;height:auto}
+.fig-cap{font-size:13px;color:var(--ink-2);margin-top:10px;max-width:none}
+svg text{font-family:var(--body)}
+.s-ink{fill:var(--ink)} .s-ink2{fill:var(--ink-2)} .s-ink3{fill:var(--ink-3)}
+.s-panel{fill:var(--panel)} .s-ground{fill:var(--ground)}
+.s-line{stroke:var(--ink-3);fill:none}
+.s-rule{stroke:var(--rule);fill:none}
+.b-done{fill:var(--done-soft);stroke:var(--done)}
+.b-part{fill:var(--part-soft);stroke:var(--part)}
+.b-todo{fill:var(--todo-soft);stroke:var(--todo)}
+.b-now{fill:var(--accent-soft);stroke:var(--accent)}
+.b-fail{fill:var(--fail-soft);stroke:var(--fail)}
+.t-done{fill:var(--done)} .t-part{fill:var(--part)} .t-todo{fill:var(--ink-3)} .t-now{fill:var(--accent)} .t-fail{fill:var(--fail)}
+.f-done{fill:var(--done)} .f-part{fill:var(--part)} .f-todo{fill:var(--todo)} .f-accent{fill:var(--accent)} .f-fail{fill:var(--fail)}
+.arrow{stroke:var(--ink-3);stroke-width:1.6;fill:none;marker-end:url(#ah)}
+.arrow-now{stroke:var(--accent);stroke-width:2;fill:none;marker-end:url(#ahn)}
+
+/* chunk map */
+.chunks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.chunk{background:var(--panel);border:1px solid var(--rule);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.chunk .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.chunk .id{font-family:var(--display);font-size:20px;font-weight:600}
+.chunk .cnt{font-family:var(--mono);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.chunk .bar{height:8px;background:var(--todo-soft);border-radius:2px;overflow:hidden}
+.chunk .bar i{display:block;height:100%}
+.chunk .rng{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.chunk.next{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+
+/* stacked bar */
+.stack{display:flex;height:22px;border:1px solid var(--rule);background:var(--todo-soft)}
+.stack span{display:block;height:100%}
+.stack-key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink-2)}
+.stack-key b{font-family:var(--mono);font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+.sw{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
+
+/* two-col */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.card{background:var(--panel);border:1px solid var(--rule);padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.card .row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.card ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.card li{color:var(--ink-2);font-size:14.5px}
+
+/* evidence ladder */
+.ladder{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.rung{background:var(--panel);padding:16px 18px;display:flex;flex-direction:column;gap:6px}
+.rung .k{font-family:var(--display);font-size:22px;font-weight:600}
+
+/* tables */
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px;background:var(--panel)}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--rule-2);vertical-align:top}
+th{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:500;border-bottom:1px solid var(--rule)}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl{border:1px solid var(--rule)}
+
+/* steps */
+ol.steps{list-style:none;margin:0;padding:0;counter-reset:s;display:flex;flex-direction:column;gap:0;border-left:2px solid var(--rule);margin-left:14px}
+ol.steps li{counter-increment:s;position:relative;padding:4px 0 18px 30px}
+ol.steps li::before{content:counter(s);position:absolute;left:-15px;top:2px;width:28px;height:28px;border-radius:50%;background:var(--panel);border:2px solid var(--rule);font-family:var(--display);font-weight:600;font-size:16px;display:grid;place-items:center;color:var(--ink-2)}
+ol.steps li.now::before{border-color:var(--accent);color:var(--accent)}
+ol.steps li.wait::before{border-style:dashed}
+ol.steps h3{font-size:19px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+ol.steps p{color:var(--ink-2);font-size:14.5px;margin-top:4px}
+
+.callout{background:var(--accent-soft);border-left:3px solid var(--accent);padding:14px 18px;font-size:14.5px}
+.callout p{max-width:none}
+footer{font-size:13px;color:var(--ink-3);border-top:1px solid var(--rule);padding-top:16px;display:flex;flex-direction:column;gap:6px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:520px){ .wrap{padding-inline:16px} .stat .n{font-size:32px} }
+</style>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">Project status · checkpoint 2026-10-08</span>
+  <h1>Comet Flower for the Zoom G1X Four</h1>
+  <p class="lede">We're rewriting the effects and the firmware of a Zoom G1X Four guitar pedal, and we'll give the result away as a patch tool so owners can improve their own pedals. This page shows where the work stands, how each claim was checked, and what's left.</p>
+  <div class="meta">
+    <span>DSP <b>TI TMS320C6745</b></span>
+    <span>RAM <b>8 MB SDRAM</b></span>
+    <span>Flash <b>4 MB SPI NOR</b></span>
+    <span>Codec <b>TLV320AIC3101</b></span>
+    <span>Sample rate <b>44.1 kHz (measured)</b></span>
+    <span>Commits <b>342 since 2026-10-04</b></span>
+  </div>
+</header>
+
+<section>
+  <div class="stats">
+    <div class="stat"><span class="n">1,640<span class="muted" style="font-size:22px"> / 2,768</span></span><span class="l">firmware functions named (59%)</span></div>
+    <div class="stat"><span class="n">8 <span class="muted" style="font-size:22px">of 19</span></span><span class="l">map chunks finished and reviewed</span></div>
+    <div class="stat"><span class="n">3</span><span class="l">firmware changes built and waiting for a pedal test</span></div>
+    <div class="stat"><span class="n">3</span><span class="l">Comet Flower effects built: CF 808, CF RAT, CF Muff</span></div>
+  </div>
+</section>
+
+<!-- BIG PICTURE -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">The big picture</span>
+    <h2>Two tracks that meet in one release</h2>
+    <p class="muted">The <b>effects</b> track already runs on real hardware. The <b>firmware</b> track is the current focus: we're mapping the whole firmware before changing more of it.</p>
+  </div>
+  <div class="fig scroll">
+    <svg viewBox="0 0 1000 330" style="min-width:820px" role="img" aria-label="Project flow: hardware facts and toolchain lead to the effects track and the firmware track, which both lead to the release">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="f-todo"/></marker>
+        <marker id="ahn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="f-accent"/></marker>
+      </defs>
+      <!-- track labels -->
+      <text x="10" y="24" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace" letter-spacing="1.5">FOUNDATION</text>
+      <text x="262" y="24" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace" letter-spacing="1.5">EFFECTS TRACK</text>
+      <text x="262" y="196" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace" letter-spacing="1.5">FIRMWARE TRACK</text>
+      <text x="800" y="24" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace" letter-spacing="1.5">GOAL</text>
+
+      <!-- Foundation -->
+      <rect x="10" y="36" width="210" height="118" rx="4" class="b-done" stroke-width="1.5"/>
+      <text x="24" y="62" class="s-ink" font-size="16" font-weight="600">Hardware facts</text>
+      <text x="24" y="84" class="s-ink2" font-size="12.5">Board parts read off the PCB</text>
+      <text x="24" y="102" class="s-ink2" font-size="12.5">Memory map confirmed on pedal</text>
+      <text x="24" y="120" class="s-ink2" font-size="12.5">Cycle budget measured</text>
+      <text x="24" y="142" class="t-done" font-size="11" font-family="IBM Plex Mono, monospace">● DONE</text>
+
+      <rect x="10" y="186" width="210" height="130" rx="4" class="b-done" stroke-width="1.5"/>
+      <text x="24" y="212" class="s-ink" font-size="16" font-weight="600">Toolchain + safety net</text>
+      <text x="24" y="234" class="s-ink2" font-size="12.5">Effect build, slot memory check</text>
+      <text x="24" y="252" class="s-ink2" font-size="12.5">Update-mode installer images</text>
+      <text x="24" y="270" class="s-ink2" font-size="12.5">Brick recovery proven</text>
+      <text x="24" y="288" class="s-ink2" font-size="12.5">(file-system restore, 10-06)</text>
+      <text x="24" y="306" class="t-done" font-size="11" font-family="IBM Plex Mono, monospace">● DONE</text>
+
+      <!-- Effects track -->
+      <rect x="262" y="36" width="230" height="118" rx="4" class="b-done" stroke-width="1.5"/>
+      <text x="276" y="62" class="s-ink" font-size="16" font-weight="600">Effects run on the pedal</text>
+      <text x="276" y="84" class="s-ink2" font-size="12.5">First own effect ran 2026-10-04</text>
+      <text x="276" y="102" class="s-ink2" font-size="12.5">CF 808 + CF RAT played, timed</text>
+      <text x="276" y="120" class="s-ink2" font-size="12.5">A/B against Zoom's TS Drive</text>
+      <text x="276" y="142" class="t-done" font-size="11" font-family="IBM Plex Mono, monospace">● DONE</text>
+
+      <rect x="530" y="36" width="230" height="118" rx="4" class="b-part" stroke-width="1.5"/>
+      <text x="544" y="62" class="s-ink" font-size="16" font-weight="600">Full effect set</text>
+      <text x="544" y="84" class="s-ink2" font-size="12.5">CF Muff built, not yet played</text>
+      <text x="544" y="102" class="s-ink2" font-size="12.5">DR103 amp: 227k cycles, too heavy</text>
+      <text x="544" y="120" class="s-ink2" font-size="12.5">More ports from the JUCE source</text>
+      <text x="544" y="142" class="t-part" font-size="11" font-family="IBM Plex Mono, monospace">◐ ONGOING</text>
+
+      <!-- Firmware track -->
+      <rect x="262" y="208" width="230" height="108" rx="4" class="b-now" stroke-width="2.2"/>
+      <text x="276" y="234" class="s-ink" font-size="16" font-weight="600">Map the firmware</text>
+      <text x="276" y="256" class="s-ink2" font-size="12.5">1,640 of 2,768 functions named</text>
+      <text x="276" y="274" class="s-ink2" font-size="12.5">Then the boot/update program</text>
+      <text x="276" y="304" class="t-now" font-size="11" font-family="IBM Plex Mono, monospace">▶ WE ARE HERE</text>
+
+      <rect x="530" y="208" width="230" height="108" rx="4" class="b-part" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="544" y="234" class="s-ink" font-size="16" font-weight="600">Firmware changes</text>
+      <text x="544" y="256" class="s-ink2" font-size="12.5">USB MIDI controller mode</text>
+      <text x="544" y="274" class="s-ink2" font-size="12.5">Slot 0 L2 patch · USB audio</text>
+      <text x="544" y="304" class="t-part" font-size="11" font-family="IBM Plex Mono, monospace">◐ BUILT, NOT TESTED</text>
+
+      <!-- Goal -->
+      <rect x="800" y="36" width="190" height="280" rx="4" class="s-panel" stroke="var(--ink)" stroke-width="2"/>
+      <text x="814" y="64" class="s-ink" font-size="17" font-weight="600">CF firmware</text>
+      <text x="814" y="84" class="s-ink" font-size="17" font-weight="600">release</text>
+      <text x="814" y="112" class="s-ink2" font-size="12.5">5 effect slots, all fit</text>
+      <text x="814" y="130" class="s-ink2" font-size="12.5">Accurate circuit models</text>
+      <text x="814" y="148" class="s-ink2" font-size="12.5">Controller + USB audio</text>
+      <text x="814" y="176" class="s-ink2" font-size="12.5">Shipped as a patch tool:</text>
+      <text x="814" y="194" class="s-ink2" font-size="12.5">owners patch their own</text>
+      <text x="814" y="212" class="s-ink2" font-size="12.5">copy; no Zoom binaries</text>
+      <text x="814" y="230" class="s-ink2" font-size="12.5">are redistributed</text>
+      <text x="814" y="304" class="t-todo" font-size="11" font-family="IBM Plex Mono, monospace">○ END GOAL</text>
+
+      <!-- arrows -->
+      <path d="M220 95 H258" class="arrow"/>
+      <path d="M220 251 C240 251 240 262 258 262" class="arrow"/>
+      <path d="M220 110 C240 110 240 240 258 240" class="arrow"/>
+      <path d="M492 95 H526" class="arrow"/>
+      <path d="M492 262 H526" class="arrow-now"/>
+      <path d="M760 95 H796" class="arrow"/>
+      <path d="M760 262 H796" class="arrow"/>
+      <path d="M645 154 V204" class="arrow" stroke-dasharray="3 3"/>
+      <text x="652" y="184" class="s-ink3" font-size="11">Slot 0 patch needs</text>
+      <text x="652" y="198" class="s-ink3" font-size="11">a heavy test effect</text>
+    </svg>
+    <p class="fig-cap">Solid border = done. Dashed = built but not yet run on the pedal. Blue = current work. The owner chose to map the firmware fully before changing it further, and pedal tests wait until they're back.</p>
+  </div>
+</section>
+
+<!-- FIRMWARE MAP -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Current work · firmware map</span>
+    <h2>Naming all 2,768 functions in the main firmware</h2>
+    <p class="muted">The main firmware is split into 19 chunks of 150 functions, ordered by address. Each chunk gets a table: address, name, what the function does, its evidence, and a confidence level. Then a separate reviewer checks the table against the disassembly.</p>
+  </div>
+
+  <div class="stack" role="img" aria-label="Confidence: 394 confirmed, 570 likely, 676 guess, 1128 not yet named">
+    <span style="width:14.23%;background:var(--done)"></span>
+    <span style="width:20.59%;background:var(--accent)"></span>
+    <span style="width:24.42%;background:var(--part)"></span>
+  </div>
+  <div class="stack-key">
+    <span><i class="sw" style="background:var(--done)"></i>Confirmed <b>394</b></span>
+    <span><i class="sw" style="background:var(--accent)"></i>Likely <b>570</b></span>
+    <span><i class="sw" style="background:var(--part)"></i>Guess <b>676</b></span>
+    <span><i class="sw" style="background:var(--todo-soft);outline:1px solid var(--rule)"></i>Not yet named <b>1,128</b></span>
+  </div>
+
+  <div class="chunks" id="chunks"></div>
+  <div class="legend small muted">
+    <span class="pill p-done">done + reviewed</span>
+    <span class="pill p-part">partial</span>
+    <span class="pill p-todo">not started</span>
+    <span>Blue outline = next to resume. Chunks 00 and 01 also cover the library and kernel (<code>recon/map/00_library_kernel.md</code>).</span>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h3>What the firmware is made of</h3>
+      <p class="small muted">Functions reached from each task's entry point (<code>tools/fwmap/subsystems.py</code>). Shared library code counts under every task that calls it.</p>
+      <div class="scroll"><svg id="tasks" viewBox="0 0 440 300" style="min-width:380px" role="img" aria-label="Functions reachable per firmware task"></svg></div>
+    </div>
+    <div class="card">
+      <h3>Already found along the way</h3>
+      <ul>
+        <li>Effect loader and runtime: how slots load, where code, tables, state and stack live (recon/13, 14)</li>
+        <li>Controls and MIDI: footswitch polling, knob reads, USB MIDI output (recon/15, 19)</li>
+        <li>Audio hardware: codec driver and PLL setup for the TLV320AIC3101 (recon/16, chunk 08)</li>
+        <li>USB: the C6745's own USB0 controller; no separate chip (recon/15, 17)</li>
+        <li>Button legend: GPIO0 = Rhythm/Looper, GPIO86 = Tuner</li>
+        <li>Patch storage, the slot-order table and the MIDI-assign tables (chunks 08–09)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- METHOD -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">How we know</span>
+    <h2>Every claim carries its evidence</h2>
+    <p class="muted">AI helpers write most of the first drafts. That's why no draft counts as fact until it has been reviewed, measured, or played on the pedal. Here's the process.</p>
+  </div>
+
+  <div class="fig scroll">
+    <svg viewBox="0 0 1000 200" style="min-width:820px" role="img" aria-label="Review loop: helper drafts rows, reviewer spot-checks against disassembly, corrections recorded, tools regenerate, commit">
+      <defs>
+        <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="f-todo"/></marker>
+      </defs>
+      <g font-size="12.5">
+        <rect x="10" y="30" width="170" height="92" rx="4" class="s-ground" stroke="var(--rule)"/>
+        <text x="24" y="56" class="s-ink" font-size="15" font-weight="600">1 · Draft</text>
+        <text x="24" y="78" class="s-ink2">Helper fills 150 rows</text>
+        <text x="24" y="96" class="s-ink2">from fact sheets</text>
+        <text x="24" y="112" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace">facts.py</text>
+
+        <rect x="212" y="30" width="190" height="92" rx="4" class="b-now" stroke-width="1.5"/>
+        <text x="226" y="56" class="s-ink" font-size="15" font-weight="600">2 · Review</text>
+        <text x="226" y="78" class="s-ink2">Spot-check claims against</text>
+        <text x="226" y="96" class="s-ink2">the disassembly itself</text>
+        <text x="226" y="112" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace">main.dis</text>
+
+        <rect x="434" y="30" width="180" height="92" rx="4" class="s-ground" stroke="var(--rule)"/>
+        <text x="448" y="56" class="s-ink" font-size="15" font-weight="600">3 · Correct</text>
+        <text x="448" y="78" class="s-ink2">Errors written down in a</text>
+        <text x="448" y="96" class="s-ink2">"Review by Claude" section</text>
+        <text x="448" y="112" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace">recon/map/chunk_NN.md</text>
+
+        <rect x="646" y="30" width="170" height="92" rx="4" class="s-ground" stroke="var(--rule)"/>
+        <text x="660" y="56" class="s-ink" font-size="15" font-weight="600">4 · Regenerate</text>
+        <text x="660" y="78" class="s-ink2">coverage → subsystems</text>
+        <text x="660" y="96" class="s-ink2">→ facts</text>
+        <text x="660" y="112" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace">tools/fwmap/</text>
+
+        <rect x="848" y="30" width="142" height="92" rx="4" class="b-done" stroke-width="1.5"/>
+        <text x="862" y="56" class="s-ink" font-size="15" font-weight="600">5 · Commit</text>
+        <text x="862" y="78" class="s-ink2">Small commits,</text>
+        <text x="862" y="96" class="s-ink2">full history</text>
+        <text x="862" y="112" class="s-ink3" font-size="11" font-family="IBM Plex Mono, monospace">git log</text>
+      </g>
+      <path d="M180 76 H208" stroke="var(--ink-3)" stroke-width="1.6" fill="none" marker-end="url(#ah2)"/>
+      <path d="M402 76 H430" stroke="var(--ink-3)" stroke-width="1.6" fill="none" marker-end="url(#ah2)"/>
+      <path d="M614 76 H642" stroke="var(--ink-3)" stroke-width="1.6" fill="none" marker-end="url(#ah2)"/>
+      <path d="M816 76 H844" stroke="var(--ink-3)" stroke-width="1.6" fill="none" marker-end="url(#ah2)"/>
+      <path d="M523 122 V160 H95 V126" stroke="var(--ink-3)" stroke-width="1.6" fill="none" stroke-dasharray="4 3" marker-end="url(#ah2)"/>
+      <text x="110" y="182" class="s-ink2" font-size="12">Common mistakes go back into the helper brief (docs/helpers/FWMAP.md, "Pitfalls seen in review"), so the next chunk avoids them</text>
+    </svg>
+    <p class="fig-cap">So far, review has found 1–2 wrong "confirmed" details in every chunk: offsets that ignore index scaling, callees nobody read, two tables treated as one, misnamed dispatchers, a mistyped address. That rate is the reason the review step is required.</p>
+  </div>
+
+  <div class="ladder">
+    <div class="rung"><span class="pill p-done">confirmed</span><span class="k">Read in the code</span><p class="small muted">Instruction-level evidence: a register write, a string reference, a known chip register, or the pedal measuring it.</p></div>
+    <div class="rung"><span class="pill p-now">likely</span><span class="k">Strong pattern</span><p class="small muted">Call graph, data flow and naming all agree, but nobody has traced the code line by line.</p></div>
+    <div class="rung"><span class="pill p-part">guess</span><span class="k">Placeholder</span><p class="small muted">A working name so the map can be read. Labelled as a guess, and never used as the basis of a firmware change.</p></div>
+    <div class="rung"><span class="pill p-fail">hardware</span><span class="k">Pedal is the judge</span><p class="small muted">A static estimate isn't trusted until the pedal agrees. DR103 was estimated at 50–70k cycles and measured at 227k.</p></div>
+  </div>
+</section>
+
+<!-- CYCLE BUDGET -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Measured on the pedal</span>
+    <h2>The DSP's cycle budget per audio block</h2>
+    <p class="muted">A diagnostic effect burns a known number of cycles. We raise it until the pedal freezes, which happens at about 96–102k cycles per block. Effect timings come from the C6745's own cycle counter and are reported as an audible tone.</p>
+  </div>
+  <div class="fig scroll">
+    <svg id="budget" viewBox="0 0 900 300" style="min-width:680px" role="img" aria-label="Cycles per block for each effect against the 96 to 102 thousand cycle freeze band"></svg>
+    <p class="fig-cap">"Kernel" = the effect's own DSP code, timed with a cold cache. "In a patch" = the load-test cost, which adds about 7k outside the kernel (accurate only to about ±6–10k). Five effects at 17k each fit the budget, but five at 24k don't. That's why the cache-refill overhead matters, and the Slot 0 L2 patch targets it. CF Muff shows a static estimate only; it hasn't been played yet.</p>
+  </div>
+</section>
+
+<!-- READY TO TEST -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Built, waiting for the pedal</span>
+    <h2>Three firmware changes, tested in a set order</h2>
+  </div>
+  <div class="cols">
+    <div class="card">
+      <div class="row"><h3>USB MIDI controller mode</h3><span class="pill p-part">test first</span></div>
+      <p class="small muted">Hold the Rhythm/Looper button at power-on, and the knobs, switches and expression pedal send MIDI CCs over USB. Normal power-on must behave exactly like stock.</p>
+      <ul>
+        <li>Code sits in free SDRAM at <code>c01a0000</code>, with 4 hooks</li>
+        <li>MIDI is sent without blocking (recon/19)</li>
+        <li>Test updater SHA-256 <code>c6317cac…</code>; steps in recon/04</li>
+        <li>Boot and recovery regions untouched; Zoom's v2.00 updater restores it</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="row"><h3>Slot 0 L2 residency patch</h3><span class="pill p-part">second</span></div>
+      <p class="small muted">Keeps the first slot's code in fast on-chip memory, so it doesn't refill from SDRAM every block.</p>
+      <ul>
+        <li>Static checks closed (recon/16 C11/C12)</li>
+        <li>Cache-safe per TI's SPRUG82A</li>
+        <li>Needs a heavy effect to show a measurable gain</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="row"><h3>USB audio</h3><span class="pill p-todo">after controller passes</span></div>
+      <p class="small muted">The pedal as a USB audio interface. A prototype that streams silence is designed and compiled.</p>
+      <ul>
+        <li>Design: recon/17, 18 (item 3), 20</li>
+        <li>Prototype: <code>firmware/usb_audio_proto/</code></li>
+        <li>Only wired in once controller mode passes on the pedal</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- TRACK RECORD -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Track record</span>
+    <h2>Pedal results, failures included</h2>
+    <p class="muted">Selected entries from <code>recon/04_hardware_log.md</code>. The full log records every write to the pedal, with its result.</p>
+  </div>
+  <div class="scroll tbl">
+    <table>
+      <thead><tr><th>Date</th><th>What</th><th>Result</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td class="num">10-04</td><td>Full read-only backup</td><td><span class="pill p-done">pass</span></td><td>All 114 files, 0 transfer errors</td></tr>
+        <tr><td class="num">10-04</td><td>First self-compiled effect (G1 Gain)</td><td><span class="pill p-done">pass</span></td><td>Installed, played, level curve matches stock</td></tr>
+        <tr><td class="num">10-05</td><td>Cycle-budget probe</td><td><span class="pill p-done">pass</span></td><td>Test tone 439.98 Hz → 44.1 kHz confirmed; freezes at ~96–102k cycles</td></tr>
+        <tr><td class="num">10-05</td><td>DR103 amp model</td><td><span class="pill p-fail">fail</span></td><td>Digital glitching; measured 227k cycles, over 2× the budget</td></tr>
+        <tr><td class="num">10-05</td><td>DR103 replace over USB</td><td><span class="pill p-fail">bricked</span></td><td>Transfer stalled; pedal stuck at the logo. Zoom's updater and factory reset didn't help</td></tr>
+        <tr><td class="num">10-06</td><td>Recovery</td><td><span class="pill p-done">pass</span></td><td>Patched updater restores the file system; procedure in docs/RECOVERY_G1.md. Effects now go in only through update-mode images</td></tr>
+        <tr><td class="num">10-06</td><td>Memory map probe</td><td><span class="pill p-done">pass</span></td><td>Where code, tables, state and stack live: confirmed at exact addresses</td></tr>
+        <tr><td class="num">10-06</td><td>CF 808 vs Zoom TS Drive</td><td><span class="pill p-done">pass</span></td><td>Measured THD and aliasing. Old CF 808 aliased at −52 dB, so the accurate 808X model replaced it</td></tr>
+        <tr><td class="num">10-06</td><td>Kernel timing (CF RAT, CF 808)</td><td><span class="pill p-done">pass</span></td><td>17.2k / 17.4k cycles cold; static estimates confirmed</td></tr>
+        <tr><td class="num">10-07</td><td>CF Muff + Zoom NYC Muff image</td><td><span class="pill p-todo">not run</span></td><td>Bench test 54/54 passed; ~14.3k cycles static</td></tr>
+        <tr><td class="num">10-08</td><td>Controller TEST updater</td><td><span class="pill p-todo">not run</span></td><td>Waiting for the owner</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- WHAT'S LEFT -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">What's left</span>
+    <h2>The remaining work, in order</h2>
+  </div>
+  <ol class="steps">
+    <li class="now"><h3>Finish chunks 09, 10, 11 <span class="pill p-now">next</span></h3><p>240 functions. Resume 09 after <code>c0142420</code>, 10 after <code>c01489a0</code>, 11 after <code>c014a0cc</code>.</p></li>
+    <li><h3>Map chunk 07</h3><p>150 functions, <code>c0136674..c013b1f4</code>. The Codex run hung waiting on stdin; rerun it with <code>&lt; /dev/null</code>.</p></li>
+    <li><h3>Map chunks 12–18</h3><p>About 970 functions, <code>c014d124..c016ec40</code>. The biggest remaining piece.</p></li>
+    <li><h3>Map the boot/update program</h3><p>Resource 5 (<code>build/codex7/boot.dis</code>), using the same table and review process.</p></li>
+    <li><h3>Write docs/FIRMWARE_MAP.md</h3><p>The readable overview: the firmware's structure by task and subsystem, built from the chunk tables.</p></li>
+    <li class="wait"><h3>Pedal tests <span class="pill p-todo">when the owner is back</span></h3><p>Controller mode, then the Slot 0 L2 patch, then USB audio. Also play CF Muff and CF RAT against Zoom's own models.</p></li>
+    <li class="wait"><h3>Fill the 5 slots</h3><p>More effects ported from the JUCE source, each at the lowest cost that sounds the same, until a full 5-slot patch fits the budget.</p></li>
+    <li class="wait"><h3>Package the patch tool</h3><p>Owners apply our changes to their own copy of the firmware. We don't redistribute Zoom binaries.</p></li>
+  </ol>
+</section>
+
+<div class="callout">
+  <p><b>For anyone checking our work:</b> every number on this page comes from a file in the repo. The hardware log is <code>recon/04</code>. The firmware tables and their reviews are in <code>recon/map/</code>, the mapping tools in <code>tools/fwmap/</code>, the recovery procedure in <code>docs/RECOVERY_G1.md</code>. Each step is a separate commit in the git history.</p>
+</div>
+
+<footer>
+  <span>Checkpoint 2026-10-08 · source: HANDOFF_2026-10-08.md, recon/04, recon/07, tools/fwmap output</span>
+  <span>Firmware coverage from <code>python tools/fwmap/coverage.py</code>: "named in recon/map: 1640 of 2768 (confirmed 394, likely 570, guess 676)"</span>
+</footer>
+</div>
+
+<script>
+(function(){
+  // chunk map: [id, rows done, total, state, range]
+  var C=[
+    ["00",150,150,"done",""],["01",150,150,"done",""],["02",150,150,"done",""],["03",150,150,"done",""],
+    ["04",150,150,"done",""],["05",150,150,"done",""],["06",150,150,"done",""],
+    ["07",0,150,"todo","c0136674..c013b1f4"],["08",150,150,"done",""],
+    ["09",97,150,"part","resume > c0142420"],["10",70,150,"part","resume > c01489a0"],["11",43,150,"part","resume > c014a0cc"],
+    ["12",0,150,"todo",""],["13",0,150,"todo",""],["14",0,150,"todo",""],["15",0,150,"todo",""],
+    ["16",0,150,"todo",""],["17",0,150,"todo",""],["18",0,68,"todo","to c016ec40"]
+  ];
+  var col={done:"var(--done)",part:"var(--part)",todo:"var(--todo)"};
+  var host=document.getElementById("chunks");
+  C.forEach(function(c){
+    var d=document.createElement("div");
+    d.className="chunk"+(c[0]==="09"?" next":"");
+    var pct=Math.round(c[1]/c[2]*100);
+    d.innerHTML='<div class="top"><span class="id">'+c[0]+'</span><span class="cnt">'+c[1]+' / '+c[2]+'</span></div>'+
+      '<div class="bar"><i style="width:'+pct+'%;background:'+col[c[3]]+'"></i></div>'+
+      '<span class="rng">'+(c[4]||(c[3]==="done"?"reviewed":"not started"))+'</span>';
+    host.appendChild(d);
+  });
+
+  var NS="http://www.w3.org/2000/svg";
+  function el(tag,attrs,parent,text){var e=document.createElementNS(NS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;parent.appendChild(e);return e;}
+
+  // tasks chart
+  var T=[["MainApp",1113],["MIDI",745],["UpdateUI",432],["RhythmService",241],["SwitchNrmlSpdRead",224],["PreLoad",132],["Swi:USB",118],["AD (analog)",104],["DataStore",87],["UsbTask-worker",81]];
+  var s=document.getElementById("tasks"), x0=150, w=250, max=1200, rh=27;
+  [0,400,800,1200].forEach(function(v){
+    var x=x0+v/max*w;
+    el("line",{x1:x,x2:x,y1:4,y2:T.length*rh+4,class:"s-rule"},s);
+    el("text",{x:x,y:T.length*rh+20,"text-anchor":"middle","font-size":"11",class:"s-ink3","font-family":"IBM Plex Mono, monospace"},s,v);
+  });
+  T.forEach(function(t,i){
+    var y=8+i*rh;
+    el("text",{x:x0-8,y:y+13,"text-anchor":"end","font-size":"12.5",class:"s-ink2"},s,t[0]);
+    el("rect",{x:x0,y:y,width:t[1]/max*w,height:17,rx:2,class:i===0?"f-accent":"f-todo"},s);
+    el("text",{x:x0+t[1]/max*w+6,y:y+13,"font-size":"11.5",class:"s-ink","font-family":"IBM Plex Mono, monospace"},s,t[1]);
+  });
+  el("text",{x:x0,y:T.length*rh+36,"font-size":"11",class:"s-ink3"},s,"functions reachable from each task (top 10)");
+
+  // budget chart
+  var B=[
+    ["CF 808 · kernel",17.4,"done",""],
+    ["CF RAT · kernel",17.2,"done",""],
+    ["CF Muff · static estimate",14.3,"est",""],
+    ["CF 808 / RAT · in a patch",24,"part",""],
+    ["5 × kernel (17.4k)",87,"accent","fits"],
+    ["5 × in a patch (24k)",120,"fail","over"],
+    ["DR103 amp model",227,"fail","2.3× over"]
+  ];
+  var g=document.getElementById("budget"), L=210, W=640, M=260, top=16, bh=24, gap=12;
+  function X(v){return L+v/M*W;}
+  var H=B.length*(bh+gap);
+  el("rect",{x:X(96),y:top-6,width:X(102)-X(96),height:H+6,class:"f-fail",opacity:"0.18"},g);
+  [0,50,100,150,200].forEach(function(v){
+    el("line",{x1:X(v),x2:X(v),y1:top-6,y2:top+H,class:"s-rule"},g);
+    el("text",{x:X(v),y:top+H+16,"text-anchor":"middle","font-size":"11",class:"s-ink3","font-family":"IBM Plex Mono, monospace"},g,v+"k");
+  });
+  el("text",{x:X(99),y:top+H+34,"text-anchor":"middle","font-size":"11.5",class:"t-fail","font-weight":"600"},g,"freeze band 96–102k");
+  el("text",{x:L,y:top+H+34,"font-size":"11",class:"s-ink3"},g,"cycles per audio block");
+  var cls={done:"f-done",part:"f-part",accent:"f-accent",fail:"f-fail",est:"f-todo"};
+  B.forEach(function(b,i){
+    var y=top+i*(bh+gap);
+    el("text",{x:L-10,y:y+16,"text-anchor":"end","font-size":"12.5",class:"s-ink2"},g,b[0]);
+    var r=el("rect",{x:L,y:y,width:X(b[1])-L,height:bh,rx:2,class:cls[b[2]]},g);
+    if(b[2]==="est"){r.setAttribute("opacity","0.9");}
+    el("text",{x:X(b[1])+6,y:y+16,"font-size":"12",class:"s-ink","font-family":"IBM Plex Mono, monospace"},g,b[1]+"k"+(b[3]?"  "+b[3]:""));
+  });
+})();
+</script>
