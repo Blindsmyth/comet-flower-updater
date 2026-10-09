@@ -4,7 +4,7 @@ Summary: this range covers a transport/MIDI-clock timing family (c014d124..c014d
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
-| c014d124 | mainapp_frame_tick_notify | Tiny wrapper: save B3, call c014d0d4(A4=0xc010adb8, a fixed RAM address), restore B3, return. (CORRECTION: a prior pass of this row wrongly folded in the body of the hidden-start function c014d138, which follows it with no gap.) | confirmed | c014d128/2c MVK 0xffffadb8/MVKH 0xc0110000,A4 (memory addr c010adb8, not MMIO); c014d130 CALLP 0xc014d0d4,B3; c014d136 BNOP B3,5 (clean return); sole caller c01341e4=mainapp_frame_update |
+| c014d124 | mainapp_frame_tick_notify | Tiny wrapper: save B3, call c014d0d4(A4=0xc011adb8, a fixed RAM address), restore B3, return. (CORRECTION: a prior pass of this row wrongly folded in the body of the hidden-start function c014d138, which follows it with no gap.) | confirmed | c014d128/2c MVK 0xffffadb8/MVKH 0xc0110000,A4 (memory addr c010adb8, not MMIO); c014d130 CALLP 0xc014d0d4,B3; c014d136 BNOP B3,5 (clean return); sole caller c01341e4=mainapp_frame_update |
 | c014d138 | mainapp_locked_value_refresh | (hidden start: a clean prologue - CALLP rts_regs_save, stack alloc -32 - begins immediately after c014d124's own BNOP return at c014d136, with no fact-sheet boundary between them; facts.py had merged this into "c014d124".) Per-frame: if B14[60] flag clear, sem_pend B14[154], cfg_locked_dispatch(B14[149],-1), store result at table indexed by B14[61], format "%3d" via fmt_render_wrapper, forward to the audio/ui cross-core handler, sem_post_or_clear, bios_sem_post B14[149]. No direct CALLP or .word reference to c014d138 was found anywhere in main.dis, so its real caller is unconfirmed (possibly reached only from the other core, or dead code). | guess | (hidden start) c014d148 LDW B14[60] guards branch to epilogue c014d1c8; c014d154 CALLP c0150b20=bios_sem_pend; c014d160 CALLP c0161200=cfg_locked_dispatch; c014d190 CALLP c016c360=fmt_render_wrapper w/ string "%3d"; no caller found via `grep -n "0xc014d138"` or `.word 0xc014d138` in main.dis |
 | c014d1e0 | midi_table_u16_lookup | Look up a 16-bit field from a 6-byte-stride table (base c0170000-0x5d56) indexed by A4; return the field. | confirmed | c014d1e4 MPYSU 6,A4,A0 (index*6); c014d1ec ADD A1,A0,A4; c014d1ee LDHU *A4[0],A4; tail BNOP B3 |
 | c014d1f4 | transport_tick_scale_calc | Combine a shared-core accessor value with a 10/185-scaled multiply, udiv32, then bit-length-style SPLOOP to derive a scaled tick count for transport timing; called only by transport_timing_configure (c01397d8). | likely | c014d200 CALLP 0xc016f580 (shared_accessor5_1180 alias per facts); c014d20c MPY32 A0,A10,A4; c014d210 CALLP rts_udiv32; c014d284 CALLP c0167410 |
@@ -175,3 +175,24 @@ Summary: this range covers a transport/MIDI-clock timing family (c014d124..c014d
 - **Most "ramp_curve_arm_*" and the two dispatcher functions (c0151ac0/c0151ce0) are floating-point polynomial evaluators whose numeric meaning (what curve, what parameter) was not decoded** - only their mechanical shape (SPDP/MPYSP piecewise segments against literal thresholds like 79.0) and table membership are established. A helper focused on the "efficient DSP" parameter-curve goal may want to fully decode these, since they look like the stock knob/parameter taper curves.
 - **c0150ac6's branch-delay-slot semantics** (a case arm that executes `CALLP c0150870` inside the delay slots of an unconditional `BNOP`, per the TI VLIW pitfall flagged by the coordinator) should be double-checked by a reviewer comfortable with this architecture's delay-slot rules; this pass's reading (the call always executes regardless of which path reached c0150ac6) is "likely" not "confirmed".
 - **c0153654's and c01536e0's exact field semantics** (writing 42, or a 4/3/2/1/0 countdown, into struct field [0]) were left as literal/mechanical descriptions without a domain story; a rhythm/pattern-focused helper may be able to tie these to known pattern-variant IDs.
+
+## Review by Claude (2026-10-09)
+
+- Gap check: all 150 fact-sheet starts have rows, plus 4 hidden starts, with no
+  duplicates.
+- **Address typo, fixed in place:** c014d124 passes MVK 0xffffadb8 + MVKH
+  0xc0110000 = **0xc011adb8**, not 0xc010adb8.
+- **The "no caller" hidden starts are referenced.** `build/fw/map/refs.txt`
+  lists every MVK/MVKH address pair, including the negative-MVK form the
+  helper's search missed:
+  - c014d138 is passed as a callback in B4 (MVK 0xffffd138 / MVKH 0xc0140000
+    at c014cf58) to c015f118, from inside chunk_11's `mainapp_popup_dispatch`
+    (c014cef4). So it is a popup/callback body; "per-frame" in its row is
+    unsupported.
+  - c014d680 (stored at c0150030) and c014d640 (stored at c0150160) are
+    written, with neighbours such as c014d858 and c016af9c, into consecutive
+    words of a callback vector built by `svc_ctx_init` (c014ff58). They are
+    service-context callbacks; which slot means what is open.
+- Of 154 rows, 57 are guesses: the highest share so far. The ramp_curve_arm
+  float polynomial family and the one-shot action table slots 1-5 are the
+  main targets for a second pass.
