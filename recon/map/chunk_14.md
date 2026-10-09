@@ -183,3 +183,15 @@ Summary: 166 rows (150 fact-sheet entries + 16 hidden starts: the 15 from hidden
 - record_buffer_advance/record_buffer_advance_locked (c015be50/c015bec4) and record_type_dispatch_read (c015bd80) belong to a small MIDI "record reader" cluster at c015f6b4..c015f700 that sits just outside this chunk; mapping that cluster would clarify what the record format actually is.
 - c015c094 (item_state_toggle_locked) and c015c118 (item_region_scan_apply) are guesses built from control-flow shape only; the underlying "item region" abstraction (orchestrator_1180_region/region3, subsystem_init_gate) recurs across many chunks and would benefit from a cross-chunk pass once more call sites are mapped.
 - fp_add_sub_soft (c01598a0) and the dp_fix_convert_clamp_a/b pair (c0157c60/c0157f00) plus dp_range_clamp_mult (c015b620) are confidently identified as compiler-RTS-style floating point routines by their bit-manipulation shape, but none were traced to a specific named RTS symbol (e.g. a TI DSPLIB/RTS export) — worth cross-checking against a symbol table if one surfaces.
+
+## Review by Claude (2026-10-09)
+
+- Gap check: all 150 fact-sheet starts and all 15 hidden_starts.py starts have
+  rows. The 166th row, c0159120, is a hidden start the script misses: its
+  prologue follows NOP padding, not a return. It is listed as such.
+- c015af48 `usb_ctrl_response_ack`: the shape checks out (a zero-length
+  response, A6 == 0, skips the payload set-up; error code 0xffff8ad0 is staged
+  at c015af74 for the reject path). The full arm-by-arm meaning was not
+  re-traced; it is used for the USB audio needs list (recon/21).
+- The guesses (c015a520/c015a7a0, c0158440, c015aa20) are named from partial
+  reads only.
