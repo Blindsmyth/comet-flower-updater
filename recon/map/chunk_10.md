@@ -96,6 +96,7 @@ table-dispatch idiom FWMAP's 00_library_kernel.md flagged).
 | c014871a | midi_cin_table_3byte | CIN-table filler: sets CIN=3 (3-byte System Common) for status 0xF2 (Song Position Pointer) | confirmed | read full body: `MVK 3,A0; BNOP 0xc0148724`; ptr@ c01843fc = the 0xF2 table slot |
 | c0148722 | midi_cin_table_sysex | CIN-table filler: sets CIN=4 (SysEx starts/continues) for status 0xF0, and owns the shared tail that combines (cable<<4)\|CIN, writes the header and emits+resets for all four table fillers above | confirmed | read full body c0148722..c0148740; `MVK 4,A0` then the shared `SHL A2,4,A1; OR A0,A1,A0; CALLP c01485a0; CALLP c0148668`; ptr@ c01843f4 = the 0xF0 table slot |
 | c0148740 | midi_newstatus_handler | the state-table entry (ptr@ c0181138, slot 0 of 3 -- recon/15's "new status" state) for a cable with no message in progress: classifies the byte (midi_status_classify_header, c0148540), and either emits it immediately as a realtime byte (c0148698) or appends it and advances the per-cable state to "remaining bytes" (5) | likely | read first ~60 lines c0148740..c01487ce; calls c0148540,c0148698,c01485b8; ptr@ c0181138 matches recon/15's state-table base exactly; not every branch traced |
+| c014884a | midi_rx_state_null_handler | MIDI parser state-table entry that consumes nothing: stores 0 to *B6 (output count) and returns 0 | confirmed | c014884a MVK 0,B0; STW B0,*B6[0]; MV B0,A4; BNOP B3 (10 B); ptr@ c0181144/48/4c in the recon/15 MIDI state table |
 | c0148854 | midi_sysex_cin_select | selects the USB-MIDI CIN for a SysEx packet: CIN 4 for a continued (non-terminal) 3-byte payload, or CIN 5/6/7 for a terminal payload of length 1/2/3 | confirmed | recon/15: "c0148854 selects CIN 4 for continued three-byte payloads, or CIN 5/6/7 for terminal payload length 1/2/3" |
 | c01488b2 | midi_sysex_handler | the state-table entry (ptr@ c0181140, slot 2 of 3 -- recon/15's "SysEx" state) for a cable mid-SysEx: recognizes the F7 terminator and uses midi_sysex_cin_select (c0148854) plus midi_packet_append_byte (c01485b8) to build terminal/continuation packets | confirmed | recon/15: "SysEx c01488b2 recognizes F7 (`c01488c4 MVK 247,B7; c01488f2 CMPEQ B0,B7,B0`)"; ptr@ c0181140 matches the table's 3rd slot |
 | c0148930 | midi_remaining_bytes_handler | the state-table entry (ptr@ c018113c, slot 1 of 3 -- recon/15's "remaining short-message bytes" state) for a cable awaiting its 2nd/3rd data byte: appends the byte (c01485b8) and, once complete, calls midi_message_complete_emit (c01486c8) | likely | calls=c01485b8,c01486c8; ptr@ c018113c matches the table's 2nd slot; not individually traced |
@@ -197,3 +198,19 @@ table-dispatch idiom FWMAP's 00_library_kernel.md flagged).
 - c01494cc (rhythm_screen_entry, the mainapp_screen_h02 entry point) was not disassembled; by analogy with fx_cat_edit_dispatch (c0148f34) it likely contains its own range-check switch feeding into rhythm_field_dispatch_tail, but this is inferred from its single-caller/single-callee shape, not confirmed.
 - Indices 0-3 and 22 of the 24-entry effect-category table (0xc0183eac) are not attributed to any function in this chunk's facts sheet -- either they point outside chunk_10's address range or are genuinely unused/padding; not checked.
 - c0149556, c0149562, c014956a, c0149572, c0149580, c014958a, c0149592, and the ten settings-field-type veneers c01495f4..c0149640 were identified from the fact sheet's mechanical call-extraction only (confirmed reliable elsewhere in this file) rather than from a direct disassembly read, hence their "likely" rather than "confirmed" rating.
+
+## Review by Claude (2026-10-09)
+
+- Coverage: c014884a had no row (the helper reported zero gaps); added above
+  as `midi_rx_state_null_handler` (read in full, 4 instructions). c0146ee0 is
+  covered by `fixed_point_math_big` in 00_library_kernel.md.
+- c0148a50 `midi_tx_ring_writecount_clear`: correct (MVK 0x6300 + MVKH 0xc011
+  = 0xc0116300, STH 0). Its neighbour c0148a64 calls it and then also zeroes
+  the word at 0xc0116308.
+- c01495c0 `settings_field_type_dispatch`: the table has **15** entries, not
+  14. `CMPLTU 0xe,A4,A0` is (14 < A4), so indices 0..14 go through
+  `LDW *A5[A4]` (x4 scaled) from 0xc018413c, and only A4 > 14 takes the default
+  path to c014965c.
+- Per the helper's own note, the rhythm-cluster names (c0149180..c0149434,
+  including the "tap tempo" reading of c01493a8) come from the call lists
+  only. Treat them as guesses even where a row says likely.
