@@ -9,7 +9,7 @@
  * every MMIO address's evidence/confidence, is documented in recon/20.
  *
  * Memory map (CTL2, c01a8000..c01affff, 32 KiB, see usb_audio.cmd):
- *   .ua_state  - state struct, response buffer (writable)
+ *   .ua_state  - state struct (writable)
  *   .const     - descriptor fragments, pointer array source data
  *   .text      - routines below
  *
@@ -143,12 +143,9 @@ typedef struct {
 #pragma DATA_SECTION(usb_audio_state, ".ua_state")
 usb_audio_state_t usb_audio_state = { 0, 0, 0, 0, 0, 0 };
 
-/* Explicit >=192-byte response buffer (recon/18 3.1/3.6 point 2: do not
-   rely on the unproven stock c0119fb0 allocation size). 512 B matches the
-   figure recon/17 B1/finding2 infers from the 0x200 spacing to the next
-   known object. */
-#pragma DATA_SECTION(usb_audio_resp_buf, ".ua_state")
-u8 usb_audio_resp_buf[512];
+/* No response buffer of our own: the stock EP0 reply buffer c0119fb0 is
+   shared by all nine GET paths and has about 512 B of room (recon/21 3.5),
+   so usb_audio_copy_descriptors() writes into it through `out`. */
 
 /* One static zero buffer: the payload is always silence, so there is
    nothing to double-buffer or track occupancy for (recon/18 3.6 point 5:
