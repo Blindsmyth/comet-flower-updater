@@ -117,6 +117,7 @@ Summary: TBD (filled in at end).
 | c015b28c | usb_ep_tbl_ptr_28c | 4-byte data/code slot referenced only via ptr@ c01807c4. | guess | ptr@ c01807c4 only |
 | c015b290 | usb_ep_dispatch_minor | Smaller endpoint dispatcher: calls tbl_step_dispatch (c01229e8) and c0138400; registered via ptr@ c01807bc. | likely | fact-sheet calls(4): c01229e8=tbl_step_dispatch c0138400 + regs; ptr@ c01807bc |
 | c015b2b4 | usb_tx_ep_dispatch | USB TX endpoint dispatcher: calls usb_tx_ep_io_entry (c0120fb0), usb_ep_event_service (c0122824), tbl_step_dispatch (c01229e8) and c0138400; registered via ptr@ c01807b8. | likely | fact-sheet calls(6): c0120fb0=usb_tx_ep_io_entry c0122824=usb_ep_event_service c01229e8=tbl_step_dispatch c0138400 + regs; ptr@ c01807b8 |
+| c015b3c0 | magnitude_compare_dispatch_64 | Compares the bit-length (via LMBD leftmost-bit-detect on each half) of two 64-bit-ish operand pairs (A4:A5 vs B4:B5) to determine magnitude ordering, handling the zero case, then tail-branches to wrapper_c016adc0 or wrapper_c016d480 depending on the result. Looks like a shared 64-bit magnitude-compare-and-dispatch helper feeding MIDI/MainApp/UpdateUI value formatting (callers c014d290, c014d358, c0164b48, c0168640). Not traced past the opening ~110 lines given complexity. | guess | c015b3d0/c015b3e4/c015b408/c015b428/c015b470 repeated LMBD.L1/L2 1,A/B,dst; c015b464/c015b398 B.S1 0xc016adc0 / 0xc016d480 tail branches |
 
 ## Data
 
