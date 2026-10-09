@@ -1,6 +1,34 @@
 # chunk_16: c0163040..c0169f20 (150 functions)
 
-Summary: TBD
+Summary: This chunk is dominated by the ELF dynamic loader's endian-swap family
+(field_extract_u8/bswap16_in_place and their Elf32_Sym/Rel/Phdr/Ehdr-shaped
+callers, c0163324..c01633ec, keyed off the host-endianness probe
+elf_detect_endianness at c0163300) and by its segment-allocation chain
+(elf_segment_alloc_once/ptr_resolve/free/touch_a/touch_b/bounds_check,
+c0163ac0..c0163bb0, matching recon/14 and recon/18's traced c015f72c chain).
+Alongside that: the auto_init .cinit record-copy loader (c01636cc, with
+decode handler 0 = c0167860, confirmed by recon/14/16/18) and the TI RTS
+runtime library proper (rts_sdiv32, rts_memset, rts_udiv32, rts_div32_variant
+and their itoa/digit-table helpers). A large switch-speed/AD cluster
+(c0163460..c01636cc) reads an AD channel for footswitch speed and toggles a
+UI icon. Two BIOS primitives were identified with strong recon support:
+bios_mbx_pend/bios_mbx_post (c0166680/c0166780), the mailbox receive/post
+calls behind every hardware-input event (knobs, footswitches, switch-speed,
+UI, USB) and MainApp's own event loop. A SYS/BIOS HeapMem vtable method
+(heapmem_get_stats, c0168dc0) and the audio-processing Swi-post path
+(swi_post_audio_process, c0164240) were confirmed via recon/14/16/20. Several
+settings-row "families" repeat the same shape with different data tables
+(PWR/LCD, OFF/SETUP, SYSTEM/PRESET/BOOT+VERSION, switch-speed items), sharing
+generic commit/render utilities (menu_item_commit_shared c0166a80,
+shared_dispatch_core_a/b) used by a dozen-plus unrelated settings screens. A
+"parameter changed -> echo as MIDI CC" family (param_change_midi_notify_1..5,
+c0168144..c0168488) ties UI edits, guarded-apply and effect-param updates to
+MIDI output. Floating-point work includes a sin/cos-shaped argument-reduction
+cluster (fp_sincos_reduce_a/b/c) and the tuner/rhythm/transport timing chain.
+Confidence is lower (guess) for several purely-structural table-pointer
+resolvers whose branch/delay-slot interaction could not be fully pinned down,
+and for generic small helpers reached from only one or two call sites with no
+corroborating string or recon evidence.
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
@@ -184,5 +212,23 @@ Summary: TBD
 | c0169e80 | str_colon_token_copy_sub | 160B leaf sub-helper for str_colon_token_copy (c0163c00), reached from essentially every task through that caller. No further calls | guess | callers(1)=c0163c00=str_colon_token_copy |
 
 ## Data
+- `B14[115]`: "subsystem" lock/init flag shared by subsystem115_lazy_init (c0163040), validate_and_set_error (c01630b4), subsystem115_clear (c01630f0) and locked_subsystem_op_115 (c0163118). Ties into `B14[149]` (see below) via subsystem149_locked_notify.
+- `B14[91]`/`[92]`/`[93]`: switch-speed/AD baseline, icon-shown flag, and dirty flag, used by switchspeed_set_baseline_91 (c0163648), switchspeed_get_b14_92 (c0163640), switchspeed_icon_toggle (c01636a0).
+- `B14[149]`: lock slot shared between updateui_error_screen_draw (c01695c0, draws "ERR:%05d") and subsystem149_locked_notify (c0169700, called from locked_subsystem_op_115) -- strongly suggests the c0163118/c0169700 lock cluster is the error-reporting/raise path for the UpdateUI error screen.
+- `B14[6]`: shared between param_locked_apply_dispatch (c0165260) and midi_param_reply_locked_apply (c0169de0), both guarding param_buf_field_valid/select/async_kickoff.
+- `0xc0183ae8`/`0xc0183aec`: a pair of global callback-pointer slots, each read with `LDW *+A3[0],A3` then dispatched with `B.S2X A3` -- used by shared_callback_dispatch_tree (c0166f80) and by the midi_msg_build_242/245/243 trio (c01681c0/0168280/0168340) inside param_change_midi_notify_1's declared span. Likely "currently installed screen/edit handler" and a second per-message-type handler.
+- `0xc0186ddc`/`0xc0186ef4..c0187024`: auto_init's handler table and record range (recon/14:80); handler 0 = auto_init_handler0_zerofill (c0167860, confirmed).
+- `0xc018666c/70/74`: the PWR/LCD settings-row draw-callback table (3 slots: pwrlcd_row_draw, pwrlcd_row_fwd_c0160e74, pwrlcd_row_dispatch_25_28).
+- `0xc0185d30` region + `0xc0181848`: the OFF/SETUP settings-row equivalent of the PWR/LCD table (offsetup_table_ptr_resolve and its four hidden siblings).
+- `0xc0180064/68/6c`/`c01800ac`/`c01800b8`: a family of table-registered menu-row handlers (str_field_render_pct_s_table, menu_item_validate_apply, module_label_fmt's caller chain, switchspeed_menu_item_draw, menu_row_fwd_dc00_e280) that reuse shared_dispatch_core_a/b and menu_item_commit_shared (c0166a80).
+- `0xc01839a8`/`0xc01839c0`: the five effect-module-slot base/size tables (effect_slot_base_get c0164a8c, effect_slot_size_get c0164a80), confirmed by recon/14 and recon/16.
+- `0xc0180848` vtable: SYS/BIOS HeapMem-family allocator (alloc c0143f60 @+8, free c0143900 @+12, getStats heapmem_get_stats c0168dc0 @+20) -- recon/14_effect_memory.md:124.
+- Hidden-function tooling gap (beyond the 18 `hidden_starts.py` already flags): at least 10 more genuine function starts in this chunk are invisible to that script, via two new failure modes not previously documented -- (1) a return via `CALLP 0xc016e000,A3` or similar instead of `BNOP/B B3` (c01631a0, c0163b58, c01660b0), (2) a real (non-NOP) instruction in the branch's delay slot resets the script's `prev_return` tracking before the next prologue is reached, even when the branch itself is a plain `BNOP.S2 B3` (c016320c, c0163230, c0167160, c01681c0, c0168280, c0168340, c0168400). Multi-register prologues (`STW A11,*B15--[2]` / `STDW B11:B10,...` instead of `STW B3,...` first) are a third, related blind spot.
 
 ## Open questions
+- `c0160e74` (called by pwrlcd_row_fwd_c0160e74/offsetup_row_fwd_c0160e74_b and others) is still unresolved after two chunks' worth of callers; its body sits outside this chunk's range.
+- The exact identity of the fp_sincos_reduce_a/b/c cluster (c0164de0/c0164f00/c0165034) -- sinf vs cosf vs a shared reduction tail -- is not pinned down; only the Pi-hi/lo + 1/pi constant pattern is confirmed.
+- Several table-pointer-resolver functions (table_ptr_resolve_0ff8/1800/1658, offsetup_table_ptr_resolve) have an ambiguous CMPGTU-operand-order / overlapping-branch-delay-slot idiom where both branches' register writes are visible in the listing; which value actually survives to the return was not conclusively resolved from the static listing alone.
+- recon/map/00_library_kernel.md:125 names c0163324 "field_extract_u8" based on a 2-instruction partial read; this chunk's full read shows it is actually a 32-bit byte-swap (bswap32) in place, not an 8-bit field extractor. The name is kept for cross-chunk consistency (it is already referenced from chunk_03.md and chunk_06.md) but the role text here should be treated as the correction.
+- Business meaning of the "0183ae8/0183aec installed-handler" indirection (shared_callback_dispatch_tree, midi_msg_build_242/245/243) and of the three numeric constants 242/243/245 (MIDI status-like bytes vs. internal message-type IDs) is a guess.
+- `unk_1180_5xxx` and `midi_send_variantN_1180` companions (the param_change_midi_notify_1..5 family) are named only by their trampoline target addresses; their actual per-variant semantics (which parameter group / MIDI message each covers) were not traced into the 0x1180xxxx overlay region.
