@@ -153,4 +153,56 @@ confirmed.**
 
 ## 4. Uses of the other record words
 
+### Finding 4.1 — field call sites and safe-stub requirements
+
+| record field | stock target | observed use | requirement for new IF2/IF3 record |
+|---|---|---|---|
+| +0 | `c0151ecc` | no load/call found in any of the six `c015c804` consumers | return-0 stub is safe |
+| +4 | `c0151e80` | no load/call found in any of the six `c015c804` consumers | return-0 stub is safe |
+| +8 | `c0151ff4` | lifecycle/event hook, called while walking every non-null record | non-null return-0 stub unless audio needs these events |
+| +12 | `c0151ed0` | SETUP request callback selected by recipient/`wIndex` | IF-specific request callback |
+| +16 | `c0151e84` | endpoint-descriptor hook selected through endpoint ownership | non-null return-0 stub is safe if custom audio code owns EP1 setup |
+
+The stock +0 and +4 targets themselves are exactly return-zero stubs.
+**Confidence: confirmed.**
+
+```text
+c0151e80 MVK  0,A4             ; +4
+c0151e82 BNOP B3,5
+c0151ecc MVK  0,A4             ; +0
+c0151ece BNOP B3,5
+```
+
+The +8 hook is loaded as `record[2]` in four walkers.  Their observed first
+arguments are event codes 0 (`c015e8f4`), 1 (`c015e990`), 2 (`c015ea38`),
+and 3 (`c0135798`); the calls skip a null field.  Event 3 also receives the
+SET_CONFIGURATION `wValue` in `B4`.  Exact SDK event names for codes 0..2
+are not recoverable here.  **Confidence: confirmed** for calling convention
+and codes; **guess** for the generic label “lifecycle/event.”
+
+```text
+c015e8e4 LDW   *B5[2],B0       ; record +8
+c015e8ec BNOP  B0,0
+c015e8f0 ADDKPC c015e8f8,B3,2
+c015e8f4 MVK   0,A4
+c015e980 LDW   *B5[2],B0
+c015e98c ADDKPC c015e994,B3,2
+c015e990 MVK   1,A4
+```
+
+The +16 hook is called while configuring each endpoint descriptor.  It gets
+`A4=bEndpointAddress`, `B4=bmAttributes`, and `A6=wMaxPacketSize` (the latter
+two loads use access-size-scaled descriptor offsets).  **Confidence:
+confirmed.**
+
+```text
+c01358d2 LDBU  *A4[2],A6       ; endpoint-address key for lookup
+c01358f2 LDW   *B4[4],B0       ; record +16
+c0135900 MV    A11,A4          ; endpoint descriptor
+c0135902 LDBU  *A4[3],B4       ; bmAttributes
+c0135904 LDHU  *+A4[2],A6      ; wMaxPacketSize (byte offset 4)
+c013590a LDBU  *A4[2],A4       ; bEndpointAddress
+c013590c ADDKPC c0135910,B3,3  ; indirect call
+```
+
 ## 5. USB audio registration recipe
