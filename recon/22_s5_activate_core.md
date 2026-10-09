@@ -71,6 +71,30 @@ entry.
 
 ## 4. Callees
 
+**Finding 5 — confirmed.** The direct callees of the real `c014a58c` are:
+
+- `c016e020` / `c016e000`: map-documented register save/restore helpers.
+- `c016e6e0`: a veneer to hidden `c016ba40`; with incoming `B4=0` the
+  veneer's branch-delay slots substitute `B4=0xc0181180`.  Here it builds a
+  24-byte temporary record at `SP+4`, with size/offset argument `B6=8`.
+- `c016b5c0`, map name `pend_then_dispatch_0e80_d980`: consumes that
+  temporary record via descriptor `0xc0180e80`, generic core `c015a520`, and
+  handler `c016d980`.  Its return is the wrapper's return on this path.
+
+The available map has no row/name for hidden `c016ba40`; exactly identifying
+the temporary record's library type would require the missing library symbol
+or type information.  Its field writes are clear, but calling it an endpoint
+record would be an unsupported guess.
+
+```text
+c014a594 CALLP.S2 c016e6e0,B3
+c014a598 || ADD.L1X 4,B15,A4
+c014a5a0 || MVK.D2  0,B4
+c014a5a2 || MVK.S1  24,A6
+c014a5a4 || MVK.L2  8,B6
+c014a5b0 CALLP.S2 c016b5c0,B3
+```
+
 ## 5. For USB audio
 
 ## 6. Proposed map row
