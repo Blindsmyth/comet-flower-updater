@@ -143,6 +143,14 @@ Summary: TBD (fill in after mapping).
 | c016d0d4 | service179_submit | Submit the handle in B14 slot 179 to c0144580 with arguments B4=0,A6=1,B6=-1. | likely | c016d0d6/c016d0e0/c016d0e4/c016d0e8 argument setup; c016d0d8 CALLP c0144580 |
 | c016d100 | record_vtable_init_a | Initialize a record with type byte 2 and function pointers c017dea0 and c017ad1c in word fields 1 and 3. | confirmed | c016d112 STB 2,*A4; c016d114-c016d120 pointer/store; c016d124-c016d12c pointer/store |
 | c016d140 | empty_stack_stub | No-op stub that allocates and releases eight stack bytes, then returns. | confirmed | c016d140 SUB B15,8; c016d146 stack store 0; c016d148 ADD B15,8; immediate return |
+| c016d150 | record_vtable_init_b | Initialize a record with type byte 2 and function pointers c017de30 and c017ae4c in word fields 1 and 3. | confirmed | c016d152 STB 2,*A4; c016d154-c016d160 first pointer/store; c016d164-c016d16c second pointer/store |
+| c016d1c0 | sdram_defaults_copy | Copy 16 bytes from c0181484 into 11f03e20, followed by additional initialization around 11f03de0. | likely | c016d1c4-c016d1d0 source/destination constants; c016d1cc/c016d1ce LDNDW; c016d1da/c016d1e0 STNDW |
+| c016d200 | buffer_fill_pattern_dd | Call c0164684 on 11f03ebc for 0xdd units using the float bit-pattern 0x40000000. | likely | c016d204 destination; c016d208 SET bit 30 in zero; c016d20c A6=0xdd; c016d210 CALLP c0164684 |
+| c016d220 | buffer_fill_pattern_18d | Call c0164684 on 11f03ebc for 0x18d units with zero pattern. | likely | c016d224/c016d22c destination; c016d228 plus SET bit 8 gives A6=0x18d; c016d236 B4=0; c016d230 CALLP c0164684 |
+| c016d240 | table_lookup_50 | For indices below 50 return the corresponding entry from a fixed-stride table based at c00fc498; otherwise use the default path. | likely | c016d240-c016d244 bounds check; c016d248-c016d250 stride multiply; c016d24c/c016d254 base constant; c016d25a address add |
+| c016d280 | table_lookup_65 | Return table c017b198[A4] when A4<65, otherwise return its first word. | confirmed | c016d280-c016d284 bounds check; c016d288-c016d292 indexed load; c016d294-c016d2a0 default first-word load |
+| c016d2c0 | effect_state_submit | Chain c015c244/c015c250 state queries into c01505f4 and c01502e0, then signal completion through c016ec50. | guess | c016d2c4/c016d2c8 calls; c016d2d0 CALLP c01505f4; c016d2e0 CALLP c01502e0; c016d2e8 CALLP c016ec50 |
+| c016d300 | datastore_record_dispatch | Index 41-byte records at c0174d10; when the record's leading flag is set, dispatch using the same 41-byte stride. Own code ends before hidden c016d340. | likely | c016d302-c016d312 multiply index by 41 and add base; c016d314 LDBU flag; c016d320 prepares stride 41 |
 
 ## Data
 
