@@ -66,3 +66,7 @@ better than a wrong "confirmed".
 - **Branches:** `[!A0]` is taken when A0 == 0; `CMPLTU k,A4,A0` is (k < A4).
   `BNOP t,N` with N < 5 runs the next 5-N cycles of code before the jump lands.
 - Row text must agree with its evidence (byte order, which branch picks which value).
+- **Host rows after a hidden start:** the fact sheet credits the hidden function's
+  calls and callers to its host. Rewrite the host row from its own code only.
+- **c016fXXX CALLP targets are trampolines** (`MVK/MVKH ...,B31; B B31`) into SDRAM
+  code (118xxxxx). facts.py already names the final target; use that name.
