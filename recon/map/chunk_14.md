@@ -46,6 +46,17 @@ Summary: TBD (filled in at end).
 | c0158d98 | rhythm_flag_3d54_set | Store 1 into the flag at 0x11f03d54 and return. | confirmed | c0158da6 STW A0(=1),*A4[0]; A4=0x11f03d54 |
 | c0158dac | rhythm_flag_3d54_clear | Store 0 into the flag at 0x11f03d54 and return. | confirmed | c0158db6 STW A0(=0),*A4[0]; A4=0x11f03d54 |
 | c0158dc0 | rhythm_ui_update_dispatch_gated | If the incoming flag is nonzero, lock B14[155] (bios_sem_pend with -1), call rhythm_ui_update_dispatch (via trampoline c016ef50), then if the flag is nonzero release the lock (bios_sem_post) and reload B14[155]. Shared body for c0158df8/c0158e4c/c0158e8c. | likely | c0158dcc [!A0] skip lock; c0158dd4 CALLP c0150b20=bios_sem_pend; c0158dd8 CALLP c016ef50(->11806ce0=rhythm_ui_update_dispatch); c0158dec CALLP c01628e0=bios_sem_post |
+| c0158df8 | rhythm_ui_refresh_gate_a | Unless a lock/override flag (global c011ada9 byte, or B14[184] bit31) is set, and when UI mode B14[108] is 0 or 5, call c016f330(4) then dispatch rhythm_ui_update_dispatch_gated(c0158dc0, flag=1); otherwise return 0. | likely | c0158e08 LDBU *+B14[184]; c0158e0c LDBU *A4[0] (A4=c011ada9); c0158e2a/c0158e2c CMPEQ B2,0 or 5 against B14[108]; c0158e34 CALLP c016f330,A4=4; c0158e3a CALLP c0158dc0 |
+| c0158e4c | rhythm_ui_refresh_gate_b | Same shape as rhythm_ui_refresh_gate_a but without the c011ada9 check and only gating on B14[108]==5; calls c016f330(4) then rhythm_ui_update_dispatch_gated(flag=1). | likely | c0158e50 LDBU *+B14[184] only (no c011ada9 load); c0158e6a CMPEQ 5,B0; c0158e70 CALLP c016f330,A4=4; c0158e78 CALLP c0158dc0 |
+| c0158e8c | rhythm_ui_refresh_unconditional | Unconditionally call rhythm_ui_update_dispatch_gated (c0158dc0) with flag=0 (no lock taken). | confirmed | c0158e90 CALLP c0158dc0,A4=0; sole caller midi_param_edit_coordinator |
+| c0158ea0 | mainapp_b14_56_set | Store A4 into B14[56] and return. | confirmed | sole body instruction STW.D2T1 A4,*+B14[56] |
+| c0158ea8 | mainapp_b14_57_set | Store A4 into B14[57] and return. | confirmed | sole body instruction STW.D2T1 A4,*+B14[57] |
+| c0158eb0 | mainapp_b14_56_get | Load B14[56] into A4 and return. | confirmed | sole body instruction LDW.D2T1 *+B14[56],A4 |
+| c0158eb8 | mainapp_b14_57_get | Load B14[57] into A4 and return. | confirmed | sole body instruction LDW.D2T1 *+B14[57],A4 |
+| c0158ec0 | mainapp_b14_20_set | Store A4 into B14[20] and return. | confirmed | sole body instruction STW.D2T1 A4,*+B14[20] |
+| c0158ec8 | mainapp_b14_20_get | Load B14[20] into B0 and return (B-side accessor). | confirmed | sole body instruction LDW.D2T2 *+B14[20],B0 |
+| c0158ed8 | looper_b14_20_get_fwd | Trivial forwarding wrapper around mainapp_b14_20_get (c0158ec8); sole caller looper_item_handler_fd8. | confirmed | 20B body = save/CALLP c0158ec8/restore/return |
+| c0158eec | midi_b14_20_get_fwd | Trivial forwarding wrapper around mainapp_b14_20_get (c0158ec8); callers c01397b8, c0139ab0, c015d5c0, c015d5e4. | confirmed | 20B body = save/CALLP c0158ec8/restore/return |
 
 ## Data
 
