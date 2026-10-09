@@ -103,6 +103,54 @@ c015c7d8 CMPGT   6,A1,A0        ; interface indices 0..5 accepted
 
 ## 3. Record lookup by recipient and `wIndex`
 
+### Finding 3.1 — two-stage lookup; `wIndex` is the key, not a descriptor walk
+
+The SETUP decoder extracts `recipient = bmRequestType & 0x1f` and admits
+recipients 1..3 to the registered-handler path.  It asks `c015c804` for the
+record-pointer-vector base, then calls `c015c788(&slot, recipient, wIndex)`;
+the halfword at stack-scaled `[8]` is SETUP byte offset 4, i.e. `wIndex`.
+On success it resolves `record = record_vector[slot]` and calls
+`record[3]` (+12).  **Confidence: confirmed.**
+
+```text
+c01359f4 LDBU  *+B15[12],B0     ; bmRequestType
+c01359f8 EXTU  B0,27,27,B1      ; recipient (low five bits)
+c0135a18 CALLP c015c804,B3      ; record-vector base -> stack +8
+c0135a28 CALLP c015c788,B3
+c0135a2c LDHU  *+B15[8],A6      ; scaled HU address = stack+16 = wIndex
+c0135a34 MV    A11,B4           ; recipient
+c0135a46 LDW   *B4[B5],B0       ; record_vector[slot]
+c0135a52 LDW   *B4[3],B0        ; callback at +12
+```
+
+Truth table for `c015c788`:
+
+| recipient | key derived from `wIndex` | table | result |
+|---:|---|---|---|
+| 1 (interface) | low byte, required `< 6` | `c011aac0[key]` | slot on non-`-1`; otherwise `ffff8acc` |
+| 2 (endpoint) | `(wIndex & 0x0f) + (bit7 ? 16 : 0)`, required `< 32` | `c011aa40[key]` | slot on non-`-1`; otherwise `ffff8acc` |
+| 3 (other) | none | none | always `ffff8acc` |
+
+**Confidence: confirmed.**
+
+```text
+c015c790 CMPEQ 1,B1,B0          ; interface recipient
+c015c7d4 EXTU  A1,24,24,A1      ; low byte of wIndex
+c015c7d8 CMPGT 6,A1,A0
+c015c7e4 MVK   c011aac0,A5
+c015c798 CMPEQ 2,B1,B0          ; endpoint recipient
+c015c7a4 EXTU  A1,24,31,A0      ; endpoint-direction bit
+c015c7b0 AND   A1,15,A0
+c015c7c0 MVK   c011aa40,A5
+```
+
+No configuration descriptor is consulted in this lookup.  The descriptor's
+`bInterfaceNumber` matters only because the host copies that value into
+`wIndex`; routing itself is a direct lookup in the fixed ownership map.  The
+stock selector-6 writer populates only interface keys 0 and 1, so IF2/IF3
+cannot be reached until map entries 2 and 3 are populated.  **Confidence:
+confirmed.**
+
 ## 4. Uses of the other record words
 
 ## 5. USB audio registration recipe
