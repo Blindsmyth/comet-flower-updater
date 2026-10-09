@@ -82,6 +82,16 @@ Summary: TBD (fill in after mapping).
 | c016bc40 | (hidden start, missed by hidden_starts.py - loaded as a function-pointer value at c016ebe4 per refs.txt) cbarray_fire_all | Walk the callback array at c0182200 (count at c0182204) in reverse; for each entry, indirect-branch to the stored handler address (B.S2X A5), and also CALLP a fixed dispatch helper c016cf00. Classic "notify all registered listeners" broadcaster, pairing with the registration pattern seen at c016ac40. | likely | c016bc80 B.S2X A5 (indirect call through loaded handler ptr); c016bca4 CALLP 0xc016cf00,B3; refs.txt: c016ebe4 A4 c016bc40 |
 | c016bcc0 | (hidden start, missed by hidden_starts.py - loaded as a value at c0166f28 per refs.txt) ring_cursor_advance | Advance a ring/arena cursor: if the remaining-count field (A10[1]) is zero, skip; else add the advance amount to the position field (A10[2]) and subtract it from the remaining-count field (A10[1]). | likely | c016bcc8 LDW *+A10[1],A0 (remaining); c016bd02 ADD A4,A5,A5 (pos+=amt); c016bd06 SUB A3,A4,A3 (remaining-=amt); c016bd08/0c STW back to *+A10[2]/[1]; refs.txt: c0166f28 B4 c016bcc0 |
 
+| c016bd40 | callback_record_prepare | Derive a value from an optional record pointer, pass it and a stack temporary to c016ec00, then conditionally update the original record. | guess | c016bd50-c016bd76 null-guard and load *A4; c016bd78 CALLP c016ec00 with A4=A3 and A6=stack+8 |
+| c016bdc0 | copy_boot_defaults_and_clear | Copy four doublewords (32 bytes) from c0180cfc into c011accc, then tail-call memset to clear four bytes at c011acec. | confirmed | c016bdc8-c016bdd0 LDNDW source blocks; c016bde4-c016bdf8 STNDW destinations; c016bdd4 B c0167b00 with A4=c011acec,B4=0,A6=4 |
+| c016be20 | midi_edit_tx_if_ready | After a readiness/lock check, transmit MIDI edit entry A4 only when configuration is enabled, A6 is nonzero, and the entry index is below 50. | likely | c016be28 CALLP c016ec90; c016be30/c016be34 readiness calls; c016be40-c016be4a test A6 and A4<50; c016be4c CALLP c01295c8 |
+| c016be58 | midi_edit_tx_one | Call midi_edit_tx_if_ready with enable argument 1. | confirmed | c016be5a CALLP c016be20 || c016be60 MVK 1,A6 |
+| c016be80 | err_set_last_code | Store A4 as the last error code in B14 slot 114. | confirmed | c016be80 STW A4,*+B14[114]; immediate return |
+| c016be88 | err_get_last_code | Return the last error code from B14 slot 114. | confirmed | c016be88 LDW *+B14[114],A4; immediate return |
+| c016be90 | (hidden start) err_format_last_code | Format the current error: codes 0..10 select a message pointer from c0183608; other codes use the Unknown/error-code format path, rendered into c0183868. | likely | c016be98 CMPGT 11,A4; c016bea4-c016beac table c0183608 indexed by code; c016beb0-c016bec4 format pointer c017c13e and CALLP c016c360 |
+| c016bee0 | mainapp_runtime_state_init | Run the main application startup initializer sequence for audio parameters, effect state/heaps, SDRAM work buffers, and related runtime globals. | likely | c016bee4-c016bf20 sixteen sequential initializer CALLPs; sole caller mainapp_startup_init |
+| c016bf40 | set_global_ptr_326c | Store A4 into global pointer c018326c. | confirmed | c016bf44/c016bf48 form c018326c; c016bf4c STW A0,*A4 |
+
 ## Data
 
 ## Open questions
