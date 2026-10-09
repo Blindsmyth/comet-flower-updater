@@ -151,6 +151,15 @@ Summary: TBD (fill in after mapping).
 | c016d280 | table_lookup_65 | Return table c017b198[A4] when A4<65, otherwise return its first word. | confirmed | c016d280-c016d284 bounds check; c016d288-c016d292 indexed load; c016d294-c016d2a0 default first-word load |
 | c016d2c0 | effect_state_submit | Chain c015c244/c015c250 state queries into c01505f4 and c01502e0, then signal completion through c016ec50. | guess | c016d2c4/c016d2c8 calls; c016d2d0 CALLP c01505f4; c016d2e0 CALLP c01502e0; c016d2e8 CALLP c016ec50 |
 | c016d300 | datastore_record_dispatch | Index 41-byte records at c0174d10; when the record's leading flag is set, dispatch using the same 41-byte stride. Own code ends before hidden c016d340. | likely | c016d302-c016d312 multiply index by 41 and add base; c016d314 LDBU flag; c016d320 prepares stride 41 |
+| c016d340 | (hidden start) datastore_service_loop | Allocate a 744-byte stack frame, submit service179 work, process it through c016ec40/c016def0, and loop indefinitely. | likely | c016d340 ADDK -744,B15; c016d348 CALLP c016d0d4; c016d34c/c016d354 calls; c016d360 loop to c016d348 |
+| c016d380 | copy_c011_region_600 | Copy a fixed 0x600-byte word region from c01146b8 to c0114cb8 using a software-pipelined loop. | likely | c016d384-c016d398 source/destination constants; count derived from 3<<9 minus 4; c016d3a0 loop setup |
+| c016d3c0 | fixed_mul64 | Multiply two unsigned 64-bit values from register pairs and return the low 64-bit product. | confirmed | c016d3c0/c016d3c4/c016d3c8/c016d3d8 MPY32U partial products; c016d3d0-c016d3e8 carries/adds |
+| c016d440 | fp64_not_equal | Compare two double-precision values and return the logical inverse of equality. | confirmed | c016d458 CMPEQDP; c016d464 XOR result with 1 |
+| c016d480 | u64_shr_variable | Shift a 64-bit value right by a variable count, combining halves and returning zero for counts at least 64. | likely | c016d484/c016d48c SHRU halves; c016d494 SHL cross contribution; c016d4a4 OR; c016d4a8 zero path |
+| c016d4c0 | memcpy_word_sploop | Copy A6 bytes from B4 to A4 in 32-bit words using SPLOOP. | confirmed | c016d4c4 SHR A6,2; c016d4d0 SPLOOPD; c016d4d8 LDW source; c016d4e8 STW destination |
+| c016d580 | (hidden start) arena_copy_and_advance | Copy A6 bytes through variant_record_copy using the arena cursor in B4, then advance its stored pointer by the copied length. | likely | c016d588 CALLP c0169fc0; c016d590/c016d594 load cursor; c016d5a4 adds length to cursor |
+| c016d5c0 | task_initial_frame_build | Build an initial descending task stack frame containing supplied registers, entry c016e0e0, and zero-filled saved slots. | likely | c016d5c0-c016d5d4 push A6/B4/B8/A8; c016d5c8-c016d5e0 entry pointer; c016d5e4 loop pushes zeros |
+| c016d600 | scheduler_stack_swap | Return saved scheduler state and, when none exists, save the current SP in c0181fcc and load replacement SP from c0181fd0. | likely | c016d600 base c0181fb8; c016d608/c016d60c fields [5]/[6]; c016d618 saves B15; c016d620 loads B15 |
 
 ## Data
 
