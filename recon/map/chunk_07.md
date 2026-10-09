@@ -117,6 +117,22 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c0139c50 | transport_capture_stop_reset | Zero capture ramp and reset position/control fields after capture. | likely | c0139c64 CALLP c0164600 at 11f03c70; c0139c94/c0139c98 store -1; c0139ca4/c0139caa clear fields |
 | c0139cb8 | transport_capture_finalize | Finalize captured length with threshold 0x204cc, update length state and notify. | likely | c0139ccc/c0139cd0 form threshold; c0139ce2 CALLP c0139c50; c0139cf2/c0139d02 STW 11f03c6c; c0139d08 STB B14[76] |
 
+| c0139d10 | transport_capture_start | Restore transport position, set B14[111] and initialize capture ramp. | likely | c0139d20 LDW 11f03c94; c0139d24 STW B14[0]; c0139d44 STW 1,B14[111]; c0139d54 CALLP c0164600 |
+| c0139d68 | transport_capture_start_fresh | Clear capture counters, start capture and schedule callback c0139664 with delay 1000. | likely | c0139d76/c0139d86 clear fields; c0139d8c CALLP c0139d10; c0139d90/c0139d98 callback address; c0139d94 SHL 125,3 |
+| c0139dac | transport_position_copy_next | Copy 11f03cb0 into adjacent word 11f03cb4. | confirmed | c0139db4 LDW *A4[0]; c0139db6 ADD A4,4; c0139dba STW |
+| c0139dc4 | transport_capture_start_resume | Snapshot position, start capture and schedule callback c013968c with delay 1000. | likely | c0139dd4 CALLP c0139dac; c0139df2 CALLP c0139d10; c0139df8/c0139e04 form c013968c; c0139e00 callback bridge |
+| c0139e10 | transport_capture_disable | Clear B14[111] and zero the ramp at 11f03c70. | confirmed | c0139e14 STW zero,B14[111]; c0139e28 CALLP c0164600; c0139e30 MV zero,B4 |
+| c0139e38 | transport_buffer_clear_regions | Clear transport buffer regions computed from saved counters and configured length. | likely | c0139e40/c0139e4c load B14[5]/[3]; c0139e64 LDW 11f03c6c; c0139e78/c0139e84 CALLP memset |
+| c0139e94 | transport_capture_prepare | Rotate saved counters, prepare/clear buffer regions and reset capture timing. | likely | c0139ea0/c0139eac copy to B14[3]/[5]; c0139eb8 STW B14[2]; c0139f48 CALLP c0139640; c0139f64 STH flags |
+| c0139f6c | transport_capture_clamp_and_stop | Store min(configured length, captured count) in B14[4], then reset capture. | confirmed | c0139f80/c0139f82 load 11f03c6c/3ccc; c0139f86 CMPLT; c0139f8c/c0139f90 selected STW B14[4]; c0139f94 CALLP c0139c50 |
+| c0139fa0 | transport_cancel_and_disable_capture | Invoke shared cancellation helper then disable capture. | likely | c0139fa4 bridge to 1180aaf4; c0139fa8 CALLP c0139e10 |
+| c0139fb0 | transport_capture_restart_saved | Restore B14[1] from saved position, clear capture count and restart capture. | likely | c0139fc0 LDW 11f03ca0; c0139fc4 STW B14[1]; c0139fd2 zero 11f03ccc; c0139fd4 CALLP c0139d10 |
+| c0139fe0 | transport_stop_immediate | Cancel deferred work, reset envelope, zero ramp and post reset notification. | likely | c0139fe4 bridge to 1180aaf4; c0139ff8 STW INT_MAX; c013a008 CALLP c0164600; c013a014 CALLP c0139714 |
+| c013a024 | transport_stop_deferred | Program envelope fields and schedule reset callback c0139714 with delay 15000. | likely | c013a034 STW 0x5f37; c013a046 STW 0x7fffa0c8; c013a050/c013a060 form callback; c013a054 MVK 0x3a98,B4 |
+| c013a06c | transport_stop_flag_set | Set control word at 11f03cd0 to 1. | confirmed | c013a06c/c013a070 form address; c013a076 STW 1 |
+| c013a080 | transport_reinitialize | Initialize transport state, cancel deferred work and reconfigure timing. | likely | c013a082 CALLP c0139b88; c013a084 bridge to 1180aaf4; c013a088 CALLP c01397d8 |
+| c013a094 | transport_capture_position_reset | Copy B14[1] into 11f03c9c, set 11f03c78 to INT_MAX and reset clock snapshot. | confirmed | c013a0aa STW B14[1]; c013a0b0 subtract 36 bytes; c013a0b8 STW INT_MAX; c013a0c0 CALLP c0139640 |
+
 ## Data
 
 ## Open questions
