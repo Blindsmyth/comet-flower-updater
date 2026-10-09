@@ -50,3 +50,14 @@ in the file system, not only those on the effect list.
   scan cannot get past.
 - Never kill a hung transfer without a recovery plan. Here there was no
   alternative: the process was stuck in the USB driver.
+
+## Before any test image (added 2026-10-09, recon/25)
+- Run `.venv/Scripts/python.exe tools/check_updater_stages.py "<updater.exe>"`.
+  It must print `ok` on every stage: no stage may touch the boot/update-mode
+  program (flash 0x0-0x28000) or the settings sector (0xbf000-0xc0000).
+- Update mode is chosen by the boot program **before** it loads the main
+  firmware, so a bad main-firmware image is always recoverable: hold both
+  footswitches at power-on and run a restore updater.
+- The boot program itself has no backup. Zoom's official updater rewrites
+  it; run that only when needed, on a stable USB connection, and never
+  unplug during it.
