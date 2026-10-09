@@ -87,7 +87,7 @@ What this means:
 - Hardening: c0135940 does not bound-check wIndex against the 0xc011a1b0
   array. The patch should check `wIndex < 4`.
 - c01359b8 is a separate leaf function placed right after SET_INTERFACE's
-  return (no prologue, so hidden_starts.py misses it). It zeroes B14[10],
+  return (already in the map as `usb_ctrl_helper_small`). It zeroes B14[10],
   B14[11] (configured flag) and the alt array (SPLOOP STB). Its only caller is
   c015e9d0 (1200 B, chunk 15, being mapped). That caller also calls
   usb_endpoint_records_reset c0138660 and usb_ifmap_set_default_ptr c015c804,
