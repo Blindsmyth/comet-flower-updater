@@ -292,3 +292,28 @@ and completion/requeue behavior, and (4) how the path treats the ISO bit and
 SOF cadence.  Until those four items are read, reuse is a guess, not a fix.
 
 ## 6. Proposed map row
+
+**Finding 15 — confirmed for the split/behavior; names are necessarily
+descriptive.** Replace the existing `c014a58c` row and add the hidden row:
+
+| address | name | summary | confidence | evidence |
+|---|---|---|---|---|
+| c014a58c | usb_control_object_activate_0534 | Builds a 24-byte temporary library record through `c016e6e0 -> c016ba40`; if input word +4 is nonzero returns -5, otherwise dispatches it through `c016b5c0 pend_then_dispatch_0e80_d980` and returns that result unchanged. Contains no DINT, scheduler globals, endpoint MMIO, FIFO, or CPPI work. | confirmed | read `c014a58c..c014a5d8` in full; sole direct caller `c0149f78` passes `0xc0180534`; `c014a5d8 CALLP c016e000` ends the function |
+| c014a5e0 | scheduler_cycle_account_and_dispatch (hidden start) | Separate callback-style routine: reads TSCL in four DINT/CSR-restored accounting regions, updates mode-selected fields of state `c0182130`, normalizes counters, walks without relinking a sentinel list selected by `c018199c`, snapshots per-record timing, runs config dispatch, and optionally invokes callback `c01819bc`. | likely | read `c014a5e0..c014aaf8` in full; entry ref `c015fd68`; exact source types and the normalized high-level formula remain unavailable |
+
+Correct the `c0149ef8` row to the following.  In particular, remove the
+claim that the DINT/scheduler logic belongs to its `c014a58c` callee and do
+not call that callee endpoint-hardware setup:
+
+| address | name | summary | confidence | evidence |
+|---|---|---|---|---|
+| c0149ef8 | usb_interface_configure_and_activate | If any of `B14[88..90]` is already nonzero, returns packed sentinel `0xffff63be`; otherwise zero-fills the 32-byte workspace at `c0117b18`, validates through `c0148a64`, processes fixed objects `c018052c`, `c0180534`, and `c0180510` through the `c014a488/c014a58c/c014a400` registration/config wrappers plus `c014a314/c014a394`, stores returned handles in `B14[89..90]`, and finishes through `c014a170`.  The `c014a58c` leg is a small generic-record dispatch, not endpoint MMIO/CPPI setup. | likely | read `c0149ef8..c014a008` previously; corrected here from full `c014a58c..c014a5d8` read and hidden split at `c014a5e0` |
+
+```text
+c014a5a8 LDW.D1T1 *A4[1],A0
+c014a5ac [A0] BNOP.S1 c014a5d0,5
+c014a5b0 CALLP.S2 c016b5c0,B3
+c014a5d0 MVK.L1   -5,A0
+c014a5d8 CALLP.S1 c016e000,A3
+c014a5e0 STW.D2T1 A11,*B15--[2]
+```
