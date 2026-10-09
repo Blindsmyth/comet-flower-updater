@@ -53,6 +53,22 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c0138b40 | ui_state_8b60_finish | Set shared flag 1 and clear state word at c0118b78. | confirmed | c0138b42 MVK 1,A4; c0138b44 CALLP c01552d4; c0138b52 STW zero to c0118b78 |
 | c0138b58 | ui_state_8b60_reset | Clear 28-byte UI state, initialize it and run a semaphore-guarded refresh. | likely | c0138b70 CALLP memset with A6=28; c0138ba0/c0138bb0 pend/post B14[155]; c0138bac CALLP c014abd0 |
 
+| c0138bc0 | ui_save_state_reset_mode7 | Clear save-screen state, select mode 7 and refresh under semaphore. | likely | c0138bd4 CALLP memset size 28; c0138be2 MVK 7,A0; c0138c08 CALLP c014abd0 under B14[155] |
+| c0138c1c | ui_save_state_apply_selection | Pass stored selection at c0118b68 to c0160d2c. | confirmed | c0138c20/c0138c24 form c0118b68; c0138c28 CALLP c0160d2c with LDW value |
+| c0138c34 | ui_save_select_active_mode | Inspect selected item and switch active UI item to mode 7 or 8. | likely | c0138c38 LDW *A4[2]; c0138c4c CALLP c01317c4; c0138c6e/c0138c70 load 8/7; c0138c74 CALLP c0149664 |
+| c0138c84 | ui_save_mark_pending | Set c0118b78 to 1 and return 1. | confirmed | c0138c88/c0138c8c form c0118b78; c0138c92 STW 1; c0138c94 MVK 1,A4 |
+| c0138ca4 | ui_save_commit_selection | Apply the current selection through MIDI/assignment paths according to save-screen mode. | likely | c0138cb8/c0138cc0/c0138cc8 compare 7/8/14; c0138d68 CALLP c0131138; c0138d78 CALLP c012f878 |
+| c0138d8c | ui_save_conditional_draw | Invoke common UI drawing only when input bit 0 is set. | confirmed | c0138d8e EXTU A4,31,31,A0; c0138d90 conditional skip; c0138d94 CALLP c011f8d8 with (0,1) |
+| c0138da4 | ui_save_draw_mode_icon | Select save-screen icon according to state mode. | likely | c0138db8 CMPEQ 14,A0; c0138dc4 asset c01802b0; c0138e04 asset c01802e8; CALLP c011c508 |
+| c0138e28 | ui_save_draw_selection_icon | Draw one of two selection glyphs using assets c0180898/c01808c0. | likely | c0138e30/c0138e50 select asset; c0138e40/c0138e60 CALLP c011c508 |
+| c0138e74 | ui_save_draw_marker | Draw fixed marker at vertical position 7 or 20 depending on input. | confirmed | c0138e78 tests input; c0138e80/c0138e82 load 7/20; c0138e90 CALLP c011c508 with asset c0181a68 |
+| c0138ea8 | ui_save_draw_slot_label | Format slot/bank digits and render a save selection label. | likely | c0138eb4/c0138ec0 CALLP c0130a00/c0130a30; c0138ee0 CALLP c016a100; fact string %d%d |
+| c0138f2c | ui_save_fetch_and_draw_slot | Fetch selected record into stack buffer and render slot label. | likely | c0138f34 CALLP c013142c with B4=SP+8; c0138f40 CALLP c0138ea8 |
+| c0138f50 | ui_save_draw_destination_label | Fetch/format the alternate save destination label. | likely | c0138f60 CALLP c013142c; c0138f74 CALLP c0130a30; c0138fe0 CALLP c011d4d8; %d%d |
+| c0138ff4 | ui_save_draw_selection_fields | Draw mode/selection icons and both slot labels. | confirmed | c0139002/c0139004 CALLP c0138da4/c0138e28; c0139008/c013900c CALLP c0138f2c/c0138f50 |
+| c0139018 | ui_save_draw_footswitch_prompt | Draw the BOTH FSW : SAVE prompt and indexed text variant. | likely | fact string BOTH FSW : SAVE; c0139030 CALLP c011c508; c0139058 CALLP c013a2d8 |
+| c0139068 | ui_save_draw_footswitch_prompt_3 | Draw save footswitch prompt with selector 3. | confirmed | c013906a CALLP c0139018; c013906c MVK 3,A4 |
+
 ## Data
 
 ## Open questions
