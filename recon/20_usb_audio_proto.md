@@ -283,6 +283,29 @@ last bullet — are explicitly left as **blocked: not read this pass**,
 rather than guessed; everything else in 3.6 is turned into a concrete
 address-level item above).
 
+## 2.6 Patch list v2 (Claude, 2026-10-09, after recon/21..23)
+
+This replaces 2.1..2.4 where they differ. Sources: recon/21 3.1..3.5,
+recon/22, recon/23, recon/map/chunk_19.
+
+| # | site | change | status |
+|---|---|---|---|
+| P1 | c0160ec8 MVK 0x43c0 (+MVKH) | point the descriptor pointer array at a new 25-word array (the old one has room for 15) | as 2.1 |
+| P2 | c0161044 CMPLT 14 | bound 14 -> 24 | as 2.1 |
+| P3 | c0160ff6 STW *A4[13] | null terminator at 24 (or the new builder writes all 25) | as 2.1 |
+| P4 | c0119fb0 response buffer | **no change**: 9 references, probably 512 B of room (recon/21 3.5) | 2.1 item dropped |
+| P5 | new IF2 / IF3 handler records | register like MIDI: `c015afa0(A4=6, B4=&record)` (c01521a8..b4); record = 5 function words, +12 = request callback (c018137c layout) | **open**: how a record is bound to an interface number (c015afa0 -> c0138a6c -> c015c6b4 -> c015c66c, table c011aac0; lookup c015c788 by (recipient, wIndex)) |
+| P6 | IF3 request callback (new code) | bRequest 11: `usb_audio_set_alt(wValue)`, ACK via c015af48(128, 0, 0), return 0; bRequest 10: reply 1 byte (current alt) from c0119fb0; anything else: return 0xffff8a5b | design (b), recon/21 3.1 |
+| P7 | c0180238 / c018023c (GET/SET_INTERFACE table words) | **no change needed**: the IF3 record callback runs first and replaces them. Optional hardening: wIndex < 4 in c0135940 | 2.2 item reduced |
+| P8 | c0151ed0 (MIDI callback) | **no change**: it only serves the MIDI record | 2.2 item dropped |
+| P9 | c01358b4 -> c01212e0 for EP1 | **not reached** in design (b) (SET_CONFIGURATION only walks IF3 alt 0, which has no endpoints). EP1 FIFO is set by `usb_audio_setup_ep1` (tail 0x140, 2 x 256 B) | 2.3 option (b), automatic |
+| P10 | c016f770 MVK/MVKH 0x11818e80 | retarget to the new SOF routine. Runs in Hwi context (CPU int 7, chunk_19 S2). Use direct EP1 registers 0x01e00512 / 0x01e00424 only | as 2.4 |
+| P11 | audio tap (new, for real audio after the silence test) | after `CALLP 11818aa0` at 11818c64, or inside 11818aa0 after the STNDW at 11818b18; source buffers 11f03630 / 11f036b0, 2 x 32-bit int words x 16 frames | recon/21 S1 |
+| P12 | alt-array clears c013566c / c01359cc | check the ILC counts cover interfaces 0..3 | open (small read) |
+
+The silence-stream image needs P1..P3, P5, P6, P10 and the prototype code.
+It is built only after the controller-mode test passes on the pedal.
+
 ## 3. New routines (C/asm) compiled for c01a8000, disassembly check
 
 Files (scratch, not referenced by firmware/tools, no image built):

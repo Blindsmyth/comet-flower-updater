@@ -261,6 +261,6 @@ alt-setting transitions, MIDI coexistence.
 2. S3 and S4: short targeted reads (a helper, or Claude).
 3. S5: read c014a58c in full. **Done (recon/22).**
 4. S6: read the TXCSR bit table in SPRUFM9 and compare with 0x3440.
-5. Update recon/20's patch list with the results, then build a
+5. Update recon/20's patch list with the results (**done: recon/20 2.6, patch list v2; open P5 and P12**), then build a
    **silence-stream** test image (recon/20). It waits until the
    controller-mode test passes on the pedal.
