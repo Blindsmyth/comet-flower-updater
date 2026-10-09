@@ -57,14 +57,17 @@ c011d84c, c011d938, c011f87c, c011f8d8.
 | c011c508 | see 00 | gfx_set_bit_range | - | - |
 | c011c588 | ui_draw_proportional_bar | 380B routine calling gfx_set_bit_range, c0142ec4 and rts_sdiv32 together -- shape matches a proportional bar/meter draw (width = value/divide, then bit-range fill); sole caller c0154290 | likely | calls=c011c508=gfx_set_bit_range,c0142ec4,c01675c0=rts_sdiv32; caller=c0154290 |
 | c011c704 | unk_c704 | 132B routine, sole caller big_mvc_subsystem (c011f8d8, see 00); not traced | guess | n=132; caller=c011f8d8(see00) |
-| c011c788 | unk_c788 | 520B routine, sole caller big_mvc_subsystem (c011f8d8, see 00); not traced | guess | n=520; caller=c011f8d8(see00) |
+| c011c788 | ui_bitmap_transform_c788 | call-free bitmap transform whose own body ends at c011c810; writes halfword/byte outputs and returns after the A0-controlled path | guess | own span c011c788..c011c80f; caller `c011f94c CALLP c011c788`; no calls; `c011c800 STH`, `c011c80c STB`, return c011c80e |
+| c011c810 | ui_bitmap_transform_3228 | (hidden start) transform using state at 11813228 and related buffers 11812950..11813240 | guess | follows host return c011c80e; constants 11813228/3240 and 11812950/29d0/2a50/2ad0/2b50; return c011c8ce |
+| c011c8d0 | ui_bitmap_transform_3220 | (hidden start) sibling transform using state at 11813220 and the same buffer set as c011c810 | guess | follows c011c810 return c011c8ce; constants 11813220/3240 and 11812950..11812b50; return c011c98e |
 | c011c990 | unk_c990 | 468B routine, sole caller orchestrator_c011c990 (c011cb64, see 00); not traced | guess | n=468; caller=c011cb64(see00) |
 | c011cb64 | see 00 | orchestrator_c011c990 | - | - |
 | c011cc14 | unk_cc14 | 472B standalone routine, both callers (c01431f2, c014c6d0) outside this chunk; not traced | guess | n=472; callers outside chunk |
 | c011cdec | ui_render_item_a | 552B routine calling the leaf c011b470; called by c011d014 and c011e700 | likely | calls=c011b470; callers=c011d014,c011e700 |
 | c011d014 | ui_render_item_a_wrap | thin (96B) wrapper forwarding to c011cdec; called by c011d124, c011e3ac, c011e4b4, and c012e330(outside) | likely | calls=c011cdec; 4 callers |
 | c011d074 | unk_d074 | 176B routine, sole caller c011d124; not traced | guess | n=176; caller=c011d124 |
-| c011d124 | ui_screen_render_1 | 432B orchestrator entered via the save/restore pair, calling orchestrator_c011c990 (c011cb64, see 00), c011d014 and c011d074 -- a screen-render driver; sole caller c014dc08(outside) | likely | calls=c011cb64=see00,c011d014,c011d074,c016e000,c016e020 |
+| c011d124 | ui_screen_render_1 | screen-render driver whose own body ends at c011d214; calls c011d074, c011d014 and c011cb64, with two recursive render calls for alternate subregions | likely | own span c011d124..c011d213; calls c011d074,c011d014,c011cb64,c011d124 plus save/restore; callers c011d1e4/c011d204/c011d2a0/c011d2c4,c014dd08,c014de44 |
+| c011d214 | ui_screen_render_1_variant | (hidden start) render variant that calls c011d014/c011cb64 or invokes c011d124 twice on buffers c0181a78/c0181a80 | likely | follows host return c011d212; calls at c011d264/c011d284/c011d2a0/c011d2c4; return c011d2d2 |
 | c011d2d4 | unk_d2d4 | 188B routine shared by c011d390 and c011dff8; not traced | guess | n=188; callers=c011d390,c011dff8 |
 | c011d390 | ui_draw_box_a | 328B routine calling gfx_set_bit_range and c011d2d4 -- an icon/box-fill drawer; sole caller unk_d4d8 (c011d4d8, see 00) | likely | calls=c011c508=gfx_set_bit_range,c011d2d4; caller=c011d4d8(see00) |
 | c011d4d8 | see 00 | unk_d4d8 | - | - |
@@ -74,8 +77,10 @@ c011d84c, c011d938, c011f87c, c011f8d8.
 | c011d84c | see 00 | orchestrator_c011b848 | - | - |
 | c011d8f0 | unk_d8f0 | 72B routine forwarding to orchestrator_c011b848 (c011d84c, see 00); sole caller big_subsystem_2 (c011d938, see 00) | guess | calls=c011d84c(see00); caller=c011d938(see00) |
 | c011d938 | see 00 | big_subsystem_2 | - | - |
-| c011dca8 | unk_dca8 | 604B routine calling big_subsystem_2 (c011d938, see00), rts_sdiv32 and c0168640; no caller found inside this chunk (reached by table/pointer or an external CALLP) | guess | calls=c011d938=see00,c01675c0=rts_sdiv32,c0168640; 0 in-chunk callers listed |
-| c011df04 | ui_draw_box_c | 244B routine calling gfx_set_bit_range only; no caller found inside this chunk | guess | calls=c011c508=gfx_set_bit_range; 0 in-chunk callers listed |
+| c011dca8 | ui_dual_bitmap_merge | call-free byte-pair transform/merge whose own body ends at c011dde4 | guess | own span c011dca8..c011dde3; no calls; parallel `STB` pair at c011ddd8/c011ddda; return c011dde2; called by c011de76 |
+| c011dde4 | ui_dual_bitmap_merge_dispatch | (hidden start) guarded render/scale dispatcher around c011d938, signed divide, c0168640 and c011dca8 | likely | follows host return c011dde2; calls c011d938,c01675c0,c0168640,c011dca8 plus save/restore; return helper at c011df00 |
+| c011df04 | ui_draw_box_c | one gfx_set_bit_range call with computed coordinates; own body ends at c011df50 | likely | own span c011df04..c011df4f; `c011df48 CALLP c011c508`; callers c011df98,c011dfd4; return c011df4e |
+| c011df50 | ui_draw_box_c_repeat3 | (hidden start) repeat ui_draw_box_c over three adjusted items | likely | follows host return c011df4e; B1=3 at c011df8c, `c011df98 CALLP c011df04`, loop branch c011dfb8; return c011dfc2 |
 | c011dff8 | ui_screen_compose_1 | 656B routine combining the blit leaf c011b0b8 with the two box-fill pairs c011d2d4/c011d590 -- composes a screen from box + blit elements; callers c01341e4,c0140740,c01408cc,c01695c0 (outside chunk) | likely | calls=c011b0b8,c011d2d4,c011d590; 4 callers (none in this chunk) |
 | c011e288 | unk_e288 | 200B routine, sole caller c011e350; not traced | guess | n=200; caller=c011e350 |
 | c011e350 | unk_e350_wrap | 92B wrapper forwarding to c011e288; sole caller c013a810(outside) | guess | calls=c011e288 |
