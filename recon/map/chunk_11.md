@@ -201,3 +201,18 @@ see Open questions).
 - **c014c880 / c014c9f0 / c014ccd0 (patchlist file-scan family, 368/736/112 bytes)** -- only the opening of c014c880 was read; c014c9f0 and c014ccd0 were named from their shared call list and strings alone, not independently traced. If patch/preset save-load or file-browser work is ever in scope, this family (plus the c0100000-based name tables in Data) needs a dedicated pass.
 - **c014cef4 (mainapp_popup_dispatch, 456 bytes)** -- named and roled from its call list only (calibration popup, update-complete/error popups, calibration helpers); not traced instruction-by-instruction. Its dispatch condition (which popup fires when) is unknown.
 - **c014c758's apparent self-call** at c014c806 (`CALLP 0xc014c758,B3` with args 98,6) was read directly in the disassembly and is not an artifact of a boundary-gap miscount, but its purpose (recursion? drawing a second instance?) is unexplained.
+
+## Review by Claude (2026-10-09)
+
+- Gap check: every fact-sheet start has a row, with no duplicates. The 3 extra
+  rows (c014c3c0, c014c3ce, c014c66c) are real functions: each starts with a
+  prologue straight after an unconditional `BNOP B3`. The fact sheet misses
+  them; `tools/fwmap/hidden_starts.py` now finds this pattern (153 candidates
+  across all chunks, 6 in this one).
+- c014bee0 `param_buf_arena_reset`: correct. `MVK 25` + `SHL 0xe` = 409600 =
+  0x64000 bytes zeroed from 0xc0000000 (DDR base), then `15 << 6` = 960 bytes
+  at 0xc0064000. `STW A0,*+B14[25]` is byte offset **100** (word, scaled x4).
+  Its only caller seen is the wrapper c014bf20, which then calls c013ea38, so
+  this looks like a reset done on (re)load, not every frame. Still open.
+- Names taken from call lists only (c014cef4, c014c880/c9f0/ccd0) are guesses
+  whatever their conf column says.
