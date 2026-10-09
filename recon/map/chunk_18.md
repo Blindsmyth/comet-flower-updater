@@ -54,6 +54,16 @@ Summary: Mapping in progress.
 | c016e8a0 | arena_copy_default_00f4 | tail-call the arena/ring copy body, defaulting B4 to c01800f4 | confirmed | c016e8a0 branches to `arena_copy_body`; B4!=0 -> preserve B4; B4==0 -> c016e8b0 selects c01800f4 |
 | c016e8c0 | return_true_call_thunk | call `return_true` and return its result | confirmed | c016e8c0 preserves B3 in A0; c016e8c4 calls c016e2e0; c016e8c8 returns through A0 |
 | c016e8e0 | runtime_flag_20dc_test_and_set | return halfword c01820dc and replace it with 1 | confirmed | c016e8e0-c016e8ec load the old halfword from c01820dc; c016e8f0 stores 1 there |
+| c016e900 | struct_word52_get | return object word 13 at byte offset 52 | confirmed | c016e900 `LDW *+A4[13],A4`; word index 13 is scaled to 52 bytes |
+| c016e920 | runtime_word_20ec_get | return the word stored at c01820ec | confirmed | c016e920-c016e928 form c01820ec and load A4 from it |
+| c016e960 | runtime_word_2130_set | store A4 at c0182130 | confirmed | c016e960-c016e968 form c0182130 and `STW A4,*A3` |
+| c016e980 | gate_hwi_enter | enter the global Hwi gate and return the prior CSR key | confirmed | c016e984-c016e990 load the gate handle from c0181a44 and call c016eb60, which tail-calls `interrupts_disable_save_csr` |
+| c016e9a0 | gate_hwi_leave | leave the global Hwi gate by restoring the CSR key in A4 | confirmed | c016e9a4-c016e9b4 load handle c0181a44, copy caller A4 to B4, and call c016eb80 -> `csr_restore` |
+| c016ea20 | csr_restore_tailcall | tail-call CSR restore | confirmed | c016ea20 branches directly to c016e4e0 `csr_restore` |
+| c016ea40 | struct_halfword32_clear | return the halfword at byte offset 32 and clear it | confirmed | c016ea48 loads `LDHU *+A3[16]` (scaled 32-byte offset); c016ea4c stores zero there |
+| c016ea60 | struct_halfword32_set | return the halfword at byte offset 32 and replace it with 1 | confirmed | c016ea68 loads `LDHU *+A3[16]` (scaled 32-byte offset); c016ea6c stores 1 there |
+| c016ea80 | multi_dispatch_zero_optional_args | call the multi-dispatch routine with optional A8, B8, and A10 arguments zero | confirmed | c016ea84 calls c0161540; parallel c016ea88-c016ea90 set A10=0, A8=0, and B8=0 |
+| c016eaa0 | multi_dispatch_zero_tail_args | call the multi-dispatch routine with B8 and A10 zero while preserving A8 | confirmed | c016eaa4 calls c0161540; parallel c016eaa8/c016eaac set A10=0 and B8=0, with no A8 write |
 
 ## Data
 
