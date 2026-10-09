@@ -133,6 +133,22 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c013a080 | transport_reinitialize | Initialize transport state, cancel deferred work and reconfigure timing. | likely | c013a082 CALLP c0139b88; c013a084 bridge to 1180aaf4; c013a088 CALLP c01397d8 |
 | c013a094 | transport_capture_position_reset | Copy B14[1] into 11f03c9c, set 11f03c78 to INT_MAX and reset clock snapshot. | confirmed | c013a0aa STW B14[1]; c013a0b0 subtract 36 bytes; c013a0b8 STW INT_MAX; c013a0c0 CALLP c0139640 |
 
+| c013a0cc | transport_gain_draw_helpers | Initialize gain state then perform UI drawing; fact range merges several separate entry points. | guess | c013a0cc asset c017d4f8; c013a0e4 object 11f03c44; new prologue c013a100; c013a128 CALLP c01251b0; another prologue c013a1cc |
+| c013a218 | ui_ascii_uppercase_inplace | Uppercase ASCII a..z in a NUL-terminated buffer and return original pointer. | confirmed | c013a224 MVK 97,A2; c013a22e CMPLTU difference,26; c013a236 subtract 32; c013a238 STB |
+| c013a248 | ui_row_double_value_draw | Draw a row using double-precision value checks and shared graphics calls. | guess | c013a270/c013a2cc CALLP c011cb64; c013a284 CMPEQDP; c013a294 constant high word 0x40380000 |
+| c013a2d8 | ui_text_draw_centered_6px | Center NUL-terminated text using x=center-3*length+1 and draw it. | confirmed | c013a2f4 LDB scan; c013a30c MPYLI 3,length; c013a316 SUB center,width; c013a31a ADD 1; c013a320 CALLP c011d4d8 |
+| c013a328 | ui_header_draw_half_width | Center text at x=32 and draw a 63-wide header region. | likely | c013a32e CALLP c013a2d8 with A6=32; c013a334 MVK 63,B6; c013a338 CALLP c011cb64 |
+| c013a34c | ui_header_draw_full_width | Center text at x=64 and draw a 127-wide header region. | likely | c013a352 CALLP c013a2d8 with A6=64; c013a358 MVK 127,B6; c013a360 CALLP c011cb64 |
+| c013a370 | ui_text_centered_callback | Measure text, compute centered x using supplied glyph width and invoke renderer callback. | confirmed | c013a390 LDB scan; c013a3a8 MPY32 width,length; c013a3b2 SHRU product,1; c013a3b0 BNOP B8; returns x |
+| c013a3cc | ui_text_frame_callback | Size a frame from text length and draw edges through callback; range includes a composed wrapper. | likely | c013a3f4 LDB scan; c013a40c MPYUS glyph width,length; c013a416/c013a440/c013a454 BNOP B10; new entry c013a4a0 |
+| c013a4ec | ui_text_align_variants | Right-align text with 6-pixel glyph width; fact range also merges other text/frame wrappers. | likely | c013a508 LDB scan; c013a51a MVK 6,B1; c013a530 CALLP c011d4d8; new prologues c013a538/c013a628 |
+| c013a648 | ui_text_frame_6x7 | Draw text-sized frame using 6-pixel glyph width and height parameter 7; trailing entries are separate alignment helpers. | likely | c013a654 CALLP c013a3cc; c013a656 MVK 6,B6; c013a660 MVK 7,A8; new prologue c013a668 |
+| c013a710 | ui_small_text_centered | Center small text through c011e700; range also contains another centered box/text wrapper. | likely | c013a72c LDB scan; c013a74c CALLP c011e700; new prologue c013a758; c013a7a8 CALLP c011d794 |
+| c013a7b4 | ui_small_header_draw | Center small-font text at x=64 and draw a 127-wide header region. | likely | c013a7ba MVK 64,A6; c013a7c0 CALLP c013a710; c013a7c8 CALLP c011cb64 with B6=127,A8=6 |
+| c013a7d8 | ui_bitmap_draw_centered | Draw descriptor bitmap centered horizontally at supplied position. | confirmed | c013a7e4 LDH width +0; c013a7e6 LDW pixels +4; c013a7fa LDH height +2; c013a7f6 SHR width,1; c013a808 CALLP c011c508 |
+| c013a810 | ui_numeric_panel_draw_helpers | Draw numeric/boxed panel; fact range merges multiple text-centering wrapper entries. | guess | c013a838 CALLP c011d938; c013a878 CMPEQDP; c013a88c double constant high 0x404a0000; new prologue c013ab4c |
+| c013abc0 | looper_event_receive | Receive one event byte from B14[172] object, returning default 22 on unsuccessful receive. | likely | c013abc2 MVK 22; c013abc8 CALLP c0166680; c013abd6 CMPEQ 1,A4; c013abf4 LDBU result |
+
 ## Data
 
 ## Open questions
