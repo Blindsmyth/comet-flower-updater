@@ -9,7 +9,7 @@ Summary: the 150 fact-sheet entries cover MainApp screen/configuration persisten
 | c0136684 | mainapp_screen_draw_5aec | Draw common screen using callback c0135aec and selector 50. | confirmed | c0136688 MVK 0x5aec,B6; c0136694 CALLP c01361ac |
 | c01366a0 | mainapp_screen_draw_5afa | Draw common screen using callback c0135afa; fact range also includes a subsequent numeric lookup routine. | likely | c01366a4 MVK 0x5afa,B6; c01366b0 CALLP c01361ac; new save at c01366b8 |
 | c0136720 | cfg_round_up_multiple | Round a value upward to a divisor boundary using remainder. | likely | c0136728 CALLP c0169980; c0136732 SUB A3,A0,A0; c0136734 ADD A2,A0,A0 |
-| c0136744 | cfg_write_metadata_words | Persist a sequence of four-byte metadata fields from 11819cf0 onward. | likely | c0136758/c0136764 form 11819cf0; c0136760 CALLP c01453b4; A6=4 |
+| c0136744 | cfg_write_metadata_words | Persist metadata words and a selected data block using the chunked writer. | likely | c0136758/c0136764 form 11819cf0; c0136760 CALLP c01453b4; A6=4 |
 | c01367f8 | cfg_datastore_write_sections | Write configuration sections and metadata from the DataStore copy path. | likely | c0136804 MVK 0x3448,A3; c0136824/c0136828 form c0183a50; c01369b8 CALLP c01453b4 |
 | c01369d0 | cfg_wait_write_barrier | Acquire then release the semaphore in B14 slot 177. | confirmed | c01369d4 LDW *+B14[177],A4; c01369d8 CALLP c0150b20; c01369e0 CALLP c01628e0 |
 | c01369f0 | cfg_count_nonzero_words | Count nonzero words in an array of B4 elements. | confirmed | c0136a00 LDW *B4++[1],B0; c0136a04 conditional branch skips c0136a08 ADD A1,1,A1 |
@@ -191,3 +191,5 @@ All offsets below are bytes. B14 indices retain the instruction's access width: 
 - c0164600 is a synchronized control-value setter: c0164628 stores destination, c0164632 target, c0164638 third argument, then c016464a sets a request flag and waits; c016467a directly writes the target in another mode. Ramp interpretation of its third argument 0x003deb7d needs DSP-consumer tracing. No ramp-rate units are asserted.
 - Persistence record schemas, callback meanings in the USB command table, and UI assignment-panel variants require deeper tracing. The large c0136a18 writer and merged c013a810 UI region are not exhaustively decoded.
 - c0136720 is likely round-up-to-multiple, contingent on c0169980 returning remainder; its observed arithmetic is input + divisor - result for nonzero result. Negative-input behavior is unspecified here.
+
+Validation: 150/150 fact-sheet addresses appear exactly once, in order, with five table columns, valid C identifiers, allowed confidence labels and instruction-address evidence. Confidence totals: 68 confirmed, 80 likely, 2 guess. `tools/fwmap/coverage.py` completed with output directed to the designated scratch directory; its global touched metric is distinct from this exact chunk-row validation. Report-only commits were made after each 15-row batch; no push was performed.
