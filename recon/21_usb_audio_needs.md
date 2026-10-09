@@ -47,7 +47,7 @@ plus c014f594 (chunk 20), mapped by a helper now.
 | S3 | Alternate-setting state machine | streaming only on alt 1, clean stop on alt 0 | see 3.1 below | **mostly answered**; the routing order is open |
 | S4 | When the USB interfaces are registered, and whether the bus is quiet then | safe point to register IF2/IF3 and set up EP1 | see 3.2 below | **answered** (confirmed call order) |
 | S5 | `usb_interface_activate_core` c014a58c: only about 90 of its 349 instructions read; a DINT section touches c01819bc/c0181ae4/c0181ae8/c0181f74 | probably the configure/attach path that our new interfaces pass through | chunk_11 | open |
-| S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | c0121432..c0121444 plus the SPRUFM9 bit table | open (datasheet read) |
+| S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | see 3.3 below | **likely answered** (MUSB layout); confirm against the SPRUFM9H table |
 | S7 | Descriptor capacity for 192 B, the pointer array at c00643c0 and response buffer c0119fb0 | the new configuration descriptor is 192 B (stock 101 B) | recon/20 2.1 has the plan; re-check against the new disassembly | mostly done |
 | S8 | Free cycles in the audio Swi with 5 slots loaded | the ring copy costs 128+128 B per block | measured budget 96-102k cycles (recon/04); tap cost small | measure on the pedal |
 
@@ -124,6 +124,49 @@ registers, c0144c0c, is the MIDI TX port-op dispatcher chunk_09 found
 embedded in c0144ba0 (table 0xc01843d8, ops 2..8), so the halt-recovery codes
 7 and 8 from c0151ed0 land in that table. What makes 1180a7ec take the
 c016ab8c branch (first switch scan? USB VBUS?) is not read yet.
+
+### 3.3 S6 findings and prototype fixes (Claude, 2026-10-09)
+
+Stock composes the TX CSR word as `MVK 209` << 6 = **0x3440**, then ORs in ISO
+(bit 14) from bmAttributes (c0121432..c0121444, recon/18 3.3). In the standard
+MUSB peripheral TXCSR layout (the one SPRUFM9H documents for this USB0 core;
+taken from the MUSB register map, **not yet re-read in the TI PDF**):
+
+| bit | name | in 0x3440 | for a PIO ISO IN endpoint |
+|---|---|---|---|
+| 0 | TXPKTRDY | 0 | set after each packet is loaded |
+| 3 | FLUSHFIFO | 0 | once at set-up and on alt 0 |
+| 6 | CLRDATATOG | **1** | set once at set-up (harmless for ISO) |
+| 10 | DMAMODE | **1** | 0 (PIO) |
+| 12 | DMAEN | **1** | 0 (PIO) |
+| 13 | MODE (1 = TX) | **1** | **keep 1** |
+| 14 | ISO | from bmAttributes | 1 |
+| 15 | AUTOSET | 0 | 0 |
+
+So only bits 10 and 12 are DMA bits. Bit 13 is the endpoint direction and
+bit 6 is a one-shot toggle reset. The 0x3440 value is "TX endpoint, CPPI DMA
+on, toggle cleared", which matches recon/17 B4's finding that all stock TX goes
+through CPPI. The "single highest-risk unknown" in recon/20 4.2 becomes one
+specific choice.
+
+Fixes needed in `firmware/usb_audio_proto/usb_audio.c` (not built or run):
+1. **Keep MODE.** Every 16-bit TXCSR write also rewrites bits 8..15, and
+   `TXCSR_ISO | TXCSR_TXPKTRDY` (0x4001) clears MODE. Use **0x6001**
+   (MODE | ISO | TXPKTRDY) for each packet, and 0x6048 (MODE | CLRDATATOG |
+   FLUSHFIFO) in set-up instead of FLUSHFIFO then 0.
+2. **Stock will configure EP1 for DMA first.** Per 3.1, SET_INTERFACE(IF3,
+   alt 1) runs c01357c8 -> c01212e0, which writes 0x3440 | ISO = 0x7440
+   (DMAEN on) for EP1. A PIO producer must clear DMAEN/DMAMODE after that, or
+   the endpoint descriptor must not be routed through c01212e0's CPPI branch.
+   Alternative worth checking (S5 reading): submit ISO packets through the
+   stock CPPI TX path that MIDI IN4 uses, instead of PIO.
+3. **No INDEX in the SOF interrupt.** `usb_audio_sof_tick` sets
+   `USB_INDEX = 1` and uses the indexed TXCSR 0x01e00412. The SOF Hwi can
+   interrupt the USB Swi between its own INDEX write and access (recon/20
+   review). Use the direct block: EP1 TXCSR **0x01e00512** (stock reads and
+   clears bit 5 there at c0122000..c0122014), and the FIFO 0x01e00424, which
+   is not indexed. The prototype's comment that 0x01e00512 "has zero stock
+   cross-reference" is wrong.
 
 ## 4. Hardware-only (owner tests, after controller mode passes)
 
