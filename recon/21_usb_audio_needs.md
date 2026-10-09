@@ -149,7 +149,12 @@ on, toggle cleared", which matches recon/17 B4's finding that all stock TX goes
 through CPPI. The "single highest-risk unknown" in recon/20 4.2 becomes one
 specific choice.
 
-Fixes needed in `firmware/usb_audio_proto/usb_audio.c` (not built or run):
+Fixes needed in `firmware/usb_audio_proto/usb_audio.c`. **Made 2026-10-09**
+(compiles clean with the recon/20 flags; not linked or run). Fix 2 is the new
+`usb_audio_set_alt()`: on alt 1 it writes MODE|ISO|DMAMODE (drop DMAEN first,
+the MUSB order rule) then 0x6048; on alt 0 it stops the producer and flushes.
+Its call point (IF3 record callback, after c0135940) depends on the open S3
+routing question:
 1. **Keep MODE.** Every 16-bit TXCSR write also rewrites bits 8..15, and
    `TXCSR_ISO | TXCSR_TXPKTRDY` (0x4001) clears MODE. Use **0x6001**
    (MODE | ISO | TXPKTRDY) for each packet, and 0x6048 (MODE | CLRDATATOG |

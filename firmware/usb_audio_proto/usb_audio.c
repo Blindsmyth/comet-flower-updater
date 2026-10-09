@@ -57,11 +57,14 @@ typedef unsigned int   u32;
 /* CONFIRMED: INDEX+2, c0121406/0c (recon/18 B2, re-traced recon/20 1.7). */
 #define USB_TXMAXP       (*(volatile u16 *)0x01e00410u)
 
-/* CONFIRMED (this pass, recon/20 1.7): INDEX+4, c012142e + the CSR store
-   at c0121444. Corrects recon/18 3.6 point 5's unconfirmed "direct EP1
-   TXCSR 01e00512" -- that address has zero stock cross-reference; this
-   one is traced directly from c01212e0's own address arithmetic. */
+/* CONFIRMED (recon/20 1.7): INDEX+4, c012142e + the CSR store at
+   c0121444. Indexed: only for task-context set-up, never from the SOF Hwi. */
 #define USB_TXCSR        (*(volatile u16 *)0x01e00412u)
+
+/* CONFIRMED (recon/21 3.3): direct (non-indexed) EP1 TXCSR. Stock reads it
+   and clears bit 5 at c0122000..c0122014. The SOF Hwi uses this one so it
+   never writes INDEX, which the USB Swi may be in the middle of using. */
+#define USB_EP1_TXCSR    (*(volatile u16 *)0x01e00512u)
 
 /* CONFIRMED: INDEX+0x54, c01213f6/0121402 (recon/18 B2). */
 #define USB_TXFIFOSZ     (*(volatile u8  *)0x01e00462u)
@@ -82,21 +85,21 @@ typedef unsigned int   u32;
    guess is wrong). */
 #define USB_EP1_FIFO     (*(volatile u32 *)0x01e00424u)
 
-/* TXCSR bit positions:
-   - ISO (bit14, 0x4000): CONFIRMED position, recon/18 3.3 + recon/20 1.3
-     (c012143a SHL A1,0xe,A1 then OR'd in at c0121444).
-   - TXPKTRDY (bit0, 0x0001): LIKELY -- standard MUSB bit, SPRUFM9H
-     (already cited by recon/18 3.3/3.4); never exercised by any stock PIO
-     write (stock drives all TX through CPPI, recon/17 B4), so there is no
-     firmware cross-reference for this specific bit.
-   - FLUSHFIFO (bit3, 0x0008): LIKELY, same source, same caveat.
-   Deliberately NOT reproduced: the DMA-related sub-fields stock composes
-   into its runtime CSR value (base constant 209, recon/18 3.3) at bits
-   6/10/12/13 -- those are left at 0 here (DMA disabled), which is exactly
-   what recon/18 3.6 point 4/5 requires for a PIO producer ("PIO must
-   disable TX1 DMA ownership... do not reuse that entire CSR value"). */
+/* TXCSR bits (recon/21 3.3). Stock's CSR word is 209 << 6 = 0x3440 =
+   MODE | DMAEN | DMAMODE | CLRDATATOG, plus ISO from bmAttributes.
+   - ISO (bit 14): CONFIRMED position (c012143a SHL A1,0xe then OR at c0121444).
+   - MODE (bit 13, 1 = TX): every 16-bit write rewrites it, so every write
+     here must keep it set (0x4001 alone would turn EP1 into an RX endpoint).
+   - DMAEN (bit 12) / DMAMODE (bit 10): stock sets both; a PIO producer must
+     clear them (usb_audio_set_alt).
+   - CLRDATATOG (bit 6), FLUSHFIFO (bit 3), TXPKTRDY (bit 0): standard MUSB
+     layout, LIKELY. Still to re-read in the SPRUFM9H TXCSR table. */
 #define TXCSR_TXPKTRDY   0x0001u
 #define TXCSR_FLUSHFIFO  0x0008u
+#define TXCSR_CLRDATATOG 0x0040u
+#define TXCSR_DMAMODE    0x0400u
+#define TXCSR_DMAEN      0x1000u
+#define TXCSR_MODE       0x2000u
 #define TXCSR_ISO        0x4000u
 
 /* ------------------------------------------------------------------ *
@@ -111,8 +114,8 @@ void usb_audio_setup_ep1(void)
     USB_TXMAXP = 180;            /* recon/17 B5: wMaxPacketSize 0x00b4 */
     USB_TXFIFOADDR = 0x28;       /* byte 0x140, recon/18 3.3/3.6 point 4 */
     USB_TXFIFOSZ = 0x15;         /* 256 B/bank, double-buffered; recon/18 3.3's figure, not re-derived bit-by-bit here */
-    USB_TXCSR = TXCSR_FLUSHFIFO; /* clear stale state before first use */
-    USB_TXCSR = 0;
+    /* TX mode, PIO, toggle reset, FIFO flushed: 0x6048 (recon/21 3.3 fix 1) */
+    USB_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_CLRDATATOG | TXCSR_FLUSHFIFO;
 }
 
 /* ------------------------------------------------------------------ *
@@ -164,12 +167,13 @@ void usb_audio_sof_tick(void)
     if (usb_audio_state.frame_phase >= 10)
         usb_audio_state.frame_phase = 0;
 
-    USB_INDEX = 1;
+    /* Direct EP1 registers only: no INDEX write in Hwi context (recon/21 3.3
+       fix 3). */
     /* If the previous packet has not been taken (TXPKTRDY still set),
        skip this service rather than spin or wait -- recon/18 3.4's
        explicit instruction ("skip/count missed service rather than
        spin"). */
-    if (USB_TXCSR & TXCSR_TXPKTRDY) {
+    if (USB_EP1_TXCSR & TXCSR_TXPKTRDY) {
         usb_audio_state.missed_sof++;
         return;
     }
@@ -177,8 +181,35 @@ void usb_audio_sof_tick(void)
     for (i = 0; i < n; i++)
         USB_EP1_FIFO = silence_frame[i];   /* bounded: n is 44 or 45 */
 
-    USB_TXCSR = TXCSR_ISO | TXCSR_TXPKTRDY;
+    USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_TXPKTRDY;   /* 0x6001 */
     usb_audio_state.serviced_sof++;
+}
+
+/* ------------------------------------------------------------------ *
+ * IF3 alternate-setting switch (recon/21 3.1 and 3.3 fix 2). Task context,
+ * called from the IF3 handler record AFTER stock's SET_INTERFACE c0135940
+ * has run c01357c8 -> c01212e0, which leaves EP1 at 0x7440 (CPPI DMA on).
+ * The order relative to c0135940 is still open (recon/21 S3).
+ * ------------------------------------------------------------------ */
+void usb_audio_set_alt(u8 alt)
+{
+    /* Stop the producer first so the Hwi does not load a packet mid-flush. */
+    usb_audio_state.stream_enabled = 0;
+    usb_audio_state.if3_alt = alt;
+
+    if (alt == 1) {
+        /* MUSB rule: clear DMAEN before (or with) DMAMODE, never DMAMODE
+           first. Two writes: drop DMAEN, then DMAMODE plus toggle reset and
+           flush. */
+        USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_DMAMODE;
+        USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_CLRDATATOG |
+                        TXCSR_FLUSHFIFO;                       /* 0x6048 */
+        usb_audio_state.frame_phase = 0;
+        usb_audio_state.stream_enabled = 1;
+    } else {
+        /* alt 0 has no endpoints; drop anything still queued. */
+        USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
+    }
 }
 
 /* ------------------------------------------------------------------ *
