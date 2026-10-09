@@ -101,6 +101,22 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c0139794 | rhythm_control_flag_clear | Clear word at 11f03c58. | confirmed | c0139794/c0139798 form address; c01397a2 STW zero |
 | c01397a8 | rhythm_playback_flag_clear | Clear word at 11f03cb0 from rhythm playback. | confirmed | c01397a8/c01397ac form address; c01397b2 STW zero; caller rhythm_playback_step |
 
+| c01397b8 | transport_mode_value_get | Query mode and return one of two mode-dependent values. | confirmed | c01397c0 CALLP c0158eec; c01397c6 branches to c01397d0; calls c0158eb8 or c0158eb0 |
+| c01397d8 | transport_timing_configure | Derive transport timing/length from mode and settings and store 11f03c6c. | likely | c0139808 CALLP udiv32 by 10; c013982c CALLP c014d528; c0139868 CALLP c0167410; c0139880 STW |
+| c0139888 | transport_set_start_flags | Set words at 11f03cc8 and 11f03cd4 to 1. | confirmed | c0139892 STW 1; c0139894/c0139898 ADD 12 bytes; c013989a STW 1 |
+| c01398a4 | transport_saved_position_clear | Clear word at 11f03ca0. | confirmed | c01398a4/c01398a8 form 11f03ca0; c01398ae STW zero |
+| c01398b4 | transport_position_snapshot | Copy word at 11f03cb0 to 11f03ca0. | confirmed | c01398c0 LDW; c01398c2/c01398c4 subtract 16 bytes; c01398ca STW |
+| c01398d0 | transport_envelope_reset | Set 11f03cb8/cbc to INT_MAX and clear 11f03cc0. | confirmed | c01398e0 SET B0,0,30; c01398e4/c01398e8 STW; c01398ee STW zero |
+| c01398f4 | transport_ramps_reset | Reset envelope and initialize transport ramps, with extra reset conditional on flags. | likely | c01398f8 CALLP c01398d0; c0139914/c0139968 CALLP c0164600; c0139952 AND flags,24 |
+| c0139978 | transport_start_configure | Configure transport start state, reset ramps and mark a pending update. | likely | c0139988 STW 1,B14[51]; c0139990 CALLP c014d528; c0139a60 CALLP c016748c; c0139a68 STB B14[76] |
+| c0139a70 | transport_level_apply | Scale a menu-derived level and apply it to the ramp at 11f03c5c. | likely | c0139a74 menu-record bridge; c0139a88 CALLP c0151ac0 with 101; c0139aa0 CALLP c0164600 |
+| c0139ab0 | transport_buffer_layout_init | Populate transport buffer layout globals from mode and table c01834ac. | likely | c0139ab4 CALLP c0158eec; c0139ae8 LDW c01834ac; c0139b68/c0139b72 store c011acc0 |
+| c0139b88 | transport_state_init | Copy transport defaults, clear trailing state and initialize B14 counters/buffer state. | likely | c0139b9c memcpy 104 bytes c017d510 to 11f03c5c; c0139bae size 20; c0139bd0..c0139bf8 stores B14[0..5,111] |
+| c0139c04 | transport_ramp_3c8c_zero | Set ramp at 11f03c8c toward zero using coefficient 0x003deb7d. | confirmed | c0139c08/c0139c10 form object; c0139c14 CALLP c0164600; c0139c20 MVK 0,B4 |
+| c0139c28 | transport_ramp_3c8c_full | Set ramp at 11f03c8c toward INT_MAX using coefficient 0x003deb7d. | confirmed | c0139c38 SET B4,0,30; c0139c44 CALLP c0164600 with object 11f03c8c |
+| c0139c50 | transport_capture_stop_reset | Zero capture ramp and reset position/control fields after capture. | likely | c0139c64 CALLP c0164600 at 11f03c70; c0139c94/c0139c98 store -1; c0139ca4/c0139caa clear fields |
+| c0139cb8 | transport_capture_finalize | Finalize captured length with threshold 0x204cc, update length state and notify. | likely | c0139ccc/c0139cd0 form threshold; c0139ce2 CALLP c0139c50; c0139cf2/c0139d02 STW 11f03c6c; c0139d08 STB B14[76] |
+
 ## Data
 
 ## Open questions
