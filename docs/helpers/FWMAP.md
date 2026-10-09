@@ -54,3 +54,15 @@ better than a wrong "confirmed".
   `(offset)` byte form with parentheses is unscaled). Always state byte offsets.
 - `c016e020`/`c016e000` (`CALLP ...,A3`) are register save/restore helpers, not logic.
 - High caller counts can be shared epilogues reached by branch (recon/map/00 notes).
+- **Check for gaps.** Every `## addr` in your fact sheet gets a row, even a 10-byte stub.
+  Before finishing, diff your rows against the fact sheet. Also give each start from
+  `tools/fwmap/hidden_starts.py chunk_NN` its own row ("(hidden start)"); the fact
+  sheets fold about 150 such functions into their neighbours.
+- **Callbacks have callers too.** A function with no CALLP caller is usually loaded as
+  an address (`MVK 0xffffd138` + `MVKH 0xc0140000` = c014d138). `grep <addr>
+  build/fw/map/refs.txt` before writing "no caller".
+- **Address arithmetic:** MVKH sets only the top 16 bits; write the full 8-digit result
+  (0xc011adb8, not 0xc010adb8 or 0xc0110052cc). c0/118/11f addresses are memory, not MMIO.
+- **Branches:** `[!A0]` is taken when A0 == 0; `CMPLTU k,A4,A0` is (k < A4).
+  `BNOP t,N` with N < 5 runs the next 5-N cycles of code before the jump lands.
+- Row text must agree with its evidence (byte order, which branch picks which value).
