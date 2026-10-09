@@ -310,7 +310,7 @@ void usb_audio_build_descriptors(void)
     desc_ptrs[i++] = (const u8 *)0;
 }
 
-/* Bounded copy into usb_audio_resp_buf, mirroring stock's min(total,
+/* Bounded copy into the stock reply buffer c0119fb0 (as `out`), mirroring stock's min(total,
    host wLength) clipping (recon/17 B1 finding2: c013506c/70/76/80,
    c01350c6/ca) but with an explicit per-fragment bound against
    host_wlength so it can never write past what the caller asked for.

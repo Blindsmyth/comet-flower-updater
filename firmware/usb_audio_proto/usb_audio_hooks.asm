@@ -1,5 +1,5 @@
 ; Adapts usb_audio_build_descriptors' plain EABI C calling convention
-; (no args, fills the file-scope desc_ptrs[]/usb_audio_resp_buf state) to
+; (no args, fills the file-scope desc_ptrs[] state) to
 ; the exact register convention of the stock descriptor builder c0160ec0:
 ; A6 is the caller's out-pointer, written through directly (confirmed in
 ; recon/20 item 2.1: c0160ec2 "MV A6,A5" then the final c0161040
