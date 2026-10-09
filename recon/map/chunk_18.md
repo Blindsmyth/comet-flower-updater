@@ -44,6 +44,16 @@ Summary: Mapping in progress.
 | c016e6e0 | arena_copy_default_1180 | tail-call the arena/ring copy body, defaulting B4 to c0181180 | confirmed | c016e6e0 branches to `arena_copy_body`; B4!=0 -> preserve B4; B4==0 -> c016e6f0 selects c0181180 |
 | c016e700 | struct_word0_get | return word 0 of the object at A4 | confirmed | c016e700 `LDW *+A4[0],A4`; c016e704 returns |
 | c016e720 | arena_copy_default_027c | tail-call the arena/ring copy body, defaulting B4 to c018027c | confirmed | c016e720 branches to `arena_copy_body`; B4!=0 -> preserve B4; B4==0 -> c016e730 selects c018027c |
+| c016e740 | event_table_halfword_get | return the halfword at offset 12 in an event-table entry selected by byte offset A4 | likely | c016e740-c016e748 load table base from c0180714; c016e750 adds A4; c016e754 `LDHU *+A3[6]` uses scaled 12-byte offset |
+| c016e780 | menu_commit_0ec0 | tail-call the shared menu-item commit helper using descriptor c0180ec0 | likely | c016e780 branches to `menu_item_commit_shared`; delay slots set B4=input A4, A4=c0180ec0, A6=0, B6=-1 |
+| c016e7c0 | self_pointer_test | return whether object word 0 points to the object itself | confirmed | c016e7c0 loads `*A4`; equal -> c016e7d0 returns 1; unequal -> c016e7cc returns 0; host row excludes hidden c016e7e0 |
+| c016e7e0 | menu_commit_0ec0_global_offset | add the base from c0180a24 to A4 and commit through descriptor 0ec0 | likely | hidden start; c016e7e4-c016e7ec load `*c0180a24`; c016e7f0 calls c016e780 with c016e7f4 `ADD A3,A4,A4` |
+| c016e800 | arena_copy_default_0b7c | tail-call the arena/ring copy body, defaulting B4 to c0180b7c | confirmed | c016e800 branches to `arena_copy_body`; B4!=0 -> preserve B4; B4==0 -> c016e810 selects c0180b7c |
+| c016e820 | struct_halfword12_get | return the unsigned halfword at object byte offset 12 | confirmed | c016e820 `LDHU *+A4[6],A4`; LDHU index 6 is scaled to 12 bytes |
+| c016e840 | runtime_flag_20b4_test_and_set | return halfword c01820b4 and replace it with 1 | confirmed | c016e840-c016e84c load the old halfword from c01820b4; c016e850 stores 1 there |
+| c016e8a0 | arena_copy_default_00f4 | tail-call the arena/ring copy body, defaulting B4 to c01800f4 | confirmed | c016e8a0 branches to `arena_copy_body`; B4!=0 -> preserve B4; B4==0 -> c016e8b0 selects c01800f4 |
+| c016e8c0 | return_true_call_thunk | call `return_true` and return its result | confirmed | c016e8c0 preserves B3 in A0; c016e8c4 calls c016e2e0; c016e8c8 returns through A0 |
+| c016e8e0 | runtime_flag_20dc_test_and_set | return halfword c01820dc and replace it with 1 | confirmed | c016e8e0-c016e8ec load the old halfword from c01820dc; c016e8f0 stores 1 there |
 
 ## Data
 
