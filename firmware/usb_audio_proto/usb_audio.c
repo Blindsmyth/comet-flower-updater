@@ -66,6 +66,13 @@ typedef unsigned int   u32;
    never writes INDEX, which the USB Swi may be in the middle of using. */
 #define USB_EP1_TXCSR    (*(volatile u16 *)0x01e00512u)
 
+/* CONFIRMED: POWER, byte register. Stock read-modify-writes it (SOFTCONN,
+   bit 6: set at c0120e1a..20, cleared at c011ff4a..4c). Bit 7 is ISOUPDATE
+   (SPRUFM9H 2.7.1.4.1.2): an ISO packet loaded into the FIFO waits for the
+   next SOF, so the first packet after alt 1 is never sent early. */
+#define USB_POWER        (*(volatile u8  *)0x01e00401u)
+#define POWER_ISOUPDATE  0x80u
+
 /* CONFIRMED: INDEX+0x54, c01213f6/0121402 (recon/18 B2). */
 #define USB_TXFIFOSZ     (*(volatile u8  *)0x01e00462u)
 
@@ -92,8 +99,10 @@ typedef unsigned int   u32;
      here must keep it set (0x4001 alone would turn EP1 into an RX endpoint).
    - DMAEN (bit 12) / DMAMODE (bit 10): stock sets both; a PIO producer must
      clear them (usb_audio_set_alt).
-   - CLRDATATOG (bit 6), FLUSHFIFO (bit 3), TXPKTRDY (bit 0): standard MUSB
-     layout, LIKELY. Still to re-read in the SPRUFM9H TXCSR table. */
+   - CLRDATATOG (bit 6), FLUSHFIFO (bit 3), TXPKTRDY (bit 0): CONFIRMED in
+     SPRUFM9H Table 65 (PERI_TXCSR). FLUSHFIFO only acts while TXPKTRDY is
+     set, and a double-buffered FIFO may need it twice. UNDERRUN (bit 2) is
+     set by hardware on an empty IN; every write here clears it. */
 #define TXCSR_TXPKTRDY   0x0001u
 #define TXCSR_FLUSHFIFO  0x0008u
 #define TXCSR_CLRDATATOG 0x0040u
@@ -201,6 +210,7 @@ void usb_audio_set_alt(u8 alt)
 
     if (alt == 1) {
         usb_audio_setup_ep1();
+        USB_POWER |= POWER_ISOUPDATE;
         /* MUSB rule: clear DMAEN before (or with) DMAMODE, never DMAMODE
            first. Two writes: drop DMAEN, then DMAMODE plus toggle reset and
            flush. */
@@ -210,7 +220,9 @@ void usb_audio_set_alt(u8 alt)
         usb_audio_state.frame_phase = 0;
         usb_audio_state.stream_enabled = 1;
     } else {
-        /* alt 0 has no endpoints; drop anything still queued. */
+        /* alt 0 has no endpoints; drop anything still queued. Twice: the
+           FIFO is double-buffered (SPRUFM9H Table 65 note). */
+        USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
         USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
     }
 }

@@ -47,7 +47,7 @@ plus c014f594 (chunk 20), mapped by a helper now.
 | S3 | Alternate-setting state machine | streaming only on alt 1, clean stop on alt 0 | see 3.1 below | **answered** (routing: record callback first, design (b)) |
 | S4 | When the USB interfaces are registered, and whether the bus is quiet then | safe point to register IF2/IF3 and set up EP1 | see 3.2 below | **answered** (confirmed call order) |
 | S5 | `usb_interface_activate_core` c014a58c: only about 90 of its 349 instructions read; a DINT section touches c01819bc/c0181ae4/c0181ae8/c0181f74 | probably the configure/attach path that our new interfaces pass through | chunk_11 | **answered** (recon/22): not on the interface path; UAC interfaces need not pass through it |
-| S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | see 3.3 below | **likely answered** (MUSB layout); confirm against the SPRUFM9H table |
+| S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | see 3.3 below | **answered**: SPRUFM9H Table 65 confirms the layout |
 | S7 | Descriptor capacity for 192 B, the pointer array at c00643c0 and response buffer c0119fb0 | the new configuration descriptor is 192 B (stock 101 B) | recon/20 2.1 has the plan; re-check against the new disassembly | mostly done |
 | S8 | Free cycles in the audio Swi with 5 slots loaded | the ring copy costs 128+128 B per block | measured budget 96-102k cycles (recon/04); tap cost small | measure on the pedal |
 
@@ -176,6 +176,23 @@ taken from the MUSB register map, **not yet re-read in the TI PDF**):
 | 13 | MODE (1 = TX) | **1** | **keep 1** |
 | 14 | ISO | from bmAttributes | 1 |
 | 15 | AUTOSET | 0 | 0 |
+
+**Checked against SPRUFM9H (July 2010) Table 65, PERI_TXCSR (Claude,
+2026-10-09):** 15 AUTOSET, 14 ISO, 13 MODE, 12 DMAEN, 11 FRCDATATOG,
+10 DMAMODE, 9..7 reserved, 6 CLRDATATOG, 5 SENTSTALL, 4 SENDSTALL,
+3 FLUSHFIFO, 2 UNDERRUN, 1 FIFONOTEMPTY, 0 TXPKTRDY. The table above is
+right. Notes from the same document that change the producer:
+- 2.7.1.4.1: DMA "is not particularly useful with Isochronous endpoints"
+  (packets are not max size and TXCSR must be checked after every packet).
+  This supports PIO.
+- FLUSHFIFO acts only while TXPKTRDY is set; double-buffered FIFOs may need
+  two flushes. UNDERRUN (bit 2) is set on an IN with an empty FIFO (a null
+  packet is sent); software clears it.
+- 2.7.1.4.1.2: start-up of a double-buffered ISO IN pipe can send the first
+  packet too early; set POWER.ISOUPDATE (0x01e00401 bit 7). Stock RMWs POWER
+  for SOFTCONN (c0120e1a, c011ff4a). The prototype now sets it on alt 1.
+- TI suggests loading on SOF (our design) and double buffering (DPB, TXFIFOSZ
+  bit 4).
 
 So only bits 10 and 12 are DMA bits. Bit 13 is the endpoint direction and
 bit 6 is a one-shot toggle reset. The 0x3440 value is "TX endpoint, CPPI DMA
