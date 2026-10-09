@@ -170,6 +170,16 @@ Summary: TBD (fill in after mapping).
 | c016d880 | sem_post_or_clear | If B4 is zero, tail-call bios_sem_post on the semaphore from global c017d36c; otherwise take the local clear path. | likely | c016d882 tests B4; c016d884-c016d894 semaphore load; c016d890 B c01628e0 |
 | c016d8c0 | global_object_method8 | If global object c01821ec exists, return/call its word field [8]; otherwise return zero. | likely | c016d8c0-c016d8c8 global load; c016d8d0 LDW *+A0[8],A3; conditional zero at c016d8d8 |
 | c016d940 | menu_commit_0e60 | Tail-call menu_item_commit_shared with descriptor c0180e60, callback c0163fc0, and the caller object. | likely | c016d940 B c0166a80; c016d944-c016d950 descriptor/callback constants; c016d954 moves object |
+| c016da00 | menu_commit_0ee0 | Tail-call menu_item_commit_shared with descriptor c0180ee0, callback c016e7e0, and B6=-1; host excludes hidden c016dac0. | likely | c016da00 B c0166a80; c016da04-c016da10 constants; c016da1c B6=-1 |
+| c016dac0 | (hidden start) guarded_record_clear | Under DINT, inspect record field [2], clear/update record state, then restore CSR. | guess | c016dac4/c016dac8 save CSR and DINT; c016dacc LDW *A4[2]; c016dace zero value |
+| c016db00 | global_object_field9_positive | Return whether word field [9] of global object c01821ec is positive, or false when the object is null. | confirmed | c016db00-c016db08 global load; c016db10 LDW field [9]; c016db1c CMPGT 0,A3 |
+| c016db40 | flag_and_state1 | Return true only when A4 is nonzero and global c01819f4 equals 1. | confirmed | c016db48 global load; c016db50 normalizes A4; c016db54 CMPEQ global,1 |
+| c016db80 | clear48_or_init | For non-null A4, clear 48 bytes with memset; null input follows the local initializer at c016dba8. | likely | c016db82 null test; c016db8c B memset; A6=48,B4=0; c016db84 null branch c016dba8 |
+| c016dbc0 | record_cleanup_if_live | If record field [2] is nonzero, load halfword field [14] and tail-dispatch through c016dcc0 using field [1]; otherwise return. | likely | c016dbc2 field [2] test; c016dbc8 LDH field [14]; c016dbcc B c016dcc0; c016dbd0 LDW field [1] |
+| c016dc00 | global_object_field0_positive | Return whether word field [0] of global object c01821ec is positive, or false when null. | confirmed | c016dc00-c016dc08 global load; c016dc10 LDW field [0]; c016dc1c CMPGT 0,A3 |
+| c016dc80 | dispatch_1540_zeroed | Call c0161540 with the auxiliary argument registers cleared and return zero. | likely | c016dc84 CALLP c0161540; c016dc88-c016dc94 clear A10/B8/A8/B6 |
+| c016dcc0 | object_release_or_global | Call c016eae0 for A4; when A4 is null, substitute global c0181a24 for the release path. Host excludes hidden c016dd40. | guess | c016dcc4-c016dccc global/input; c016dcd0 CALLP c016eae0; conditional global load in parallel |
+| c016dd40 | token_validate_commit | Reserve an index through c016e980, validate the token with c016a560, then finalize via c016e120. | likely | c016dd44 CALLP c016e980; c016dd4c CALLP c016a560; c016dd54 CALLP c016e120 |
 
 ## Data
 
