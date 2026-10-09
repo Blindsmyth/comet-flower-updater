@@ -1,6 +1,6 @@
 # chunk_18: c016e020..c016ec40 (68 functions)
 
-Summary: Mapping in progress.
+Summary: This range is a dense runtime veneer layer: ABI register-save and interrupt/CSR primitives, timestamp and L2-cache controls, global/structure accessors, arena and menu adapters, Hwi-gate entry/leave, object virtual-call thunks, and callback/startup dispatch wrappers. Most entries are intentionally tiny and many supply fixed descriptors or default arguments to shared bodies; the four hidden starts are independent functions folded into neighboring fact-sheet extents.
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
@@ -8,7 +8,7 @@ Summary: Mapping in progress.
 | c016e0c0 | runtime_global_3aec_set | store A4 to runtime global c0183aec | confirmed | c016e0c4-c016e0cc form c0183aec and `STW A4,*A3` in the return delay slots |
 | c016e100 | stack_pointer_init_if_zero | conditionally initialize B15 from runtime global c0181fcc | confirmed | c016e100 copies A4 to B0; A4!=0 -> return/no writes; A4==0 -> c016e110 loads B15 from c0181fcc and c016e114 clears that global |
 | c016e120 | runtime_halt | spin forever | confirmed | c016e124 `BNOP 0xc016e124,5` |
-| c016e140 | callback_broadcast_null | broadcast a null event/value tuple | confirmed | c016e140 saves B3; c016e144 calls `callback_broadcast_tailcall` with B4=0, A6=0, then returns A4=0 |
+| c016e140 | registry_node_create_null_context | register the handler in A4 with null B4/A6 context and return null | likely | c016e140 saves B3; c016e144 calls c016dfc0 -> `registry_node_alloc_and_link` with B4=0 and A6=0; c016e14c returns A4=0 |
 | c016e160 | codec_init_default_device | initialize codec using descriptor at ffffac44 | confirmed | c016e164/c016e16c load A4=ffffac44; c016e168 calls `codec_init_and_mute` |
 | c016e180 | variant_record_copy_adapter | rearrange an encoded record and tail-call variant-record copy | likely | c016e180/c016e188 load A6 from original A4+3; c016e18c-c016e194 pass A4=old B4 and B4=old A4+7; c016e184 branches to `variant_record_copy` |
 | c016e1a0 | audio_ramp_table_apply_mode1 | apply the audio ramp table with mode 1 | confirmed | c016e1a0 preserves B3 in A2; c016e1a4 calls `audio_ramp_table_apply` with A6=1; c016e1ac returns through A2 |
@@ -70,8 +70,21 @@ Summary: Mapping in progress.
 | c016eb20 | xdc_startup_exec_15 | execute XDC/BIOS startup with a 15-word local work buffer | likely | c016eb20 allocates 72 stack bytes; c016eb24-c016eb2c call `xdc_runtime_startup_exec` with B4=15 and A4=B15+8 |
 | c016eb40 | runtime_flag_1a3c_is_set | return whether word c0181a3c is nonzero | confirmed | c016eb40-c016eb48 load the word; value==0 -> c016eb50/c016eb54 return 0; value!=0 -> return 1 |
 | c016eb60 | interrupts_disable_save_csr_tailcall | tail-call interrupt disable and return the previous CSR | confirmed | c016eb60 branches directly to c016e4c0 `interrupts_disable_save_csr` |
+| c016eb80 | csr_restore_tailcall_eb80 | tail-call CSR restore | confirmed | c016eb80 branches directly to c016e4e0 `csr_restore` |
+| c016eba0 | return_error | return -1 | confirmed | c016eba0 sets A4=-1 and c016eba4 returns; host row excludes hidden c016ebc0 |
+| c016ebc0 | runtime_resource_2208_set_and_release | store A4 in c0182208 and forward it to the ELF-resource release helper | likely | hidden start; c016ebc4-c016ebd0 form c0182208 and store A4 while c016ebcc calls `elf_resource_release_sub` |
+| c016ebe0 | cbarray_fire_registry_init | register `cbarray_fire_all` with null context | likely | c016ebe4/c016ebec load A4=c016bc40 `cbarray_fire_all`; c016ebe8 calls c016e140 `registry_node_create_null_context` |
+| c016ec00 | dispatch_c013c980_flag0_vararg | call the shared c013c980 dispatcher with flag 0 and a stack-backed copy of A6 | likely | c016ec04 calls c013c980; parallel c016ec08-c016ec0c save A6, set B6=0, and pass A6=B15+4 |
+| c016ec20 | callback_dispatch_tree_with_scratch | call the shared callback-dispatch tree with a local scratch buffer | likely | c016ec20 allocates 32 stack bytes; c016ec24 calls `shared_callback_dispatch_tree` with c016ec28 B6=B15+8 |
 
 ## Data
 
+- Runtime globals: c0181a3c (enable/ready word), c0181a44 (global Hwi-gate handle), c0181f60 (eight-byte pair), c0181f74 (swappable word), c0181f78 (audio-ramp callback), c01820b4/c01820dc (halfword test-and-set flags), c01820ec/c01821e0 (word getters), c0182130/c0182208 (word/resource setters), and c01821ec (object tested by the field-4/field-9 validity helpers).
+- Default arena/menu descriptors used by veneers: c01800f4, c018027c, c0180600, c0180b7c, c0180e40, c0180ec0, and c0181180.
+- L2 range-operation register pairs begin at 01844000 (writeback), 01844010 (invalidate), and 01844018 (writeback-invalidate). TSCL/TSCH supply the timestamp counter; CSR bit 0 is the global interrupt enable.
 
 ## Open questions
+
+- The semantic owner of globals c01820b4, c01820dc, c01820ec, c0182130, c01821e0, and c0182208 is not established here, so their names remain address-based.
+- c013c980 is demonstrably a large shared dispatcher/parser but its exact API name remains unsettled; c016ec00 is therefore named from its argument adaptation rather than a guessed high-level subsystem.
+- c016e520, c016e7e0, and c016ebc0 have clear mechanics, but the higher-level meaning of their global base/resource updates remains likely rather than confirmed.
