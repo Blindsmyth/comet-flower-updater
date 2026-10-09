@@ -346,3 +346,27 @@ boot region" would need `cfg_locked_dispatch`'s address arithmetic and the
   it to, not that the pedal would refuse if asked. Any new or edited tool
   that emits update-mode stages should be checked against the same
   allowlist before it is ever pointed at the real pedal.
+
+## Review (Claude, 2026-10-09)
+Checked against the code and the tools:
+- **Order confirmed:** c020a4d0 reads the footswitches (c020a4d8/e8 CALLP
+  c022ba0c) and the button pattern (c022b968, c022b9c8) and calls update mode
+  c0201404 at c020a560 **before** the normal load c022ba40 at c020a568. So a
+  bad main firmware (res1) cannot stop update mode from starting. Recovery
+  from a res1, preset, file-system or settings fault depends only on res5
+  being intact.
+- **Our tool never writes res5.** make_fs_restore_updater.py builds its stage
+  list from scratch out of file-system, preset and firmware stages only. Its
+  allowlist check, previously only on --patch-fw / --controller-fw, now runs
+  for every image.
+- **Pre-flight tool:** `tools/check_updater_stages.py <updater.exe>` prints
+  the stage table and refuses any stage touching [0, 0x28000) or
+  [0xbf000, 0xc0000). All nine updaters in build/fw pass. Zoom's own v2.00
+  updater does not: it rewrites the boot program (stages 4-5) and the
+  settings sector. **An interrupted official Zoom update is the one easy way
+  to brick the pedal beyond update-mode recovery.** Run it only when needed,
+  on a stable USB connection.
+- The 0xBFFF0 signature lives in the settings sector, which our images never
+  write, so main-firmware changes cannot fail that check.
+- Still open: the res5 code path inside c0201404 (whether it bounds host
+  addresses), and where c020a4d0 is called from.

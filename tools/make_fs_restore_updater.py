@@ -287,14 +287,14 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
               % (controller_fw, len(new_fw) - len(old_fw)))
     if logo is not None or firmware is not None or patch_fw is not None or grown is not None:
         new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
-    if patch_fw is not None or grown is not None:
-        # Boot/update-mode program [0, 0x28000), settings/recovery sector
-        # [0xbf000, 0xc0000), and all unused flash regions remain untouched.
-        allowed = {(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES),
-                   (1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES),
-                   (1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)}
-        if len(new) > 8 or any(stage not in allowed for stage in new):
-            sys.exit("unsafe update stages: refused")
+    # Every image: the boot/update-mode program [0, 0x28000) holds the only
+    # recovery path (recon/25), so it, the settings/recovery sector
+    # [0xbf000, 0xc0000) and all unused flash regions stay untouched.
+    allowed = {(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES),
+               (1, PRESET_ADDR, PRESET_SIZE, 0), (2, PRESET_ADDR, 0, PRESET_RES),
+               (1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)}
+    if len(new) > 8 or any(stage not in allowed for stage in new):
+        sys.exit("unsafe update stages: refused")
     new += [(0, 0, 0, 0)] * (8 - len(new))
     if image is not None:
         import os
