@@ -107,6 +107,14 @@ Summary: TBD (fill in after mapping).
 | c016c240 | fp32_div | Single-precision division using reciprocal estimates and two Newton refinements, with explicit handling for exceptional exponents. | confirmed | c016c240/c016c2a0 RCPSP; repeated MPYSP/SUBSP refinement; c016c24c/c016c2b0 exponent extraction; later branches select exceptional results |
 | c016c360 | fmt_render_wrapper | Render a formatted string via c014fa40 using stack-built varargs, then null-terminate the destination byte. | likely | c016c368 loads stack argument; c016c38c CALLP c014fa40; c016c3b8 STB 0,*B4 |
 | c016c3c0 | lazy_register_d740 | If registration flag c0181f70 is clear, register descriptor c01654a0 through c016e0c0; otherwise branch to c016e0a0. | likely | c016c3c4-c016c3cc flag load; c016c3d0-c016c3e0 constants; c016c3e8 B c016e0a0 when set; c016c3f8 CALLP c016e0c0 |
+| c016c480 | edma_channel_regs_write | Under DINT, copy words from the input structure into the EDMA register block at 01840040 and restore CSR. | likely | c016c480 MVC CSR and c016c484 DINT; c016c488 loads struct word; c016c48c-c016c494 form 01840040 and STW |
+| c016c4e0 | task_tsr_config_if_enabled | If c016d7c0 succeeds, update TSR control bits and install pointer c018008c into the task-state path. | guess | c016c4e4 CALLP c016d7c0; c016c4f4-c016c50c MVC/OR/CLR TSR; fact-sheet pointer c018008c |
+| c016c540 | menu_commit_0dc0 | Commit the object at c0180dc0 through menu_item_commit_shared using callback c016b240 and the caller object's first word. | likely | c016c540-c016c544 descriptor c0180dc0; c016c54c/c016c56c callback c016b240; c016c560 CALLP c0166a80 |
+| c016c5a0 | irq_source_mask_update | Use table c018201c and index A4 to update a bit in interrupt-controller register 01c14170. | likely | c016c5a0-c016c5a8 table load; c016c5b4 LDW 01c14170; c016c5b8 indexed table load; c016c5c2-c016c5c6 build bit mask |
+| c016c600 | cfg_record_init_802e | Initialize a record with caller pointer and type 0x802e, then pass it to cfg_lookup_or_arena_copy. | likely | c016c61c STW A4,*B5; c016c624 STH 0x802e,*+B5[2]; c016c620 CALLP c016b9c0 |
+| c016c660 | menu_commit_0de0 | Commit the caller object through menu_item_commit_shared using descriptor c0180de0. | likely | c016c670-c016c684 form c0180de0 and load object word; c016c67c CALLP c0166a80 |
+| c016c6c0 | cfg_record_init_802f | Initialize a record with caller pointer and type 0x802f, then pass it to cfg_lookup_or_arena_copy; own portion ends before hidden c016c720. | likely | c016c6dc STW A4,*B5; c016c6e4 STH 0x802f,*+B5[2]; c016c6e0 CALLP c016b9c0 |
+| c016c720 | (hidden start) locked_offset_dispatch | Acquire the BIOS big lock, combine a global base at c017d36c with the input offset, and operate on the resulting region using stack parameters. | guess | c016c728-c016c730 global load; c016c744 CALLP bios_biglock_pend; c016c74a ADD base,input; stack holds 1 and sizes 0x20/0x24 |
 
 ## Data
 
