@@ -69,6 +69,22 @@ Summary: mapping in progress; this range begins with MainApp screen helpers and 
 | c0139018 | ui_save_draw_footswitch_prompt | Draw the BOTH FSW : SAVE prompt and indexed text variant. | likely | fact string BOTH FSW : SAVE; c0139030 CALLP c011c508; c0139058 CALLP c013a2d8 |
 | c0139068 | ui_save_draw_footswitch_prompt_3 | Draw save footswitch prompt with selector 3. | confirmed | c013906a CALLP c0139018; c013906c MVK 3,A4 |
 
+| c0139074 | ui_save_conditional_present | Call display bridge with zero when input bit 0 is set. | confirmed | c0139076 EXTU A4,31,31,A0; c0139078 conditional skip; c0139080 CALLP c016df00 |
+| c0139088 | ui_save_present_confirmation | Render save fields/prompt, synchronize display and request a 1500-unit wait/lookup. | likely | c01390ae CALLP c0138ff4; c01390cc/c01390e0 use B14[149]; c01390ec CALLP c0158980 with 0x5dc |
+| c01390f8 | ui_save_execute | Guard save application and confirmation with semaphore, then restore UI state. | likely | c0139114 pend B14[154]; c0139118/c013911a CALLP c0138ca4/c0139088; c0139170 post; c0139184 reset |
+| c013918c | ui_save_step_slot | Wrap slot selection within 0..49, with special handling of the current slot in mode 8. | likely | c0139192 MVK 49,A0; c0139194 CALLP c01418ec; c01391a4 LDW B14[99]; c01391cc CMPEQ 8,A6 |
+| c01391f4 | ui_save_handle_slot_step | Handle signed slot-step event with footswitch and effect-slot state checks. | likely | c01391f8 LDW event+8; c0139228 bridge to gpio_read_footsw; c0139266 CALLP c013918c |
+| c0139284 | ui_save_handle_direct_slot | Select save slot from a configuration table event and refresh selection state. | likely | c0139294 CALLP c012f898; c01392a0 CALLP c015c164; c01392cc CALLP c013918c |
+| c01392ec | ui_save_handle_flag_reset | Reset shared selection flags and finish save-screen event processing. | likely | c01392f0 CALLP c0155404; c01392f4 CALLP c0155304 with 1; c01392fa CALLP c0138b40 |
+| c013930c | ui_save_handle_direction | Handle directional save-slot change and clear selection-related state. | likely | c0139310 LDW event+8; c0139318/c0139320 choose +/-1; c0139376 CALLP c013918c |
+| c0139398 | ui_save_handle_config_step | Apply a signed configuration selection change and mark save state active. | likely | c01393c2/c01393c4 choose +/-1; c01393e8 CALLP c0155278; c01393f8 STW 1 |
+| c0139404 | ui_save_event_dispatch | Dispatch event IDs 0..25 via table and handle IDs 31..35 with explicit branches. | confirmed | c013940a MVK 25,A0; c0139414 SUB A1,31; c0139420/c0139426 compare 33/35; c0139438 LDW c0183de4[A1] |
+| c0139444 | ui_save_event_case_group | Case-arm block for active-mode selection, pending flag, save execution and slot stepping. | confirmed | c0139450 excludes mode 14; c0139458/64/6a/70 CALLP handlers; branches to shared c0139490 |
+| c0139476 | ui_save_event_case_direct_slot | Dispatch table case to direct-slot handler and shared return. | confirmed | c0139476 CALLP c0139284; c0139478 MV A4,A3; c013947a BNOP c0139490 |
+| c0139480 | ui_save_event_case_flag_reset | Dispatch table case to flag-reset handler and shared return. | confirmed | c0139480 CALLP c01392ec; c0139484 BNOP c0139490 |
+| c0139486 | ui_save_event_case_direction | Dispatch table case to direction handler and shared return. | confirmed | c0139486 CALLP c013930c; c013948a BNOP c0139490 |
+| c013948c | ui_save_event_case_config_step | Dispatch table case to configuration-step handler and fall into shared return. | confirmed | c013948c CALLP c0139398; c013948e MV A4,A3 |
+
 ## Data
 
 ## Open questions
