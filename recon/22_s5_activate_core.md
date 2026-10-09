@@ -165,6 +165,28 @@ c014a814 STW.D1T1 A3,*+A14[2]
 c014a830 MVC.S2   B5,CSR
 ```
 
+**Finding 10 — confirmed.** When `c0181aec != 0`, hidden `c014a5e0` calls
+map-named `c0161200` (`cfg_locked_dispatch`) on `S + *c0181998`, then walks
+a circular/sentinel list whose sentinel is `S + *c018199c` and whose next
+link is node word 0.  It does **not** link or unlink nodes.  For each selected
+record it may call `c016a420` (map name `cfg_option_resolve_dispatch`), then
+enters `c014a968..c014a994`: reads `TSCL`, moves record word 4 to word 3,
+sets word 4 to zero, moves the old word 5 delta into word 2, and stores the
+new timestamp in word 5.  The walk advances with `B10 = B10[0]` and stops at
+the sentinel.  The record selection expression is confirmed as
+`*((*node[6])[14] + S[0])`; its source-level type is missing.
+
+```text
+c014a890 CMPEQ.L2X B10,A3,B0         ; head == sentinel
+c014a8a0 [!B0] LDW.D2T2 *+B10[6],B5
+c014a8d4 LDW.D2T1 *+B5[B4],A15      ; selected record
+c014a968 DINT
+c014a974 LDW.D1T1 *+A15[5],A3
+c014a980 STW.D1T1 A6,*+A15[4]       ; zero
+c014a984 STW.D1T1 A4,*+A15[5]       ; now
+c014a998 LDW.D2T2 *+B10[0],B10      ; next
+```
+
 ## 4. Callees
 
 **Finding 5 — confirmed.** The direct callees of the real `c014a58c` are:
