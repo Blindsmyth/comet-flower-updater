@@ -160,6 +160,16 @@ Summary: TBD (fill in after mapping).
 | c016d580 | (hidden start) arena_copy_and_advance | Copy A6 bytes through variant_record_copy using the arena cursor in B4, then advance its stored pointer by the copied length. | likely | c016d588 CALLP c0169fc0; c016d590/c016d594 load cursor; c016d5a4 adds length to cursor |
 | c016d5c0 | task_initial_frame_build | Build an initial descending task stack frame containing supplied registers, entry c016e0e0, and zero-filled saved slots. | likely | c016d5c0-c016d5d4 push A6/B4/B8/A8; c016d5c8-c016d5e0 entry pointer; c016d5e4 loop pushes zeros |
 | c016d600 | scheduler_stack_swap | Return saved scheduler state and, when none exists, save the current SP in c0181fcc and load replacement SP from c0181fd0. | likely | c016d600 base c0181fb8; c016d608/c016d60c fields [5]/[6]; c016d618 saves B15; c016d620 loads B15 |
+| c016d640 | sdram_defaults_copy_clear | Copy 16 bytes from c0181538 to 11f03eb0, then tail-call memset for the following region. | likely | c016d648/c016d64c LDNDW defaults; c016d650 B memset; destination constant c016d654-c016d658 |
+| c016d680 | clear_table_3840 | Zero a fixed table rooted at c0183840 using a software-pipelined store loop. | likely | c016d684/c016d68c form c0183840; c016d688 SPLOOPD; A4/A5 zeroed |
+| c016d6c0 | object_cleanup_dispatch | For a non-null object, load fields immediately before it and tail-call c016dcc0; null input follows the local fallback that can reach c016e240. | likely | c016d6c4 subtracts 8; c016d6d0/c016d6d8 loads fields; c016d6d4 B c016dcc0; fact calls c016e240 |
+| c016d780 | callback_subsystem_init | Register callback c016b0c0, then initialize associated registration, dispatch, row-handler, and lazy flags. | likely | c016d780 callback constant; c016d788 CALLP cbarray_push_bounded; c016d790-c016d79c four initializer calls |
+| c016d7c0 | global_object_method4 | If global object c01821ec exists, return/call its word field [4]; otherwise return zero. | likely | c016d7c0-c016d7c8 global load; c016d7d0 LDW *+A0[4],A3; conditional zero at c016d7d8 |
+| c016d800 | irq_disable_index | Under DINT, clear the IER bit selected by A4 and restore CSR. | likely | c016d800-c016d808 CSR/DINT/IER; c016d80c-c016d810 build bit; subsequent IER update |
+| c016d840 | irq_enable_index | Under DINT, set the IER bit selected by A4 and restore CSR. | likely | c016d840-c016d848 CSR/DINT/IER; c016d84c-c016d850 build bit; subsequent IER update |
+| c016d880 | sem_post_or_clear | If B4 is zero, tail-call bios_sem_post on the semaphore from global c017d36c; otherwise take the local clear path. | likely | c016d882 tests B4; c016d884-c016d894 semaphore load; c016d890 B c01628e0 |
+| c016d8c0 | global_object_method8 | If global object c01821ec exists, return/call its word field [8]; otherwise return zero. | likely | c016d8c0-c016d8c8 global load; c016d8d0 LDW *+A0[8],A3; conditional zero at c016d8d8 |
+| c016d940 | menu_commit_0e60 | Tail-call menu_item_commit_shared with descriptor c0180e60, callback c0163fc0, and the caller object. | likely | c016d940 B c0166a80; c016d944-c016d950 descriptor/callback constants; c016d954 moves object |
 
 ## Data
 
