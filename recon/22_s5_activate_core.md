@@ -32,6 +32,24 @@ c014a5d0 MVK.L1   -5,A0
 c014a5d2 MV.L1    A0,A4
 ```
 
+**Finding 8 — confirmed.** The real wrapper has four logical basic blocks:
+`c014a58c..c014a5ac` (save registers, build the 24-byte temporary, test
+input word +4), `c014a5ae..c014a5cc` (zero arguments, dispatch through
+`c016b5c0`, copy its result), `c014a5d0` (error value -5), and the merge/
+return block `c014a5d2..c014a5d8`.  The `BNOP c014a5d2` at `c014a5cc` has
+five delay cycles and therefore does not execute the error-value instruction
+at `c014a5d0`; the conditional `BNOP` at `c014a5ac` lands on it.
+
+```text
+c014a5ac [A0] BNOP.S1 c014a5d0,5
+c014a5b0 CALLP.S2 c016b5c0,B3
+c014a5c8 MV.L1    A4,A0
+c014a5cc BNOP.S1  c014a5d2,5
+c014a5d0 MVK.L1   -5,A0
+c014a5d2 MV.L1    A0,A4
+c014a5d8 CALLP.S1 c016e000,A3
+```
+
 ## 2. Arguments and globals
 
 **Finding 3 — confirmed.** The sole direct caller at `c0149f78` passes
