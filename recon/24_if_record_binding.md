@@ -242,6 +242,10 @@ c0145158 CALLP c0152410,B3      ; installs stock MIDI record
 c0145164 MV    A4,A0            ; registration result is available here
 c016ab78 CALLP c0159758,B3      ; task-side MIDI/open path containing above
 c016ab80 CALLP c015af18,B3      ; USB worker/soft-connect follows
+c0120e10 MVK   0x0401,A4
+c0120e14 MVKH  0x01e00000,A4    ; POWER register address
+c0120e1a SET   A0,6,6,A0        ; SOFTCONN bit
+c0120e20 STB   A0,*A4[0]
 ```
 
 Those two calls are **not sufficient without patching `c015c66c`**.  Stock
