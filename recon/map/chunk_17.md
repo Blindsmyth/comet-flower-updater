@@ -134,6 +134,15 @@ Summary: TBD (fill in after mapping).
 | c016cd80 | cfg_record_init_8009 | Initialize a record with caller pointer and type 0x8009, then pass it to cfg_lookup_or_arena_copy. | likely | c016cd90/c016cd98 form 0x8009; c016cd9c/c016cda4 stores; c016cda0 CALLP c016b9c0 |
 | c016cde0 | menu_commit_0f20 | Commit the caller object through menu_item_commit_shared using descriptor c0180f20 and callback c016dbc0. | likely | c016cde0-c016cde4 descriptor; c016cdec/c016ce0c callback; c016ce00 CALLP c0166a80 |
 | c016ce40 | alloc_or_clear | Call c0167f60; on success clear A10 bytes at the returned pointer with memset and return it, otherwise return the allocator result unchanged. | likely | c016ce48 CALLP c0167f60; c016ce50 branch on result; c016ce54 B c0167b00 with B4=0,A6=A10 |
+| c016cea0 | conditional_buffer_clear | If global c0181a3c is nonzero, clear that many bytes at the pointer stored in c01821f4; otherwise return -1. | likely | c016cea4-c016ceac size load; c016ceb0-c016cec4 pointer load/branch; c016cec8 B memset with B4=0,A6=size; c016ced4 fallback -1 |
+| c016cf00 | notify_if_enabled | If both halfword c0181b0c and word c0181a3c are nonzero, tail-call c016a600; otherwise return. | likely | c016cf04-c016cf18 loads; c016cf20/c016cf24 zero tests; c016cf30 B c016a600 |
+| c016cf60 | updateui_dispatch_flag1 | Query c016eb40 and, on success, tail-dispatch to c013c980 with flag B6=1 and a stack output slot; otherwise return -1. | likely | c016cf68 CALLP c016eb40; c016cf6e MVK 1,B6; c016cf80 B c013c980; c016cf8a fallback -1 |
+| c016cfc0 | updateui_dispatch_flag0 | Query c016eb40 and, on success, tail-dispatch to c013c980 with flag B6=0; otherwise return -1. Own code ends before hidden c016d080. | likely | c016cfc8 CALLP c016eb40; c016cfce MVK 0,B6; c016cfe0 B c013c980; c016cfea fallback -1 |
+| c016d080 | (hidden start) edma_default_channel_init | Build stack structure {4,3,3} and pass it to edma_channel_regs_write. | confirmed | c016d084-c016d08c stack stores 4,3,3; c016d090 CALLP c016c480 with A4=stack+4 |
+| c016d0c0 | service179_start | Call c0155ac0 for the handle in B14 slot 179 with argument 1. | confirmed | c016d0c2 MVK 1,B4; c016d0c4 load B14[179]; c016d0c8 CALLP c0155ac0 |
+| c016d0d4 | service179_submit | Submit the handle in B14 slot 179 to c0144580 with arguments B4=0,A6=1,B6=-1. | likely | c016d0d6/c016d0e0/c016d0e4/c016d0e8 argument setup; c016d0d8 CALLP c0144580 |
+| c016d100 | record_vtable_init_a | Initialize a record with type byte 2 and function pointers c017dea0 and c017ad1c in word fields 1 and 3. | confirmed | c016d112 STB 2,*A4; c016d114-c016d120 pointer/store; c016d124-c016d12c pointer/store |
+| c016d140 | empty_stack_stub | No-op stub that allocates and releases eight stack bytes, then returns. | confirmed | c016d140 SUB B15,8; c016d146 stack store 0; c016d148 ADD B15,8; immediate return |
 
 ## Data
 
