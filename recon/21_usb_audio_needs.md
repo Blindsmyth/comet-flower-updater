@@ -44,7 +44,7 @@ plus c014f594 (chunk 20), mapped by a helper now.
 |---|---|---|---|---|
 | S1 | Audio Swi order and the output block: buffer address, format (STNDW = two 32-bit words per frame?), 16 frames, which slot runs last | the producer side of the ring (recon/17 B5 step 4) | chunk 19 (11818b20.., 11818aa0) | helper running |
 | S2 | How the SOF top half reaches 11818e80, and what may run there (registers saved, nesting with USB Swi prio 13 / audio Swi prio 15) | the SOF handler sends one ISO packet per 1 ms frame | chunk 19 + c011fc8c (chunk 02) | helper running |
-| S3 | Alternate-setting state machine | streaming only on alt 1, clean stop on alt 0 | see 3.1 below | **mostly answered**; the routing order is open |
+| S3 | Alternate-setting state machine | streaming only on alt 1, clean stop on alt 0 | see 3.1 below | **answered** (routing: record callback first, design (b)) |
 | S4 | When the USB interfaces are registered, and whether the bus is quiet then | safe point to register IF2/IF3 and set up EP1 | see 3.2 below | **answered** (confirmed call order) |
 | S5 | `usb_interface_activate_core` c014a58c: only about 90 of its 349 instructions read; a DINT section touches c01819bc/c0181ae4/c0181ae8/c0181f74 | probably the configure/attach path that our new interfaces pass through | chunk_11 | open |
 | S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | see 3.3 below | **likely answered** (MUSB layout); confirm against the SPRUFM9H table |
@@ -88,6 +88,36 @@ What this means:
   switch the SOF producer on (alt 1) or off and flush (alt 0). Still unchecked:
   whether the record callback runs before or after c0135940, and on which
   interface number the dispatcher routes it.
+- **Routing order (answered, Claude 2026-10-09): the record callback runs
+  first and replaces c0135940.** The common SETUP decoder c01359e4 reads the
+  packet (c0122370), splits bmRequestType into recipient (EXTU ..,27,27 at
+  c01359f8) and type (AND 0x60 at c0135a06). For recipient 1..3 it looks up a
+  record by (recipient, wIndex) through c015c804/c015c788 (c0135a18..a38) and
+  calls the record's +12 callback with A4 = type, B4 = &setup
+  (c0135a52..a6c). Only when that returns **0xffff8a5b** ("not handled",
+  c0135a74..a82), or no record matches, does it fall through to the
+  standard table c0180210 (c0135a90..aaa) and so to c0135940. A non-zero
+  result then STALLs through c0120ef8(0x80, 1) (c0135ab4..c4).
+  The MIDI callback c0151ed0 returns 0xffff8a5b for any non-standard type
+  (c0151ed8..e4), but **handles bRequest 11 itself**: it sends the
+  zero-length ACK through c015af48(128, 0, 0) and returns 0 (c0151eec..f0,
+  c0151f5a..8c). So for the MIDI interface, stock c0135940 and c01357c8 never
+  run on SET_INTERFACE; they run only at SET_CONFIGURATION (c01356fa).
+- **What this means for IF3.** Two designs:
+  (a) IF3 callback returns 0xffff8a5b for bRequest 11: stock c0135940 stores
+  the alt and configures EP1 through c01212e0 (CPPI DMA on, 0x7440), then
+  ACKs, and **our code gets no call afterwards**. The stream start would
+  have to be detected elsewhere (for example by polling the alt array
+  c011a1b0[3] from the SOF Hwi).
+  (b) **Preferred:** IF3 callback handles bRequest 11 like MIDI does. It
+  calls `usb_audio_set_alt(wValue)` (FIFO set-up, DMA bits cleared, producer
+  on/off), ACKs through c015af48(128, 0, 0) and returns 0. It must also
+  answer GET_INTERFACE (bRequest 10) for IF3, because the stock alt array is
+  not updated in this design. Stock still runs c01357c8 for IF3 alt 0 at
+  SET_CONFIGURATION, which configures nothing (alt 0 has no endpoints).
+  Still to check: that c015c788 keys interface records by bInterfaceNumber
+  (likely, from the (recipient, wIndex) arguments), and the record layout
+  at c015afa0 for registering IF2/IF3.
 - Hardening: c0135940 does not bound-check wIndex against the 0xc011a1b0
   array. The patch should check `wIndex < 4`.
 - c01359b8 is a separate leaf function placed right after SET_INTERFACE's

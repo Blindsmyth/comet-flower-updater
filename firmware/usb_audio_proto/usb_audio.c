@@ -186,10 +186,12 @@ void usb_audio_sof_tick(void)
 }
 
 /* ------------------------------------------------------------------ *
- * IF3 alternate-setting switch (recon/21 3.1 and 3.3 fix 2). Task context,
- * called from the IF3 handler record AFTER stock's SET_INTERFACE c0135940
- * has run c01357c8 -> c01212e0, which leaves EP1 at 0x7440 (CPPI DMA on).
- * The order relative to c0135940 is still open (recon/21 S3).
+ * IF3 alternate-setting switch (recon/21 3.1 design (b), 3.3 fix 2). Task
+ * context, called from the IF3 record callback, which the SETUP decoder
+ * c01359e4 runs INSTEAD of stock SET_INTERFACE c0135940 (the callback then
+ * ACKs via c015af48(128, 0, 0) and returns 0, as the MIDI callback c0151ed0
+ * does). Stock c01212e0 therefore never configures EP1 here; the DMA-clear
+ * write stays in case design (a) is used, where EP1 arrives at 0x7440.
  * ------------------------------------------------------------------ */
 void usb_audio_set_alt(u8 alt)
 {
@@ -198,6 +200,7 @@ void usb_audio_set_alt(u8 alt)
     usb_audio_state.if3_alt = alt;
 
     if (alt == 1) {
+        usb_audio_setup_ep1();
         /* MUSB rule: clear DMAEN before (or with) DMAMODE, never DMAMODE
            first. Two writes: drop DMAEN, then DMAMODE plus toggle reset and
            flush. */
