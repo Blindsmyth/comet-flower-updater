@@ -64,6 +64,12 @@ Summary: Mapping in progress.
 | c016ea60 | struct_halfword32_set | return the halfword at byte offset 32 and replace it with 1 | confirmed | c016ea68 loads `LDHU *+A3[16]` (scaled 32-byte offset); c016ea6c stores 1 there |
 | c016ea80 | multi_dispatch_zero_optional_args | call the multi-dispatch routine with optional A8, B8, and A10 arguments zero | confirmed | c016ea84 calls c0161540; parallel c016ea88-c016ea90 set A10=0, A8=0, and B8=0 |
 | c016eaa0 | multi_dispatch_zero_tail_args | call the multi-dispatch routine with B8 and A10 zero while preserving A8 | confirmed | c016eaa4 calls c0161540; parallel c016eaa8/c016eaac set A10=0 and B8=0, with no A8 write |
+| c016eac0 | virtual_method2_tailcall | tail-call object virtual method slot 2 | confirmed | c016eac0 branches to c016e9c0, whose c016e9c0/c016e9c8 load the vtable from object word 0 and target from vtable word 2 before branching indirectly |
+| c016eae0 | virtual_method3_tailcall | tail-call object virtual method slot 3 | confirmed | c016eae0 branches to c016e9e0, whose c016e9e0/c016e9e8 load the vtable from object word 0 and target from vtable word 3 before branching indirectly |
+| c016eb00 | runtime_word_21e0_get | return the word stored at c01821e0 | confirmed | c016eb00-c016eb08 form c01821e0 and load A4 from it |
+| c016eb20 | xdc_startup_exec_15 | execute XDC/BIOS startup with a 15-word local work buffer | likely | c016eb20 allocates 72 stack bytes; c016eb24-c016eb2c call `xdc_runtime_startup_exec` with B4=15 and A4=B15+8 |
+| c016eb40 | runtime_flag_1a3c_is_set | return whether word c0181a3c is nonzero | confirmed | c016eb40-c016eb48 load the word; value==0 -> c016eb50/c016eb54 return 0; value!=0 -> return 1 |
+| c016eb60 | interrupts_disable_save_csr_tailcall | tail-call interrupt disable and return the previous CSR | confirmed | c016eb60 branches directly to c016e4c0 `interrupts_disable_save_csr` |
 
 ## Data
 
