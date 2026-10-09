@@ -34,6 +34,16 @@ Summary: Mapping in progress.
 | c016e520 | menu_commit_0ee0_global_offset | add the base from c017d36c to A4 and commit through the 0ee0 menu descriptor | likely | hidden start; c016e524-c016e52c load `*c017d36c`; c016e530 calls `menu_commit_0ee0` with c016e534 `ADD A3,A4,A4` |
 | c016e540 | return_true_540 | return 1 | confirmed | c016e540 sets A4=1 and c016e544 returns |
 | c016e560 | global_object_invalid_get | return whether global object c01821ec is absent or has a negative field 4 | confirmed | c016e564 calls `global_object_field4_negative_or_missing`; c016e568 returns its result unchanged |
+| c016e580 | global_object_field4_status | convert the field-4 validity test to a 0/-1 status | confirmed | c016e584 calls c016e560; result==0 -> c016e58e returns 0; result!=0 -> c016e58c returns -1 |
+| c016e5a0 | global_object_field9_status | convert the field-9 validity test to a 0/-1 status | confirmed | c016e5a4 calls c016e5c0; result==0 -> c016e5ae returns 0; result!=0 -> c016e5ac returns -1 |
+| c016e5c0 | global_object_field9_invalid_get | return whether global object c01821ec is absent or has a negative field 9 | confirmed | c016e5c4 calls `global_object_field9_negative_or_missing`; c016e5c8 returns its result unchanged |
+| c016e640 | cfg_locked_dispatch_tailcall_640 | tail-call the locked configuration dispatcher | confirmed | c016e640 branches directly to `cfg_locked_dispatch` |
+| c016e660 | sem_post_or_clear_tailcall | tail-call the conditional semaphore-post/local-clear helper | confirmed | c016e660 branches directly to `sem_post_or_clear` |
+| c016e680 | arena_copy_default_0e40 | tail-call the arena/ring copy body, defaulting B4 to c0180e40 | confirmed | c016e680 branches to `arena_copy_body`; B4!=0 -> preserve B4; B4==0 -> c016e690 selects c0180e40 |
+| c016e6a0 | return_true_thunk | call the return-true callback and return its value | confirmed | c016e6a4 calls c016e540 with A4=1; c016e6ac-c016e6b4 return the resulting A4 |
+| c016e6e0 | arena_copy_default_1180 | tail-call the arena/ring copy body, defaulting B4 to c0181180 | confirmed | c016e6e0 branches to `arena_copy_body`; B4!=0 -> preserve B4; B4==0 -> c016e6f0 selects c0181180 |
+| c016e700 | struct_word0_get | return word 0 of the object at A4 | confirmed | c016e700 `LDW *+A4[0],A4`; c016e704 returns |
+| c016e720 | arena_copy_default_027c | tail-call the arena/ring copy body, defaulting B4 to c018027c | confirmed | c016e720 branches to `arena_copy_body`; B4!=0 -> preserve B4; B4==0 -> c016e730 selects c018027c |
 
 ## Data
 
