@@ -86,8 +86,11 @@ What this means:
   interface number the dispatcher routes it.
 - Hardening: c0135940 does not bound-check wIndex against the 0xc011a1b0
   array. The patch should check `wIndex < 4`.
-- Alt-setting state also clears on bus reset: c01359b8..c01359da zero
-  B14[10], B14[11] and the alt array (SPLOOP STB).
+- c01359b8 is a separate leaf function placed right after SET_INTERFACE's
+  return (no prologue, so hidden_starts.py misses it). It zeroes B14[10],
+  B14[11] (configured flag) and the alt array (SPLOOP STB). It is probably the
+  reset/deconfigure path; its callers are not traced yet. The stream must stop
+  there too.
 
 ## 4. Hardware-only (owner tests, after controller mode passes)
 
