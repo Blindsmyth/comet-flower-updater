@@ -143,6 +143,28 @@ c014a748 ADD.L1   A3,A5,A3
 c014a750 MVC.S2   B10,CSR
 ```
 
+**Finding 9 — confirmed except where marked.** The second hidden critical
+section is `c014a778..c014a830`.  It reads `S[24]`, `S[25]`, `S[27]`, and
+`S[2]`, uses the larger of `S[24]/S[25]`, performs multiply/shift scaling
+with constant `0x640`, may call map-confirmed `c0168580` (`rts_udiv32`),
+writes the resulting normalized value to `S[28]` (byte offset `0x70`), then
+zeros `S[27]` and `S[2]`.  This is counter normalization/rollover **likely**;
+the exact high-level formula across the compiler's two branch-to-division
+paths is open.  Recovering that formula requires either decompilation with
+correct C6000 branch-delay modeling or the original library source; the
+field effects themselves are confirmed.
+
+```text
+c014a778 DINT
+c014a780 LDW.D1T1 *+A14[27],A3
+c014a784 LDW.D1T1 *+A14[2],A0
+c014a7e0 [A1] B.S1 c0168580
+c014a820 STW.D1T1 A4,*+A3[0]        ; A3 = S + 0x70
+c014a810 STW.D1T1 A3,*+A14[27]      ; A3 = 0 here
+c014a814 STW.D1T1 A3,*+A14[2]
+c014a830 MVC.S2   B5,CSR
+```
+
 ## 4. Callees
 
 **Finding 5 — confirmed.** The direct callees of the real `c014a58c` are:
