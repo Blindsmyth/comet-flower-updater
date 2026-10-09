@@ -48,7 +48,7 @@ plus c014f594 (chunk 20), mapped by a helper now.
 | S4 | When the USB interfaces are registered, and whether the bus is quiet then | safe point to register IF2/IF3 and set up EP1 | see 3.2 below | **answered** (confirmed call order) |
 | S5 | `usb_interface_activate_core` c014a58c: only about 90 of its 349 instructions read; a DINT section touches c01819bc/c0181ae4/c0181ae8/c0181f74 | probably the configure/attach path that our new interfaces pass through | chunk_11 | **answered** (recon/22): not on the interface path; UAC interfaces need not pass through it |
 | S6 | Stock TXCSR value 0x3440: bits 6/10/12/13 | the highest-risk ISO setting (recon/20 4.2) | see 3.3 below | **answered**: SPRUFM9H Table 65 confirms the layout |
-| S7 | Descriptor capacity for 192 B, the pointer array at c00643c0 and response buffer c0119fb0 | the new configuration descriptor is 192 B (stock 101 B) | recon/20 2.1 has the plan; re-check against the new disassembly | mostly done |
+| S7 | Descriptor capacity for 192 B, the pointer array at c00643c0 and response buffer c0119fb0 | the new configuration descriptor is 192 B (stock 101 B) | recon/20 2.1 has the plan; re-check against the new disassembly | **answered**, see 3.5 (keep c0119fb0; relocate the pointer array) |
 | S8 | Free cycles in the audio Swi with 5 slots loaded | the ring copy costs 128+128 B per block | measured budget 96-102k cycles (recon/04); tap cost small | measure on the pedal |
 
 ### 3.1 S3 findings (Claude, read in full 2026-10-09)
@@ -230,6 +230,23 @@ per-N templates at c01805c4 + 12N). It could carry EP1 ISO, but it brings no
 frame scheduler, underrun check or alt-0 teardown. **Decision: PIO first**,
 as SPRUFM9H also advises for ISO. With design (b), stock never sets up EP1
 DMA, so nothing has to be torn down.
+
+### 3.5 S7: descriptor capacity (Claude, 2026-10-09, refs.txt of the rebuilt disassembly)
+- **Response buffer c0119fb0: keep it.** recon/20 2.1 found two references;
+  there are **nine**, in every standard GET path: GET_INTERFACE c0134e84,
+  GET_CONFIGURATION c0134f0c/f24, the three descriptor builders c0135094/
+  c01350f0, c01351d4/c01351f4, c01352ac, and GET_STATUS c0135504. The next
+  constant-addressed object is the alt array c011a1b0, 0x200 bytes later, so
+  the buffer is probably 512 B (likely: refs.txt lists only MVK/MVKH
+  constants, not base+offset uses). The 192-byte configuration descriptor
+  fits. **Drop recon/20's "retarget both MVKs" item**: moving only two of
+  nine sites would split the buffer between paths. The IF3 GET_INTERFACE
+  reply can use the same buffer.
+- **Pointer array c00643c0: must move.** Its only reference is c0160ec8. The
+  next object, c00643fc (cleared by c0154c18/c0154c48), is 0x3c bytes on:
+  room for 15 words. Stock uses 14 (0..13, with the null at 13); the UAC
+  layout needs 25. recon/20 2.1's relocation items stand (MVK at c0160ec8,
+  bound CMPLT 14 at c0161044, null store c0160ff6).
 
 ## 4. Hardware-only (owner tests, after controller mode passes)
 

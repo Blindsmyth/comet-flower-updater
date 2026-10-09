@@ -157,6 +157,7 @@ MVK-low16/MVKH-high16 immediate pair, I give the exact MVK operand to change
   are new `.const` bytes, not an "old word to change" since nothing stock
   references them yet. Placed in build/sonnet4b/usb_audio.c (section 3
   below) at c01a8000+.
+- **Superseded (recon/21 3.5, 2026-10-09): c0119fb0 has nine references, not two, and probably 512 B of room. Keep it; do not retarget.**
 - Response buffer: `c0135094 MVK.S2 0xffff9fb0,B4` and `c01350f0 MVK.S2
   0xffff9fb0,B4` (both confirmed, each paired with an MVKH c0110000 not
   separately re-quoted) hardcode the response-buffer address c0119fb0.
