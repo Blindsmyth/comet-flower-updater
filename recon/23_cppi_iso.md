@@ -192,4 +192,66 @@ race-free direct submission from a new Hwi context.
 
 ## 4. ISO behaviour
 
+### Finding 5 — arbitrary one-packet lengths and ZLP exist, but stock code is not an ISO scheduler (likely)
+
+The host descriptor carries the caller's exact length in both packet-length
+word 0 and buffer-length words 3/6.  `c012042c` detects a zero requested length
+and passes a flag to `c0120250`, which places it in descriptor word 2 bit 19.
+Consequently 176 and 180 are representable without padding, and a true
+zero-length packet is representable too.
+
+```text
+c0120458 LDW   *B4[0],B3      ; available/request length
+c012045a CMPGT B1,B3,B0       ; clamp requested length
+c0120468 [B1] BNOP c0120480   ; nonzero -> ZLP flag 0
+c0120476 MVK   1,A0           ; zero -> ZLP flag 1
+c0120494 CALLP c0120250,B3
+c01202ca XOR   B1,1,B1
+c01202cc SHL   B1,0x13,B1     ; descriptor word 2 bit 19
+```
+
+This matches [TI SPRUFM9H, HPD words 0 and
+2](https://www.ti.com/lit/ug/sprufm9h/sprufm9h.pdf): packet length is 22 bits,
+and word 2 bit 19 explicitly requests a transmit ZLP.  The same guide's queue
+table confirms EP1 submit queues 16/17, EP4 queues 22/23, shared TX completion
+queues 24/25, and application queues 28--63.  Thus the earlier unknown exact
+EP1 queue pair is closed at the hardware-allocation level, although the stock
+template's choice between queue 16 and 17 remains unextracted.
+
+Stock endpoint setup recognizes ISO attributes and writes `0x7440`:
+ISO|MODE|DMAEN|DMAMODE plus the one-shot CLRDATATOG write.  It also programs
+TXMAXP from the endpoint descriptor and enables double-buffered FIFO allocation.
+
+```text
+c0121412 AND   B1,3,B0
+c0121414 CMPEQ 1,B0,B0        ; ISO transfer type
+c0121426 MVK   1,A0           ; endpoint state ISO flag
+c0121438 MVK   209,A0
+c0121440 SHL   A0,6,A0        ; 0x3440
+c0121442 OR    A0,A1,A0       ; add ISO bit 14
+c0121444 STH   A0,*B4[0]
+```
+
+However, CPPI completion only proves that a submitted packet left the DMA path;
+the stock chain has no 1-ms cadence, no 44/45-frame phase accumulator, and no
+per-packet read of `PERI_TXCSR` for UNDERRUN.  TI states that ISO has no retries,
+data must be loaded before the IN token, double buffering is advisable, and
+TXCSR must be checked after every packet; with DMAMODE enabled, normal endpoint
+completion interrupts are suppressed.  Requeueing one descriptor per SOF is
+therefore new policy, not behavior supplied by `c0120f64`.
+
+Bulk short-packet/ZLP termination is not a reason to pad 176 to 180: each ISO
+descriptor should describe exactly one USB packet.  The DMA must remain in
+transparent mode for a non-64-byte maximum; TI explicitly excludes generic
+RNDIS mode for endpoints whose maximum is not a multiple of 64.  The stock
+firmware's exact per-channel DMA mode constant is not conclusively decoded in
+this pass, so transparent-mode configuration for EP1 must be verified or
+written explicitly.
+
+Confidence: **confirmed** for exact-length/ZLP descriptor construction and
+`0x7440`; **confirmed from TI documentation** for queue allocation and ISO
+requirements; **likely** that 176/180 work once EP1 is explicitly placed in
+transparent mode; **unknown** for stock underrun recovery because none was
+found in the traced submit/completion path.
+
 ## 5. Verdict for USB audio
