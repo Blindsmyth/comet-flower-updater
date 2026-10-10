@@ -8,6 +8,7 @@ Gemini adds one row per finished file. Codex fills the last column.
 | chunk_16 | 2026-10-10 | 77 (Sonnet helper) | not listed | not run | Claude spot-check: 1 cross-chunk claim ok; full check pending |
 | chunk_05 | 2026-10-10 | 66 | 65 | 0 regressions | pending |
 | chunk_12 | 2026-10-10 | 58 | 58 | 0 regressions | pending |
+| chunk_15 | 2026-10-10 | 43 | 43 | 3 old failures | pending |
 
 ## Codex triage list
 

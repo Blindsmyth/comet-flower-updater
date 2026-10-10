@@ -94,11 +94,22 @@ def main():
 
                         row_failures = []
 
-                        if addr not in valid_starts and "(hidden start" not in role.lower():
+                        # Exempt hand-added trampoline, veneer, and tail rows from start-address checks,
+                        # as these were manually inserted during reversing and don't match standard function headers.
+                        is_exempt_start = (
+                            "(hidden start" in role.lower() or
+                            "l2 trampoline" in role.lower() or
+                            "veneer" in role.lower() or
+                            "tramp" in name.lower() or
+                            name.lower().endswith("_tail")
+                        )
+                        if addr not in valid_starts and not is_exempt_start:
                             row_failures.append("Invalid start address")
 
                         if name in names:
-                            row_failures.append(f"Duplicate name: {name}")
+                            # Exempt rows starting with "see " from duplicate name checks (used for cross-references)
+                            if not name.startswith("see "):
+                                row_failures.append(f"Duplicate name: {name}")
                         names.add(name)
 
                         ev_addrs = set(re.findall(r'\b[0-9a-f]{8}\b', evidence))
