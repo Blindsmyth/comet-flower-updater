@@ -1,5 +1,7 @@
 # 00: runtime-library and kernel functions (wave 0)
 
+> **Precedence (2026-10-09):** this is an early pass. 263 of its rows also have a row in a `chunk_NN.md` file, and 214 of those give a different name. The chunk row is newer and reviewed, and it is the one the tools use (`facts.py` and `coverage.py` read the files in sorted order, so a chunk row overrides this file). Use the chunk row when the two disagree.
+
 Scope: the 80 most-called functions named in the wave-0 brief, plus every
 function coverage.py detected in c0169f20..c016f780 (fact sheets chunk_17
 and chunk_18: the tail of the code section, c016f7a0 being the last

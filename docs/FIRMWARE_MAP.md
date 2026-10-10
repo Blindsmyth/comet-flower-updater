@@ -17,6 +17,8 @@ in the recon notes cited below. Status: 2026-10-09.
 | function starts the fact sheets fold into neighbours | `python tools/fwmap/hidden_starts.py [chunk_NN]` |
 | helper rules and pitfalls | `docs/helpers/FWMAP.md`, `docs/helpers/SAVE_PROTOCOL.md` |
 
+When `recon/map/00_library_kernel.md` (an early pass) and a `chunk_NN.md` row disagree, the chunk row wins; the tools use it too.
+
 After any map change, run `coverage.py`, then `subsystems.py`, then `facts.py`.
 Rebuilding `main.dis` is described in recon/10. Ghidra was tested and does
 not decode this image well (docs/GHIDRA_TEST.md); use `dis6x`.
