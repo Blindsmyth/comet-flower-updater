@@ -6,7 +6,7 @@
 
 ## Cycle log
 
-- Cycle 1: preflight complete; mechanical and content checks pending.
+- Cycle 1: preflight complete. Current `check_rows.py` reports 90 failures versus 131 in the A1b baseline. The 41 removed failures come from Gemini's uncommitted broad start-address and duplicate-name exemptions; there are no new failing row lines. Content checks pending.
 
 ## Gemini feedback sent
 
