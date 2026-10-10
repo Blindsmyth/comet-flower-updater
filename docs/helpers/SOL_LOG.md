@@ -12,6 +12,7 @@
 - Cycle 2 L0 review: Gemini committed `a7fdee3` (`LOADER_GUI_RESULT.md` only). Offline parse of factory image confirmed 105 files, 78 `.ZD2` files, and all 130 reported stock name/ID pairs. `backup_g1.py` exit codes 1 (missing MIDI port) and 2 (bad arguments) are omitted from the survey; correction requested in `LOADER_GUI_REVIEW.md`. No pedal or updater was run.
 - Cycle 2 checker triage: `11818ea0`, `11818eb0`, and `11818ec0` are real independent `MVK/MVKH/B/NOP` trampolines (`main.dis:18497-18508`); `c0140000` is a shared tail and `11819a54` holds its pointer (`main.dis:71768-71770`, 18656). Gemini feedback now gives these explicit addresses. I did not edit Gemini's uncommitted checker.
 - Cycle 2 negative test: a scratch copy of the current checker checked two rows with the same invalid start `12345678`. It reported the `ordinary` row but accepted `bogus_tramp` without failure, proving the name-based exemption masks bad starts. Probe files and output are under ignored `build/gemini_scratch/sol_checker_probe/`; the tracked checker remains untouched.
+- Cycle 2 map fix: `chunk_01.md` row `118086e4` cited `11808823` as an instruction despite the last instruction being `11808822 BNOP B3,5` and the next function starting at `11808824 STW B3,*B15--[2]`. Replaced the ambiguous range with exact quoted boundary instructions. Checker count for `chunk_01.md` fell from 9 to 8, with no new failures.
 
 ## Gemini feedback sent
 
