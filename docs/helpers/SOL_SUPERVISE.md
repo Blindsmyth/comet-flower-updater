@@ -104,6 +104,14 @@ You may fix small, certain code defects in Gemini's effect files; anything
 that changes the sound (filters, tables, oversampling) goes back to Gemini
 through GEMINI_FEEDBACK.md or waits for Claude.
 
+## 2b. Gemini loader GUI (`GEMINI_LOADER_GUI.md`)
+Review each L-step against its section 4 safety list and section 7
+acceptance. Must-check items: no MIDI port or write path in `tools/cf_loader`
+(grep), no `.exe` launched, Build disabled by any red pre-flight, outputs never
+overwritten, tools called as subprocesses (not re-implemented), nothing edited
+outside its whitelist. Write `docs/helpers/LOADER_GUI_REVIEW.md`. Run the
+pytest; never run backup/pedal tools or an updater.
+
 ## 3. Standing rules for you
 - Cheapest check first: grep and 60-line windows, not whole-file reads.
 - Do not trust Gemini's text, its row, or your memory of a function: re-read

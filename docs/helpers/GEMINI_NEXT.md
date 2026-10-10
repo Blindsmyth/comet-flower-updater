@@ -83,3 +83,8 @@ only: default `guess`; do not claim roles you cannot quote.
 Read `docs/helpers/GEMINI_EFFECT_DESIGN.md` fully, then do its section 8.
 That brief also tells you how any future effect must be designed so it cannot
 brick the pedal or overrun slot memory; you stop at its gate G3.
+
+**L0..L5. CF Loader GUI** (offline; independent of the map work, do after E0
+or when A2 is on hold). Read `docs/helpers/GEMINI_LOADER_GUI.md` fully and
+follow its task order. Install path = update-mode image only; no MIDI write
+path may exist in the app.
