@@ -2,7 +2,7 @@
 
 ## Status
 
-2026-10-10: Began supervision from `SOL_SUPERVISE.md`. Preflight found `tools/fwmap/check_rows.py` modified and uncommitted; preserving Gemini's edit. No Gemini commit after the A1b checker commit (`37adb78`).
+2026-10-10: Cycle 1 complete. `tools/fwmap/check_rows.py` remains modified and uncommitted; preserved Gemini's edit. No Gemini commit after A1b (`37adb78`). A1b is on hold pending an explicit-address exemption and a negative test. No new Gemini A2 file is ready for review, so no `agy` job was launched.
 
 ## Cycle log
 
@@ -20,4 +20,4 @@
 
 ## Open for Claude
 
-- Review the uncommitted checker edit after Gemini commits it; the current diff is not mine.
+- Review the uncommitted checker edit after Gemini commits it; the current diff is not mine. Resume A2 only after the A1b hold in `GEMINI_FEEDBACK.md` is cleared.
