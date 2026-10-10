@@ -94,14 +94,14 @@ def main():
 
                         row_failures = []
 
-                        # Exempt hand-added trampoline, veneer, and tail rows from start-address checks,
-                        # as these were manually inserted during reversing and don't match standard function headers.
+                        addr_int = int(addr, 16)
+                        is_legit_trampoline = (
+                            (0x1180BC00 <= addr_int <= 0x1180BD30)
+                            or addr in ("11818ea0", "11818eb0", "11818ec0", "c0140000")
+                        )
                         is_exempt_start = (
-                            "(hidden start" in role.lower() or
-                            "l2 trampoline" in role.lower() or
-                            "veneer" in role.lower() or
-                            "tramp" in name.lower() or
-                            name.lower().endswith("_tail")
+                            "(hidden start" in role.lower()
+                            or is_legit_trampoline
                         )
                         if addr not in valid_starts and not is_exempt_start:
                             row_failures.append("Invalid start address")
