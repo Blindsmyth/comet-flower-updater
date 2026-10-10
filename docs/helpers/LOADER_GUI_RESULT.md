@@ -78,6 +78,8 @@
   - `<output-dir>/walk.txt`: file list.
 - **Exit Codes:**
   - `0`: Backup complete.
+  - `1`: Pedal connection failed (no "ZOOM G" MIDI port found; line 105).
+  - `2`: Invalid argument count (line 95-97).
   - `3`: Incomplete backup (registered effects missing).
   - `4`: Pedal timeout / unresolved session.
 - **Execution Time:** Several minutes on physical hardware over USB. In app: runs in worker thread under Advanced tab with explicit DO-NOT-POWER-CYCLE confirmation.

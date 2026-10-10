@@ -892,6 +892,40 @@ class CFLoaderApp(tk.Tk):
                 res = core.run_tool(cmd, on_output=lambda l: self.log_queue.put(l), timeout=600.0)
                 if res.exit_code == 0:
                     self.after(0, lambda: messagebox.showinfo("Backup", f"Backup completed successfully in:\n{out_dir}"))
+                elif res.exit_code == 1:
+                    self.after(
+                        0,
+                        lambda: messagebox.showerror(
+                            "Backup Error",
+                            "Backup failed: No 'ZOOM G' port found (line 105).\n"
+                            "Is ToneLib or another editor open, or is the USB cable disconnected?",
+                        ),
+                    )
+                elif res.exit_code == 2:
+                    self.after(
+                        0,
+                        lambda: messagebox.showerror(
+                            "Backup Error",
+                            "Backup failed: Invalid argument count (line 95-97).",
+                        ),
+                    )
+                elif res.exit_code == 3:
+                    self.after(
+                        0,
+                        lambda: messagebox.showerror(
+                            "Backup Incomplete",
+                            "Backup incomplete: Registered effects missing from walk.",
+                        ),
+                    )
+                elif res.exit_code == 4:
+                    self.after(
+                        0,
+                        lambda: messagebox.showerror(
+                            "Backup Timeout",
+                            "Backup stopped: Pedal stopped replying.\n"
+                            "DO NOT power-cycle the pedal! Leave it powered, re-plug USB only, and re-run.",
+                        ),
+                    )
                 else:
                     self.after(0, lambda: messagebox.showerror("Backup", f"Backup finished with exit code {res.exit_code}."))
             except Exception as e:
