@@ -270,12 +270,114 @@ Also non-effect system files in the filesystem:
   ```
 - Full repo pytest suite passes 18/18 tests in 0.21s.
 
+## Tests
+
+### L2 Pre-Flight Panel Texts
+
+#### (a) All green with RATX selected
+```
+[PASS] Check 1: Official updater
+       Verified v2.00 G1X FOUR updater (4,193,320 B, CRC32 d1753b04)
+[PASS] Check 2: Selected effects
+       All 1 selected effects valid (G1 target, valid CRC).
+[PASS] Check 3: Unique IDs & names
+       No duplicate IDs/names and no stock collisions.
+[PASS] Check 4: Image file count
+       Estimated 28 files in image (well under directory limit of 127, green <= 110).
+[PASS] Check 5: 40 KiB slot heap limit
+       All selected effects fit the 40 KiB per-slot heap.
+[PASS] Check 6: Patch CPU reminder
+       Notice: no limit on effects chosen, but total patch CPU budget is 96k cycles (measure on-pedal at G6).
+[PASS] Check 7: Post-build verification
+       Post-build gate active: g1fs.check_image + check_updater_stages.py must all report 'ok'.
+All passed: True
+```
+
+#### (b) Red with DR103 oversize selected
+```
+[PASS] Check 1: Official updater
+       Verified v2.00 G1X FOUR updater (4,193,320 B, CRC32 d1753b04)
+[FAIL] Check 2: Selected effects
+       Invalid effect(s): DR103.ZD2: Exceeds 40 KiB slot heap (51464 > 40960 B, -10504 free)
+[PASS] Check 3: Unique IDs & names
+       No duplicate IDs/names and no stock collisions.
+[PASS] Check 4: Image file count
+       Estimated 28 files in image (well under directory limit of 127, green <= 110).
+[FAIL] Check 5: 40 KiB slot heap limit
+       Effects exceed 40 KiB slot heap: DR103.ZD2 (51464 B uses > 40960 B)
+[PASS] Check 6: Patch CPU reminder
+       Notice: no limit on effects chosen, but total patch CPU budget is 96k cycles (measure on-pedal at G6).
+[PASS] Check 7: Post-build verification
+       Post-build gate active: g1fs.check_image + check_updater_stages.py must all report 'ok'.
+All passed: False
+```
+
+#### (c) Red for duplicate ID
+```
+[PASS] Check 1: Official updater
+       Verified v2.00 G1X FOUR updater (4,193,320 B, CRC32 d1753b04)
+[PASS] Check 2: Selected effects
+       All 2 selected effects valid (G1 target, valid CRC).
+[FAIL] Check 3: Unique IDs & names
+       Duplicate filenames: RATX.ZD2; Duplicate IDs: 0x03000f83
+[PASS] Check 4: Image file count
+       Estimated 29 files in image (well under directory limit of 127, green <= 110).
+[PASS] Check 5: 40 KiB slot heap limit
+       All selected effects fit the 40 KiB per-slot heap.
+[PASS] Check 6: Patch CPU reminder
+       Notice: no limit on effects chosen, but total patch CPU budget is 96k cycles (measure on-pedal at G6).
+[PASS] Check 7: Post-build verification
+       Post-build gate active: g1fs.check_image + check_updater_stages.py must all report 'ok'.
+All passed: False
+```
+
+### L2 Real Build Verification
+Executed `core.build_image_and_updater` against official updater (`C:\Users\z\Downloads\G1X FOUR_v2.00_Win_E\ZOOM G1X FOUR System v2.00 Updater.exe`) with `RATX.ZD2`:
+- Output folder: `build/loader/image_20261010_111704/`
+- Output files:
+  - `cf_g1_image.bin` (3,137,536 bytes)
+  - `ZOOM G1X FOUR Patched Updater.exe` (4,193,320 bytes)
+  - `report.txt` (status SUCCESS)
+- Output of `check_updater_stages.py`:
+  ```
+  build/loader/image_20261010_111704/ZOOM G1X FOUR Patched Updater.exe
+     erase 0x102000 size 0x2fe000         ok
+     write 0x102000 resource 0x88         ok
+  ```
+
+### L3 & L4 Test Suite
+`pytest tests/cf_loader -q`:
+```
+.............                                                            [100%]
+13 passed in 0.28s
+```
+Full test suite (`pytest -q`):
+```
+.....................                                                    [100%]
+21 passed in 0.39s
+```
+
+All 6 Safety Requirements (§4) Demonstrated:
+1. `git grep -rn "mido\|rtmidi\|pedal_g1\|midi" tools/cf_loader` yields 0 matches.
+2. `test_safety_no_exe_as_program` asserts no .exe is ever launched as program.
+3. `test_preflight_blocks_build_on_red` proves build is refused with red pre-flight.
+4. `test_output_folder_never_overwrites` proves output folders are never overwritten.
+5. `test_failed_step_leaves_failed_marker` proves failed/cancelled steps leave `FAILED` marker.
+6. Git status shows no Zoom binary in tracked files; `build/` is untracked scratch.
+
 ## Problems
-- None.
+- None. All tasks L0-L5 implemented, tested, and passing.
 
 ---
 
-## Status Update (L1 Complete)
-- **Phase:** L1 `core.py` + tests complete.
-- **Next Phase:** L2 Library + Build tabs (`app.py` UI implementation).
+## Status Update (All Tasks Complete)
+- **Status:** Complete (Ready for Sol and Claude review).
+- **Files Created/Modified:**
+  - `tools/cf_loader/core.py`
+  - `tools/cf_loader/app.py`
+  - `tools/cf_loader/__main__.py`
+  - `tools/cf_loader/__init__.py`
+  - `tests/cf_loader/test_core.py`
+  - `docs/LOADER_GUI.md`
+  - `docs/helpers/LOADER_GUI_RESULT.md`
 

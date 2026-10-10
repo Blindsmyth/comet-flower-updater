@@ -513,7 +513,7 @@ def verify_official_updater(path: Union[str, Path]) -> UpdaterVerification:
     crc = crc32_of_file(p)
 
     try:
-        pe = pefile.PE(str(p), fast_load=True)
+        pe = pefile.PE(str(p))
         # Check table
         off = pe.get_offset_from_rva(TABLE_VA - pe.OPTIONAL_HEADER.ImageBase)
         data = p.read_bytes()

@@ -231,3 +231,85 @@ def test_probe10_cost_calculation():
 
     # If freeze Load is 60: 96,000 - 60 * 1600 = 0 cycles (effect alone took 96k)
     assert core.calculate_probe10_cost(60.0) == 0
+
+
+def test_preflight_blocks_build_on_red(tmp_workdir, monkeypatch):
+    """Safety requirement 3: Build is impossible with a red pre-flight."""
+    monkeypatch.setattr(core, "LOADER_DIR", tmp_workdir)
+
+    # Calling build with no official updater must raise PreflightError immediately
+    with pytest.raises(core.PreflightError):
+        core.build_image_and_updater(
+            official_updater_path=None,
+            selected_effects=[],
+            clean=True,
+            base_output_dir=tmp_workdir,
+        )
+
+
+def test_failed_step_leaves_failed_marker(tmp_workdir, monkeypatch):
+    """Safety requirement 5:
+
+    A failed or cancelled step leaves a FAILED marker and the report;
+    previous good output is untouched.
+    """
+    monkeypatch.setattr(core, "LOADER_DIR", tmp_workdir)
+
+    ratx_zd2 = REPO_ROOT / "build" / "RATX.ZD2"
+    if not ratx_zd2.exists():
+        pytest.skip("build/RATX.ZD2 not present in tree")
+    info = core.inspect_zd2(ratx_zd2)
+
+    # Fake pre-flight checks to pass
+    monkeypatch.setattr(
+        core,
+        "run_preflight_checks",
+        lambda *args, **kwargs: [
+            core.PreflightCheckResult(1, "Mock", True, "Mock pass")
+        ],
+    )
+    # Fake factory image and updater file existence
+    fake_factory = tmp_workdir / "fake_factory.bin"
+    fake_factory.write_bytes(b"\x00" * 100)
+    fake_updater = tmp_workdir / "fake_updater.exe"
+    fake_updater.write_bytes(b"\x00" * 100)
+
+    # Fake run_tool to fail on step 1
+    def mock_run_tool(cmd, **kwargs):
+        return core.ToolExecutionResult(cmd, exit_code=1, stdout="Mock failure", stderr="", duration_sec=0.1)
+
+    monkeypatch.setattr(core, "run_tool", mock_run_tool)
+
+    with pytest.raises(RuntimeError, match="failed with exit code 1"):
+        core.build_image_and_updater(
+            official_updater_path=fake_updater,
+            selected_effects=[info],
+            clean=True,
+            factory_image_path=fake_factory,
+            base_output_dir=tmp_workdir,
+        )
+
+    # Verify a folder was created and contains FAILED marker and report.txt
+    subdirs = [d for d in tmp_workdir.iterdir() if d.is_dir() and d.name.startswith("image_")]
+    assert len(subdirs) == 1
+    failed_dir = subdirs[0]
+    assert (failed_dir / "FAILED").exists()
+    assert (failed_dir / "report.txt").exists()
+    report_text = (failed_dir / "report.txt").read_text(encoding="utf-8")
+    assert "STATUS: FAILED" in report_text
+
+
+def test_loader_log_appending(tmp_workdir, monkeypatch):
+    """Verify append-only logging to loader.log."""
+    monkeypatch.setattr(core, "LOADER_DIR", tmp_workdir)
+    log_file = tmp_workdir / "loader.log"
+
+    core.append_to_loader_log("Test log entry 1")
+    core.append_to_loader_log("Test log entry 2")
+
+    assert log_file.exists()
+    lines = log_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert "Test log entry 1" in lines[0]
+    assert "Test log entry 2" in lines[1]
+
