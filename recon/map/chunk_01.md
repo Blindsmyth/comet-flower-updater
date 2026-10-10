@@ -198,6 +198,8 @@ and are skipped here (see 00): 118093c0, 1180a2a8, 1180ad68.
 - 11809f00 and 1180a130, both called once from inside 1180abc0 and both calling big_subsystem_init, were not distinguished from each other — likely two different AD one-time-init branches (cold-boot vs. re-init?) but this is unconfirmed.
 - The usb-descriptor/string-formatting cluster (11807ea0 through 11808440) is inferred purely from callee names (usb_desc_table_get, fmt_render_wrapper/2, fixed_scale_mul_84) and was not independently disassembled in this pass; a future pass should confirm what field or string it actually renders.
 - 1180a734's status-struct bridging role sits among otherwise-MIDI-tagged neighbors (1180a720,1180ace8,1180acd4) — it may actually belong to a different (error/status) subsystem that happens to be reached from MIDI call sites, rather than being MIDI-specific itself.
+- Still open after the guess pass: the meaning of fxslot_check_a (118099a0, id 0x0bfffff0, pedal volume?); who writes 1181348c; GPIO pin 78 / 48 / 50 / 77 roles (power latch, backlight?); the consumer of the callback arrays at 11812bd0..11812da8 (cbslot_*, cbrow_reset); the pair table at 11812690 (11808d50); the loop exits of fxparam_page_start_alt / fxparam_page_end; the setting behind 11812fb4 (menu_rec11_apply).
+- Guess pass 2026-10-10: 90 rows checked, 83 raised to likely/confirmed, 7 still guess.
 
 ## Review by Claude (2026-10-08)
 Confirmed: 1180a660 = `*0x1181312c |= A4` (mask, not only bit 0); 1180a684 = `*0x1181312c &= ~A4` (ANDN at 1180a694). Between them, **1180a674 is a getter** (`LDW *0x1181312c` -> A4) not listed above. 1180a6a0 sets bit 0 (1180a6b2), loops A10 = 0..4 (CMPGT 5 at 1180a6dc), then clears bit 0 (1180a6f8): a 5-slot update guard, as stated.
