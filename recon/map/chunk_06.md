@@ -126,6 +126,7 @@ locking (including the firmware-update "Complete!"/"Error!" popups).
 | c013498c | fwupdate_ui_step_a8 | update-step slot 0xc01842a8: calls midi_send_variant6_1180, cfg_get_b14_26, midi_cc_learn_step_a (c01344a0), thin_orchestrator_veneers, c013b800, cfg_table_index_1181191c | guess | ptr@=c01842a8; calls=11802cb8=midi_send_variant6_1180,c0129630=cfg_get_b14_26,c01344a0,c01349ec=thin_orchestrator_veneers,c013b800,c0140320=cfg_table_index_1181191c |
 | c01349c8 | fwupdate_ui_step_ac | update-step slot 0xc01842ac: tiny (8B), calls thin_orchestrator_veneers and c015e6d8 only | likely | ptr@=c01842ac; n=8; calls=c01349ec=thin_orchestrator_veneers,c015e6d8 |
 | c01349d0 | fwupdate_ui_step_a4 | update-step slot 0xc01842a4: calls c012ec80, thin_orchestrator_veneers, c0140630 | guess | ptr@=c01842a4; calls=c012ec80,c01349ec=thin_orchestrator_veneers,c0140630 |
+| c01349ec | thin_orchestrator_veneers | already named and rowed | see | recon/map/00_library_kernel.md |
 | c0134a04 | mainapp_screen_h08_sub | helper called only from mainapp_screen_h08 (c0134c0c): calls shared_accessor6_1180, unk_1180_60e4, c012f7a4, c01317c4, c01548d8 under bios_sem_pend/post; B14 slot 154 | guess | calls=11805ec4=shared_accessor6_1180,118060e4=unk_1180_60e4,c012f7a4,c01317c4,c0150b20,c01548d8,c01628e0 |
 | c0134a58 | mainapp_screen_exit_common_a | small (40B) shared step called from both mainapp_screen_h08 (c0134c0c) and the mode-event dispatcher (c0134d04): single call to c014ada8 | likely | callers=c0134c0c,c0134d04=mainapp_mode_event_dispatch; calls=c014ada8 only |
 | c0134a80 | mainapp_screen_exit_common_b | shared step called from mainapp_screen_h_shared (c0134c30) and mainapp_mode_event_dispatch (c0134d04): calls shared_accessor6_1180, unk_1180_60e4, c0131740, c01317c4, c0155314, cfg_get_global_c011ad8c | guess | callers=c0134c30,c0134d04; calls=11805ec4,118060e4,c0131740,c01317c4,c0155314,c0156e80=cfg_get_global_c011ad8c |
@@ -150,7 +151,6 @@ locking (including the firmware-update "Complete!"/"Error!" popups).
 | c0134e24 | mainapp_b14_124_get | returns B14 word slot 124; no calls; ends before padding at c0134e28 | confirmed | c0134e24 LDW *+B14[124],A4; c0134e28 BNOP B3,5 |
 | c0134e40 | usb_faddr_flag_record_apply | (hidden start) callback that calls usb_faddr_flag_set (c0121508) on `*B6` only when B4 is zero, otherwise returns 0 | likely | address ref c01353b8 loads c0134e40; truth table: old B4=0 -> c0134e4c CALLP c0121508 with c0134e50 LDW *B6,A4; old B4!=0 -> c0134e48 branch to c0134e52 and A4=0; own return c0134e58 |
 
-| c01349ec | thin_orchestrator_veneers | already named and rowed | see | recon/map/00_library_kernel.md |
 | c0134e60 | usb_std_req_synch_frame_stub | USB standard-request table (c0180210) slot 12 (SYNCH_FRAME, offset 0x240): 8-byte stub, no callees recorded | likely | ptr@=c0180240; table base/index arithmetic confirmed via c0134e68(idx10)/c0135940(idx11) below; n=8 |
 | c0134e68 | usb_std_req_get_interface | standard-request table slot 10 = GET_INTERFACE: reads B14[11], returns the byte at c011a1b0+wIndex; confirmed by recon's direct disassembly quote | confirmed | recon/18_round3.md line 91 and line 93 ("GET_INTERFACE requires B14[11]... returns the byte at c011a1b0+wIndex"); recon/20_usb_audio_proto.md line 21 ("c0180238 = 0xc0134e68 (index 10, GET_INTERFACE)"); ptr@=c0180238 |
 | c0134ef8 | usb_std_req_get_configuration | standard-request table slot 8 (offset 0x230): same call shape as GET_INTERFACE (c015af48,c015b0b8); B14 slot 11 | likely | ptr@=c0180230; calls=c015af48,c015b0b8; standard USB bRequest 8 at this table offset |
@@ -224,6 +224,8 @@ locking (including the firmware-update "Complete!"/"Error!" popups).
   region_bridge_1 (all named in earlier chunks).
 
 ## Open questions
+
+- Hidden-start pass 2026-10-09: 4 rows added, 3 host rows rewritten, 0 false positives.
 
 - Exact relocation-type-number-to-handler mapping for the overflow-check
   table (0xc0184220/0184240) and the two shift-select side tables
