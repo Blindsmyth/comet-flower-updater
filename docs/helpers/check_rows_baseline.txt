@@ -1,0 +1,162 @@
+00_library_kernel.md: 0 failures
+chunk_00.md: 13 failures
+  - row 11800400: Snippet `11800414 LDW *+A3[A4=96]` does not match disassembly `LDW.D1T1 *+A3[A4],A4`
+  - row 11800400: Snippet `11800420 STW A4,*+A3[A5=96]` does not match disassembly `STW.D1T1 A4,*+A3[A5]`
+  - row 11802aa4: Snippet `11802ab2 SHL A0,3,A1` does not match disassembly `SHL.S1 A0,0x3,A1`
+  - row 11802b50: Snippet `11802b5c STW A0,*A4[0]` does not match disassembly `.fphead n, l, W, BU, br, nosat, 0000011b`
+  - row 11803010: Snippet `11803016 CMPLTU 0x8,A0,A0` does not match disassembly `CMPLT.L2 B4,B0,B0`
+  - row 118030d0: Snippet `118030f0 STW A0,*A4[0]` does not match disassembly `|| MVK.L1 1,A0`
+  - row 11803804: Snippet `11803822 [!A0] CALLP 0x118037e0` does not match disassembly `[!A0] BNOP.S1 0x11803826,5`
+  - row 11804a44: Snippet `11804a6c SUB A1,A0,A0` does not match disassembly `STW.D2T1 A0,*B4[0]`
+  - row 11805558: Snippet `118055a2 STB 255,*A5[A4]` does not match disassembly `STB.D1T2 B0,*A5[A4]`
+  - row 11806258: Snippet `11806260 CMPLT A4,0x32,A0` does not match disassembly `CMPLT.L1 A4,A0,A0`
+  - row 1180673c: Evidence address 11806c8b not in main.dis
+  - row 11806c8c: Snippet `11806c90 CALLP 1180bcd0` does not match disassembly `CALLP.S2 0x1180bcd0,B3`
+  - row 11806ca4: Snippet `11806ca8 CALLP 1180bcd0` does not match disassembly `CALLP.S2 0x1180bcd0,B3`
+  - row 11806cb8: Snippet `11806cc0 CALLP 1180bcd0` does not match disassembly `CALLP.S2 0x1180bcd0,B3`
+chunk_01.md: 9 failures
+  - row 118076c0: Snippet `118076c0 CALLP 1180bd10` does not match disassembly `CALLP.S1 0x1180bd10,A3`
+  - row 118076c0: Snippet `118076c8 CALLP 1180b710` does not match disassembly `CALLP.S2 0x1180b710,B3`
+  - row 118086e4: Evidence address 11808823 not in main.dis
+  - row 11808824: Snippet `11808828 CALLP 1180bcd0` does not match disassembly `CALLP.S2 0x1180bcd0,B3`
+  - row 11809438: Evidence address 1180944b not in main.dis
+  - row 11809484: Snippet `118094a2 SHR A4,5,B0` does not match disassembly `|| SHR.S2X A4,0x5,B0`
+  - row 1180954c: Evidence address 11809563 not in main.dis
+  - row 1180954c: Snippet `11809550 [!A0] BNOP 11809556` does not match disassembly `[!A0] BNOP.S1 0x11809556,5`
+  - row 1180a580: Snippet `1180a5a4 SHL B0,5,B0` does not match disassembly `SHL.S2 B0,0x5,B0`
+  - row 1180a8ec: Snippet `1180ab9c CALLP 1180a8ec` does not match disassembly `CALLP.S2 0x1180a8ec,B3`
+  - row 1180a940: Snippet `1180a944 CALLP 1180b140` does not match disassembly `CALLP.S2 0x1180b140,B3`
+chunk_02.md: 44 failures
+  - row 1180bc00: Invalid start address
+  - row 1180bc10: Invalid start address
+  - row 1180bc20: Invalid start address
+  - row 1180bc30: Invalid start address
+  - row 1180bc40: Invalid start address
+  - row 1180bc50: Invalid start address
+  - row 1180bc60: Invalid start address
+  - row 1180bc70: Invalid start address
+  - row 1180bc80: Invalid start address
+  - row 1180bc90: Invalid start address
+  - row 1180bca0: Invalid start address
+  - row 1180bcb0: Invalid start address
+  - row 1180bcc0: Invalid start address
+  - row 1180bcd0: Invalid start address
+  - row 1180bce0: Invalid start address
+  - row 1180bcf0: Invalid start address
+  - row 1180bd00: Invalid start address
+  - row 1180bd10: Invalid start address
+  - row 1180bd20: Invalid start address
+  - row 1180bd30: Invalid start address
+  - row c011c508: Duplicate name: see 00
+  - row c011c788: Evidence address c011c80f not in main.dis
+  - row c011c788: Snippet `c011f94c CALLP c011c788` does not match disassembly `|| CALLP.S2 0xc011c788,B3`
+  - row c011cb64: Duplicate name: see 00
+  - row c011d124: Evidence address c011d213 not in main.dis
+  - row c011d4d8: Duplicate name: see 00
+  - row c011d84c: Duplicate name: see 00
+  - row c011d938: Duplicate name: see 00
+  - row c011dca8: Evidence address c011dde3 not in main.dis
+  - row c011df04: Evidence address c011df4f not in main.dis
+  - row c011df04: Snippet `c011df48 CALLP c011c508` does not match disassembly `|| CALLP.S2 0xc011c508,B3`
+  - row c011df50: Snippet `c011df98 CALLP c011df04` does not match disassembly `CALLP.S2 0xc011df04,B3`
+  - row c011dff8: Evidence address c011e0a3 not in main.dis
+  - row c011e1f4: Snippet `c011e218 CALLP c011b0b8` does not match disassembly `CALLP.S2 0xc011b0b8,B3`
+  - row c011e700: Evidence address c011e77f not in main.dis
+  - row c011ea30: Evidence address c011ea83 not in main.dis
+  - row c011ea30: Snippet `c011ea6c CALLP c011c508` does not match disassembly `CALLP.S2 0xc011c508,B3`
+  - row c011ea84: Snippet `c011ead8 CALLP c011ea30` does not match disassembly `CALLP.S2 0xc011ea30,B3`
+  - row c011ed18: Evidence address c011ed5f not in main.dis
+  - row c011f06c: Evidence address c011f18f not in main.dis
+  - row c011f190: Evidence address c011f523 not in main.dis
+  - row c011f87c: Duplicate name: see 00
+  - row c011f8d8: Duplicate name: see 00
+  - row c011fb94: Evidence address c011fc8a not in main.dis
+  - row c011fc8c: Evidence address c011fd3b not in main.dis
+  - row c011fe4c: Evidence address c011fe4e not in main.dis
+  - row c0120c44: Evidence address c0120c42 not in main.dis
+chunk_03.md: 18 failures
+  - row c0122bf8: Evidence address c0122c06 not in main.dis
+  - row c0122c08: Evidence address c0122c06 not in main.dis
+  - row c0122c08: Evidence address c0122ca3 not in main.dis
+  - row c0123350: Evidence address c012336a not in main.dis
+  - row c012336c: Evidence address c01233bb not in main.dis
+  - row c0123478: Snippet `c012347c LDBU *A4[0]` does not match disassembly `.fphead n, l, W, BU, br, nosat, 1001111b`
+  - row c0124db0: Evidence address c0124eaf not in main.dis
+  - row c0125cd4: Evidence address c0125d67 not in main.dis
+  - row c012608c: Evidence address c0126101 not in main.dis
+  - row c0126104: Evidence address c01261a3 not in main.dis
+  - row c0126104: Evidence address c0126102 not in main.dis
+  - row c0126238: Evidence address c0126273 not in main.dis
+  - row c0126304: Evidence address c012633f not in main.dis
+  - row c012638c: Evidence address c0126403 not in main.dis
+  - row c0126404: Evidence address c0126487 not in main.dis
+  - row c0126488: Evidence address c01264c3 not in main.dis
+  - row c01265a0: Evidence address c01265d1 not in main.dis
+  - row c0126d40: Evidence address c0126dcb not in main.dis
+  - row c0126dcc: Evidence address c0126e6f not in main.dis
+  - row c0126e70: Evidence address c0126f0f not in main.dis
+chunk_04.md: 13 failures
+  - row c0128580: Duplicate name: see 00_library_kernel.md
+  - row c0129118: Evidence address c01291cd not in main.dis
+  - row c0129118: Evidence address c0129117 not in main.dis
+  - row c0129414: Evidence address c0129447 not in main.dis
+  - row c0129448: Evidence address c012948f not in main.dis
+  - row c0129630: Duplicate name: see 00_library_kernel.md
+  - row c012af98: Duplicate name: see 00_library_kernel.md
+  - row c012afb8: Evidence address c012afbf not in main.dis
+  - row c012afc4: Evidence address c012afdb not in main.dis
+  - row c012afe0: Duplicate name: see 00_library_kernel.md
+  - row c012c934: Duplicate name: see 00_library_kernel.md
+  - row c012ca24: Duplicate name: see 00_library_kernel.md
+  - row c012ca80: Duplicate name: see 00_library_kernel.md
+  - row c012daac: Duplicate name: see 00_library_kernel.md
+chunk_05.md: 0 failures
+chunk_06.md: 0 failures
+chunk_07.md: 1 failures
+  - row c013a710: Evidence address c013a73e not in main.dis
+chunk_08.md: 0 failures
+chunk_09.md: 2 failures
+  - row c0140000: Invalid start address
+  - row c0141684: Snippet `c0141698 MVK 0x54,B0` does not match disassembly `MVK.S2 0x0054,B0`
+chunk_10.md: 11 failures
+  - row c0146cb4: Duplicate name: see recon/14_effect_memory.md
+  - row c0146e18: Duplicate name: see recon/14_effect_memory.md
+  - row c01485a0: Snippet `c01485b2 STB B0,*A4[A5] writes header` does not match disassembly `STB.D1T2 B0,*A4[A5]`
+  - row c01485b8: Snippet `c01485ee STB B0,*A5[5] appends a MIDI byte` does not match disassembly `STB.D1T2 B0,*A5[5]`
+  - row c0148f34: Evidence address c0148f93 not in main.dis
+  - row c0148f94: Evidence address c0148fb9 not in main.dis
+  - row c0149054: Evidence address c0149073 not in main.dis
+  - row c0149094: Evidence address c01490cb not in main.dis
+  - row c0149134: Evidence address c0149146 not in main.dis
+  - row c0149520: Evidence address c0149539 not in main.dis
+  - row c014959a: Evidence address c01495a3 not in main.dis
+chunk_11.md: 4 failures
+  - row c0149de4: Snippet `c014a240 CALLP` does not match disassembly `STW.D2T2 B3,*B15--[2]`
+  - row c014a58c: Snippet `c014a5d8 CALLP c016e000` does not match disassembly `CALLP.S1 0xc016e000,A3`
+  - row c014a5e0: Invalid start address
+  - row c014aef4: Snippet `c014af68 CALLP c012afe0` does not match disassembly `CALLP.S2 0xc012afe0,B3`
+  - row c014aef4: Snippet `c014af90 CALLP c0141684` does not match disassembly `CALLP.S2 0xc0141684,B3`
+chunk_12.md: 0 failures
+chunk_13.md: 0 failures
+chunk_14.md: 5 failures
+  - row c0159120: Invalid start address
+  - row c01594f0: Evidence address c0159526 not in main.dis
+  - row c0159da0: Evidence address c0159db6 not in main.dis
+  - row c015aa20: Evidence address c015aa65 not in main.dis
+  - row c015aca0: Evidence address c015aca6 not in main.dis
+chunk_15.md: 3 failures
+  - row c015e6ac: Invalid start address
+  - row c015f0d8: Invalid start address
+  - row c015f0f8: Invalid start address
+chunk_16.md: 1 failures
+  - row c0169b60: Evidence address c0169bff not in main.dis
+chunk_17.md: 1 failures
+  - row c016da00: Duplicate name: menu_commit_0ee0
+chunk_18.md: 0 failures
+chunk_19.md: 6 failures
+  - row 118164c0: Invalid start address
+  - row 11818ba0: Snippet `11818be0 B4 118133e0` does not match disassembly `MVK.S2 0x33e0,B4`
+  - row 11818ea0: Invalid start address
+  - row 11818eb0: Invalid start address
+  - row 11818ec0: Invalid start address
+  - row 11819820: Invalid start address

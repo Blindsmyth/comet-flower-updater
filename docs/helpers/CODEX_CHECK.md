@@ -1,4 +1,4 @@
-# Brief for Codex: check Gemini's map work (start after 2026-10-13 20:30)
+# Brief for Codex: check Gemini's map work (Codex reset by the owner 2026-10-10: start now; loop in SOL_SUPERVISE.md)
 
 Run ONE job at a time:
 `codex exec -m gpt-5.6-sol -c model_reasoning_effort=medium < /dev/null`

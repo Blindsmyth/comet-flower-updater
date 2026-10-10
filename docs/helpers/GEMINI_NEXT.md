@@ -4,6 +4,8 @@ Run, in the background (the owner authorised the flag):
 `agy -p "Read docs/helpers/GEMINI_NEXT.md and do task A1" --dangerously-skip-permissions --model gemini-3.1-pro-high`
 Do NOT use the agy-bridge MCP `delegate` (it times out at 600 s).
 
+FIRST read `docs/helpers/GEMINI_FEEDBACK.md` if it exists (Sol, the reviewer,
+writes corrections and HOLD orders there; obey them before anything below).
 Read first: `docs/helpers/SAVE_PROTOCOL.md` (report/commit after every
 finding, token economy), `docs/helpers/FWMAP.md` (table format, Pitfalls),
 `docs/helpers/GUESS_PASS.md` (the pass procedure). Static analysis only: never
