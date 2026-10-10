@@ -94,14 +94,18 @@ Interrupt-level roots:
 
 ## 5. Status and remaining work
 
-Coverage (coverage.py, 2026-10-09): 2768 of 2790 fact-sheet functions named
-(836 confirmed, 1189 likely, 743 guess), plus hidden starts as extra rows.
+Coverage (coverage.py, 2026-10-10): 2768 of 2790 fact-sheet functions named
+(946 confirmed, 1245 likely, 577 guess), plus a row for every one of the 220
+starts that hidden_starts.py reports (checked 2026-10-10: none without a row).
+The few fact-sheet entries that coverage.py still counts as unnamed are rows
+in `00_library_kernel.md` (c0146ee0, c014ff44, c01502cc, c0150b20, c01529c0).
 
 Still to do:
-1. **Hidden-start clean-up**: 114 starts that hidden_starts.py finds still
-   have no row (brief `docs/helpers/SOL_HIDDEN.md`, batches A/B/C). Each needs
-   a row and a rewritten host row.
-2. Summary paragraphs missing in chunk_00 and chunk_09.
-3. The boot/update program (res5).
-4. Function names are mostly descriptive; a later pass can merge duplicates
+1. **Guess pass** (brief `docs/helpers/GUESS_PASS.md`): 577 rows are still
+   `guess`. Done for chunk_00 and parts of chunk_03; most of the rest is open
+   (largest: 00_library_kernel 194, chunk_01 87, chunk_16 73, chunk_05 66,
+   chunk_12 58). Not needed for the USB audio work.
+2. The boot/update program (res5): only its boot decision and write graph are
+   read (recon/25); there is no per-function map.
+3. Function names are mostly descriptive; a later pass can merge duplicates
    and give the main subsystem APIs stable prefixes.
