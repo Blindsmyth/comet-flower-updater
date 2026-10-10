@@ -35,6 +35,22 @@ within a chunk. Write per-file failure counts and the failing rows to
 counts; do not fix rows in this task. Test it by hand on 3 rows you break on
 purpose. Commit only the script.
 
+**A1b. Fix the row checker (Claude review of A1, 2026-10-10; do this before A2).**
+`tools/fwmap/check_rows.py` reports ~430 failures, mostly false positives:
+(c) compares quoted snippets to `main.dis` text exactly, but the disassembly
+has unit suffixes (`LDW.D1T1`, `CLR.S2`), `||` prefixes, `[ B0]` predicates and
+full operands, while the map quotes omit or annotate them (`A4=96`).
+Normalise both sides (drop `.XXX` unit suffix, `||`, predicate; collapse
+spaces) and require the same mnemonic and that the quoted operands are a
+prefix of the disassembly operands. (b) flags MMIO/data addresses
+(`01e27128`, `11800200`, `11f039b0`): only require presence in `main.dis`
+for addresses inside the code range. Then run it on all files, and report
+counts; real failures should drop to a number a human can read. Test by hand
+on 3 deliberately broken rows (wrong mnemonic, wrong address, duplicate
+name) in a scratch copy of chunk_05 and chunk_08 (which currently report 0,
+confirm they are checked, not skipped). Paste the test results in your report.
+Commit only the script.
+
 **A2. Guess pass** per GUESS_PASS.md, one file at a time, in this order:
 chunk_05, chunk_12, chunk_15, chunk_13, chunk_02, chunk_06, chunk_08,
 chunk_09, chunk_04, chunk_14, chunk_17, chunk_11, chunk_10, chunk_03,
@@ -60,3 +76,8 @@ only: default `guess`; do not claim roles you cannot quote.
   Corrections go in the row plus a one-line note under Open questions.
 - Run more than one agy job at a time against the repo.
 - Rewrite `recon/map/chunk_*.md` wholesale; edit rows in place.
+
+**E0. Effect candidate sheet** (offline, after A1b; may be interleaved with A2).
+Read `docs/helpers/GEMINI_EFFECT_DESIGN.md` fully, then do its section 8.
+That brief also tells you how any future effect must be designed so it cannot
+brick the pedal or overrun slot memory; you stop at its gate G3.
