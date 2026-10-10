@@ -2,7 +2,7 @@
 
 ## Status
 
-2026-10-10: Cycle 1 complete. `tools/fwmap/check_rows.py` remains modified and uncommitted; preserved Gemini's edit. No Gemini commit after A1b (`37adb78`). A1b is on hold pending an explicit-address exemption and a negative test. No new Gemini A2 file is ready for review, so no `agy` job was launched.
+2026-10-10: Cycle 2 complete. A1b remains on hold: the uncommitted checker has a reproduced false negative. Gemini's L0 survey was reviewed; L1 has untracked `tools/cf_loader/` and `tests/cf_loader/` in progress. I preserved those files and launched no second `agy` job.
 
 ## Cycle log
 
@@ -24,4 +24,4 @@
 
 ## Open for Claude
 
-- Review the uncommitted checker edit after Gemini commits it; the current diff is not mine. Resume A2 only after the A1b hold in `GEMINI_FEEDBACK.md` is cleared.
+- Review the uncommitted checker edit after Gemini commits it; the current diff is not mine. Resume A2 only after the A1b hold in `GEMINI_FEEDBACK.md` is cleared. Review L1 after Gemini commits its current GUI files. `chunk_01.md` full content review is still open (2 rows checked so far).
