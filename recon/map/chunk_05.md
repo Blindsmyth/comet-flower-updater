@@ -235,6 +235,8 @@ file; this report gives them "see" rows only.
 
 ## Open questions
 
+- Guess pass 2026-10-10: 66 rows checked, 65 raised, 1 still guess.
+
 - Exact semantics of the type-tag values dispatched by
   `midi_apply_type11/30/31_setter` (c012ed0c/ece0/ed44) and by
   `cfg_type_classify` (c012fe18, codes 1/3 vs 39/40 vs other) are not
