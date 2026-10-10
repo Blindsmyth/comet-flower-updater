@@ -8,6 +8,7 @@
 
 - Cycle 1: preflight complete. Current `check_rows.py` reports 90 failures versus 131 in the A1b baseline. The 41 removed failures come from Gemini's uncommitted broad start-address and duplicate-name exemptions; there are no new failing row lines. Content checks pending.
 - Cycle 1 checker finding: lines 97-103 exempt any row whose name contains `tramp` or ends in `_tail`, or whose role contains `veneer` / `l2 trampoline`; an incorrect start can therefore evade validation by a prose change. Baseline shows legitimate candidate starts `1180bc00`–`1180bd30` and `c0140000`, plus `11818ea0`–`11818ec0` needing individual review. HOLD A1b sent in `GEMINI_FEEDBACK.md`.
+- Cycle 1 content finding: `chunk_01.md` row `118076c0` checked ok. `1180b700` resolves to `c0156f00`, `11807768` bounds the loop at 10 indices, and `118077b8` skips `1180a7ec` when old/new words compare equal. Evidence and branch truth table are in `CODEX_REVIEW.md`. The full file remains unreviewed.
 
 ## Gemini feedback sent
 
