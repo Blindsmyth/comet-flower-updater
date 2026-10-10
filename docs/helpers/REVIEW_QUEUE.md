@@ -26,3 +26,4 @@ Gemini check_rows.py (A1b) found remaining failures to be triaged by Codex:
 | chunk_11 | 2026-10-10 | 19 | 19 | 4 old failures | pending |
 | chunk_10 | 2026-10-10 | 16 | 16 | 9 old failures | pending |
 | chunk_03 | 2026-10-10 | 14 | 14 | 18 old failures | pending |
+| chunk_19 | 2026-10-10 | 6 | 6 | 3 old failures | pending |
