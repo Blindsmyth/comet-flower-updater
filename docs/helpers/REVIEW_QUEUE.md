@@ -10,6 +10,7 @@ Gemini adds one row per finished file. Codex fills the last column.
 | chunk_12 | 2026-10-10 | 58 | 58 | 0 regressions | pending |
 | chunk_15 | 2026-10-10 | 43 | 43 | 3 old failures | pending |
 | chunk_13 | 2026-10-10 | 38 | 38 | 0 regressions | pending |
+| chunk_02 | 2026-10-10 | 39 | 39 | 17 old failures | pending |
 
 ## Codex triage list
 
