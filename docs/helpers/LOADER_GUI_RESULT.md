@@ -246,12 +246,36 @@ Also non-effect system files in the filesystem:
 ## Decisions
 - Subprocesses must be executed with `.venv/Scripts/python.exe` and arguments passed as lists (no `shell=True`).
 - Path handling must support spaces in path names (e.g. `zoom project`).
-- Stock effect IDs and names will be codified in `core.py` directly (using the verified 130 stock entries) so offline validation does not depend on having `res3_3137536.bin` mounted.
+- Stock effect IDs and names are codified in `core.py` directly (using the verified 130 stock entries) so offline validation does not depend on having `res3_3137536.bin` mounted.
 - App will never touch MIDI directly; no mido / rtmidi imports in `tools/cf_loader`.
+- `tools/cf_loader/core.py` is pure logic with no tkinter import.
+- Status safety transitions: an effect can only transition to 'ok-save' if both 'audio-pass' and 'cost-measured' have completed.
 
 ## Tests
 - Python and tkinter availability verified.
 - Tool CLI syntax verified via `--help` and dry runs.
+- **L1 Pytest Suite:** `pytest tests/cf_loader -q` passes 10/10 tests:
+  ```
+  tests/cf_loader/test_core.py::test_safety_grep_no_midi PASSED
+  tests/cf_loader/test_core.py::test_safety_no_exe_as_program PASSED
+  tests/cf_loader/test_core.py::test_slot_heap_calculation_ratx PASSED
+  tests/cf_loader/test_core.py::test_inspect_zd2_valid_ratx PASSED
+  tests/cf_loader/test_core.py::test_inspect_zd2_oversize_sibling PASSED
+  tests/cf_loader/test_core.py::test_inspect_zd2_stock_collision PASSED
+  tests/cf_loader/test_core.py::test_preflight_checks_green_and_red PASSED
+  tests/cf_loader/test_core.py::test_output_folder_never_overwrites PASSED
+  tests/cf_loader/test_status_safety_gates PASSED
+  tests/cf_loader/test_probe10_cost_calculation PASSED
+  10 passed in 0.15s
+  ```
+- Full repo pytest suite passes 18/18 tests in 0.21s.
 
 ## Problems
-- None identified in L0.
+- None.
+
+---
+
+## Status Update (L1 Complete)
+- **Phase:** L1 `core.py` + tests complete.
+- **Next Phase:** L2 Library + Build tabs (`app.py` UI implementation).
+
