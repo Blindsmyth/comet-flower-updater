@@ -126,7 +126,7 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
 | c01251b0 | ui_draw_wrapper | wrapper around ui_draw_primitive_6args (c0125000); callers c0126d40, c013a0cc, c0142420 -- all UI/rhythm-pattern related | likely | calls=c0125000=ui_draw_primitive_6args; callers=c0126d40,c013a0cc,c0142420 |
 | c012538c | ui_lock_before_bitset | 824-instr routine, single caller c01256c4 which calls it first (before doing its own bit-range SPLOOP) passing a fixed global 0xc01146b8 -- likely takes a lock/semaphore guarding the bitmap c01256c4 then modifies | likely | read: c01256c4's prologue does `MVK 0x46b8,A4; MVKH 0xc0110000,A4; CALLP 0xc012538c,B3` before its own SPLOOP; callers=c01256c4 |
 | c01256c4 | bitmap_set_bit_range_3ae4 | sets a run of bits in a bitmap at fixed base 0xc0183ae4: computes byte/bit-shift offsets from two args (A21=A6 bit position, A22=A8 length), then an SPLOOP that OR's a shifted mask into the byte via LDBU/STB -- structurally identical to the already-named LCD primitive gfx_set_bit_range (c011c508, see 00) but a different target bitmap; 13 distinct callers across the UI/rhythm draw cluster | confirmed | read: `MVK 0x3ae4,B4; MVKH 0xc0180000,B4` -> 0xc0183ae4; `SPLOOP 2; SHL A2,A0,A1; OR B0,A1,B0; SPKERNEL; EXTU B0,24,24,B0; STB B0,*B4[0]` -- same shift/OR/STB SPLOOP shape as c011c508; calls=c012538c=ui_lock_before_bitset; 13 callers incl. c01257f4,c0125ac4,c01261a4,c0126274,c0126340,c01264c4,c0126550,c013a0cc,c01564b8,c0156580,c015c3e0,c015c458 |
-| c0125738 | ui_draw_helper_738 | 188-instr helper, single caller c01257f4, no recorded callees | guess | n=188; callers=c01257f4 |
+| c0125738 | ui_draw_glyph_6row | draws one 6-row glyph into the 0xc01146b8 rhythm/UI bitmap (same global c0126d40/ui_lock_before_bitset/bitmap_set_bit_range_3ae4's sibling guards): looks up a 6-byte-per-character font table and blits its 6 rows at the given column/row position; takes a slower per-pixel clipping path (explicit STB loop with address recomputed each row) when the row position is near the 0/32/126 boundaries it checks, otherwise a fast raw copy via a 6-iteration SPLOOPD (`MVC 2,ILC;SPLOOPD 1` = 2+4=6, matching the clamped path's own 6-row loop count); single caller c01257f4, no sub-calls | likely | read: `MPY.M1 6,A2,A0` (char*6 row-table index) `LDBU *A4[A7]` font byte; clamped path loops `B0=6` `STB *A4[A7]` into `0xc01146b8`-based address; fast path `MVK 0x46b8,A0;MVKH 0xc0110000,A0` then `SPLOOPD 1` `LDBU *A4++[1]` `STB *B4++[1]`; boundary checks `CMPGT 22,B4` / `CMPLT A2,32` / `CMPGT A2,126`; callers=c01257f4 |
 | c01257f4 | ui_draw_738_caller | 348-instr routine calling bitmap_set_bit_range_3ae4 and ui_draw_helper_738; single caller c0125950 | guess | calls=c01256c4=bitmap_set_bit_range_3ae4,c0125738; callers=c0125950 |
 | c0125950 | ui_draw_950 | 184-instr wrapper around c01257f4; single caller c013a648 (outside this chunk) | guess | calls=c01257f4; callers=c013a648 |
 | c0125a08 | ui_draw_a08 | 188-instr sibling of ui_draw_helper_738, callers c0125ac4 and c0125c20 | guess | n=188; callers=c0125ac4,c0125c20 |
@@ -186,20 +186,20 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
 | c0127dd2 | midi_jtbl_entry_dd2 | jump-table entry calling midi_jtbl_worker_a4c (c0127a4c), table slot 0xc0183b94 | likely | ptr@ c0183b94; calls=c0127a4c,c0127f58=epilogue_pop_b3_shared2 |
 | c0127dda | midi_jtbl_entry_dda | jump-table entry calling midi_jtbl_worker_c28 (c0127c28), table slot 0xc0183b80 | likely | ptr@ c0183b80; calls=c0127c28,c0127f58=epilogue_pop_b3_shared2 |
 | c0127de8 | midi_jtbl_entry_de8 | jump-table entry calling midi_jtbl_entry_f0a (c0127f0a); B14[44]; table slot 0xc0183b74 | likely | ptr@ c0183b74; B14 44; calls=c0127f0a,c0127f58=epilogue_pop_b3_shared2 |
-| c0127ea4 | midi_jtbl_entry_ea4 | jump-table entry, B14[38], table slot 0xc0183c3c, no inner worker call (acts directly then returns via shared epilogue) | guess | ptr@ c0183c3c; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127eb0 | midi_jtbl_entry_eb0 | jump-table entry, B14[38], table slot 0xc0183c2c | guess | ptr@ c0183c2c; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127ec0 | midi_jtbl_entry_ec0 | jump-table entry, B14[38], table slot 0xc0183c08 | guess | ptr@ c0183c08; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127eca | midi_jtbl_entry_eca | jump-table entry, B14[38], table slot 0xc0183c04 | guess | ptr@ c0183c04; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127ed2 | midi_jtbl_entry_ed2 | jump-table entry, B14[38], table slot 0xc0183c00 | guess | ptr@ c0183c00; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127eda | midi_jtbl_entry_eda | jump-table entry, B14[38], table slot 0xc0183bf8 | guess | ptr@ c0183bf8; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127ee6 | midi_jtbl_entry_ee6 | jump-table entry, B14[38], table slot 0xc0183bf4 | guess | ptr@ c0183bf4; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127eee | midi_jtbl_entry_eee | jump-table entry, B14[38], table slot 0xc0183bf0 | guess | ptr@ c0183bf0; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127ef6 | midi_jtbl_entry_ef6 | jump-table entry, B14[38], table slot 0xc0183bec | guess | ptr@ c0183bec; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127f02 | midi_jtbl_entry_f02 | jump-table entry, B14[38], table slot 0xc0183bcc | guess | ptr@ c0183bcc; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127ea4 | midi_jtbl_entry_ea4 | stores the literal parameter index 30 (0x1e) into B14[38] and returns 1 via the shared epilogue -- confirms the whole c0127ea4..c0127f48 family is a flat "select MIDI CC/parameter index N" table, one constant per entry; table slot 0xc0183c3c | confirmed | read: `MVK 0x1e,B0; STW B0,*+B14[38]; MVK 1,A4; BNOP 0xc0127f58,5`; ptr@ c0183c3c |
+| c0127eb0 | midi_jtbl_entry_eb0 | stores parameter index 29 (0x1d) into B14[38], returns 1 via the shared epilogue; table slot 0xc0183c2c | confirmed | read: `MVK 0x1d,B0; STW B0,*+B14[38]; MVK 1,A4; BNOP 0xc0127f58,5`; ptr@ c0183c2c |
+| c0127ec0 | midi_jtbl_entry_ec0 | stores parameter index 28 (0x1c) into B14[38] and returns via the shared epilogue (A4 left as passthrough, not forced to 1); table slot 0xc0183c08 | confirmed | read: `MVK 0x1c,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183c08 |
+| c0127eca | midi_jtbl_entry_eca | stores parameter index 27 into B14[38] and returns via the shared epilogue (A4 passthrough); table slot 0xc0183c04 | confirmed | read: `MVK 27,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183c04 |
+| c0127ed2 | midi_jtbl_entry_ed2 | stores parameter index 26 into B14[38] and returns via the shared epilogue (A4 passthrough); table slot 0xc0183c00 | confirmed | read: `MVK 26,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183c00 |
+| c0127eda | midi_jtbl_entry_eda | stores parameter index 12 into B14[38] and returns via the shared epilogue (A4 passthrough); table slot 0xc0183bf8 | confirmed | read: `MVK 12,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183bf8 |
+| c0127ee6 | midi_jtbl_entry_ee6 | stores parameter index 11 into B14[38] and returns via the shared epilogue (A4 passthrough); table slot 0xc0183bf4 | confirmed | read: `MVK 11,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183bf4 |
+| c0127eee | midi_jtbl_entry_eee | stores parameter index 10 into B14[38] and returns via the shared epilogue (A4 passthrough); table slot 0xc0183bf0 | confirmed | read: `MVK 10,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183bf0 |
+| c0127ef6 | midi_jtbl_entry_ef6 | stores parameter index 9 into B14[38] and returns via the shared epilogue (A4 passthrough); table slot 0xc0183bec | confirmed | read: `MVK 9,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183bec |
+| c0127f02 | midi_jtbl_entry_f02 | stores parameter index 24 into B14[38] and returns via the shared epilogue (A4 passthrough); table slot 0xc0183bcc | confirmed | read: `MVK 24,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183bcc |
 | c0127f0a | midi_jtbl_entry_f0a | jump-table entry called both directly via table slot 0xc0183bc4 and from midi_jtbl_entry_de8 (c0127de8); B14[38] | likely | ptr@ c0183bc4; B14 38; calls=c0127f58=epilogue_pop_b3_shared2; callers=c0127de8 |
-| c0127f32 | midi_jtbl_entry_f32 | jump-table entry, B14[38], table slot 0xc0183bc8 | guess | ptr@ c0183bc8; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127f3a | midi_jtbl_entry_f3a | jump-table entry, B14[38], table slot 0xc0183bc0 | guess | ptr@ c0183bc0; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
-| c0127f48 | midi_jtbl_entry_f48 | jump-table entry, B14[38], table slot 0xc0183bbc -- last of the 0xc0183b74..3c table family | guess | ptr@ c0183bbc; B14 38; calls=c0127f58=epilogue_pop_b3_shared2 |
+| c0127f32 | midi_jtbl_entry_f32 | stores parameter index 6 into B14[38] and returns via the shared epilogue (A4 passthrough); table slot 0xc0183bc8 | confirmed | read: `MVK 6,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183bc8 |
+| c0127f3a | midi_jtbl_entry_f3a | stores parameter index 3 into B14[38] and returns 1 via the shared epilogue; table slot 0xc0183bc0 | confirmed | read: `MVK 3,B0; STW B0,*+B14[38]; MVK 1,A4; BNOP 0xc0127f58,5`; ptr@ c0183bc0 |
+| c0127f48 | midi_jtbl_entry_f48 | stores parameter index 20 (0x14) into B14[38] and returns via the shared epilogue (A4 passthrough) -- last of the 0xc0183b74..3c table family; confirms the whole family (ea4..f48) is a flat jump table selecting one of ~24 literal parameter-index constants into B14[38] | confirmed | read: `MVK 0x14,B0; STW B0,*+B14[38]; BNOP 0xc0127f58,5`; ptr@ c0183bbc |
 | c0127f58 | epilogue_pop_b3_shared2 | see 00 | -- | already named in recon/map/00_library_kernel.md |
 | c0127f60 | midi_stage_f60 | 128-instr routine calling an out-of-range helper (11802fcc); B14 118,119; single caller c0129276 | guess | calls=11802fcc; B14 118,119; callers=c0129276 |
 | c0127fe0 | cfg_get_b14_27 | getter: returns B14[27]; heavily used (14 distinct callers spanning MIDI, PreLoad, RhythmService, SwitchNrmlSpdRead, UpdateUI) -- same mechanically-unambiguous shape as the other B14 getters already catalogued in 00 | confirmed | read: `c0127fe0 LDW *+B14[27],A4; BNOP B3,5` -- two-instruction getter, matches cfg_get_b14_26/cfg_get_b14_125 shape in 00; 14 callers incl. 118030d0,11803130,11803474,11803514,1180a380,1180a7ec,c0128e54,c012d2e4,c012f7a4,c0134db8,c013c54c,c013c6f8; recon:15,18 |
@@ -223,7 +223,15 @@ here as "see 00", not re-analyzed): `c0123a74` (thin_arg_adapter),
   The B14 slots threaded through this family (30-38, 112-119, 144) look like
   one slot per MIDI CC/parameter; B14[38] recurs in nearly every entry and is
   the best candidate for a common "current parameter index" or "MIDI channel"
-  slot. Not matched to specific CC numbers this wave.
+  slot. Not matched to specific CC numbers this wave. Guess-pass 2026-10-09
+  update: all 13 guess-confidence entries in the family (c0127ea4..c0127f48)
+  turned out to be flat "store one literal constant into B14[38]" leaves --
+  confirmed values, in table order: 30,29,28,27,26,12,11,10,9,24,21(f0a,
+  already-named),15,13,17,6,3,20 (remaining slots 16/21/etc. not in this
+  wave's guess set). Three of the thirteen (c0127ea4=30, c0127eb0=29,
+  c0127f3a=3) also force A4=1 on return; the rest leave A4 as whatever the
+  shared dispatcher already had. These look like Zoom-internal MIDI CC/
+  parameter-slot numbers, not matched to a published CC table.
 - `B14[115]`: the "effect-load" lock, already named via `locked_subsystem_op_115`
   (c0163118) / `validate_and_set_error` (c01630b4) in 00; guards most of the
   ELF-loader stage functions in c0122b60..c0124f8c.
