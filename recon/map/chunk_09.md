@@ -1,6 +1,25 @@
 # chunk_09: c013eeec..c0145378 (150 functions)
 
-Summary: (in progress)
+Summary: this range is mostly effect-parameter and configuration plumbing
+for MainApp and MIDI. (1) c013eeec..c013f654: nine arms of a parameter ramp-
+curve switch. (2) c013f6c0..c0140630: per-slot knob index/bitmask dispatch,
+effect-slot switch and reload, and a large family of one-line getters,
+setters and bit tests over the configuration globals at 0x118118e0..0x1181191c
+and B14 slots 97/98/128. (3) c0140680..c0140c84: the system/service menu
+screens (boot, off-mode, tabs, CheckSum, All Initialize) and a MIDI byte
+dump. (4) c0140c8c: footswitch poll and dispatch. (5) c01415a0..c01423ec:
+the slot-order table (swap/remove/get/index), effect parameter store and
+send, and the param_buf family (validate, select, async kick-off, size
+check, read/write/erase error reports). (6) c0142420..c01431f2: value and
+bar-graph formatting dispatchers for the UI. (7) c0143240..c0144580: slot
+callback refresh passes, MIDI assignment rescans, guarded parameter-edit
+apply, and two large hardware-feature gates. (8) c0144ba0..c0144d2c: the
+MIDI TX port-op dispatcher (table 0xc01843d8, ops 2..8). (9)
+c0144e58..c0145124: the **USB MIDI driver API** (chunk_12 review and
+recon/21: these were first named `switch_speed_read_*`; c0145124 is
+`usbmidi_device_init`, which registers callback c0144c0c). (10)
+c0145174..c0145378: locked configuration writes (5-, 6-byte, chunked and
+small steps) and their packet builders.
 
 | addr | name | role | conf | evidence |
 |---|---|---|---|---|
