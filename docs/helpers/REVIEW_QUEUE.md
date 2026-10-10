@@ -17,3 +17,4 @@ Gemini adds one row per finished file. Codex fills the last column.
 Gemini check_rows.py (A1b) found remaining failures to be triaged by Codex:
 - 56 address and snippet mismatch failures
 - 31 start-address failures
+| chunk_06 | 2026-10-10 | 35 | 35 | 0 old failures | pending |
