@@ -152,31 +152,34 @@ with FWMAP.md's documented settings-menu table.
 | 11805d0c | menu_fld_set_2fd0_1180 | (hidden start, folded into the `11805ce8` span, ends at `11805d20` where `cfg_table_lookup_guarded_1180` begins) settings-field setter for global word `0x11812fd0` | confirmed | `11805d18 STW A0,*A4[0]` at 0x11812fd0 |
 | 11805d20 | cfg_table_lookup_guarded_1180 | guards on its arg A4: if nonzero, bails returning -1 immediately (an internal consistency check -- callers normally pass 0); otherwise, if an override flag at global `0x11812f7c` is set, remaps the index through `c0140320`-equivalent (cfg_table_index) before indexing a 16-byte-stride 2D table at `0x11813348`; 37 callers | likely | guard `11805d24`-`11805d2a` (`[!A0] BNOP` fallthrough vs `MVK -1,A0`+jump to tail); override check `11805d34`-`11805d38` on `0x11812f7c`; table index math `11805d60`-`11805d76` (`SHL A0,0x4` + two `ADDAW` into `0x11813348`) |
 | 11805d84 | bound_check_lt4 | see 00 | likely | recon/map/00_library_kernel.md |
-| 11805dc0 | shared_accessor1_1180 | 12 B, roots UpdateUI; 7 callers spanning both the rhythm-render family (`11802c44`,`118031ac`,`118050e8`) and settings-menu sites (`c0154654`,`c0159160`,`c01591ac`,`c0159216`) -- a generic small B14/global accessor | guess | callers=7 |
-| 11805dcc | unk_1180_5dcc | 12 B, ptr@ c0185e48; 4 callers | guess | ptr@=c0185e48 |
-| 11805dd8 | shared_accessor2_1180 | 16 B, roots UpdateUI; ptr@ c0185ebc; callers `11802c58`,`118031ac`,`118050e8` | guess | ptr@=c0185ebc |
-| 11805de8 | shared_accessor3_1180 | 28 B, roots MainApp/TunerService; 6 callers incl `11802c70`,`118031ac`,`11804a44` | guess | callers=6 |
-| 11805e04 | unk_1180_5e04 | 12 B, single caller `c013ac04` | guess | callers=c013ac04 |
-| 11805e10 | shared_accessor4_1180 | 16 B, roots MIDI/MainApp/RhythmService/UpdateUI; 7 callers spanning both rhythm-render dispatchers (`11804124`,`118048fc`) and RhythmService (`11806ce0`,`11806eb4`) -- likely a "get current rhythm pattern/slot" accessor shared by UI render and playback | guess | callers=11804124,118048fc,11806ce0,11806eb4,c0150588,c015408c,c0158c58 |
-| 11805e20 | unk_1180_5e20 | 12 B, roots MIDI/MainApp/RhythmService; single caller `c0158cf4` | guess | callers=c0158cf4 |
-| 11805e2c | unk_1180_5e2c | 12 B, 8 callers (c0148xxx family) | guess | callers=8 |
-| 11805e38 | menu_item_record6 | 16 B, roots UpdateUI; ptr@ c0185ca4,c0186870 -- settings/menu-item record entry | guess | ptr@=c0185ca4,c0186870 |
-| 11805e48 | menu_item_record7 | 12 B, roots UpdateUI; ptr@ c018686c | guess | ptr@=c018686c |
-| 11805e54 | menu_item_record8 | 16 B, roots UpdateUI; ptr@ c0186874 | guess | ptr@=c0186874 |
-| 11805e64 | shared_accessor5_1180 | 12 B, roots AD/MIDI/MainApp/RhythmService; 11 callers | guess | callers=11 |
-| 11805e70 | unk_1180_5e70 | 16 B, roots MIDI/MainApp; 3 callers | guess | callers=3 |
-| 11805e80 | unk_1180_5e80 | 12 B, roots MIDI; single caller `c013af08` | guess | callers=c013af08 |
-| 11805e8c | unk_1180_5e8c | 12 B, roots MainApp; single caller `c016a8c0` | guess | callers=c016a8c0 |
-| 11805e98 | menu_item_record9 | 16 B, roots MIDI/MainApp; ptr@ c018615c; caller `c0139a70` | guess | ptr@=c018615c |
-| 11805ea8 | unk_1180_5ea8 | 12 B, roots MainApp; callers `c01631d4`,`c016976c` | guess | callers=2 |
-| 11805eb4 | unk_1180_5eb4 | 16 B, roots MIDI/MainApp/Swi:USB/SwitchNrmlSpdRead; 3 callers | guess | callers=3 |
-| 11805ec4 | shared_accessor6_1180 | 12 B, roots MIDI/MainApp; ptr@ c0185d34; 10 callers | guess | ptr@=c0185d34; callers=10 |
-| 11805ed0 | unk_1180_5ed0 | 40 B, callers `c01301cc`,`c01307d4` | guess | callers=2 |
-| 11805ef8 | menu_item_record10 | 16 B, roots MainApp/UpdateUI; ptr@ c0185ce8; callers `c01374c8`,`c01694a0` | guess | ptr@=c0185ce8 |
-| 11805f08 | menu_item_record11 | 12 B, roots MIDI/MainApp/Swi:USB/SwitchNrmlSpdRead; ptr@ c0185dfc; caller `1180add8` | guess | ptr@=c0185dfc |
-| 11805f14 | shared_accessor7_1180 | 16 B, roots MIDI/MainApp/RhythmService/UpdateUI; 6 callers | guess | callers=6 |
-| 11805f24 | unk_1180_5f24 | 12 B, roots AD/MIDI/MainApp/UpdateUI; single caller `c01635c0` | guess | callers=c01635c0 |
-| 11805f30 | unk_1180_5f30 | 16 B, callers `11807d54`,`c0148c48` | guess | callers=2 |
+| 11805dc0 | shared_accessor1_1180 | this is the GETTER half of the settings-field table whose setters sit at `11805b20`-`11805d1c` (same `0x1181 2f74-2fe8` globals, address-for-address paired but listed in a different order): returns global word `0x11812f9c` (paired with the setter `11805b20`); 7 callers spanning both the rhythm-render family and settings-menu sites | confirmed | `11805dc8 LDW *A4[0],A4` at 0x11812f9c |
+| 11805dcc | menu_fld_get_2f94_1180 | getter paired with the setter `menu_item_record1`/`11805b30`: returns global word `0x11812f94`; ptr@ `c0185e48`; 4 callers | confirmed | `11805dd4 LDW *A4[0],A4` at 0x11812f94 |
+| 11805dd8 | shared_accessor2_1180 | getter paired with the setter `11805b44`: returns global word `0x11812fa0`; ptr@ `c0185ebc`; callers `11802c58`,`118031ac`,`118050e8` | confirmed | `11805de4 LDW *A4[0],A4` at 0x11812fa0 |
+| 11805de8 | shared_accessor3_1180 | getter paired with the setter `11805b54`/`menu_fld_set_2f98_1180`: returns global word `0x11812f98`; 6 callers incl `11802c70`,`118031ac`,`11804a44`. The fact sheet's 28 B size folds one more hidden-start getter, `11805df4` (below) | confirmed | `11805df0 LDW *A4[0],A4` at 0x11812f98 |
+| 11805df4 | menu_fld_get_2f7c_1180 | (hidden start, folded into `11805de8`'s span, ends at `11805e04`) getter paired with the setter `11805b68`/`menu_fld_set_2f7c_1180`: returns global word `0x11812f7c` (the same flag `11805d20` reads as its override guard) | confirmed | `11805e00 LDW *A4[0],A4` at 0x11812f7c |
+| 11805e04 | menu_fld_get_2fcc_1180 | getter paired with the setter `11805b78`/`menu_fld_set_2fcc_1180`: returns global word `0x11812fcc`; single caller `c013ac04` | confirmed | `11805e0c LDW *A4[0],A4` at 0x11812fcc |
+| 11805e10 | shared_accessor4_1180 | getter paired with the setter `11805b8c`/`menu_fld_set_2fb8_1180`: returns global word `0x11812fb8`; 7 callers spanning both rhythm-render dispatchers (`11804124`,`118048fc`) and RhythmService (`11806ce0`,`11806eb4`) -- likely a "get current rhythm pattern/slot" accessor shared by UI render and playback | likely | `11805e18 LDW *A4[0],A4` at 0x11812fb8; semantic "rhythm pattern" role inferred from caller mix, not independently confirmed |
+| 11805e20 | menu_fld_get_2fbc_1180 | getter paired with the setter `11805ba0`/`menu_fld_set_2fbc_1180`: returns global word `0x11812fbc`; single caller `c0158cf4` | confirmed | `11805e28 LDW *A4[0],A4` at 0x11812fbc |
+| 11805e2c | menu_fld_get_2f8c_1180 | getter paired with the setter `11805bb0`/`menu_fld_set_2f8c_1180`: returns global word `0x11812f8c`; 8 callers (c0148xxx family) | confirmed | `11805e34 LDW *A4[0],A4` at 0x11812f8c |
+| 11805e38 | menu_item_record6 | getter paired with the setter `menu_item_record2`/`11805bc4`: returns global word `0x11812fa8`; ptr@ c0185ca4,c0186870 | confirmed | `11805e44 LDW *A4[0],A4` at 0x11812fa8 |
+| 11805e48 | menu_item_record7 | getter paired with the setter `11805bd4`/`menu_fld_set_2fa4_1180`: returns global word `0x11812fa4`; ptr@ c018686c | confirmed | `11805e50 LDW *A4[0],A4` at 0x11812fa4 |
+| 11805e54 | menu_item_record8 | getter paired with the setter `11805be8`/`menu_fld_set_2fac_1180`: returns global word `0x11812fac`; ptr@ c0186874 | confirmed | `11805e60 LDW *A4[0],A4` at 0x11812fac |
+| 11805e64 | shared_accessor5_1180 | getter paired with the setter `11805bf8`/`menu_fld_set_2f78_1180`: returns global word `0x11812f78`; 11 callers | confirmed | `11805e6c LDW *A4[0],A4` at 0x11812f78 |
+| 11805e70 | menu_fld_get_2fc0_1180 | getter paired with the setter `11805c0c`/`menu_fld_set_2fc0_1180`: returns global word `0x11812fc0`; 3 callers | confirmed | `11805e78 LDW *A4[0],A4` at 0x11812fc0 |
+| 11805e80 | menu_fld_get_2fc4_1180 | getter paired with the setter `11805c20`/`menu_fld_set_2fc4_1180`: returns global word `0x11812fc4`; single caller `c013af08` | confirmed | `11805e88 LDW *A4[0],A4` at 0x11812fc4 |
+| 11805e8c | menu_fld_get_2fd4_1180 | getter paired with the setter `11805c30`/`menu_fld_set_2fd4_1180`: returns global word `0x11812fd4`; single caller `c016a8c0` | confirmed | `11805e94 LDW *A4[0],A4` at 0x11812fd4 |
+| 11805e98 | menu_item_record9 | getter paired with the setter `menu_item_record3`/`11805c44`: returns global word `0x11812fc8`; ptr@ c018615c; caller `c0139a70` | confirmed | `11805ea4 LDW *A4[0],A4` at 0x11812fc8 |
+| 11805ea8 | menu_fld_get_indexed_2f84_1180 | indexed getter paired with the setter `11805c54`/`menu_fld_set_indexed_2f84_1180`: returns `*(0x11812f84 + A4*4)`; callers `c01631d4`,`c016976c` | confirmed | `11805eb0 LDW *A5[A4],A4` with A5=0x11812f84 |
+| 11805eb4 | menu_fld_get_2f88_1180 | getter paired with the setter `11805c68`/`menu_fld_set_2f88_1180`: returns global word `0x11812f88`; 3 callers | confirmed | `11805ec0 LDW *A4[0],A4` at 0x11812f88 |
+| 11805ec4 | shared_accessor6_1180 | getter paired with the setter `11805c78`/`menu_fld_set_2f80_1180`: returns global word `0x11812f80`; ptr@ `c0185d34`; 10 callers | confirmed | `11805ecc LDW *A4[0],A4` at 0x11812f80 |
+| 11805ed0 | menu_fld_get_2fe8_1180 | getter paired with the setter `11805c8c`/`menu_fld_set_2fe8_1180`: returns global word `0x11812fe8`; callers `c01301cc`,`c01307d4`. The fact sheet's 40 B size folds two more hidden-start getters, `11805ee0` and `11805eec` (below) | confirmed | `11805ed8 LDW *A4[0],A4` at 0x11812fe8 |
+| 11805ee0 | menu_fld_get_2f90_1180 | (hidden start, folded into `11805ed0`'s span) getter paired with the setter `11805ca0`/`menu_fld_set_2f90_1180`: returns global word `0x11812f90` | confirmed | `LDW *A4[0],A4` at 0x11812f90 |
+| 11805eec | menu_fld_get_2fe0_1180 | (hidden start, folded into `11805ed0`'s span, ends at `11805ef8` where `menu_item_record10` begins) getter paired with the setter `11805cb0`/`menu_fld_set_2fe0_1180`: returns global word `0x11812fe0` | confirmed | `LDW *A4[0],A4` at 0x11812fe0 |
+| 11805ef8 | menu_item_record10 | getter paired with the setter `menu_item_record4`/`11805cc4`: returns global word `0x11812f74`; ptr@ c0185ce8; callers `c01374c8`,`c01694a0` | confirmed | `LDW *A4[0],A4` at 0x11812f74 |
+| 11805f08 | menu_item_record11 | getter paired with the setter `menu_item_record5`/`11805cd4`: returns global word `0x11812fb4`; ptr@ c0185dfc; caller `1180add8` | confirmed | `LDW *A4[0],A4` at 0x11812fb4 |
+| 11805f14 | shared_accessor7_1180 | getter paired with the setter `11805ce8`/`menu_fld_set_2fe4_1180`: returns global word `0x11812fe4`; 6 callers | confirmed | `LDW *A4[0],A4` at 0x11812fe4 |
+| 11805f24 | menu_fld_get_2fb0_1180 | getter paired with the setter `11805cf8`/`menu_fld_set_2fb0_1180`: returns global word `0x11812fb0`; single caller `c01635c0` | confirmed | `LDW *A4[0],A4` at 0x11812fb0 |
+| 11805f30 | menu_fld_get_2fd0_1180 | getter paired with the setter `11805d0c`/`menu_fld_set_2fd0_1180`: returns global word `0x11812fd0`; callers `11807d54`,`c0148c48` | confirmed | `LDW *A4[0],A4` at 0x11812fd0 |
 | 11805f40 | table_lookup_1180 | 112 B, calls the known table[index] getter `cfg_table_index_1181191c` (c0140320) under save/restore -- sibling of `validated_table_lookup` (11805fb0, named in 00) but without the bound-check | likely | calls=c0140320=cfg_table_index_1181191c; callers=c015ade0,c015ae50 |
 | 11805fb0 | validated_table_lookup | see 00 | likely | recon/map/00_library_kernel.md |
 | 1180604c | const1_wrapper1_1180 | 152 B, roots MIDI/MainApp; calls `rts_const_return_1` under save/restore; 2 callers | guess | calls=c012af98=rts_const_return_1 |
