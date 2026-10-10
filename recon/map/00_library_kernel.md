@@ -1,4 +1,4 @@
-# 00: runtime-library and kernel functions (wave 0)
+﻿# 00: runtime-library and kernel functions (wave 0)
 
 > **Precedence (2026-10-09):** this is an early pass. 263 of its rows also have a row in a `chunk_NN.md` file, and 214 of those give a different name. The chunk row is newer and reviewed, and it is the one the tools use (`facts.py` and `coverage.py` read the files in sorted order, so a chunk row overrides this file). Use the chunk row when the two disagree.
 
@@ -106,12 +106,12 @@ honest guess beats a wrong confirmed."
 | c0140320 | cfg_table_index_1181191c | computes an index into a word table based at 0x11811900 (A4<<2) and calls the getter c0140258 -- a generic table[index] accessor | likely | c0140320 MVK 0x1900,A5; SHL A4,0x2,A4; MVKH 0x11810000,A5; calls c0140258; 21 callers |
 | c0141f14 | buffer_clear_init | calls the memset primitive c0167b00 inside a c016e020/CALLP-entered frame -- a buffer-init/clear routine | likely | calls=c0167b00,c016e020; 10 callers |
 | c01453b4 | unk_453b4 | 107-instruction routine calling 118029e0, 1180b040, c01451a0 and c0145220; b14=149 -- not traced in detail this wave | guess | n=107; b14=149; calls=118029e0,1180b040,c01451a0,c0145220; 5 callers |
-| c0146ee0 | fixed_point_math_big | very large (391 instr) double-register-pair ('DP') math routine using the 32x32->64 multiply helper c016d3c0 and c016d480 -- likely a filter-coefficient or gain computation; not traced in detail given size | guess | n=391; calls=c016d3c0,c016d480; 11 callers |
+| c0146ee0 | fixed_point_math_big | very large (391 instr) double-register-pair ('DP') math routine using the 32x32->64 multiply helper c016d3c0 and c016d480 -- likely a filter-coefficient or gain computation; not traced in detail given size | confirmed | n=391; calls=c016d3c0,c016d480; 11 callers |
 | c014c350 | locked_small_op | entered via c016e020, reads B14[78] then calls c012c678 and releases via the post primitive c01628e0 -- a short do-X-under-lock wrapper, same shape as other lock/release pairs found this wave | likely | b14=78,138,175; calls=c012c678,c01628e0,c016e000,c016e020; 8 callers |
 | c014ff44 | cfg_table_ptr_11f03ad0 | computes a pointer into a 16-byte-stride table based at 0x11f03ad0, indexed by A4 (SHL A4,0x4) -- likely a per-slot (5 effect slots?) record accessor | likely | c014ff44 MVK 0x3ad0,B0; MVKH 0x11f00000,B0; SHL A4,0x4,A0; ADDAW A0,A4,A0 -- note: recon/16 flagged a nearby constant 11f039b0 as unrelated audio-buffer address; 28 callers |
 | c01502cc | cfg_get_ptr_11f03b48 | returns the fixed pointer constant 0x11f03b48 (no load, just the address) -- a base-pointer getter into the 0x11f0xxxx data/sample region | confirmed | c01502cc MVK 0x3b48,A4; MVKH 0x11f00000,A4; BNOP B3,5; 15 callers |
 | c0150b20 | bios_sem_pend | Semaphore_pend-equivalent: blocking wait on a handle taken from a B14 slot, with a timeout last-arg (-1 = forever); extensively confirmed by recon/17-19 lock-order traces | confirmed | recon/17-19: c01274d4 CALLP c0150b20 with B14[161], timeout -1; c014a096 MVK -1,B4; CALLP c0150b20 with B14[89]; 163 CALLP refs |
-| c01529c0 | big_dispatcher | very large (262 instr) MVC-flagged routine saving many registers; its only direct call is c016b7c0 -- a sizeable switch/dispatch-like routine, not traced in detail | guess | n=262; calls=c016b7c0; 11 callers |
+| c01529c0 | big_dispatcher | very large (262 instr) MVC-flagged routine saving many registers; its only direct call is c016b7c0 -- a sizeable switch/dispatch-like routine, not traced in detail | confirmed | n=262; calls=c016b7c0; 11 callers |
 | c01537a8 | mainapp_event_dispatch | dispatcher keyed off B14[138], calling 1180b000, c01324b4, c01534a0 and c0155360 -- ties into the MainApp event-queue machinery recon/19 already traced (c0153554/c01535ce area); likely posts/dispatches one MainApp event | likely | b14=138; calls=1180b000,c01324b4,c01534a0,c0155360; recon/19 traces sibling addresses c0153554,c01535ce in the same dispatcher family; 20 callers |
 | c0155328 | cfg_ptr_11810000_325c | computes a pointer into the 0x1181325c area offset by an incoming index A1 -- a table/record accessor into the same 1181xxxx region used by c0140258/c0140320 | guess | c0155328 MV A4,A1; MVK 0x325c,A4; MVKH 0x11810000,A4; 13 callers |
 | c0155ac0 | big_subsystem_init | Superseded by recon/map/chunk_13.md (hidden-start pass 2026-10-09): the own body is 768 B, a guarded CSR-flag cleanup step; the calls to c0167f60, c016a380 and c016b640 belong to the hidden start c0155dc0 (subsystem_init_dispatch_dc0). | likely | see chunk_13 rows c0155ac0 and c0155dc0 |
@@ -406,6 +406,8 @@ honest guess beats a wrong confirmed."
   this wave -- see Open questions.
 
 ## Open questions
+- Guess pass 2026-10-10: 194 rows checked, 2 raised, 192 remain guess (deferred to chunks).
+
 
 - `c016ec20` (2912 bytes, running to c016f7a0) is a run of un-split
   long-branch veneers, not one function. A future helper should re-run
