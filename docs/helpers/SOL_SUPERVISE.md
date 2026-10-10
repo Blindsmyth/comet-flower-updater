@@ -132,3 +132,7 @@ Reads SOL_LOG.md and GEMINI_FEEDBACK.md, spot-checks 5 Sol-fixed rows (those
 with predicated logic first), then A5 and Phase C code. Make that cheap:
 every fix commit message names the file and row addresses, and SOL_LOG.md
 lists them.
+
+## 5. Extra job (2026-10-10): build the latest test updater
+Do `docs/helpers/SOL_BUILD_UPDATER.md` Part A (build files only, never run the
+exe) before the next supervision cycle; Part C is the honest MIDI status.

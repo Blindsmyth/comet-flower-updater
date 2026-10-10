@@ -88,3 +88,10 @@ brick the pedal or overrun slot memory; you stop at its gate G3.
 or when A2 is on hold). Read `docs/helpers/GEMINI_LOADER_GUI.md` fully and
 follow its task order. Install path = update-mode image only; no MIDI write
 path may exist in the app.
+
+## M0..M2 (queued after L5): MIDI monitor with nameable controls
+Spec: `docs/helpers/SOL_BUILD_UPDATER.md` Part C ("What to build"). Receive-only
+tkinter app `tools/cf_midi_monitor.py` + pure mapping module + pytest with a
+fake port. M0 = survey `tools/midi_listen_g1.py` port code and list the 17
+controls (result in `docs/helpers/MIDI_MONITOR_RESULT.md`); M1 = pure mapping
++ tests; M2 = GUI (names, Learn, CSV). Never open an output port.
