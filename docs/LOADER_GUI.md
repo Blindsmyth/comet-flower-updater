@@ -1,5 +1,9 @@
 # CF Loader: Comet Flower Effects Loader (GUI)
 
+> CPU save authorization is pending a calibrated timing workflow. The former
+> Probe 10 freeze-load calculation has been withdrawn; see `docs/DSP_RULES.md`
+> §4 and `docs/FEATURE_PREFLIGHT_AUDIT_2026-10-11.md`.
+
 CF Loader is a Windows desktop GUI application for packaging DIY effects (`build/*.ZD2`) into verified update-mode images for the Zoom G1X Four pedal, without typing command-line scripts.
 
 **Crucial safety rule:** CF Loader does not invent a new way to communicate with the pedal. It uses exclusively the proven update-mode flashing workflow (`make_g1_image.py` -> `make_fs_restore_updater.py` -> owner flashes in update mode). It never opens a MIDI write stream and never launches any updater executable automatically.
@@ -53,8 +57,8 @@ The application window will open (minimum 960x640, resizable).
    - Confirm AUTO SAVE is OFF on the pedal;
    - Place the DIY effect alone in an empty patch;
    - Verify audio output passes cleanly and click **Record Audio Pass**;
-   - Run the Probe 10 cost test, enter the freeze load reading to compute CPU cycle cost, and click **Calculate & Record Cost**;
-   - Only after both tests pass, click **Authorize 'OK to Save Patches'**.
+   - Record a direct TSCL kernel measurement and validate the intended multi-effect patch. The former Probe 10 freeze-load cost calculation has been withdrawn; the GUI does not offer a replacement CPU approval flow yet.
+   - Keep patches unsaved until the measurement and save gate are calibrated.
 
 ---
 
@@ -69,7 +73,7 @@ The **Build image** tab performs 7 strict pre-flight checks before permitting an
 | **3** | **Unique IDs & names** | Two selected effects share the same filename or effect ID, or an effect collides with a stock Zoom effect ID/name. Change the effect ID or filename in `manifest.json` and rebuild. |
 | **4** | **Image file count** | The resulting image would contain more than 110 files. The pedal's filesystem directory has exactly 127 slots (DSP_RULES §2), and exceeding 110 files risks bricking on boot scan. Use Clean mode or deselect effects. |
 | **5** | **40 KiB slot heap limit** | One or more selected effects exceed the pedal's fixed 0xa000 (40,960-byte) per-slot image heap (evaluated via `check_slot_mem.py`). Reduce `.text`, inline functions, or constant tables. |
-| **6** | **Patch CPU reminder** | Informational reminder that each patch has a 96k cycle limit (G6 hardware test). Always passes. |
+| **6** | **Patch CPU reminder** | Informational reminder that the full-patch budget is unresolved. A direct TSCL kernel measurement and multi-effect stress check are needed. Always passes. |
 | **7** | **Post-build verification** | Informs that `g1fs.check_image` and `check_updater_stages.py` will gate the output. Both must print `ok` on all stages. |
 
 ---

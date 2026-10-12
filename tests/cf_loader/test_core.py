@@ -216,21 +216,17 @@ def test_status_safety_gates(tmp_workdir, monkeypatch):
     # Step 3: Cost measured
     core.update_effect_stage(effect_name, "cost-measured", measured_cost=42000)
 
-    # Now ok-save is accepted
-    final = core.update_effect_stage(effect_name, "ok-save")
-    assert final["stage"] == "ok-save"
+    # The old cost gate is insufficient until direct timing and artifact
+    # identity are part of the approval flow.
+    with pytest.raises(ValueError, match="Safety gate blocked"):
+        core.update_effect_stage(effect_name, "ok-save")
 
 
 def test_probe10_cost_calculation():
-    """Verify DSP_RULES §4 Probe10 formula: cost = 96k - freeze Load * 1600."""
-    # If freeze Load is 10: 96,000 - 10 * 1600 = 80,000 cycles
-    assert core.calculate_probe10_cost(10.0) == 80000
-
-    # If freeze Load is 30: 96,000 - 30 * 1600 = 48,000 cycles
-    assert core.calculate_probe10_cost(30.0) == 48000
-
-    # If freeze Load is 60: 96,000 - 60 * 1600 = 0 cycles (effect alone took 96k)
-    assert core.calculate_probe10_cost(60.0) == 0
+    """The withdrawn freeze-load formula must not create a CPU measurement."""
+    for load in (10.0, 30.0, 60.0):
+        with pytest.raises(ValueError, match="not a calibrated CPU cost"):
+            core.calculate_probe10_cost(load)
 
 
 def test_preflight_blocks_build_on_red(tmp_workdir, monkeypatch):
@@ -312,4 +308,3 @@ def test_loader_log_appending(tmp_workdir, monkeypatch):
     assert len(lines) == 2
     assert "Test log entry 1" in lines[0]
     assert "Test log entry 2" in lines[1]
-

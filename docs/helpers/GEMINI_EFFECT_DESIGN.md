@@ -1,5 +1,10 @@
 # Design brief for Gemini: new effects that cannot brick and do not waste memory (2026-10-10)
 
+> Historical design brief. Its §3 Probe 10 freeze-load cost estimates and
+> 96k-cycle patch budget were withdrawn after the MuffT TSCL measurement.
+> Use `docs/DSP_RULES.md` §4 and `docs/FEATURE_PREFLIGHT_AUDIT_2026-10-11.md`
+> for the current CPU evidence and gates before applying this brief.
+
 Written by Claude when its quota ran out. You (Gemini/agy) may do the offline
 half of effect work from this file. You never touch the pedal; the owner does
 all hardware steps. Read with it: `docs/DSP_RULES.md` (proven rules),

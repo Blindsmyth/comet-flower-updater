@@ -6,8 +6,8 @@ Break a rule only on purpose, with a measurement plan and the owner's OK.
 
 ## 1. What actually went wrong with DR103 (two separate problems)
 
-1. **Too heavy (proven).** The first DR103 build measured ≈224k cycles per
-   16-sample block, more than twice the ≈96k the pedal has. The pedal ran
+1. **Too heavy (proven).** The first DR103 build measured ≈224k TSCL cycles per
+   16-sample block, exceeding the observed processing window. The pedal ran
    the effect only about every second block, which you hear as a digital
    glitch. The static estimate had said 50–70k: the branchy per-sample ADAA
    chain cost ≈3100 cycles per 4x sample (recon/04, 2026-10-05).
@@ -60,14 +60,17 @@ not by analysis alone. Solo-only effects are the exception, not the aim.
 | No division | no hardware divide: reciprocal + refinement | |
 | Watch inlining | it blew `.text` past budget on DR103 | |
 | Slot picture | ELF image 0 must be drawn, or the slot shows "BYPASS"/blank | proven 2026-10-05 |
-| Bigger memory (delay lines, buffers) | entry-struct fields [5]–[8], units not decoded yet | recon/06; untested for DIY |
+| Bigger memory (delay lines, buffers) | no verified extra per-effect allocation service; entry fields [5]–[8] are callbacks | recon/14; design and test any separate allocation explicitly |
 
 ## 4. CPU budget
 
 - Audio: 16 frames × 2 channels, float32, in place, 44.1 kHz (proven).
-- The pedal has about **96k cycles per block** for effects (freeze point,
-  proven with the probes). **Design to ≤ 80k** for one effect alone, less if
-  it must share the patch.
+- The **true per-block cycle budget is unresolved**. Probe freeze points were
+  interpreted as 96–102k cycles, but the later CF MuffT measurement found a
+  50,611–50,642 TSCL-cycle block period; those interpretations conflict
+  (recon/04, 2026-10-08). Use measured kernel timing and leave substantial
+  margin until the clock/period relationship and full five-slot load are
+  measured. The old 80k target is not a verified safe limit.
 - What happens over budget: either the screen freezes and only a power cycle
   helps (probes), or the effect runs every other block and glitches (DR103).
   Neither damages anything, but neither is acceptable.
@@ -78,8 +81,9 @@ not by analysis alone. Solo-only effects are the exception, not the aim.
   DR103. Rule: per-sample loops without data-dependent branches (use tables,
   `fminf/fmaxf`-style selects, fixed iteration counts).
 - **Every new effect gets measured on the pedal before it is played in
-  earnest**: Probe 10 next to it (cost = 96k − freeze Load × 1600), or the
-  TSCL tone profiler (`effects/dr103diag`) for kernel-level timing.
+  earnest** with a TSCL profiler and an audible output check. Probe 10's
+  freeze Load can expose failure, but its old cost formula is withdrawn:
+  it disagreed with independently measured CF Muff kernel timing (recon/04).
 
 ## 5. Order of work for a new effect
 

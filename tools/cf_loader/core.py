@@ -13,6 +13,9 @@ NO tkinter import allowed in this module.
 from dataclasses import dataclass, field
 import hashlib
 import json
+import math
+import queue
+import threading
 import os
 from pathlib import Path
 import re
@@ -545,14 +548,32 @@ def verify_official_updater(path: Union[str, Path]) -> UpdaterVerification:
 # Pre-flight Checks (§2 Build Image)
 # ---------------------------------------------------------------------------
 
+def resolve_effects(selected_effects, add_probe10=False, refresh=False):
+    effects = list(selected_effects)
+    if add_probe10:
+        probe = REPO_ROOT / "build" / "PROBE10.ZD2"
+        if not probe.is_file():
+            raise PreflightError(f"Selected PROBE10 is missing: {probe}")
+        if not any(e.path.resolve() == probe.resolve() for e in effects):
+            effects.append(inspect_zd2(probe))
+    if refresh:
+        effects = [inspect_zd2(e.path) for e in effects]
+    return effects
+
+
 def run_preflight_checks(
     official_updater_path: Optional[Union[str, Path]],
     selected_effects: List[EffectInfo],
     clean: bool = True,
     keep_stock: Tuple[str, ...] = (),
+    add_probe10: bool = False,
 ) -> List[PreflightCheckResult]:
     """Execute the 7 pre-flight checks required before building an image."""
     results: List[PreflightCheckResult] = []
+    try:
+        selected_effects = resolve_effects(selected_effects, add_probe10)
+    except (OSError, PreflightError) as exc:
+        results.append(PreflightCheckResult(2, "PROBE10", False, str(exc)))
 
     # Check 1: Official updater exists and is v2.00 G1X FOUR
     if not official_updater_path:
@@ -659,7 +680,7 @@ def run_preflight_checks(
             6,
             "Patch CPU reminder",
             True,
-            "Notice: no limit on effects chosen, but total patch CPU budget is 96k cycles (measure on-pedal at G6).",
+            "Notice: the full patch CPU budget is uncalibrated; measure each kernel with TSCL and verify a loaded multi-effect patch on the pedal.",
         )
     )
 
@@ -733,71 +754,62 @@ def run_tool(
     if not cmd:
         raise ValueError("Empty command list")
 
-    # Safety assertion: cmd[0] must be python
-    prog = str(cmd[0]).lower()
-    if not (prog.endswith("python.exe") or prog.endswith("python")):
-        raise ValueError(f"Safety violation: only Python interpreter may be executed as program, got: {cmd[0]}")
-
-    # Safety assertion: verify no .exe is run as program
-    for arg in cmd[1:]:
-        # It is valid to pass an updater .exe as an argument to a tool
-        pass
+    if Path(cmd[0]).resolve() not in {get_python_exe().resolve(), Path(sys.executable).resolve()}:
+        raise ValueError(f"Safety violation: only the configured Python interpreter may be executed: {cmd[0]}")
 
     working_dir = cwd or REPO_ROOT
-    append_to_loader_log(f"EXEC: {' '.join(str(c) for c in cmd)}")
-
+    append_to_loader_log(f"EXEC: {subprocess.list2cmdline([str(c) for c in cmd])}")
     start_time = time.monotonic()
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(working_dir),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-    )
+    proc = subprocess.Popen(cmd, cwd=str(working_dir), stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1)
+    output = queue.Queue()
 
-    lines: List[str] = []
-    timed_out = False
+    # Windows pipe reads cannot be polled with select(). Keep blocking reads
+    # in a reader thread; the controlling thread always checks the deadline.
+    def read_output():
+        try:
+            for line in proc.stdout:
+                output.put(line.rstrip("\r\n"))
+        finally:
+            output.put(None)
 
-    while proc.poll() is None:
-        if is_cancelled and is_cancelled():
-            proc.kill()
-            append_to_loader_log("CANCELLED by user")
-            raise TimeoutError("Execution cancelled by user")
-
-        if time.monotonic() - start_time > timeout:
-            proc.kill()
-            timed_out = True
-            append_to_loader_log("TIMED OUT")
-            break
-
-        line = proc.stdout.readline() if proc.stdout else ""
-        if line:
-            clean_line = line.rstrip()
-            lines.append(clean_line)
-            append_to_loader_log(f"OUT: {clean_line}")
-            if on_output:
-                on_output(clean_line)
-        else:
-            time.sleep(0.01)
-
-    # Read any trailing output
-    if proc.stdout:
-        rest = proc.stdout.read()
-        if rest:
-            for l in rest.splitlines():
-                lines.append(l)
-                append_to_loader_log(f"OUT: {l}")
+    reader = threading.Thread(target=read_output, daemon=True)
+    reader.start()
+    lines = []
+    failure = None
+    eof = False
+    try:
+        while not eof or proc.poll() is None:
+            if failure is None:
+                if is_cancelled and is_cancelled():
+                    failure = "Execution cancelled by user"
+                elif time.monotonic() - start_time >= timeout:
+                    failure = f"Command timed out after {timeout} seconds"
+                if failure:
+                    append_to_loader_log(failure)
+                    if proc.poll() is None:
+                        proc.kill()
+            try:
+                line = output.get(timeout=0.02)
+            except queue.Empty:
+                continue
+            if line is None:
+                eof = True
+            else:
+                lines.append(line)
+                append_to_loader_log(f"OUT: {line}")
                 if on_output:
-                    on_output(l)
-
-    exit_code = -1 if timed_out else proc.wait()
-    duration = time.monotonic() - start_time
-    append_to_loader_log(f"EXIT: {exit_code} (took {duration:.2f}s)")
-
-    if timed_out:
-        raise TimeoutError(f"Command timed out after {timeout} seconds")
+                    on_output(line)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        exit_code = proc.wait()
+        reader.join()
+        proc.stdout.close()
+        duration = time.monotonic() - start_time
+        append_to_loader_log(f"EXIT: {exit_code} (took {duration:.2f}s)")
+    if failure:
+        raise TimeoutError(failure)
 
     return ToolExecutionResult(
         command=cmd,
@@ -862,8 +874,9 @@ def update_effect_stage(
 ) -> dict:
     """Update status for an effect under the safety gating rules.
 
-    Safety rule: "ok-save" can ONLY be reached if previous stages included
-    both audio-pass AND cost-measured.
+    The old audio + Probe 10 cost gate is insufficient for "ok-save".
+    Approval remains closed until direct timing and artifact identity are
+    represented in this status model.
     """
     if new_stage not in VALID_STAGES:
         raise ValueError(f"Invalid stage '{new_stage}'. Must be one of: {VALID_STAGES}")
@@ -881,18 +894,20 @@ def update_effect_stage(
         },
     )
 
+    if new_stage in ("built", "in image"):
+        entry.update(audio_passed=False, cost_measured=False, measured_cost=None)
     if new_stage == "audio-pass":
         entry["audio_passed"] = True
     elif new_stage == "cost-measured":
+        if measured_cost is None or not math.isfinite(measured_cost) or not 0 <= measured_cost <= 96000:
+            raise ValueError("A finite measured cost between 0 and 96000 is required")
         entry["cost_measured"] = True
         if measured_cost is not None:
             entry["measured_cost"] = measured_cost
     elif new_stage == "ok-save":
-        if not (entry.get("audio_passed") and entry.get("cost_measured")):
-            raise ValueError(
-                f"Safety gate blocked: '{filename}' cannot reach 'ok-save' without passing both "
-                f"audio test ('audio-pass') and cost test ('cost-measured')."
-            )
+        raise ValueError(
+            "Safety gate blocked: CPU budget and exact-artifact timing approval are not calibrated"
+        )
 
     entry["stage"] = new_stage
     entry["notes"] = notes
@@ -910,12 +925,8 @@ def update_effect_stage(
 
 
 def calculate_probe10_cost(freeze_load: float) -> int:
-    """Calculate CPU cycles from Probe 10 freeze load reading.
-
-    Formula quoted verbatim from docs/DSP_RULES.md §4:
-    "cost = 96k - freeze Load * 1600"
-    """
-    return int(round(96000.0 - (float(freeze_load) * 1600.0)))
+    """Reject the withdrawn Probe 10 freeze-load-to-cycles inference."""
+    raise ValueError("Probe 10 freeze load is not a calibrated CPU cost; use a TSCL measurement")
 
 
 # ---------------------------------------------------------------------------
@@ -946,6 +957,8 @@ def build_image_and_updater(
     6. Write comprehensive report.txt.
     7. Any failure writes FAILED marker.
     """
+    # Re-read inputs so a stale Library scan cannot authorize changed files.
+    selected_effects = resolve_effects(selected_effects, add_probe10, refresh=True)
     # 1. Pre-flight checks
     checks = run_preflight_checks(
         official_updater_path, selected_effects, clean=clean, keep_stock=keep_stock
@@ -961,11 +974,6 @@ def build_image_and_updater(
 
     # Determine effects list to include
     effect_paths: List[Path] = [e.path for e in selected_effects]
-    if add_probe10:
-        probe10 = REPO_ROOT / "build" / "PROBE10.ZD2"
-        if probe10.exists() and probe10 not in effect_paths:
-            effect_paths.append(probe10)
-
     # 2. Output folder
     out_dir = create_output_folder("image_", base_dir=base_output_dir)
     img_out = out_dir / "cf_g1_image.bin"
@@ -974,27 +982,28 @@ def build_image_and_updater(
     failed_marker = out_dir / "FAILED"
 
     py = str(get_python_exe())
-    report_lines: List[str] = [
-        "CF Loader Build Report",
-        f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Official updater: {official_updater_path} (CRC32: {crc32_of_file(official_updater_path)})",
-        f"Factory image: {factory_img} (CRC32: {crc32_of_file(factory_img)})",
-        f"Clean mode: {clean}",
-        f"Kept stock: {', '.join(keep_stock) if keep_stock else 'none'}",
-        f"Add PROBE10: {add_probe10}",
-        f"Empty patches: {empty_patches}",
-        f"Splash PNG: {splash_png or 'none'}",
-        "Selected effects:",
-    ]
-    for ep in effect_paths:
-        report_lines.append(f"  - {ep.name} ({ep.stat().st_size} B, CRC32: {crc32_of_file(ep)})")
-
-    report_lines.append("\nPre-flight check results:")
-    for c in checks:
-        report_lines.append(f"  [{'PASS' if c.passed else 'FAIL'}] Check {c.check_num} - {c.title}: {c.message}")
-    report_lines.append("\nTool Execution:")
-
+    report_lines = ["CF Loader Build Report"]
     try:
+        report_lines: List[str] = [
+            "CF Loader Build Report",
+            f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Official updater: {official_updater_path} ({Path(official_updater_path).stat().st_size} B, CRC32: {crc32_of_file(official_updater_path)})",
+            f"Factory image: {factory_img} (CRC32: {crc32_of_file(factory_img)})",
+            f"Clean mode: {clean}",
+            f"Kept stock: {', '.join(keep_stock) if keep_stock else 'none'}",
+            f"Add PROBE10: {add_probe10}",
+            f"Empty patches: {empty_patches}",
+            f"Splash PNG: {splash_png or 'none'}",
+            "Selected effects:",
+        ]
+        for ep in effect_paths:
+            report_lines.append(f"  - {ep.name} ({ep.stat().st_size} B, CRC32: {crc32_of_file(ep)})")
+
+        report_lines.append("\nPre-flight check results:")
+        for c in checks:
+            report_lines.append(f"  [{'PASS' if c.passed else 'FAIL'}] Check {c.check_num} - {c.title}: {c.message}")
+        report_lines.append("\nTool Execution:")
+
         # Step 1: tools/make_g1_image.py
         cmd1 = [py, str(REPO_ROOT / "tools" / "make_g1_image.py")]
         if clean:
@@ -1007,6 +1016,7 @@ def build_image_and_updater(
 
         if on_output:
             on_output(f"> Building filesystem image: {' '.join(cmd1)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd1))
         res1 = run_tool(cmd1, on_output=on_output, is_cancelled=is_cancelled)
         report_lines.append(f"\n1. make_g1_image.py exit code: {res1.exit_code}")
         report_lines.append(res1.stdout)
@@ -1022,15 +1032,27 @@ def build_image_and_updater(
             "--image",
             str(img_out),
         ]
-        if splash_png and Path(splash_png).exists():
+        if splash_png:
             cmd2.extend(["--splash", str(splash_png)])
         if empty_patches:
-            blank_bin = REPO_ROOT / "build" / "BLANK.ZPTC"
-            if blank_bin.exists():
-                cmd2.extend(["--presets", str(blank_bin)])
+            # --presets needs the whole 0xB000 resource, not a 760-byte ZPTC.
+            presets_source = REPO_ROOT / "build" / "fw" / "res2_45056.bin"
+            if not presets_source.is_file():
+                raise FileNotFoundError(f"Factory presets resource missing: {presets_source}")
+            blank_bin = out_dir / "empty_presets.bin"
+            blank_cmd = [py, str(REPO_ROOT / "tools" / "g1presets.py"), "blank",
+                         str(presets_source), str(blank_bin)]
+            report_lines.append(f"Presets source CRC32: {crc32_of_file(presets_source)}")
+            report_lines.append("EXEC: " + subprocess.list2cmdline(blank_cmd))
+            blank_result = run_tool(blank_cmd, on_output=on_output, is_cancelled=is_cancelled)
+            report_lines.append(f"g1presets.py exit code: {blank_result.exit_code}\n{blank_result.stdout}")
+            if blank_result.exit_code != 0:
+                raise RuntimeError("g1presets.py failed")
+            cmd2.extend(["--presets", str(blank_bin)])
 
         if on_output:
             on_output(f"> Patching updater: {' '.join(cmd2)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd2))
         res2 = run_tool(cmd2, on_output=on_output, is_cancelled=is_cancelled)
         report_lines.append(f"\n2. make_fs_restore_updater.py exit code: {res2.exit_code}")
         report_lines.append(res2.stdout)
@@ -1041,10 +1063,11 @@ def build_image_and_updater(
         cmd3 = [py, str(REPO_ROOT / "tools" / "check_updater_stages.py"), str(updater_out)]
         if on_output:
             on_output(f"> Checking updater stages: {' '.join(cmd3)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd3))
         res3 = run_tool(cmd3, on_output=on_output, is_cancelled=is_cancelled)
         report_lines.append(f"\n3. check_updater_stages.py exit code: {res3.exit_code}")
         report_lines.append(res3.stdout)
-        if res3.exit_code != 0:
+        if not stages_verified(res3):
             raise RuntimeError(f"check_updater_stages.py failed or refused stages in {updater_out}")
 
         report_lines.append("\nSTATUS: SUCCESS")
@@ -1070,6 +1093,19 @@ def build_image_and_updater(
         raise
 
 
+def stages_verified(result):
+    stages = [line.strip() for line in result.stdout.splitlines()
+              if line.strip().startswith(("erase ", "write "))]
+    required = {
+        "erase 0x102000 size 0x2fe000",
+        "write 0x102000 resource 0x88",
+    }
+    passed = {line.rsplit(" ok", 1)[0].rstrip() for line in stages
+              if line.endswith(" ok")}
+    return (result.exit_code == 0 and len(passed) == len(stages)
+            and required <= passed)
+
+
 def build_factory_restore_updater(
     official_updater_path: Union[str, Path],
     on_output: Optional[Callable[[str], None]] = None,
@@ -1093,7 +1129,7 @@ def build_factory_restore_updater(
     report_lines = [
         "CF Loader Recovery Build Report",
         f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Official updater: {official_updater_path} (CRC32: {v.crc32})",
+        f"Official updater: {official_updater_path} ({v.size} B, CRC32: {v.crc32})",
         "Mode: Factory Restore (no --image)",
     ]
 
@@ -1107,6 +1143,7 @@ def build_factory_restore_updater(
         ]
         if on_output:
             on_output(f"> Building factory restore updater: {' '.join(cmd1)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd1))
         res1 = run_tool(cmd1, on_output=on_output, is_cancelled=is_cancelled)
         report_lines.append(f"\n1. make_fs_restore_updater.py exit code: {res1.exit_code}")
         report_lines.append(res1.stdout)
@@ -1117,10 +1154,11 @@ def build_factory_restore_updater(
         cmd2 = [py, str(REPO_ROOT / "tools" / "check_updater_stages.py"), str(updater_out)]
         if on_output:
             on_output(f"> Checking updater stages: {' '.join(cmd2)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd2))
         res2 = run_tool(cmd2, on_output=on_output, is_cancelled=is_cancelled)
         report_lines.append(f"\n2. check_updater_stages.py exit code: {res2.exit_code}")
         report_lines.append(res2.stdout)
-        if res2.exit_code != 0:
+        if not stages_verified(res2):
             raise RuntimeError("check_updater_stages.py failed or refused stages")
 
         report_lines.append("\nSTATUS: SUCCESS")

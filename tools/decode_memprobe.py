@@ -38,8 +38,8 @@ def show_timing(w):
     print("  code address 0x%08x  %s" % (w[8], region(w[8])))
     if w[10]:
         period = w[9] / w[10]
-        print("  block period: %.0f cycles = the whole DSP budget per 16-sample block" % period)
-        print("  -> DSP clock %.1f MHz (period x 44100 / 16); this kernel cold = %.1f%% of the block"
+        print("  mean TSCL delta between calls: %.0f counts (not yet a proven full-block budget)" % period)
+        print("  -> equivalent %.1f MHz if TSCL runs continuously between 16-frame calls; kernel cold / delta = %.1f%%"
               % (period * 44100 / 16 / 1e6, 100.0 * cold / period))
 
 

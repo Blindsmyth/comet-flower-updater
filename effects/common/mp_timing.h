@@ -10,7 +10,7 @@
  * data just used). The guitar is muted; the tone code (mp_fsk.h) reports:
  *   0 magic 0xCF0071ED   1 tag   2 blocks   3 sum cold   4 0 (was min cold)
  *   5 0 (was max cold)   6 sum warm   7 0 (was min warm)   8 code address
- *   9 sum of block periods (TSCL between consecutive calls)   10 periods summed
+ *   9 sum of TSCL deltas between consecutive calls   10 deltas summed
  *   11 check
  * Decoder: tools/decode_memprobe.py. Never save it in a patch. */
 #ifndef MP_TIMING_H
@@ -28,7 +28,7 @@ typedef struct {
     MpFsk fsk;                       /* 64 B */
     MPT_STATE dsp;
     uint32_t n, sc, sw;
-    uint32_t last, psum, pn;         /* block period: TSCL between calls */
+    uint32_t last, psum, pn;         /* TSCL delta between calls */
 } KernelState;
 
 typedef char mpt_state_fits[(sizeof(KernelState) <= SH_STATE_BYTES) ? 1 : -1];
@@ -53,7 +53,7 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         return;
     }
 #endif
-    t0 = TSCL;                                                /* block period */
+    t0 = TSCL;                                                /* between-call delta */
     if (s->last != 0 && t0 - s->last < 1000000u) { s->psum += t0 - s->last; s->pn++; }
     s->last = t0;
     if (!(fade >= 0.0f && fade <= 1.0f)) fade = 0.0f;

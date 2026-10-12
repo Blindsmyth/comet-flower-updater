@@ -56,8 +56,10 @@ in the file system, not only those on the effect list.
   It must print `ok` on every stage: no stage may touch the boot/update-mode
   program (flash 0x0-0x28000) or the settings sector (0xbf000-0xc0000).
 - Update mode is chosen by the boot program **before** it loads the main
-  firmware, so a bad main-firmware image is always recoverable: hold both
-  footswitches at power-on and run a restore updater.
+  firmware. A bad main-firmware image can be recovered through that route
+  while the boot program, update-mode USB path and flash remain functional:
+  hold both footswitches at power-on and run a restore updater. This is a
+  traced recovery path, not a guarantee against every possible failure.
 - The boot program itself has no backup. Zoom's official updater rewrites
   it; run that only when needed, on a stable USB connection, and never
   unplug during it.

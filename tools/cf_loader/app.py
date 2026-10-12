@@ -232,7 +232,7 @@ class CFLoaderApp(tk.Tk):
         ).pack(side=tk.LEFT, padx=(0, 15))
         ttk.Checkbutton(
             opts_row,
-            text="Empty patch presets (BLANK.ZPTC)",
+            text="Empty patch presets (factory resource)",
             variable=self.empty_patches_var,
             command=self.refresh_preflight,
         ).pack(side=tk.LEFT, padx=(0, 15))
@@ -263,6 +263,8 @@ class CFLoaderApp(tk.Tk):
             style="Accent.TButton",
         )
         self.btn_build.pack(side=tk.LEFT, padx=4)
+
+        ttk.Button(act_frame, text="Cancel Build", command=self._cancel_build).pack(side=tk.LEFT, padx=4)
 
         self.build_status_var = tk.StringVar(value="Ready")
         ttk.Label(act_frame, textvariable=self.build_status_var, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=10)
@@ -336,22 +338,15 @@ class CFLoaderApp(tk.Tk):
         self.audio_status_lbl.pack(side=tk.LEFT, padx=4)
 
         # Cost test section
-        cost_frame = ttk.LabelFrame(wiz_frame, text="7. Cost Test (Probe 10)", padding=6)
+        cost_frame = ttk.LabelFrame(wiz_frame, text="7. CPU measurement pending", padding=6)
         cost_frame.pack(fill=tk.X, pady=6)
         ttk.Label(
             cost_frame,
-            text="Pair effect with PROBE10. Formula: cost = 96,000 - freeze_Load * 1600 (DSP_RULES §4)\n"
-            "Enter Probe 10 freeze load reading:",
+            text="Probe 10 freeze load does not yield a calibrated cycle cost.\n"
+            "Record a direct TSCL measurement and validate the full patch before authorizing a save.",
         ).pack(anchor=tk.W)
-
-        cost_in_frame = ttk.Frame(cost_frame)
-        cost_in_frame.pack(fill=tk.X, pady=4)
-        self.freeze_load_var = tk.StringVar(value="")
-        ttk.Entry(cost_in_frame, textvariable=self.freeze_load_var, width=12).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(cost_in_frame, text="Calculate & Record Cost", command=self._record_cost_test).pack(side=tk.LEFT, padx=6)
-
         self.cost_result_var = tk.StringVar(value="No reading recorded")
-        ttk.Label(cost_in_frame, textvariable=self.cost_result_var, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=8)
+        ttk.Label(cost_frame, textvariable=self.cost_result_var, font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
 
         # Final approval section
         final_frame = ttk.LabelFrame(wiz_frame, text="8. Patch Save Authorization", padding=6)
@@ -392,6 +387,7 @@ class CFLoaderApp(tk.Tk):
             style="Accent.TButton",
         ).pack(side=tk.LEFT, padx=4)
 
+        ttk.Button(rec_btn_frame, text="Cancel Build", command=self._cancel_build).pack(side=tk.LEFT, padx=4)
         self.rec_status_var = tk.StringVar(value="")
         ttk.Label(rec_btn_frame, textvariable=self.rec_status_var, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=10)
 
@@ -564,14 +560,10 @@ class CFLoaderApp(tk.Tk):
         self.stage_info_var.set(
             f"Effect: {filename} | Stage: {stage.upper()} (built -> in image -> audio-pass -> cost-measured -> ok-save)"
         )
-        if stage == "ok-save":
-            self.safety_banner_var.set("[OK] Effect has passed audio and cost tests. OK to save in patches.")
-            self.safety_banner_lbl.configure(foreground="#008800")
-        else:
-            self.safety_banner_var.set(
-                f"[!] DO NOT save patches holding '{filename}' on the pedal until verified."
-            )
-            self.safety_banner_lbl.configure(foreground="#bb0000")
+        self.safety_banner_var.set(
+            f"[!] Save approval for '{filename}' is pending calibrated CPU and exact-artifact checks."
+        )
+        self.safety_banner_lbl.configure(foreground="#bb0000")
 
     def _show_effect_details(self):
         sel = self.lib_tree.selection()
@@ -653,7 +645,8 @@ class CFLoaderApp(tk.Tk):
         keep_tuple = tuple(x.strip().upper() for x in keep_raw.split(",") if x.strip())
 
         checks = core.run_preflight_checks(
-            updater_path, selected_effs, clean=clean, keep_stock=keep_tuple
+            updater_path, selected_effs, clean=clean, keep_stock=keep_tuple,
+            add_probe10=self.add_probe10_var.get()
         )
 
         all_ok = core.all_preflight_passed(checks)
@@ -676,6 +669,9 @@ class CFLoaderApp(tk.Tk):
             self.btn_build.configure(state=tk.DISABLED)
             self.build_status_var.set("Build blocked: one or more pre-flight checks failed.")
 
+    def _cancel_build(self):
+        self.worker_cancel_requested = True
+
     def _start_build_image(self):
         """Start building image in worker thread."""
         if self.active_worker and self.active_worker.is_alive():
@@ -691,6 +687,7 @@ class CFLoaderApp(tk.Tk):
         empty_patches = self.empty_patches_var.get()
         splash = self.splash_path_var.get().strip() or None
 
+        self.worker_cancel_requested = False
         self.btn_build.configure(state=tk.DISABLED)
         self.build_status_var.set("Building image and patched updater...")
 
@@ -705,12 +702,13 @@ class CFLoaderApp(tk.Tk):
                     empty_patches=empty_patches,
                     splash_png=splash,
                     on_output=lambda l: self.log_queue.put(l),
+                    is_cancelled=lambda: self.worker_cancel_requested,
                 )
                 self.log_queue.put(f"[COMPLETE] Build succeeded: {out_dir}")
                 self.after(0, lambda: self._on_build_completed(out_dir))
             except Exception as e:
                 self.log_queue.put(f"[ERROR] Build failed: {e}")
-                self.after(0, lambda: self._on_build_failed(str(e)))
+                self.after(0, lambda error=str(e): self._on_build_failed(error))
 
         self.active_worker = threading.Thread(target=worker, daemon=True)
         self.active_worker.start()
@@ -760,12 +758,11 @@ class CFLoaderApp(tk.Tk):
             self.cost_result_var.set("No reading recorded")
 
         # Approval button state
-        if status_entry.get("audio_passed") and status_entry.get("cost_measured"):
-            self.btn_mark_ok.configure(state=tk.NORMAL)
-            self.test_warning_lbl.configure(text="[OK] Both gates passed. Ready to authorize.", foreground="#007700")
-        else:
-            self.btn_mark_ok.configure(state=tk.DISABLED)
-            self.test_warning_lbl.configure(text="[!] Blocked: requires both audio pass and cost measurement.", foreground="#cc0000")
+        self.btn_mark_ok.configure(state=tk.DISABLED)
+        self.test_warning_lbl.configure(
+            text="[!] Save approval pending calibrated CPU and exact-artifact checks.",
+            foreground="#cc0000",
+        )
 
     def _record_audio_pass(self):
         eff_name = self.test_effect_combo.get()
@@ -787,11 +784,11 @@ class CFLoaderApp(tk.Tk):
 
         try:
             val = float(self.freeze_load_var.get().strip())
+            cost_cycles = core.calculate_probe10_cost(val)
         except ValueError:
-            messagebox.showerror("Invalid Input", "Please enter a valid numeric freeze load reading (e.g. 20.0).")
+            messagebox.showerror("Invalid Input", "Enter a finite freeze load reading between 0 and 60.")
             return
 
-        cost_cycles = core.calculate_probe10_cost(val)
         core.update_effect_stage(
             eff_name,
             "cost-measured",
@@ -828,6 +825,10 @@ class CFLoaderApp(tk.Tk):
     # -----------------------------------------------------------------------
 
     def _start_build_restore(self):
+        if self.active_worker and self.active_worker.is_alive():
+            messagebox.showwarning("Busy", "A build task is already running.")
+            return
+        self.worker_cancel_requested = False
         updater_path = self.official_updater_var.get().strip()
         if not updater_path:
             messagebox.showerror("Recovery", "Select the official Zoom updater in the 'Build image' tab first.")
@@ -840,12 +841,13 @@ class CFLoaderApp(tk.Tk):
                 out_dir = core.build_factory_restore_updater(
                     official_updater_path=updater_path,
                     on_output=lambda l: self.log_queue.put(l),
+                    is_cancelled=lambda: self.worker_cancel_requested,
                 )
                 self.log_queue.put(f"[COMPLETE] Factory restore updater built: {out_dir}")
                 self.after(0, lambda: self._on_restore_completed(out_dir))
             except Exception as e:
                 self.log_queue.put(f"[ERROR] Restore build failed: {e}")
-                self.after(0, lambda: self._on_restore_failed(str(e)))
+                self.after(0, lambda error=str(e): self._on_restore_failed(error))
 
         self.active_worker = threading.Thread(target=worker, daemon=True)
         self.active_worker.start()
@@ -878,9 +880,14 @@ class CFLoaderApp(tk.Tk):
             )
             return
 
-        stamp = time.strftime("%Y%m%d_%H%M%S")
-        out_dir = REPO_ROOT / "build" / f"backup_{stamp}"
-        out_dir.mkdir(parents=True, exist_ok=True)
+        if not messagebox.askyesno(
+            "Confirm Read-Only Backup",
+            "This opens the pedal connection for a read-only backup. "
+            "DO NOT power-cycle the pedal if the backup stalls or times out. Continue?",
+        ):
+            return
+
+        out_dir = core.create_output_folder("backup_")
 
         py = str(core.get_python_exe())
         cmd = [py, str(REPO_ROOT / "tools" / "backup_g1.py"), str(out_dir)]
@@ -929,7 +936,7 @@ class CFLoaderApp(tk.Tk):
                 else:
                     self.after(0, lambda: messagebox.showerror("Backup", f"Backup finished with exit code {res.exit_code}."))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Backup Error", str(e)))
+                self.after(0, lambda error=str(e): messagebox.showerror("Backup Error", error))
             finally:
                 self.after(0, lambda: self.backup_status_var.set(""))
 
