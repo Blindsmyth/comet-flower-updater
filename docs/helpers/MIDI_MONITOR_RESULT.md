@@ -44,3 +44,18 @@ All messages arrive on MIDI Channel 1 (status `0xB0`):
 | 16 | `expr` | Expression Pedal | 11 | 0..127 | Calibrated expression (event 42) |
 
 ---
+
+## M1. Pure Mapping Module & Tests
+
+Implemented:
+- [`tools/cf_midi_mapping.py`](file:///c:/Users/z/Documents/zoom%20project/tools/cf_midi_mapping.py):
+  - Defines the 17 hardware controls with IDs, default names, CC assignments, types, and GPIO descriptions.
+  - State manager `MidiStateManager` tracking live values, button press/release, and custom naming.
+  - Learn mode binding incoming CC messages to designated control IDs.
+  - JSON persistence for custom control names.
+  - CSV export for DAW / host MIDI mapping.
+  - Deterministic simulation sequence exercising all controls.
+  - Zero GUI and zero MIDI port opening calls.
+- [`tests/test_midi_monitor.py`](file:///c:/Users/z/Documents/zoom%20project/tests/test_midi_monitor.py):
+  - 9 unit tests covering all 17 controls, raw and mido CC decoding, naming persistence, CSV export, Learn mode, and safety verification.
+  - All 9 tests passed. Full test suite: 86 passed.
