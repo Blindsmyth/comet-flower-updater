@@ -1,7 +1,7 @@
 /* USB MIDI controller mode for the G1X Four main firmware (v2.00).
  *
  * Loaded by an extra AIS section into free SDRAM (see controller.cmd and
- * recon/17). Three stock calls are redirected here by direct CALLP:
+ * recon/17). Four stock calls are redirected here by direct CALLP:
  *   c0134e14 CALLP c015d428 -> controller_start    (MainApp start-up)
  *   c0134df0 CALLP c0127fe0 -> controller_dispatch (MainApp event dispatch)
  *   c015ffd0 CALLP c014aef4 -> controller_analog   (calibrated expression)
@@ -20,10 +20,10 @@
  * Transport (recon/19): hooks never send. They record the latest knob and
  * expression values and queue button edges; controller_drain sends them from
  * MainApp's housekeeping call (fourth hook, c0134dc4 CALLP c01537f4), only
- * when the stock ring c0117b28 has room for a whole message. The stock send
- * c01274cc can still wait on its lock B14[161], but only in MainApp. The AD
- * task wakes MainApp with a non-waiting idle event (42) when the expression
- * value changes.
+ * when a read-only peek estimates enough ring space. The stock send
+ * c01274cc can still wait on its locks in MainApp, and another producer can
+ * invalidate the peek. The AD task requests a MainApp wake with a
+ * zero-timeout idle event (42) when an expression value becomes pending.
  */
 typedef unsigned char u8;
 typedef unsigned int u32;
@@ -80,9 +80,10 @@ static void send_cc(u32 control, u32 value)
 }
 
 /* Runs in MainApp after every event (hook at c0134dc4). Sends at most four
-   CCs per pass and only while the ring has room for a whole message, so
-   nothing is dropped half-way. The stock send can still wait on its lock;
-   that wait is now confined to MainApp. */
+   CCs per pass when a read-only ring-space estimate shows room for three
+   bytes. A competing producer can change that space before the stock send,
+   whose return is hidden; whole-message delivery is not guaranteed. The
+   stock send can also wait on its locks in MainApp. */
 static void controller_drain(void)
 {
     u32 sent = 0, i;
@@ -178,9 +179,9 @@ void controller_analog(u32 value)
         tx.expr_value = (u8)value;
         tx.expr_dirty = 1;
         if (wake) {
-            /* One idle event per pending value wakes MainApp so the drain
-               runs; timeout 0 never waits, and a full mailbox just means
-               MainApp is already busy and will drain anyway. */
+            /* One idle event per pending value requests a MainApp drain.
+               Timeout 0 never waits. A failed post can leave the value
+               pending until another MainApp event arrives. */
             u32 msg[4] = { EVENT_IDLE, 0, 0, 0 };
             MBX_POST(MAINAPP_MBX, msg, 0);
         }

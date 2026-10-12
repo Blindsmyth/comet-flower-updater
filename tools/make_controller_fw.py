@@ -14,7 +14,8 @@ Steps, each verified:
  3. redirect the four stock CALLPs (HOOKS) to the controller entry points,
     keeping each word's unit and parallel bits;
  4. re-walk the AIS, check that only the expected bytes changed, and
-    disassemble the hook words with dis6x.
+    decode each retargeted CALLP to its controller entry point. dis6x
+    disassembles the linked controller ELF, not the patched main image.
 
 It never writes an updater and never touches the pedal. Packaging is
 tools/make_fs_restore_updater.py --controller-fw.
