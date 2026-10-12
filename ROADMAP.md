@@ -29,9 +29,10 @@ owners as a patch tool that converts their own downloaded Zoom v2.00 updater
 
 ## Phase B — pedal evidence and next tests (owner; needs the owner at the pedal)
 Order matters: B1 gates USB audio image work.
-1. **B1 USB MIDI controller mode:** updater built and checked offline, never
-   run on the pedal. Close the controller preflight gaps and test its exact
-   hash with one physical control at a time.
+1. **B1 USB MIDI controller mode:** an isolated worker transport updater is
+   built and stage-checked offline (`docs/CONTROLLER_WORKER_CANDIDATE_2026-10-12.md`),
+   never run on the pedal. Close its USB lifecycle, wait/ABI and timing gates;
+   then test the exact approved hash with one physical control at a time.
 2. **B2 CF 808/RAT/Muff:** all have sound evidence. RAT/808/Muff kernel TSCL
    measurements exist; the Probe Load cost formula was withdrawn after it
    contradicted MuffT. Resolve block period/clock and test a full patch.

@@ -60,9 +60,9 @@ are added to the filesystem restore; the boot/update program and recovery
 sector are preserved. This is NOT firmware-only packaging. --firmware and
 --logo cannot be combined with --patch-fw. Runtime stability is not certified.
 
-With --controller-fw <res1_controller.bin> (tools/make_controller_fw.py), the
-main firmware becomes stock v2.00 plus USB MIDI controller mode: three
-redirected CALLPs and one extra AIS section in free SDRAM, checked
+With --controller-fw <res1_controller_worker_candidate.bin>
+(tools/make_controller_fw.py), the main firmware becomes stock v2.00 plus USB
+MIDI controller mode: four redirected CALLPs and one extra AIS section in free SDRAM, checked
 structurally here; const-data edits (logo, start-up text) are allowed too. The image is larger than Zoom's, so it is appended to the
 end of the resource section and resource 0x81 is pointed at it; the
 updater's (already invalid) signature block is dropped. Same stage limits
@@ -138,13 +138,13 @@ def validate_patch_fw(old_fw, new_fw):
 
 
 def validate_controller_fw(old_fw, new_fw):
-    """Accept only stock v2.00 + the controller section and three hooks."""
+    """Accept only stock v2.00 + the controller section and listed hooks."""
     import os
     sys.path.insert(0, os.path.dirname(__file__))
     import make_controller_fw as ctl
     if hashlib.sha256(old_fw).hexdigest() != ctl.STOCK_SHA256:
         raise ValueError("--controller-fw needs the stock v2.00 firmware in the updater")
-    # Allowed: const-data edits (logo, text), the three hooks, one new section.
+    # Allowed: const-data edits (logo, text), listed hooks, one new section.
     close = len(old_fw) - 8
     if new_fw[-8:] != old_fw[-8:]:
         raise ValueError("--controller-fw: jump-and-close command changed")

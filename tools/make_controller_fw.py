@@ -1,7 +1,7 @@
 """Build the USB MIDI controller-mode main firmware (offline only).
 
     python tools/make_controller_fw.py [--base build/fw/res1_493412.bin]
-                                       [--out build/fw/res1_controller.bin]
+                                       [--out build/fw/res1_controller_worker_candidate.bin]
 
 The base may be stock v2.00, the residency image, or stock with edits
 inside the const-data section only (logo, start-up text).
@@ -48,7 +48,7 @@ HOOKS = [
     (0xc0134e14, 0x28d90, 0x1050c512, 0xc015d428, "controller_start"),
     (0xc0134df0, 0x28d6c, 0x1fe64012, 0xc0127fe0, "controller_dispatch"),
     (0xc015ffd0, 0x53f4c, 0x1fd5e693, 0xc014aef4, "controller_analog"),
-    (0xc0134dc4, 0x28d40, 0x103d4692, 0xc01537f4, "controller_housekeeping"),
+    (0xc0149d4c, 0x3dcc8, 0x10007193, 0xc014a0cc, "controller_worker_wait"),
 ]
 
 
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", default=str(ROOT / "build/fw/res1_493412.bin"))
-    ap.add_argument("--out", default=str(ROOT / "build/fw/res1_controller.bin"))
+    ap.add_argument("--out", default=str(ROOT / "build/fw/res1_controller_worker_candidate.bin"))
     ap.add_argument("--stock", default=str(ROOT / "build/fw/res1_493412.bin"),
                     help="stock v2.00 res1, to check a const-edited base")
     a = ap.parse_args()

@@ -2,8 +2,10 @@
 
 This is the proposed replacement for the current MainApp sender. The state
 machine is exercised by `tools/controller_transport_model.py` and
-`tests/test_controller_transport_model.py`. Neither is compiled into the
-pedal image. The existing Controller TEST updater remains unchanged.
+`tests/test_controller_transport_model.py`. A separate worker candidate is
+now compiled and packaged offline; see
+`docs/CONTROLLER_WORKER_CANDIDATE_2026-10-12.md`. The existing Controller TEST
+updater remains unchanged. The model is not compiled into the pedal image.
 
 ## Contract
 
@@ -68,6 +70,7 @@ expression update, disconnect/reconnect replay, a four-message worker bound,
 and the two-byte/three-byte capacity boundary. They verify the **policy**,
 not the stock worker hook, USB lifecycle, scheduler timing or host delivery.
 
-**Current decision:** do not replace the four-hook updater yet. The worker
-integration and reconnect signal are still unproved, and a superficially
-successful MIDI capture could hide a lost release or blocked MainApp path.
+**Current decision:** the four-hook worker build is an offline-only candidate.
+Its USB lifecycle, patched execute packet and real timing remain unproved;
+the existing four-hook updater is retained for reference. A superficially
+successful MIDI capture could hide a lost release or blocked worker path.
