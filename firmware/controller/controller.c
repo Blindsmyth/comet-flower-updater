@@ -113,7 +113,7 @@ static void queue_button(u32 control, u32 value)
 
 /* Called in the stock MIDI worker after its event wait and before its ring
    drain. A finite wait revisits pending state when a wake or reconnect event
-   was missed. The caller uses only bit 1 of *bits after the call. */
+   was missed. The caller tests bit 0 of *bits after the call. */
 int controller_worker_wait(u32 event, u32 mask, u32 mode,
                            volatile u32 *bits, int timeout)
 {
@@ -182,8 +182,12 @@ int controller_worker_wait(u32 event, u32 mask, u32 mode,
         }
         sent++;
     }
-    if (sent)
-        *bits |= 1u; /* make the stock worker drain our complete CCs */
+    if (sent) {
+        /* c014a0cc writes -50 to *bits on timeout. Passing -49 after a
+           blind OR would feed a negative value into c0149cac/c0149ce8. */
+        u32 observed = *bits;
+        *bits = ((int)observed > 0 ? observed : 0u) | 1u;
+    }
     return result;
 }
 

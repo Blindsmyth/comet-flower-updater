@@ -14,8 +14,10 @@ earlier `Comet Flower ZG1X4 Controller TEST Updater.exe` remains intact.
   `controller_worker_wait` at `c01a01a0`. It calls the stock wait once,
   retaining its argument and return contract, with timeout argument 100 in
   controller mode. The finite wait revisits pending state after a missed wake
-  or reconnect. It sets output bit 1 only after appending a complete CC so
-  the stock worker drains the ring.
+  or reconnect. It sets output bit 0 only after appending a complete CC so
+  the stock worker drains the ring. Stock `c014a0cc` writes `-50` to the
+  output word on timeout; the wrapper now replaces that negative value with
+  `1` after an append, while preserving positive event bits.
 - The worker holds the stock inner ring lock B14[89] around a free-space
   check and three calls to stock byte append `c0149d74`. It rolls back the
   write index if an append unexpectedly fails before releasing the lock.
@@ -33,10 +35,10 @@ earlier `Comet Flower ZG1X4 Controller TEST Updater.exe` remains intact.
 | Artifact | SHA-256 |
 |---|---|
 | Existing Controller TEST updater, unchanged | `469b1e3e383fe8473bb09f71e84a3e1cfe0fa447eabf780be37ec45c383b2e47` |
-| `build/fw/res1_controller_worker_candidate.bin` | `b66637c09f7c1adc2f9edb2ca6c7529a107b9eeceeeac5af25d118f130ff4485` |
-| `build/controller/DO_NOT_FLASH_controller_worker_candidate.exe` | `48d57ce8086879987a44e2973d437a2f7dd1b7307d3f1605d27acf88108cd4e6` |
+| `build/fw/res1_controller_worker_candidate.bin` | `0ecddd890ed7925471a00a749a11ccc3b8eda9c2b646ef1795bcaa81bcfc89e2` |
+| `build/controller/DO_NOT_FLASH_controller_worker_candidate.exe` | `91b9894e30946bd6205a1dab699e5900f1b9834ae6c513fad60c7fae4ff7644a` |
 
-The linked payload occupies `c01a0000..c01a0a3f` (2,624 bytes inside the
+The linked payload occupies `c01a0000..c01a0a5f` (2,656 bytes inside the
 reserved 16 KiB region). The new firmware has four decoded CALLP targets;
 the worker hook word changes from `0x10007193` to `0x10ac8c13`, preserving
 the execute-packet/parallel bits. An independent 32-byte packet extract was
@@ -62,9 +64,10 @@ not the compiled worker or host delivery.
 
 ## Required before a pedal test
 
-1. Finish the worker wrapper's runtime ABI proof: confirm the stock wait's
-   return/output behavior for a finite timeout, the wrapper's stack use and
-   worst-case scheduling cost. The patched call packet itself has now been
+1. Finish the worker wrapper's runtime ABI proof: timeout output `-50` is
+   traced at `c014a102..c014a10e`, and the compiled wrapper's signed check
+   is visible at `c01a058c..c01a0598`. Confirm the return behavior, stack use
+   and worst-case scheduling cost. The patched call packet itself has been
    independently disassembled, as described above.
 2. Trace every writer to the port-ready fields and ring during USB
    disconnect/reset/reconnect. Confirm that a ready port with a stale ring
@@ -78,3 +81,8 @@ not the compiled worker or host delivery.
 4. After those proofs, rebuild under a new hash, revalidate resources/stages,
    then observe normal-mode boot and one controller input at a time on the
    pedal. Do not promote this candidate based on offline success alone.
+
+Further trace: `c0144e6c..c0144e78` clears port pointer `[9]` and ready
+field `[3]` before later USB cleanup calls. `c014a018..c014a04c` clears the
+MIDI ring while holding B14[89]. These observations do not yet establish
+all callback ordering or exclude a port-state race with `append_cc`.
