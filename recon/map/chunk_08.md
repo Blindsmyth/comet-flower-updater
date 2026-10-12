@@ -1,4 +1,4 @@
-﻿# chunk_08: c013b1f4..c013eeec (150 functions)
+# chunk_08: c013b1f4..c013eeec (150 functions)
 
 Summary: this range holds five separated subsystems. (1) c013b1f4..c013b690 is
 the LooperUI footswitch/pad event layer: a 21-entry function-pointer jump
@@ -168,7 +168,7 @@ confidence, not traced in detail given size.
 
 | c013dca0 | codec_write | TLV320AIC3101 I2C register write: `STB reg,*+B15[8]; STB val,*+B15[9]; CALLP 0xc016f200 \|\| MVK 2,B4` (i2c_write via far stub); already identified by recon/16 | confirmed | recon/16_audio_hw.md section 1: "`c013dca0` codec_write(reg, val)" |
 | c013dce0 | select_page | writes codec register 0 to select shadow page 0/1; already identified by recon/16 | confirmed | recon/16_audio_hw.md section 1: "`c013dce0` select_page(p) (write reg 0)"; recon:16 |
-| c013dd2c | setbits | see recon/map/00_library_kernel.md (named there as orchestrator_dca0_dce0, guess) -- recon/16_audio_hw.md identifies it with confirmed detail as setbits(page,reg,bits): read-modify-write the page shadow (0xc010a780/0xc010a800), OR in bits, skip the I2C write if unchanged | confirmed (per recon/16) | recon/16_audio_hw.md section 1; see Open Questions re: correcting 00_library_kernel.md's name |
+| c013dd2c | setbits | see recon/map/00_library_kernel.md (named there as orchestrator_dca0_dce0, guess) -- recon/16_audio_hw.md identifies it with confirmed detail as setbits(page,reg,bits): read-modify-write the page shadow (0xc010a780/0xc010a800), OR in bits, skip the I2C write if unchanged | likely | recon/16_audio_hw.md section 1; see Open Questions re: correcting 00_library_kernel.md's name |
 | c013de18 | clrbits | clrbits(page,reg,bits): read-modify-write the page shadow, AND out bits, skip the I2C write if unchanged -- the clearing counterpart to setbits (c013dd2c) | confirmed | recon/16_audio_hw.md section 1: "`c013de18` clrbits(page, reg, bits)"; call sites confirmed by direct grep of 0xc013de18 |
 | c013df0c | codec_pll_subset1 | one of 7 small register sub-setters called only by codec_set_samplerate (c013e1ec) to program the PLL (P/R/J/D dividers, BCLK source bits per recon/16's step 5); calls setbits (c013dd2c) only | likely | caller=c013e1ec exclusively; calls=c013dd2c; recon/16 step 5 describes the aggregate effect, not this specific sub-call |
 | c013df4c | codec_pll_subset2 | PLL sub-setter, same family as c013df0c; caller c013e1ec exclusively; calls setbits only | likely | caller=c013e1ec; calls=c013dd2c |

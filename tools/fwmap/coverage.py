@@ -78,17 +78,22 @@ def recon_mentions():
     return hits
 
 
-MAPROW = re.compile(r"^\|\s*`?([0-9a-f]{8})`?\s*\|\s*`?([A-Za-z_][\w.$]*)`?\s*\|[^|]*\|\s*(confirmed|likely|guess)", re.I)
-
-
 def map_names():
     """addr -> confidence from the firmware-map tables in recon/map/*.md."""
     out = {}
     for md in sorted((ROOT / "recon/map").glob("*.md")):
         for line in open(md, encoding="utf-8", errors="replace"):
-            m = MAPROW.match(line)
-            if m and m[2] != "unknown":
-                out[int(m[1], 16)] = m[3].lower()
+            if not line.startswith("| "):
+                continue
+            parts = [p.strip().strip("`") for p in re.split(r"(?<!\|)\|(?!\|)", line)]
+            if len(parts) < 6 or not re.fullmatch(r"[0-9a-f]{8}", parts[1]):
+                continue
+            if not re.fullmatch(r"[A-Za-z_][\w.$]*", parts[2]):
+                continue
+            conf = next((part for part in parts[4:-1]
+                         if part in ("confirmed", "likely", "guess")), None)
+            if conf and parts[2] != "unknown":
+                out[int(parts[1], 16)] = conf
     return out
 
 

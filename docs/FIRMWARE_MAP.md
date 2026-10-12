@@ -2,7 +2,11 @@
 
 The overview of the main firmware (res1, AIS image) and where to find each
 part. The detail lives in `recon/map/chunk_NN.md` (one row per function) and
-in the recon notes cited below. Status: 2026-10-09.
+in the recon notes cited below. Status: 2026-10-11. The row checker passes;
+2790/2790 extracted main-image starts are named (1415 confirmed, 1340 likely,
+35 guess). These counts describe the extractor's candidate set and row labels,
+not a complete behavioral proof. The 802 res5 boot rows are uncertain
+candidate starts (docs/helpers/CODEX_REVIEW.md).
 
 ## 1. How to use the map
 
@@ -43,7 +47,8 @@ leads, not facts.
 | 0x01c00000.. / 0x01e00000.. | MMIO: EDMA3 (PaRAM 01c04000..), McASP, USB0 MUSB core (01e00400..) |
 
 Entry point 0xc0169a20 (TI SYS/BIOS start-up). The boot/update program (res5,
-c020xxxx..c022xxxx) is a separate image and is **not mapped yet**.
+c020xxxx..c022xxxx) is a separate image with an uncertain candidate survey in
+`recon/map/res5_boot.md`; only selected boot paths have semantic traces.
 
 ## 3. Execution roots
 

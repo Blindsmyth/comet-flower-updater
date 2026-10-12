@@ -1,500 +1,814 @@
-# Recon 5 Boot
+# res5 boot candidate survey
 
-| Address | Name | Description | Confidence | Evidence |
+Static candidate inventory from boot.dis CALLP targets, literal .word pointers, and bootrefs.txt materialized code addresses. Targets must lie in declared TEXT sections and decode as instructions, not directives. Pointer targets can be internal labels; membership does not prove a function entry. Direct CALLP sites are counted, not unique caller functions. Branch-only entries and pointer tables decoded as instructions may be missing.
+
+Sizes, strings, and MMIO ownership are unknown for every row: no control-flow boundaries or pointer use were established. Printable fragments from decoded words and proximity to a reference are not string evidence. Roles remain guess. Evidence quotes the target instruction and all incoming candidate sources; materialized pointers are references, not calls.
+
+| addr | name | role | conf | evidence |
 |---|---|---|---|---|
-| c01f4000 | unk_c01f4000 | size 54; callers 20 | guess | called by c01f40b4 |
-| c01f4034 | unk_c01f4034 | size 368; mmio 0x1e04090,0x1e00038; callers 7 | guess | called by c01f40c2 |
-| c01f41a4 | unk_c01f41a4 | size 92; callers 4 | guess | called by c01f4328 |
-| c01f4200 | unk_c01f4200 | size 44; callers 4 | guess | called by c01f4334 |
-| c01f422c | unk_c01f422c | size 90; callers 4 | guess | called by c01f434a |
-| c01f4284 | unk_c01f4284 | size 44; callers 5 | guess | called by c01f4350 |
-| c01f42b0 | unk_c01f42b0 | size 36; callers 5 | guess | called by c01f436c |
-| c01f42d4 | unk_c01f42d4 | size 186; callers 2 | guess | called by c01f4416 |
-| c01f438c | unk_c01f438c | size 152; mmio 0x1e01808,0x1e00401,0x1e00034; callers 2 | guess | called by c01f4524 |
-| c01f4424 | unk_c01f4424 | size 66; mmio 0x1c14038,0x1c14184; callers 2 | guess | called by c01f4544 |
-| c01f4464 | unk_c01f4464 | size 188; mmio 0x1e27804,0x1e27a04; callers 3 | guess | called by c01f4546 |
-| c01f4520 | unk_c01f4520 | size 48; callers 1 | guess | called by c01f9ac4 |
-| c01f4550 | unk_c01f4550 | size 6; callers 1 | guess | called by c0206148 |
-| c01f4554 | unk_c01f4554 | size 236; mmio 0x1e02000; callers 12 | guess | called by c01f4a32 |
-| c01f4640 | unk_c01f4640 | size 114; callers 4 | guess | called by c01f4b70 |
-| c01f46b0 | unk_c01f46b0 | size 30; callers 3 | guess | called by c01f4bc4 |
-| c01f46cc | unk_c01f46cc | size 216; callers 6 | guess | called by c01f4810 |
-| c01f47a4 | unk_c01f47a4 | size 146; callers 2 | guess | called by c01f488e |
-| c01f4834 | unk_c01f4834 | size 116; callers 2 | guess | called by c01f4a3a |
-| c01f48a8 | unk_c01f48a8 | size 138; callers 1 | guess | called by c01f49a4 |
-| c01f4930 | unk_c01f4930 | size 160; callers 2 | guess | called by c01f4a94 |
-| c01f49d0 | unk_c01f49d0 | size 216; callers 7 | guess | called by c01f4bc6 |
-| c01f4aa8 | unk_c01f4aa8 | size 40; callers 2 | guess | called by c01f4c28 |
-| c01f4ad0 | unk_c01f4ad0 | size 372; callers 3 | guess | called by c01f4cc4 |
-| c01f4c44 | unk_c01f4c44 | size 54; callers 2 | guess | called by c01f4ccc |
-| c01f4c78 | unk_c01f4c78 | size 96; callers 1 | guess | called by c01f6db8 |
-| c01f4cd8 | unk_c01f4cd8 | size 44; callers 3 | guess | called by c01f4e20 |
-| c01f4d04 | unk_c01f4d04 | size 124; callers 4 | guess | called by c01f4e40 |
-| c01f4d80 | unk_c01f4d80 | size 396; mmio 0x1e04090; callers 3 | guess | called by c01f4f8c |
-| c01f4f0c | unk_c01f4f0c | size 58; callers 2 | guess | called by c01f4f94 |
-| c01f4f44 | unk_c01f4f44 | size 96; callers 1 | guess | called by c01f6e20 |
-| c01f4fa4 | unk_c01f4fa4 | size 380; callers 2 | guess | called by c01f5110 |
-| c01f5120 | unk_c01f5120 | size 302; mmio 0x1e08ad0; callers 2 | guess | called by c01f5240 |
-| c01f524c | unk_c01f524c | size 90; mmio 0x1e00401; callers 1 | guess | called by c01f9fa8 |
-| c01f52a4 | unk_c01f52a4 | size 210; mmio 0x1e00502; callers 10 | guess | called by c01f5396 |
-| c01f5374 | unk_c01f5374 | size 108; callers 4 | guess | called by c01f9050 |
-| c01f53e0 | unk_c01f53e0 | size 78; callers 1 | guess | called by c01f560a |
-| c01f542c | unk_c01f542c | size 446; mmio 0x1e00502,0x1e00024; callers 2 | guess | called by c01f5674 |
-| c01f55e8 | unk_c01f55e8 | size 184; mmio 0x1e00502; callers 1 | guess | called by c01f9cc8 |
-| c01f56a0 | unk_c01f56a0 | size 184; mmio 0x1e00502; callers 11 | guess | called by c01f58e2 |
-| c01f5758 | unk_c01f5758 | size 556; mmio 0x1e0040e; callers 1 | guess | called by c01f94f4 |
-| c01f5984 | unk_c01f5984 | size 42; mmio 0x1e00400; callers 1 | guess | called by c01f8a8c |
-| c01f59ac | unk_c01f59ac | size 34; callers 2 | guess | called by c01f59d0 |
-| c01f59cc | unk_c01f59cc | size 92; mmio 0x1e00030,0x1e04090; callers 1 | guess | called by c01f9b50 |
-| c01f5a28 | unk_c01f5a28 | size 6; callers 1 | guess | called by c0206154 |
-| c01f5a2c | unk_c01f5a2c | size 12; callers 1 | guess | called by c0202110 |
-| c01f5a38 | unk_c01f5a38 | size 46; callers 1 | guess | called by c0201fe8 |
-| c01f5a64 | unk_c01f5a64 | size 194; mmio 0x1e27804,0x1e27a04; callers 2 | guess | called by c01f66c0 |
-| c01f5b24 | unk_c01f5b24 | size 6; callers 1 | guess | called by c0201f48 |
-| c01f5b28 | unk_c01f5b28 | size 348; callers 1 | guess | called by c01f5f60 |
-| c01f5c84 | unk_c01f5c84 | size 202; callers 1 | guess | called by c01f5f82 |
-| c01f5d4c | unk_c01f5d4c | size 158; callers 1 | guess | called by c01f5fb4 |
-| c01f5de8 | unk_c01f5de8 | size 170; callers 1 | guess | called by c01f5fd4 |
-| c01f5e90 | unk_c01f5e90 | size 344; callers 2 | guess | called by c01f6300 |
-| c01f5fe8 | unk_c01f5fe8 | size 302; mmio 0x1e00502; callers 1 | guess | called by c01f6570 |
-| c01f6114 | unk_c01f6114 | size 48 | guess | code pointer or entry |
-| c01f6142 | unk_c01f6142 | size 222 | guess | code pointer or entry |
-| c01f6220 | unk_c01f6220 | size 996; mmio 0x1e00020,0x1e00542,0x1e00522,0x1e00546,0x1e00526,0x1e04090,0x1e00532,0x1e00512,0x1e00536,0x1e00516; callers 1 | guess | called by c01f9b38 |
-| c01f6604 | unk_c01f6604 | size 6; callers 1 | guess | called by c02061c4 |
-| c01f6608 | unk_c01f6608 | size 34; callers 1 | guess | called by c0202098 |
-| c01f6628 | unk_c01f6628 | size 130; mmio 0x1c14038,0x1c14184; callers 1 | guess | called by c01f66c4 |
-| c01f66a8 | unk_c01f66a8 | size 120; callers 1 | guess | called by c01fa2cc |
-| c01f6720 | unk_c01f6720 | size 40; mmio 0x1e00460; callers 1 | guess | called by c020608c |
-| c01f6748 | unk_c01f6748 | size 88; mmio 0x1e00502; callers 1 | guess | called by c01f9174 |
-| c01f67a0 | unk_c01f67a0 | size 18; callers 1 | guess | called by c0206130 |
-| c01f67b0 | unk_c01f67b0 | size 148; mmio 0x1e00420; callers 1 | guess | called by c01f962c |
-| c01f6844 | unk_c01f6844 | size 22; callers 1 | guess | called by c0202050 |
-| c01f6858 | unk_c01f6858 | size 80; callers 1 | guess | called by c01f6984 |
-| c01f68a8 | unk_c01f68a8 | size 264; callers 1 | guess | called by c01f98d0 |
-| c01f69b0 | unk_c01f69b0 | size 416; mmio 0x1e00508; callers 2 | guess | called by c0204eac |
-| c01f6b50 | unk_c01f6b50 | size 36; mmio 0x1e00401; callers 7 | guess | called by c01f8c24 |
-| c01f6b74 | unk_c01f6b74 | size 140; mmio 0x1e00024; callers 5 | guess | called by c01f6c96 |
-| c01f6c00 | unk_c01f6c00 | size 50; callers 5 | guess | called by c01f6cf6 |
-| c01f6c30 | unk_c01f6c30 | size 54; callers 5 | guess | called by c01f6d00 |
-| c01f6c64 | unk_c01f6c64 | size 220; callers 4 | guess | called by c01f9938 |
-| c01f6d40 | unk_c01f6d40 | size 6; callers 1 | guess | called by c02060b8 |
-| c01f6d44 | unk_c01f6d44 | size 32; callers 5 | guess | called by c01f6e62 |
-| c01f6d64 | unk_c01f6d64 | size 102; callers 5 | guess | called by c01f6ec6 |
-| c01f6dc8 | unk_c01f6dc8 | size 98; callers 5 | guess | called by c01f6ecc |
-| c01f6e28 | unk_c01f6e28 | size 228; callers 7 | guess | called by c01f97b0 |
-| c01f6f0c | unk_c01f6f0c | size 6; callers 1 | guess | called by c02060a4 |
-| c01f6f10 | unk_c01f6f10 | size 144; callers 1 | guess | called by c02061e4 |
-| c01f6fa0 | unk_c01f6fa0 | size 68; callers 5 | guess | called by c01f7134 |
-| c01f6fe4 | unk_c01f6fe4 | size 374; callers 1 | guess | called by c01f85b4 |
-| c01f7158 | unk_c01f7158 | size 156; callers 1 | guess | called by c01f8598 |
-| c01f71f4 | unk_c01f71f4 | size 414; callers 5 | guess | called by c01f8578 |
-| c01f7390 | unk_c01f7390 | size 138; callers 1 | guess | called by c01f862c |
-| c01f7418 | unk_c01f7418 | size 140; callers 1 | guess | called by c01f8648 |
-| c01f74a4 | unk_c01f74a4 | size 644; callers 1 | guess | called by c01f7694 |
-| c01f7728 | unk_c01f7728 | size 478; callers 1 | guess | called by c02013ec |
-| c01f7904 | unk_c01f7904 | size 1090; callers 3 | guess | called by c01f7e90 |
-| c01f7d44 | unk_c01f7d44 | size 188; strings: 'e-na'; callers 1 | guess | called by c01f7f34 |
-| c01f7e00 | unk_c01f7e00 | size 324; strings: 'e-na'; callers 3 | guess | called by c01f7f80 |
-| c01f7f44 | unk_c01f7f44 | size 178; callers 16 | guess | called by c02013e0 |
-| c01f7ff4 | unk_c01f7ff4 | size 188; strings: 'e-na', 'B21='; callers 4 | guess | called by c01f81ec |
-| c01f80b0 | unk_c01f80b0 | size 838; strings: 'e-na', 'B21='; callers 3 | guess | called by c01f8234 |
-| c01f83f4 | unk_c01f83f4 | size 480; callers 1 | guess | called by c01f84c6 |
-| c01f85d4 | unk_c01f85d4 | size 150; callers 5 | guess | called by c0201480 |
-| c01f8668 | unk_c01f8668 | size 1080; callers 1 | guess | called by c01f871a |
-| c01f8aa0 | unk_c01f8aa0 | size 152 | guess | code pointer or entry |
-| c01f8b38 | unk_c01f8b38 | size 236 | guess | code pointer or entry |
-| c01f8c24 | unk_c01f8c24 | size 960 | guess | code pointer or entry |
-| c01f8fe4 | unk_c01f8fe4 | size 1060 | guess | code pointer or entry |
-| c01f9408 | unk_c01f9408 | size 496; callers 2 | guess | called by c01f933a |
-| c01f95f8 | unk_c01f95f8 | size 318; strings: 'bina'; callers 1 | guess | called by c0206200 |
-| c01f9734 | unk_c01f9734 | size 114; callers 8 | guess | called by c01f97c8 |
-| c01f97a4 | unk_c01f97a4 | size 140; callers 2 | guess | called by c01f983a |
-| c01f9830 | unk_c01f9830 | size 510; callers 1 | guess | called by c01fa10c |
-| c01f9a2c | unk_c01f9a2c | size 148; callers 3 | guess | called by c01f9ac2 |
-| c01f9ac0 | unk_c01f9ac0 | size 256; strings: 'eede'; callers 9 | guess | called by c01f9aec |
-| c01f9bc0 | unk_c01f9bc0 | size 456; callers 8 | guess | called by c01f9814 |
-| c01f9d88 | unk_c01f9d88 | size 152; callers 5 | guess | called by c01f9500 |
-| c01f9e20 | unk_c01f9e20 | size 192; callers 2 | guess | called by c02060b0 |
-| c01f9ee0 | unk_c01f9ee0 | size 210; callers 1 | guess | called by c0204c40 |
-| c01f9fb0 | unk_c01f9fb0 | size 636; callers 5 | guess | called by c0204c58 |
-| c01fa22c | unk_c01fa22c | size 14; callers 1 | guess | called by c0204cc4 |
-| c01fa238 | unk_c01fa238 | size 200; callers 1 | guess | called by c0204e38 |
-| c01fa300 | unk_c01fa300 | size 2464; callers 1 | guess | called by c020e0a4 |
-| c01faca0 | unk_c01faca0 | size 102; callers 1 | guess | called by c01fb420 |
-| c01fad04 | unk_c01fad04 | size 16; callers 2 | guess | called by c01fb4aa |
-| c01fad14 | unk_c01fad14 | size 268; callers 1 | guess | called by c01fb04e |
-| c01fae20 | unk_c01fae20 | size 500; callers 1 | guess | called by c01fb056 |
-| c01fb014 | unk_c01fb014 | size 208; callers 1 | guess | called by c01fb430 |
-| c01fb0e4 | unk_c01fb0e4 | size 110; callers 1 | guess | called by c01fb258 |
-| c01fb150 | unk_c01fb150 | size 94; callers 4 | guess | called by c01fb266 |
-| c01fb1ac | unk_c01fb1ac | size 88; callers 1 | guess | called by c01fb284 |
-| c01fb204 | unk_c01fb204 | size 572; strings: ' sma'; callers 1 | guess | called by c01fb4d4 |
-| c01fb440 | unk_c01fb440 | size 236 | guess | code pointer or entry |
-| c01fb52c | unk_c01fb52c | size 152; callers 1 | guess | called by c0202c64 |
-| c01fb5c4 | unk_c01fb5c4 | size 72; callers 1 | guess | called by c01fbc40 |
-| c01fb60c | unk_c01fb60c | size 108; callers 1 | guess | called by c01fbc50 |
-| c01fb678 | unk_c01fb678 | size 40; callers 1 | guess | called by c01fbcce |
-| c01fb6a0 | unk_c01fb6a0 | size 580; callers 1 | guess | called by c01fb9a6 |
-| c01fb8e4 | unk_c01fb8e4 | size 660; callers 8 | guess | called by c01fbcd2 |
-| c01fbb78 | unk_c01fbb78 | size 368; callers 1 | guess | called by c020ce38 |
-| c01fbce8 | unk_c01fbce8 | size 5176; strings: 'B2=0', 'B18=', 'B21=', 'B13=', 'A30=', 'B29=', 'Legac', 'A25=', 'Dev ', '12=0', 'A14=', 'A22=', 'A7=0', 'B10=', 'A6=0', 'B26=', 'B3=0', 'A17='; callers 1 | guess | called by c020ce34 |
-| c01fd120 | unk_c01fd120 | size 1568; callers 3 | guess | called by c01fb3a4 |
-| c01fd740 | unk_c01fd740 | size 128; callers 8 | guess | called by c01fd8a6 |
-| c01fd7c0 | unk_c01fd7c0 | size 54; callers 4 | guess | called by c01fda00 |
-| c01fd7f4 | unk_c01fd7f4 | size 28; callers 4 | guess | called by c01fd824 |
-| c01fd810 | unk_c01fd810 | size 62; callers 2 | guess | called by c01fdba2 |
-| c01fd84c | unk_c01fd84c | size 110; callers 1 | guess | called by c01fda1a |
-| c01fd8b8 | unk_c01fd8b8 | size 92; callers 1 | guess | called by c01fdac8 |
-| c01fd914 | unk_c01fd914 | size 58; callers 1 | guess | called by c01fdc2a |
-| c01fd94c | unk_c01fd94c | size 320; callers 1 | guess | called by c01fb298 |
-| c01fda8c | unk_c01fda8c | size 116; callers 10 | guess | called by c01fb2f0 |
-| c01fdb00 | unk_c01fdb00 | size 576; callers 1 | guess | called by c01fb374 |
-| c01fdd40 | unk_c01fdd40 | size 490; callers 1 | guess | called by c01fddea |
-| c01fdf28 | unk_c01fdf28 | size 144; callers 4 | guess | called by c01fb13c |
-| c01fdfb8 | unk_c01fdfb8 | size 120; callers 1 | guess | called by c01fe032 |
-| c01fe030 | unk_c01fe030 | size 20; callers 1 | guess | called by c0202d44 |
-| c01fe044 | unk_c01fe044 | size 144; callers 2 | guess | called by c0202e24 |
-| c01fe0d4 | unk_c01fe0d4 | size 432; callers 1 | guess | called by c01fe2c8 |
-| c01fe284 | unk_c01fe284 | size 80; callers 1 | guess | called by c0202f04 |
-| c01fe2d4 | unk_c01fe2d4 | size 1484; mmio 0x1800104; callers 1 | guess | called by c01fff08 |
-| c01fe8a0 | unk_c01fe8a0 | size 96; callers 1 | guess | called by c01feaba |
-| c01fe900 | unk_c01fe900 | size 24; callers 3 | guess | called by c01fea10 |
-| c01fe918 | unk_c01fe918 | size 72; callers 5 | guess | called by c01fea14 |
-| c01fe960 | unk_c01fe960 | size 74; callers 1 | guess | called by c01fe9e2 |
-| c01fe9a8 | unk_c01fe9a8 | size 34; callers 2 | guess | called by c01fe9ec |
-| c01fe9c8 | unk_c01fe9c8 | size 50; callers 3 | guess | called by c01fea1a |
-| c01fe9f8 | unk_c01fe9f8 | size 50; callers 1 | guess | called by c01feaee |
-| c01fea28 | unk_c01fea28 | size 76; callers 2 | guess | called by c01feb84 |
-| c01fea72 | unk_c01fea72 | size 46 | guess | code pointer or entry |
-| c01feaa0 | unk_c01feaa0 | size 276 | guess | code pointer or entry |
-| c01febb4 | unk_c01febb4 | size 332; callers 2 | guess | called by c01fec3a |
-| c01fed00 | unk_c01fed00 | size 176; callers 1 | guess | called by c01fef8c |
-| c01fedb0 | unk_c01fedb0 | size 20; callers 2 | guess | called by c01fedc6 |
-| c01fedc4 | unk_c01fedc4 | size 28; callers 2 | guess | called by c01ff24c |
-| c01fede0 | unk_c01fede0 | size 20; callers 1 | guess | called by c01feffc |
-| c01fedf4 | unk_c01fedf4 | size 44; callers 1 | guess | called by c01feff4 |
-| c01fee20 | unk_c01fee20 | size 24; callers 1 | guess | called by c01fef2c |
-| c01fee38 | unk_c01fee38 | size 40; callers 1 | guess | called by c01fef52 |
-| c01fee60 | unk_c01fee60 | size 180; callers 1 | guess | called by c01fef5a |
-| c01fef14 | unk_c01fef14 | size 154; callers 1 | guess | called by c01ff068 |
-| c01fefac | unk_c01fefac | size 60; callers 1 | guess | called by c01ff06c |
-| c01fefe8 | unk_c01fefe8 | size 88; callers 1 | guess | called by c01ff06e |
-| c01ff040 | unk_c01ff040 | size 52 | guess | code pointer or entry |
-| c01ff074 | unk_c01ff074 | size 60; callers 1 | guess | called by c01ff0c4 |
-| c01ff0b0 | unk_c01ff0b0 | size 54; callers 1 | guess | called by c01ff120 |
-| c01ff0e4 | unk_c01ff0e4 | size 156; callers 1 | guess | called by c01fdf88 |
-| c01ff180 | unk_c01ff180 | size 120; callers 2 | guess | called by c01fe020 |
-| c01ff1f8 | unk_c01ff1f8 | size 280; callers 1 | guess | called by c01fe230 |
-| c01ff310 | unk_c01ff310 | size 10; callers 1 | guess | called by c01ff338 |
-| c01ff318 | unk_c01ff318 | size 64; callers 2 | guess | called by c01fde68 |
-| c01ff358 | unk_c01ff358 | size 40; callers 2 | guess | called by c01fddec |
-| c01ff380 | unk_c01ff380 | size 22; callers 3 | guess | called by c01f9be8 |
-| c01ff394 | unk_c01ff394 | size 56; callers 9 | guess | called by c01fef18 |
-| c01ff3cc | unk_c01ff3cc | size 84; callers 1 | guess | called by c01ff04c |
-| c01ff420 | unk_c01ff420 | size 64; callers 1 | guess | called by c01fa100 |
-| c01ff460 | unk_c01ff460 | size 18; callers 1 | guess | called by c01f9a58 |
-| c01ff470 | unk_c01ff470 | size 6; callers 3 | guess | called by c01f9f90 |
-| c01ff474 | unk_c01ff474 | size 38; callers 2 | guess | called by c01fa0d4 |
-| c01ff498 | unk_c01ff498 | size 48; callers 2 | guess | called by c01ffdb8 |
-| c01ff4c8 | unk_c01ff4c8 | size 18; callers 10 | guess | called by c01fef98 |
-| c01ff4d8 | unk_c01ff4d8 | size 8; callers 3 | guess | called by c01f9b0c |
-| c01ff4e0 | unk_c01ff4e0 | size 18; callers 1 | guess | called by c01f9ad8 |
-| c01ff4f0 | unk_c01ff4f0 | size 24; callers 2 | guess | called by c01fa078 |
-| c01ff508 | unk_c01ff508 | size 32; callers 1 | guess | called by c01ff164 |
-| c01ff528 | unk_c01ff528 | size 28; callers 2 | guess | called by c01f9a4c |
-| c01ff544 | unk_c01ff544 | size 18; callers 2 | guess | called by c01f5264 |
-| c01ff554 | unk_c01ff554 | size 22; callers 1 | guess | called by c01fe004 |
-| c01ff568 | unk_c01ff568 | size 18; callers 2 | guess | called by c01f43f0 |
-| c01ff578 | unk_c01ff578 | size 104; callers 5 | guess | called by c01f9a64 |
-| c01ff5e0 | unk_c01ff5e0 | size 42; callers 7 | guess | called by c01ff1cc |
-| c01ff608 | unk_c01ff608 | size 6; callers 1 | guess | called by c01f9aa0 |
-| c01ff60c | unk_c01ff60c | size 42; callers 1 | guess | called by c01f9a90 |
-| c01ff634 | unk_c01ff634 | size 44; callers 1 | guess | called by c01f4530 |
-| c01ff660 | unk_c01ff660 | size 46; callers 3 | guess | called by c01ff1a8 |
-| c01ff68c | unk_c01ff68c | size 60; callers 3 | guess | called by c01fa0cc |
-| c01ff6c8 | unk_c01ff6c8 | size 136; callers 3 | guess | called by c01f9f6c |
-| c01ff750 | unk_c01ff750 | size 72; callers 2 | guess | called by c01ff264 |
-| c01ff798 | unk_c01ff798 | size 8; callers 1 | guess | called by c01f9ef0 |
-| c01ff7a0 | unk_c01ff7a0 | size 76; callers 1 | guess | called by c01f9f2c |
-| c01ff7ec | unk_c01ff7ec | size 96; callers 1 | guess | called by c01f66ec |
-| c01ff84c | unk_c01ff84c | size 1364; callers 1 | guess | called by c01ff278 |
-| c01ffda0 | unk_c01ffda0 | size 56; callers 1 | guess | called by c01fff02 |
-| c01ffdd8 | unk_c01ffdd8 | size 32; callers 2 | guess | called by c01ffe48 |
-| c01ffdf8 | unk_c01ffdf8 | size 56; callers 1 | guess | called by c01ffeb8 |
-| c01ffe30 | unk_c01ffe30 | size 464; callers 1 | guess | called by c01fffa2 |
-| c0200000 | unk_c0200000 | size 84; callers 1 | guess | called by c01fe024 |
-| c0200054 | unk_c0200054 | size 54; callers 1 | guess | called by c02000ae |
-| c0200088 | unk_c0200088 | size 128; callers 1 | guess | called by c0200124 |
-| c0200108 | unk_c0200108 | size 42; callers 1 | guess | called by c01fe0a4 |
-| c0200130 | unk_c0200130 | size 204; callers 1 | guess | called by c01fe250 |
-| c02001fc | unk_c02001fc | size 12; callers 1 | guess | called by c0200218 |
-| c0200208 | unk_c0200208 | size 44; callers 2 | guess | called by c01fde70 |
-| c0200234 | unk_c0200234 | size 1234; callers 2 | guess | called by c01fddf4 |
-| c0200704 | unk_c0200704 | size 396 | guess | code pointer or entry |
-| c0200890 | unk_c0200890 | size 320; callers 2 | guess | called by c0200840 |
-| c02009d0 | unk_c02009d0 | size 400; callers 5 | guess | called by c0200fc0 |
-| c0200b60 | unk_c0200b60 | size 1024; callers 14 | guess | called by c01ff398 |
-| c0200f60 | unk_c0200f60 | size 152; callers 1 | guess | called by c020b2ec |
-| c0200ff8 | unk_c0200ff8 | size 66; callers 1 | guess | called by c01ff320 |
-| c0201038 | unk_c0201038 | size 22; callers 1 | guess | called by c01fe034 |
-| c020104c | unk_c020104c | size 164; callers 1 | guess | called by c020b320 |
-| c02010f0 | unk_c02010f0 | size 66; callers 1 | guess | called by c020024c |
-| c0201130 | unk_c0201130 | size 64; callers 1 | guess | called by c01fe2b8 |
-| c0201170 | unk_c0201170 | size 86; callers 1 | guess | called by c01fdd48 |
-| c02011c4 | unk_c02011c4 | size 50; callers 1 | guess | called by c0201248 |
-| c02011f4 | unk_c02011f4 | size 44; callers 3 | guess | called by c0201260 |
-| c0201220 | unk_c0201220 | size 256; callers 1 | guess | called by c01fe0e4 |
-| c0201320 | unk_c0201320 | size 76; callers 2 | guess | called by c01fb1d4 |
-| c020136c | unk_c020136c | size 8; callers 3 | guess | called by c01fb260 |
-| c0201374 | unk_c0201374 | size 94; callers 1 | guess | called by c020146e |
-| c02013d0 | unk_c02013d0 | size 52; callers 3 | guess | called by c0201486 |
-| c0201404 | update_mode | size 342; callers 1 | guess | called by c020a560 |
-| c0201558 | unk_c0201558 | size 96; strings: 'Please ', 'An e' | guess | code pointer or entry |
-| c02015b8 | unk_c02015b8 | size 244; strings: 'An e', ' Con', 'Please ', ' occ' | guess | code pointer or entry |
-| c02016ac | unk_c02016ac | size 1012; callers 1 | guess | called by c01face0 |
-| c0201aa0 | unk_c0201aa0 | size 960; callers 4 | guess | called by c01ff464 |
-| c0201e60 | unk_c0201e60 | size 360; callers 1 | guess | called by c0202132 |
-| c0201fc8 | unk_c0201fc8 | size 248; callers 1 | guess | called by c0202136 |
-| c02020c0 | unk_c02020c0 | size 76; callers 1 | guess | called by c020213a |
-| c020210c | unk_c020210c | size 852; callers 1 | guess | called by c020c1c4 |
-| c0202460 | unk_c0202460 | size 1536; callers 6 | guess | called by c01ff514 |
-| c0202a60 | unk_c0202a60 | size 212; callers 1 | guess | called by c0202c0c |
-| c0202b34 | unk_c0202b34 | size 32; callers 1 | guess | called by c01fb044 |
-| c0202b54 | unk_c0202b54 | size 50; callers 1 | guess | called by c0202c4a |
-| c0202b84 | unk_c0202b84 | size 232; callers 1 | guess | called by c0202d08 |
-| c0202c6c | unk_c0202c6c | size 46; callers 2 | guess | called by c0202ca8 |
-| c0202c98 | unk_c0202c98 | size 124; callers 1 | guess | called by c0202d30 |
-| c0202d14 | unk_c0202d14 | size 44; callers 1 | guess | called by c01fb250 |
-| c0202d40 | unk_c0202d40 | size 364; strings: ' sma'; callers 1 | guess | called by c020b370 |
-| c0202eac | unk_c0202eac | size 340; callers 1 | guess | called by c020b398 |
-| c0203000 | unk_c0203000 | size 116; callers 2 | guess | called by c022b794 |
-| c0203074 | unk_c0203074 | size 120; callers 2 | guess | called by c022b744 |
-| c02030ec | unk_c02030ec | size 56; callers 2 | guess | called by c0203380 |
-| c0203124 | unk_c0203124 | size 28; callers 1 | guess | called by c0207144 |
-| c0203140 | unk_c0203140 | size 390; callers 2 | guess | called by c02033a0 |
-| c02032c4 | unk_c02032c4 | size 1340; callers 1 | guess | called by c020ce30 |
-| c0203800 | unk_c0203800 | size 3232; callers 9 | guess | called by c01fb368 |
-| c02044a0 | unk_c02044a0 | size 640; strings: ' siz'; callers 10 | guess | called by c0208c38 |
-| c0204720 | unk_c0204720 | size 1280; callers 2 | guess | called by c01fcf80 |
-| c0204c20 | unk_c0204c20 | size 14; callers 1 | guess | called by c020b384 |
-| c0204c2c | unk_c0204c2c | size 14; callers 1 | guess | called by c020b368 |
-| c0204c38 | unk_c0204c38 | size 50; callers 1 | guess | called by c020b3a0 |
-| c0204c68 | unk_c0204c68 | size 88; callers 13 | guess | called by c01f8ad8 |
-| c0204cc0 | unk_c0204cc0 | size 14; callers 2 | guess | called by c0200ab8 |
-| c0204ccc | unk_c0204ccc | size 188; callers 3 | guess | called by c0204da0 |
-| c0204d88 | unk_c0204d88 | size 80; callers 1 | guess | called by c0200a14 |
-| c0204dd8 | unk_c0204dd8 | size 58; callers 4 | guess | called by c01f8b10 |
-| c0204e10 | unk_c0204e10 | size 38; callers 1 | guess | called by c01f4190 |
-| c0204e34 | unk_c0204e34 | size 22; callers 1 | guess | called by c020b3b4 |
-| c0204e48 | unk_c0204e48 | size 62; callers 7 | guess | called by c0200954 |
-| c0204e84 | unk_c0204e84 | size 302 | guess | code pointer or entry |
-| c0204fb0 | unk_c0204fb0 | size 36 | guess | code pointer or entry |
-| c0204fd4 | unk_c0204fd4 | size 876 | guess | code pointer or entry |
-| c0205340 | unk_c0205340 | size 608; callers 1 | guess | called by c020dfa8 |
-| c02055a0 | unk_c02055a0 | size 78; callers 2 | guess | called by c02056ca |
-| c02055ec | unk_c02055ec | size 74; callers 1 | guess | called by c02056e0 |
-| c0205634 | unk_c0205634 | size 214; callers 1 | guess | called by c01fa230 |
-| c0205708 | unk_c0205708 | size 124; callers 2 | guess | called by c01f9514 |
-| c0205784 | unk_c0205784 | size 16; callers 6 | guess | called by c01f93a0 |
-| c0205794 | unk_c0205794 | size 2604; strings: 'ch packe', 'fetc', ' IER', 'ge e', 'uffe'; callers 1 | guess | called by c01fa2e0 |
-| c02061c0 | unk_c02061c0 | size 704 | guess | code pointer or entry |
-| c0206480 | unk_c0206480 | size 512; mmio 0x1844004; callers 3 | guess | called by c020d94c |
-| c0206680 | unk_c0206680 | size 480; callers 1 | guess | called by c0201a6c |
-| c0206860 | unk_c0206860 | size 662; callers 1 | guess | called by c0206fa0 |
-| c0206af4 | unk_c0206af4 | size 70; callers 1 | guess | called by c022be88 |
-| c0206b38 | unk_c0206b38 | size 200; callers 1 | guess | called by c020ce2c |
-| c0206c00 | unk_c0206c00 | size 448; mmio 0x1800104; callers 1 | guess | called by c020a6c8 |
-| c0206dc0 | unk_c0206dc0 | size 1312 | guess | code pointer or entry |
-| c02072e0 | unk_c02072e0 | size 416; callers 7 | guess | called by c01f8c54 |
-| c0207480 | unk_c0207480 | size 832; callers 6 | guess | called by c01fd960 |
-| c02077c0 | unk_c02077c0 | size 1152; callers 1 | guess | called by c020d804 |
-| c0207c40 | unk_c0207c40 | size 768; callers 14 | guess | called by c01ff388 |
-| c0207f40 | unk_c0207f40 | size 2048; mmio 0x1800104; callers 4 | guess | called by c020046c |
-| c0208740 | unk_c0208740 | size 320; callers 2 | guess | called by c0203110 |
-| c0208880 | unk_c0208880 | size 896; callers 1 | guess | called by c02039b0 |
-| c0208c00 | unk_c0208c00 | size 576; callers 1 | guess | called by c01ff830 |
-| c0208e40 | unk_c0208e40 | size 288; callers 1 | guess | called by c01ff7cc |
-| c0208f60 | unk_c0208f60 | size 576; callers 2 | guess | called by c01ff734 |
-| c02091a0 | unk_c02091a0 | size 256; callers 1 | guess | called by c0203b2c |
-| c02092a0 | unk_c02092a0 | size 256; callers 1 | guess | called by c02039b4 |
-| c02093a0 | unk_c02093a0 | size 256; callers 1 | guess | called by c01ff4e4 |
-| c02094a0 | unk_c02094a0 | size 512; callers 1 | guess | called by c01ff488 |
-| c02096a0 | unk_c02096a0 | size 512; callers 8 | guess | called by c020c3c0 |
-| c02098a0 | unk_c02098a0 | size 256; strings: '%.*s'; callers 1 | guess | called by c0209094 |
-| c02099a0 | unk_c02099a0 | size 256; callers 1 | guess | called by c020e0c4 |
-| c0209aa0 | unk_c0209aa0 | size 448; callers 3 | guess | called by c01f7274 |
-| c0209c60 | unk_c0209c60 | size 224; callers 1 | guess | called by c020e06c |
-| c0209d40 | unk_c0209d40 | size 672; callers 10 | guess | called by c01fb620 |
-| c0209fe0 | unk_c0209fe0 | size 224; callers 1 | guess | called by c020d0b8 |
-| c020a0c0 | unk_c020a0c0 | size 224 | guess | code pointer or entry |
-| c020a1a0 | unk_c020a1a0 | size 608; callers 2 | guess | called by c0202854 |
-| c020a400 | unk_c020a400 | size 768; strings: 'eede'; callers 3 | guess | called by c020aa50 |
-| c020a700 | unk_c020a700 | size 192 | guess | code pointer or entry |
-| c020a7c0 | unk_c020a7c0 | size 384; callers 1 | guess | called by c020af54 |
-| c020a940 | unk_c020a940 | size 384; callers 1 | guess | called by c0206f8c |
-| c020aac0 | unk_c020aac0 | size 320; callers 1 | guess | called by c022b5ec |
-| c020ac00 | unk_c020ac00 | size 160; callers 1 | guess | called by c020b7cc |
-| c020aca0 | unk_c020aca0 | size 160; callers 1 | guess | called by c020b3e8 |
-| c020ad40 | unk_c020ad40 | size 320; callers 8 | guess | called by c01fb588 |
-| c020ae80 | unk_c020ae80 | size 160; callers 3 | guess | called by c01fd3ec |
-| c020af20 | unk_c020af20 | size 160 | guess | code pointer or entry |
-| c020afc0 | unk_c020afc0 | size 320; callers 5 | guess | called by c01ff710 |
-| c020b100 | unk_c020b100 | size 480; callers 1 | guess | called by c020d52c |
-| c020b2e0 | unk_c020b2e0 | size 48; callers 1 | guess | called by c01ff010 |
-| c020b310 | unk_c020b310 | size 80; callers 1 | guess | called by c01fff20 |
-| c020b360 | unk_c020b360 | size 24; callers 1 | guess | called by c020b37a |
-| c020b378 | unk_c020b378 | size 24; callers 1 | guess | called by c022be00 |
-| c020b390 | unk_c020b390 | size 28; callers 1 | guess | called by c020b3b8 |
-| c020b3ac | unk_c020b3ac | size 36; callers 2 | guess | called by c020c1e8 |
-| c020b3d0 | unk_c020b3d0 | size 144; callers 1 | guess | called by c01f40a4 |
-| c020b460 | unk_c020b460 | size 128; callers 1 | guess | called by c02051b4 |
-| c020b4e0 | unk_c020b4e0 | size 128; callers 1 | guess | called by c020604c |
-| c020b560 | unk_c020b560 | size 256; callers 1 | guess | called by c020a2e8 |
-| c020b660 | unk_c020b660 | size 128; callers 2 | guess | called by c0200348 |
-| c020b6e0 | unk_c020b6e0 | size 384; mmio 0x1800104,0x1844004,0x1845028; callers 1 | guess | called by c020ac74 |
-| c020b860 | unk_c020b860 | size 512 | guess | code pointer or entry |
-| c020ba60 | unk_c020ba60 | size 128; callers 5 | guess | called by c01fb8b4 |
-| c020bae0 | unk_c020bae0 | size 128; callers 2 | guess | called by c01ff870 |
-| c020bb60 | unk_c020bb60 | size 128; callers 2 | guess | called by c0202940 |
-| c020bbe0 | unk_c020bbe0 | size 128; callers 1 | guess | called by c020d0bc |
-| c020bc60 | unk_c020bc60 | size 384; callers 4 | guess | called by c0200480 |
-| c020bde0 | unk_c020bde0 | size 384; callers 3 | guess | called by c020c480 |
-| c020bf60 | unk_c020bf60 | size 384; strings: '%.*s'; callers 1 | guess | called by c020d0a8 |
-| c020c0e0 | unk_c020c0e0 | size 128; callers 1 | guess | called by c0209918 |
-| c020c160 | unk_c020c160 | size 6; callers 1 | guess | called by c0200180 |
-| c020c164 | unk_c020c164 | size 34; callers 1 | guess | called by c020c18e |
-| c020c184 | unk_c020c184 | size 60; callers 1 | guess | called by c01fff64 |
-| c020c1c0 | unk_c020c1c0 | size 192; callers 1 | guess | called by c02014d8 |
-| c020c280 | unk_c020c280 | size 192; mmio 0x1848000; callers 1 | guess | called by c020d0b0 |
-| c020c340 | unk_c020c340 | size 96 | guess | code pointer or entry |
-| c020c3a0 | unk_c020c3a0 | size 96; callers 1 | guess | called by c01ff638 |
-| c020c400 | unk_c020c400 | size 192; mmio 0x1c14170; callers 1 | guess | called by c02091b0 |
-| c020c4c0 | unk_c020c4c0 | size 384 | guess | code pointer or entry |
-| c020c640 | unk_c020c640 | size 384 | guess | code pointer or entry |
-| c020c7c0 | unk_c020c7c0 | size 192; callers 2 | guess | called by c01ff664 |
-| c020c880 | unk_c020c880 | size 96; callers 1 | guess | called by c01ff610 |
-| c020c8e0 | unk_c020c8e0 | size 288; callers 2 | guess | called by c01ff5b0 |
-| c020ca00 | unk_c020ca00 | size 288; callers 2 | guess | called by c01ff5b8 |
-| c020cb20 | unk_c020cb20 | size 96; callers 2 | guess | called by c01ff590 |
-| c020cb80 | unk_c020cb80 | size 192; callers 1 | guess | called by c020a2d8 |
-| c020cc40 | unk_c020cc40 | size 96 | guess | code pointer or entry |
-| c020cca0 | unk_c020cca0 | size 96; callers 1 | guess | called by c020c044 |
-| c020cd00 | unk_c020cd00 | size 96; callers 1 | guess | called by c020d570 |
-| c020cd60 | unk_c020cd60 | size 192; callers 1 | guess | called by c020d5b0 |
-| c020ce20 | platform_init | size 64; callers 1 | guess | called by c020a4d4 |
-| c020ce60 | unk_c020ce60 | size 48; callers 1 | guess | called by c0201460 |
-| c020ce90 | unk_c020ce90 | size 16; callers 1 | guess | called by c02016b4 |
-| c020cea0 | unk_c020cea0 | size 64; callers 1 | guess | called by c02052f8 |
-| c020cee0 | unk_c020cee0 | size 128; callers 1 | guess | called by c022be54 |
-| c020cf60 | unk_c020cf60 | size 64; callers 1 | guess | called by c020b6b4 |
-| c020cfa0 | unk_c020cfa0 | size 64; callers 1 | guess | called by c02021a0 |
-| c020cfe0 | unk_c020cfe0 | size 256; callers 1 | guess | called by c020a3a8 |
-| c020d0e0 | unk_c020d0e0 | size 64; callers 2 | guess | called by c020c344 |
-| c020d120 | unk_c020d120 | size 64; callers 2 | guess | called by c01ff56c |
-| c020d160 | unk_c020d160 | size 64; callers 2 | guess | called by c01ff548 |
-| c020d1a0 | unk_c020d1a0 | size 64; callers 23 | guess | called by c01fd9a4 |
-| c020d1e0 | unk_c020d1e0 | size 128; callers 1 | guess | called by c020b9e4 |
-| c020d260 | unk_c020d260 | size 128; callers 1 | guess | called by c0203a84 |
-| c020d2e0 | unk_c020d2e0 | size 256; callers 3 | guess | called by c0209fc0 |
-| c020d3e0 | unk_c020d3e0 | size 64; callers 1 | guess | called by c020db64 |
-| c020d420 | unk_c020d420 | size 64; callers 12 | guess | called by c0200354 |
-| c020d460 | unk_c020d460 | size 64; callers 1 | guess | called by c020acac |
-| c020d4a0 | unk_c020d4a0 | size 256; callers 2 | guess | called by c01ffd78 |
-| c020d5a0 | unk_c020d5a0 | size 128; callers 42 | guess | called by c01fbd8c |
-| c020d620 | unk_c020d620 | size 6; callers 3 | guess | called by c01fe028 |
-| c020d624 | unk_c020d624 | size 16; callers 1 | guess | called by c020c198 |
-| c020d634 | unk_c020d634 | size 44; callers 1 | guess | called by c01fe224 |
-| c020d660 | unk_c020d660 | size 64; callers 1 | guess | called by c020d7c4 |
-| c020d6a0 | unk_c020d6a0 | size 32; callers 124 | guess | called by c01f41a0 |
-| c020d6c0 | unk_c020d6c0 | size 128; callers 128 | guess | called by c01f4064 |
-| c020d740 | unk_c020d740 | size 64; callers 3 | guess | called by c020a5e8 |
-| c020d780 | unk_c020d780 | size 32; callers 1 | guess | called by c02023bc |
-| c020d7a0 | unk_c020d7a0 | size 32; callers 2 | guess | called by c0209d28 |
-| c020d7c0 | unk_c020d7c0 | size 128; callers 1 | guess | called by c020e088 |
-| c020d840 | unk_c020d840 | size 32; callers 1 | guess | called by c022bb4c |
-| c020d860 | unk_c020d860 | size 64; callers 1 | guess | called by c020d06c |
-| c020d8a0 | unk_c020d8a0 | size 32; callers 1 | guess | called by c020b5f4 |
-| c020d8c0 | unk_c020d8c0 | size 32; callers 1 | guess | called by c020a4c4 |
-| c020d8e0 | unk_c020d8e0 | size 96; callers 1 | guess | called by c020de24 |
-| c020d940 | unk_c020d940 | size 32; mmio 0x1844018; callers 1 | guess | called by c01f4880 |
-| c020d960 | unk_c020d960 | size 32; mmio 0x1844010; callers 1 | guess | called by c020ac70 |
-| c020d980 | unk_c020d980 | size 32; mmio 0x1844000; callers 1 | guess | called by c01f4988 |
-| c020d9a0 | unk_c020d9a0 | size 64; callers 1 | guess | called by c01ff800 |
-| c020d9e0 | unk_c020d9e0 | size 256; callers 1 | guess | called by c020d0b4 |
-| c020dae0 | unk_c020dae0 | size 32; callers 1 | guess | called by c020dc24 |
-| c020db00 | unk_c020db00 | size 96; callers 1 | guess | called by c020db24 |
-| c020db60 | unk_c020db60 | size 128; callers 1 | guess | called by c020db44 |
-| c020dbe0 | unk_c020dbe0 | size 32; callers 1 | guess | called by c020a72c |
-| c020dc00 | unk_c020dc00 | size 96; callers 2 | guess | called by c01fcf50 |
-| c020dc60 | unk_c020dc60 | size 64; callers 2 | guess | called by c01ff854 |
-| c020dca0 | unk_c020dca0 | size 64; callers 1 | guess | called by c01ff7b0 |
-| c020dce0 | unk_c020dce0 | size 64; callers 2 | guess | called by c0209fb4 |
-| c020dd20 | unk_c020dd20 | size 64; callers 1 | guess | called by c020af5c |
-| c020dd60 | unk_c020dd60 | size 32; callers 3 | guess | called by c01ff6d8 |
-| c020dd80 | unk_c020dd80 | size 32; callers 2 | guess | called by c01ff6a0 |
-| c020dda0 | unk_c020dda0 | size 96; callers 1 | guess | called by c020b5e8 |
-| c020de00 | unk_c020de00 | size 32; callers 2 | guess | called by c01ff6e4 |
-| c020de20 | unk_c020de20 | size 32; callers 1 | guess | called by c0200290 |
-| c020de40 | unk_c020de40 | size 32; callers 1 | guess | called by c020b5f0 |
-| c020de60 | unk_c020de60 | size 32; callers 5 | guess | called by c01ff384 |
-| c020de80 | unk_c020de80 | size 64; callers 4 | guess | called by c01ff428 |
-| c020dec0 | unk_c020dec0 | size 32; callers 4 | guess | called by c020b1a8 |
-| c020dee0 | unk_c020dee0 | size 96; callers 7 | guess | called by c0204650 |
-| c020df40 | unk_c020df40 | size 32; callers 1 | guess | called by c020a1ec |
-| c020df60 | unk_c020df60 | size 32; callers 1 | guess | called by c020d4b0 |
-| c020df80 | unk_c020df80 | size 96; callers 3 | guess | called by c0202830 |
-| c020dfe0 | unk_c020dfe0 | size 32; callers 2 | guess | called by c020cd08 |
-| c020e000 | unk_c020e000 | size 32; callers 1 | guess | called by c020decc |
-| c020e020 | unk_c020e020 | size 128; callers 1 | guess | called by c020deec |
-| c020e0a0 | unk_c020e0a0 | size 32; callers 1 | guess | called by c020c118 |
-| c020e0c0 | unk_c020e0c0 | size 102720 | guess | code pointer or entry |
-| c0227a70 | unk_c0227a70 | size 7144 | guess | code pointer or entry |
-| c0229658 | unk_c0229658 | size 2248 | guess | code pointer or entry |
-| c0229f20 | unk_c0229f20 | size 632 | guess | code pointer or entry |
-| c022a198 | unk_c022a198 | size 40 | guess | code pointer or entry |
-| c022a1c0 | unk_c022a1c0 | size 868 | guess | code pointer or entry |
-| c022a524 | unk_c022a524 | size 204 | guess | code pointer or entry |
-| c022a600 | unk_c022a600 | size 2192; callers 1 | guess | called by c022aeb4 |
-| c022ae90 | unk_c022ae90 | size 80; callers 1 | guess | called by c020ce24 |
-| c022aee0 | unk_c022aee0 | size 168; callers 2 | guess | called by c022af8c |
-| c022af88 | unk_c022af88 | size 18; callers 1 | guess | called by c022b364 |
-| c022af98 | unk_c022af98 | size 172; callers 1 | guess | called by c022b046 |
-| c022b044 | unk_c022b044 | size 14; callers 2 | guess | called by c02032c8 |
-| c022b050 | unk_c022b050 | size 226; mmio 0x1e27128,0x1e27a00,0x1e27800; callers 1 | guess | called by c022b132 |
-| c022b130 | unk_c022b130 | size 16; callers 1 | guess | called by c022b7f8 |
-| c022b140 | unk_c022b140 | size 224; mmio 0x1c10128,0x1c10a00,0x1c10800; callers 1 | guess | called by c022b224 |
-| c022b220 | unk_c022b220 | size 16; callers 2 | guess | called by c02034e8 |
-| c022b230 | unk_c022b230 | size 20; callers 1 | guess | called by c020ce28 |
-| c022b244 | unk_c022b244 | size 38; callers 3 | guess | called by c01fd96c |
-| c022b268 | unk_c022b268 | size 56; callers 1 | guess | called by c022be84 |
-| c022b2a0 | unk_c022b2a0 | size 60; callers 8 | guess | called by c022b3a0 |
-| c022b2dc | unk_c022b2dc | size 1412; callers 11 | guess | called by c01fd764 |
-| c022b860 | unk_c022b860 | size 96; callers 20 | guess | called by c0206a44 |
-| c022b8c0 | unk_c022b8c0 | size 14; callers 5 | guess | called by c01fbb84 |
-| c022b8cc | unk_c022b8cc | size 14; callers 2 | guess | called by c01fbcec |
-| c022b8d8 | unk_c022b8d8 | size 82; callers 6 | guess | called by c022bc34 |
-| c022b928 | gpio_read | size 64; callers 9 | guess | called by c0206b30 |
-| c022b968 | button_check_helper_0 | size 74; callers 7 | guess | called by c020a4f0 |
-| c022b9b0 | unk_c022b9b0 | size 24; callers 3 | guess | called by c02014e8 |
-| c022b9c8 | button_check_helper_1 | size 12; callers 1 | guess | called by c020a554 |
-| c022b9d4 | button_check_helper_2 | size 16; callers 1 | guess | called by c020a54c |
-| c022b9e4 | button_check_helper_3 | size 42; callers 1 | guess | called by c020a544 |
-| c022ba0c | footswitch_read | size 52; callers 2 | guess | called by c020a4d8 |
-| c022ba40 | boot_normal_load | size 480; strings: ' Cor', 'tem ', 'bina'; callers 1 | guess | called by c020a568 |
-| c022bc20 | unk_c022bc20 | size 100; callers 27 | guess | called by c01fb570 |
-| c022bc84 | unk_c022bc84 | size 106; callers 3 | guess | called by c01fb5a4 |
-| c022bcec | unk_c022bcec | size 52; callers 1 | guess | called by c01fbcd8 |
-| c022bd20 | unk_c022bd20 | size 142; callers 1 | guess | called by c022b2c4 |
-| c022bdac | unk_c022bdac | size 116; callers 1 | guess | called by c0201524 |
-| c022be20 | unk_c022be20 | size 96; callers 1 | guess | called by c022bd74 |
-| c022be80 | unk_c022be80 | size 9688; callers 3 | guess | called by c01fda74 |
-| c022e458 | unk_c022e458 | size 44 | guess | code pointer or entry |
-| c022e484 | unk_c022e484 | size 48 | guess | code pointer or entry |
-| c022e4b4 | unk_c022e4b4 | size 32 | guess | code pointer or entry |
-| c022e4d4 | unk_c022e4d4 | size 48 | guess | code pointer or entry |
-| c022e504 | unk_c022e504 | size 16 | guess | code pointer or entry |
-| c022e514 | unk_c022e514 | size 16 | guess | code pointer or entry |
-| c022e524 | unk_c022e524 | size 16 | guess | code pointer or entry |
-| c022e534 | unk_c022e534 | size 16 | guess | code pointer or entry |
-| c022e544 | unk_c022e544 | size 16 | guess | code pointer or entry |
-| c022e554 | unk_c022e554 | size 192 | guess | code pointer or entry |
+| c01f4000 | boot_candidate_c01f4000 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 20 direct CALLP sites | guess | `c01f4000 MVK.S2        15,B0`; CALLP at c01f40b4; CALLP at c01f40c6; CALLP at c01f40d8; CALLP at c01f40ea; CALLP at c01f4100; CALLP at c01f410e; CALLP at c01f4124; CALLP at c01f4132; CALLP at c01f46d6; CALLP at c01f4bb4; CALLP at c01f4bd0; CALLP at c01f4c00; CALLP at c01f4c14; CALLP at c01f4e78; CALLP at c01f4e94; CALLP at c01f4ec8; CALLP at c01f4ee0; CALLP at c01f5c30; CALLP at c01f5c4c; CALLP at c01f5ea0 |
+| c01f4034 | boot_candidate_c01f4034 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c01f4034 MV.L2         B4,B0`; CALLP at c01f40c2; CALLP at c01f40e6; CALLP at c01f410a; CALLP at c01f412e; CALLP at c01f4790; CALLP at c01f4a98; CALLP at c01f6614 |
+| c01f4064 | boot_candidate_c01f4064 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01f4064 CALLP.S1      0xc020d6c0,A3`; materialized pointer B0 at c01f66d0 |
+| c01f41a4 | boot_candidate_c01f41a4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01f41a4 MVK.S1        168,A0`; CALLP at c01f4328; CALLP at c01f4c68; CALLP at c01f572c; CALLP at c01f58d4 |
+| c01f4200 | boot_candidate_c01f4200 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01f4200 MVK.S1        168,A0`; CALLP at c01f4334; CALLP at c01f54a0; CALLP at c01f5724; CALLP at c01f58cc |
+| c01f422c | boot_candidate_c01f422c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01f422c MVK.S1        168,A0`; CALLP at c01f434a; CALLP at c01f4f30; CALLP at c01f56e8; CALLP at c01f5854 |
+| c01f4284 | boot_candidate_c01f4284 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f4284 MVK.S1        168,A0`; CALLP at c01f4350; CALLP at c01f4898; CALLP at c01f56e0; CALLP at c01f5848; CALLP at c01f6a08 |
+| c01f42b0 | boot_candidate_c01f42b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f42b0 SHL.S1        A4,0x4,A0`; CALLP at c01f436c; CALLP at c01f4876; CALLP at c01f48a0; CALLP at c01f56f0; CALLP at c01f5864 |
+| c01f42d4 | boot_candidate_c01f42d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f42d4 STW.D2T2      B3,*B15--[2]`; CALLP at c01f4416; CALLP at c01f66c8 |
+| c01f438c | boot_candidate_c01f438c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f438c CALLP.S1      0xc020d6c0,A3`; CALLP at c01f4524; CALLP at c01f9a34 |
+| c01f4424 | boot_candidate_c01f4424 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f4424 MVK.S2        0x4038,B4`; CALLP at c01f4544; CALLP at c01f6708 |
+| c01f4464 | boot_candidate_c01f4464 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f4464 MVK.S1        0x7804,A6`; CALLP at c01f4546; CALLP at c01f670c; CALLP at c0202100 |
+| c01f4520 | boot_candidate_c01f4520 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f4520 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f9ac4 |
+| c01f4550 | boot_candidate_c01f4550 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f4550 MVK.L1        0,A4`; CALLP at c0206148 |
+| c01f4554 | boot_candidate_c01f4554 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 12 direct CALLP sites | guess | `c01f4554 MVK.S1        0xffff9ae8,A1`; CALLP at c01f4a32; CALLP at c01f4a8a; CALLP at c01f4b6a; CALLP at c01f4bea; CALLP at c01f4c70; CALLP at c01f4e18; CALLP at c01f4eb0; CALLP at c01f4f38; CALLP at c01f50ac; CALLP at c01f51d8; CALLP at c01f6d30; CALLP at c01f6f00 |
+| c01f4640 | boot_candidate_c01f4640 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01f4640 MV.L1         A6,A0`; CALLP at c01f4b70; CALLP at c01f4c2c; CALLP at c01f4c34; CALLP at c01f5278 |
+| c01f46b0 | boot_candidate_c01f46b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f46b0 MVK.S2        0xffff9000,B0`; CALLP at c01f4bc4; CALLP at c01f4e86; CALLP at c01f5eb4 |
+| c01f46cc | boot_candidate_c01f46cc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 6 direct CALLP sites | guess | `c01f46cc STW.D2T2      B3,*B15--[2]`; CALLP at c01f4810; CALLP at c01f4910; CALLP at c01f5090; CALLP at c01f51c0; CALLP at c01f5d18; CALLP at c01f5e64 |
+| c01f47a4 | boot_candidate_c01f47a4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f47a4 STW.D2T2      B3,*B15--[2]`; CALLP at c01f488e; CALLP at c01f5c08 |
+| c01f4834 | boot_candidate_c01f4834 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f4834 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f4a3a; CALLP at c01f6898 |
+| c01f48a8 | boot_candidate_c01f48a8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f48a8 STW.D2T2      B3,*B15--[2]`; CALLP at c01f49a4 |
+| c01f4930 | boot_candidate_c01f4930 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f4930 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f4a94; CALLP at c01f5420 |
+| c01f49d0 | boot_candidate_c01f49d0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c01f49d0 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f4bc6; CALLP at c01f4c10; CALLP at c01f4e88; CALLP at c01f4ed4; CALLP at c01f5c40; CALLP at c01f5ec0; CALLP at c01f5f10 |
+| c01f4aa8 | boot_candidate_c01f4aa8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f4aa8 MVK.S2        15,B0`; CALLP at c01f4c28; CALLP at c01f5e74 |
+| c01f4ad0 | boot_candidate_c01f4ad0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f4ad0 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f4cc4; CALLP at c01f56f8; CALLP at c01f6dac |
+| c01f4c44 | boot_candidate_c01f4c44 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f4c44 STW.D2T2      B3,*B15--[2]`; CALLP at c01f4ccc; CALLP at c01f5e78 |
+| c01f4c78 | boot_candidate_c01f4c78 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f4c78 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f6db8 |
+| c01f4cd8 | boot_candidate_c01f4cd8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f4cd8 MVK.S2        15,B0`; CALLP at c01f4e20; CALLP at c01f4ef0; CALLP at c01f5d2c |
+| c01f4d04 | boot_candidate_c01f4d04 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01f4d04 MV.L1X        B4,A1`; CALLP at c01f4e40; CALLP at c01f4ef4; CALLP at c01f4f00; CALLP at c01f526c |
+| c01f4d80 | boot_candidate_c01f4d80 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f4d80 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f4f8c; CALLP at c01f56b8; CALLP at c01f6e10 |
+| c01f4f0c | boot_candidate_c01f4f0c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f4f0c STW.D2T2      B3,*B15--[2]`; CALLP at c01f4f94; CALLP at c01f5d34 |
+| c01f4f44 | boot_candidate_c01f4f44 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f4f44 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f6e20 |
+| c01f4fa4 | boot_candidate_c01f4fa4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f4fa4 STW.D2T2      B3,*B15--[2]`; CALLP at c01f5110; CALLP at c01f5e84 |
+| c01f5120 | boot_candidate_c01f5120 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f5120 STW.D2T2      B3,*B15--[2]`; CALLP at c01f5240; CALLP at c01f5d40 |
+| c01f524c | boot_candidate_c01f524c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f524c STW.D2T2      B3,*B15--[2]`; CALLP at c01f9fa8 |
+| c01f52a4 | boot_candidate_c01f52a4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 10 direct CALLP sites | guess | `c01f52a4 MV.L2         B4,B0`; CALLP at c01f5396; CALLP at c01f539a; CALLP at c01f53a2; CALLP at c01f53a8; CALLP at c01f53ae; CALLP at c01f53b4; CALLP at c01f53ba; CALLP at c01f53c4; CALLP at c01f53ca; CALLP at c01f53d0 |
+| c01f5374 | boot_candidate_c01f5374 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01f5374 STW.D2T2      B3,*B15--[2]`; CALLP at c01f9050; CALLP at c01f90d8; CALLP at c01f96f8; CALLP at c01f9728 |
+| c01f53e0 | boot_candidate_c01f53e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f53e0 STW.D2T2      B3,*B15--[2]`; CALLP at c01f560a |
+| c01f542c | boot_candidate_c01f542c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f542c STW.D2T2      B3,*B15--[2]`; CALLP at c01f5674; CALLP at c0204ff0 |
+| c01f55e8 | boot_candidate_c01f55e8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f55e8 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f9cc8 |
+| c01f56a0 | boot_candidate_c01f56a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 11 direct CALLP sites | guess | `c01f56a0 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f58e2; CALLP at c01f6f34; CALLP at c01f6f40; CALLP at c01f6f48; CALLP at c01f6f50; CALLP at c01f6f58; CALLP at c01f6f60; CALLP at c01f6f68; CALLP at c01f6f70; CALLP at c01f6f78; CALLP at c01f6f80 |
+| c01f5758 | boot_candidate_c01f5758 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5758 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f94f4 |
+| c01f5984 | boot_candidate_c01f5984 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5984 MV.L2X        A4,B0`; CALLP at c01f8a8c |
+| c01f59ac | boot_candidate_c01f59ac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f59ac STW.D2T2      B3,*B15--[2]`; CALLP at c01f59d0; CALLP at c01f59f8 |
+| c01f59cc | boot_candidate_c01f59cc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f59cc CALLP.S1      0xc020d6c0,A3`; CALLP at c01f9b50 |
+| c01f5a28 | boot_candidate_c01f5a28 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5a28 MVK.L1        0,A4`; CALLP at c0206154 |
+| c01f5a2c | boot_candidate_c01f5a2c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5a2c MVK.S1        0xffffa260,A4`; CALLP at c0202110 |
+| c01f5a38 | boot_candidate_c01f5a38 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5a38 MV.L2         B6,B5`; CALLP at c0201fe8 |
+| c01f5a64 | boot_candidate_c01f5a64 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f5a64 MVK.S1        0x7804,A6`; CALLP at c01f66c0; CALLP at c0201e78 |
+| c01f5b24 | boot_candidate_c01f5b24 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5b24 MVK.L1        0,A4`; CALLP at c0201f48 |
+| c01f5b28 | boot_candidate_c01f5b28 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5b28 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f5f60 |
+| c01f5c84 | boot_candidate_c01f5c84 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5c84 STW.D2T2      B3,*B15--[2]`; CALLP at c01f5f82 |
+| c01f5d4c | boot_candidate_c01f5d4c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5d4c MV.L2         B6,B0`; CALLP at c01f5fb4 |
+| c01f5de8 | boot_candidate_c01f5de8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5de8 STW.D2T2      B3,*B15--[2]`; CALLP at c01f5fd4 |
+| c01f5e90 | boot_candidate_c01f5e90 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f5e90 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f6300; CALLP at c01f6312 |
+| c01f5fe8 | boot_candidate_c01f5fe8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f5fe8 MVK.S1        0x0502,A8`; CALLP at c01f6570 |
+| c01f6114 | boot_candidate_c01f6114 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01f6114 MVK.S1        12,A6`; .word at c022de0c |
+| c01f6142 | boot_candidate_c01f6142 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01f6142 MVK.L1        5,A0`; .word at c022de1c |
+| c01f6220 | boot_candidate_c01f6220 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6220 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f9b38 |
+| c01f6604 | boot_candidate_c01f6604 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6604 MVK.L1        0,A4`; CALLP at c02061c4 |
+| c01f6608 | boot_candidate_c01f6608 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6608 STW.D2T2      B3,*B15--[2]`; CALLP at c0202098 |
+| c01f6628 | boot_candidate_c01f6628 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6628 MVK.S2        0x4038,B4`; CALLP at c01f66c4 |
+| c01f66a8 | boot_candidate_c01f66a8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f66a8 STW.D2T2      B3,*B15--[6]`; CALLP at c01fa2cc |
+| c01f6720 | boot_candidate_c01f6720 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6720 MVK.S1        0x0460,A5`; CALLP at c020608c |
+| c01f6748 | boot_candidate_c01f6748 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6748 MV.L1         A4,A1`; CALLP at c01f9174 |
+| c01f67a0 | boot_candidate_c01f67a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f67a0 MVK.S1        0x351c,A5`; CALLP at c0206130 |
+| c01f67b0 | boot_candidate_c01f67b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f67b0 MV.L1         A4,A5`; CALLP at c01f962c |
+| c01f6844 | boot_candidate_c01f6844 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6844 MV.L1         A4,A5`; CALLP at c0202050 |
+| c01f6858 | boot_candidate_c01f6858 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6858 STW.D2T2      B3,*B15--[2]`; CALLP at c01f6984 |
+| c01f68a8 | boot_candidate_c01f68a8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f68a8 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f98d0 |
+| c01f69b0 | boot_candidate_c01f69b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f69b0 STW.D2T2      B3,*B15--[2]`; CALLP at c0204eac; CALLP at c0204ed4 |
+| c01f6b50 | boot_candidate_c01f6b50 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c01f6b50 MVK.S1        0x0401,A5`; CALLP at c01f8c24; CALLP at c01f8d78; CALLP at c01f8e90; CALLP at c01f91a0; CALLP at c01f92cc; CALLP at c01f9418; CALLP at c020122c |
+| c01f6b74 | boot_candidate_c01f6b74 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f6b74 MV.L1         A4,A1`; CALLP at c01f6c96; CALLP at c01f6cc0; CALLP at c01f6cc4; CALLP at c01f6cc8; CALLP at c01f6ccc |
+| c01f6c00 | boot_candidate_c01f6c00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f6c00 MVK.S1        168,A0`; CALLP at c01f6cf6; CALLP at c01f6d16; CALLP at c01f6d1a; CALLP at c01f6d22; CALLP at c01f6d26 |
+| c01f6c30 | boot_candidate_c01f6c30 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f6c30 MVK.S1        168,A0`; CALLP at c01f6d00; CALLP at c01f6d06; CALLP at c01f6d0a; CALLP at c01f6d0e; CALLP at c01f6d12 |
+| c01f6c64 | boot_candidate_c01f6c64 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01f6c64 STW.D2T2      B3,*B15--[2]`; CALLP at c01f9938; CALLP at c01f9d28; CALLP at c01f9d40; CALLP at c020506c |
+| c01f6d40 | boot_candidate_c01f6d40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6d40 MVK.L1        0,A4`; CALLP at c02060b8 |
+| c01f6d44 | boot_candidate_c01f6d44 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f6d44 MVK.S1        168,A0`; CALLP at c01f6e62; CALLP at c01f6e88; CALLP at c01f6e8c; CALLP at c01f6e90; CALLP at c01f6e94 |
+| c01f6d64 | boot_candidate_c01f6d64 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f6d64 STW.D2T2      B3,*B15--[2]`; CALLP at c01f6ec6; CALLP at c01f6ee6; CALLP at c01f6eea; CALLP at c01f6eee; CALLP at c01f6ef2 |
+| c01f6dc8 | boot_candidate_c01f6dc8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f6dc8 STW.D2T2      B3,*B15--[2]`; CALLP at c01f6ecc; CALLP at c01f6ed2; CALLP at c01f6ed6; CALLP at c01f6eda; CALLP at c01f6ee2 |
+| c01f6e28 | boot_candidate_c01f6e28 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c01f6e28 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f97b0; CALLP at c01f97c0; CALLP at c0204f8c; CALLP at c0204fb8; CALLP at c0205064; CALLP at c02050a8; CALLP at c02061d8 |
+| c01f6f0c | boot_candidate_c01f6f0c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6f0c MVK.L1        0,A4`; CALLP at c02060a4 |
+| c01f6f10 | boot_candidate_c01f6f10 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6f10 STW.D2T2      B3,*B15--[2]`; CALLP at c02061e4 |
+| c01f6fa0 | boot_candidate_c01f6fa0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f6fa0 STW.D2T2      B3,*B15--[2]`; CALLP at c01f7134; CALLP at c01f71d0; CALLP at c01f7286; CALLP at c01f72da; CALLP at c01f7326 |
+| c01f6fe4 | boot_candidate_c01f6fe4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f6fe4 STW.D2T2      B3,*B15--[2]`; CALLP at c01f85b4 |
+| c01f7158 | boot_candidate_c01f7158 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f7158 STW.D2T2      B3,*B15--[2]`; CALLP at c01f8598 |
+| c01f71f4 | boot_candidate_c01f71f4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f71f4 STW.D2T2      B3,*B15--[2]`; CALLP at c01f8578; CALLP at c01f8678; CALLP at c01f8688; CALLP at c01f8694; CALLP at c01f86a8 |
+| c01f7390 | boot_candidate_c01f7390 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f7390 MVK.S1        0xffffd5b8,A0`; CALLP at c01f862c |
+| c01f7418 | boot_candidate_c01f7418 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f7418 MVK.S1        0xffffd5b0,A0`; CALLP at c01f8648 |
+| c01f74a4 | boot_candidate_c01f74a4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f74a4 STW.D2T2      B3,*B15--[2]`; CALLP at c01f7694 |
+| c01f7728 | boot_candidate_c01f7728 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f7728 STW.D2T2      B3,*B15--[2]`; CALLP at c02013ec |
+| c01f7904 | boot_candidate_c01f7904 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f7904 STW.D2T2      B3,*B15--[2]`; CALLP at c01f7e90; CALLP at c01f8144; CALLP at c022ba94 |
+| c01f7d44 | boot_candidate_c01f7d44 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f7d44 STW.D2T2      B3,*B15--[2]`; CALLP at c01f7f34 |
+| c01f7e00 | boot_candidate_c01f7e00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f7e00 STW.D2T2      B3,*B15--[2]`; CALLP at c01f7f80; CALLP at c01f7f94; CALLP at c01f7fac |
+| c01f7f44 | boot_candidate_c01f7f44 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 16 direct CALLP sites | guess | `c01f7f44 STW.D2T2      B3,*B15--[2]`; CALLP at c02013e0; CALLP at c0201490; CALLP at c02014ac; CALLP at c0201564; CALLP at c0201580; CALLP at c02015c4; CALLP at c02015e0; CALLP at c02015f4; CALLP at c020160c; CALLP at c0201630; CALLP at c0201648; CALLP at c020166c; CALLP at c0201688; CALLP at c022bbac; CALLP at c022bbc8; CALLP at c022bbf8 |
+| c01f7ff4 | boot_candidate_c01f7ff4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01f7ff4 STW.D2T2      B3,*B15--[2]`; CALLP at c01f81ec; CALLP at c01f82d4; CALLP at c01f82ee; CALLP at c01f8308 |
+| c01f80b0 | boot_candidate_c01f80b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f80b0 STW.D2T2      B3,*B15--[2]`; CALLP at c01f8234; CALLP at c01f824c; CALLP at c01f8264 |
+| c01f83f4 | boot_candidate_c01f83f4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f83f4 STW.D2T2      B3,*B15--[2]`; CALLP at c01f84c6 |
+| c01f85d4 | boot_candidate_c01f85d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f85d4 STW.D2T2      B3,*B15--[2]`; CALLP at c0201480; CALLP at c0201534; CALLP at c0201618; CALLP at c022bb98; CALLP at c022bbe8 |
+| c01f8668 | boot_candidate_c01f8668 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f8668 STW.D2T2      B3,*B15--[2]`; CALLP at c01f871a |
+| c01f8a80 | boot_candidate_c01f8a80 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01f8a80 STW.D2T2      B3,*B15--[2]`; materialized pointer B8 at c01f8ff8 |
+| c01f8aa0 | boot_candidate_c01f8aa0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01f8aa0 MVK.S1        0xffff8acc,A4`; .word at c0229d50 |
+| c01f8b38 | boot_candidate_c01f8b38 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01f8b38 CALLP.S1      0xc020d6c0,A3`; .word at c0229d40 |
+| c01f8c24 | boot_candidate_c01f8c24 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01f8c24 CALLP.S2      0xc01f6b50,B3`; .word at c022ddec; .word at c022de00 |
+| c01f8fe4 | boot_candidate_c01f8fe4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01f8fe4 CALLP.S1      0xc020d6c0,A3`; .word at c0229d34 |
+| c01f9408 | boot_candidate_c01f9408 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f9408 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f933a; CALLP at c01f95b0 |
+| c01f95f8 | boot_candidate_c01f95f8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f95f8 MVK.L2        0,B0`; CALLP at c0206200 |
+| c01f9734 | boot_candidate_c01f9734 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 8 direct CALLP sites | guess | `c01f9734 STW.D2T2      B3,*B15--[2]`; CALLP at c01f97c8; CALLP at c01f9884; CALLP at c01f9988; CALLP at c01f99d8; CALLP at c01f9b58; CALLP at c01f9c78; CALLP at c01f9e2a; CALLP at c01f9fec |
+| c01f97a4 | boot_candidate_c01f97a4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f97a4 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f983a; CALLP at c01f985a |
+| c01f9830 | boot_candidate_c01f9830 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f9830 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fa10c |
+| c01f9a2c | boot_candidate_c01f9a2c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01f9a2c CALLP.S1      0xc020d6c0,A3`; CALLP at c01f9ac2; CALLP at c01f9ee2; CALLP at c0204c30 |
+| c01f9ac0 | boot_candidate_c01f9ac0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 9 direct CALLP sites | guess | `c01f9ac0 STW.D2T2      B3,*B15--[2]`; CALLP at c01f9aec; CALLP at c01f9f0c; CALLP at c01f9f48; CALLP at c01f9f60; CALLP at c01f9f84; CALLP at c01f9f9a; CALLP at c01fa2d6; CALLP at c01fa2f0; CALLP at c0204c24 |
+| c01f9bc0 | boot_candidate_c01f9bc0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 8 direct CALLP sites | guess | `c01f9bc0 STW.D2T2      B3,*B15--[4]`; CALLP at c01f9814; CALLP at c01f996e; CALLP at c01f99c8; CALLP at c01f9a20; CALLP at c01f9d72; CALLP at c0204f94; CALLP at c0204fc4; CALLP at c02050b0 |
+| c01f9d88 | boot_candidate_c01f9d88 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f9d88 STW.D2T2      B3,*B15--[2]`; CALLP at c01f9500; CALLP at c01f9ecc; CALLP at c01f9ed0; CALLP at c01fa2c4; CALLP at c01fa2c8 |
+| c01f9e20 | boot_candidate_c01f9e20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01f9e20 STW.D2T2      B3,*B15--[2]`; CALLP at c02060b0; CALLP at c02061f4 |
+| c01f9ee0 | boot_candidate_c01f9ee0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01f9ee0 STW.D2T2      B3,*B15--[2]`; CALLP at c0204c40 |
+| c01f9fb0 | boot_candidate_c01f9fb0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01f9fb0 CALLP.S1      0xc020d6c0,A3`; CALLP at c0204c58; CALLP at c0204ca8; CALLP at c0204d34; CALLP at c0204e20; CALLP at c0204e58 |
+| c01fa22c | boot_candidate_c01fa22c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fa22c STW.D2T2      B3,*B15--[2]`; CALLP at c0204cc4 |
+| c01fa238 | boot_candidate_c01fa238 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fa238 CALLP.S1      0xc020d6c0,A3`; CALLP at c0204e38 |
+| c01fa300 | boot_candidate_c01fa300 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fa300 STW.D2T1      A11,*B15--[2]`; CALLP at c020e0a4 |
+| c01faca0 | boot_candidate_c01faca0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01faca0 STW.D2T2      B3,*B15--[2]`; CALLP at c01fb420 |
+| c01fad04 | boot_candidate_c01fad04 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01fad04 MVK.L2        0,B0`; CALLP at c01fb4aa; CALLP at c01fb4ae |
+| c01fad14 | boot_candidate_c01fad14 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fad14 STW.D2T2      B3,*B15--[2]`; CALLP at c01fb04e |
+| c01fae20 | boot_candidate_c01fae20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fae20 STW.D2T2      B3,*B15--[2]`; CALLP at c01fb056 |
+| c01fb014 | boot_candidate_c01fb014 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb014 STW.D2T2      B3,*B15--[2]`; CALLP at c01fb430 |
+| c01fb0e4 | boot_candidate_c01fb0e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb0e4 STW.D2T2      B3,*B15--[6]`; CALLP at c01fb258 |
+| c01fb150 | boot_candidate_c01fb150 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01fb150 STW.D2T2      B3,*B15--[4]`; CALLP at c01fb266; CALLP at c01fb356; CALLP at c01fb380; CALLP at c01fb384 |
+| c01fb1ac | boot_candidate_c01fb1ac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb1ac CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb284 |
+| c01fb204 | boot_candidate_c01fb204 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb204 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb4d4 |
+| c01fb440 | boot_candidate_c01fb440 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01fb440 STB.D2T1      A2,*+B14[28]`; .word at c022de68 |
+| c01fb52c | boot_candidate_c01fb52c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb52c STW.D2T2      B3,*B15--[2]`; CALLP at c0202c64 |
+| c01fb5c4 | boot_candidate_c01fb5c4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb5c4 MVK.S2        0xffffda00,B0`; CALLP at c01fbc40 |
+| c01fb60c | boot_candidate_c01fb60c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb60c CALLP.S1      0xc020d6c0,A3`; CALLP at c01fbc50 |
+| c01fb678 | boot_candidate_c01fb678 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb678 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fbcce |
+| c01fb6a0 | boot_candidate_c01fb6a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fb6a0 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb9a6 |
+| c01fb8e4 | boot_candidate_c01fb8e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 8 direct CALLP sites | guess | `c01fb8e4 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fbcd2; CALLP at c02014b4; CALLP at c0201588; CALLP at c0201650; CALLP at c0201690; CALLP at c022baa4; CALLP at c022bbd0; CALLP at c022bc0c |
+| c01fbb78 | boot_candidate_c01fbb78 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fbb78 CALLP.S1      0xc020d6c0,A3`; CALLP at c020ce38 |
+| c01fbce8 | boot_candidate_c01fbce8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fbce8 STW.D2T2      B3,*B15--[2]`; CALLP at c020ce34 |
+| c01fbd20 | boot_candidate_c01fbd20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01fbd20 STW.D2T1      A11,*B15--[2]`; materialized pointer B1 at c0207a90 |
+| c01fd120 | boot_candidate_c01fd120 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01fd120 STW.D2T1      A11,*B15--[2]`; CALLP at c01fb3a4; CALLP at c01ff3f8; CALLP at c0202da0 |
+| c01fd740 | boot_candidate_c01fd740 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 8 direct CALLP sites | guess | `c01fd740 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fd8a6; CALLP at c01fd990; CALLP at c01fda42; CALLP at c01fdaac; CALLP at c01fdb4e; CALLP at c01fdbc2; CALLP at c01fdc4a; CALLP at c01fdcda |
+| c01fd7c0 | boot_candidate_c01fd7c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01fd7c0 STW.D2T2      B3,*B15--[4]`; CALLP at c01fda00; CALLP at c01fdb84; CALLP at c01fdc0c; CALLP at c01fdc98 |
+| c01fd7f4 | boot_candidate_c01fd7f4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01fd7f4 MV.L1         A4,A0`; CALLP at c01fd824; CALLP at c01fd860; CALLP at c01fd8d0; CALLP at c01fd924 |
+| c01fd810 | boot_candidate_c01fd810 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01fd810 STW.D2T2      B3,*B15--[4]`; CALLP at c01fdba2; CALLP at c01fdcc0 |
+| c01fd84c | boot_candidate_c01fd84c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fd84c CALLP.S1      0xc020d6c0,A3`; CALLP at c01fda1a |
+| c01fd8b8 | boot_candidate_c01fd8b8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fd8b8 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fdac8 |
+| c01fd914 | boot_candidate_c01fd914 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fd914 STW.D2T2      B3,*B15--[4]`; CALLP at c01fdc2a |
+| c01fd94c | boot_candidate_c01fd94c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fd94c CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb298 |
+| c01fda8c | boot_candidate_c01fda8c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 10 direct CALLP sites | guess | `c01fda8c CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb2f0; CALLP at c0201414; CALLP at c0202cec; CALLP at c020ce80; CALLP at c022ba54; CALLP at c022bac8; CALLP at c022bb00; CALLP at c022bb40; CALLP at c022bb54; CALLP at c022bb68 |
+| c01fdb00 | boot_candidate_c01fdb00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fdb00 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb374 |
+| c01fdd40 | boot_candidate_c01fdd40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fdd40 STW.D2T2      B3,*B15--[6]`; CALLP at c01fddea |
+| c01fddac | boot_candidate_c01fddac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01fddac CALLP.S1      0xc020d6c0,A3`; materialized pointer A4 at c01fe2b4 |
+| c01fde90 | boot_candidate_c01fde90 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01fde90 STW.D2T2      B3,*B15--[2]`; materialized pointer B0 at c01fe178 |
+| c01fded8 | boot_candidate_c01fded8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01fded8 STW.D2T2      B3,*B15--[2]`; materialized pointer B0 at c01fe1f4 |
+| c01fdf28 | boot_candidate_c01fdf28 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c01fdf28 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb13c; CALLP at c01fb194; CALLP at c01fb244; CALLP at c01fb534 |
+| c01fdfb8 | boot_candidate_c01fdfb8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fdfb8 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fe032 |
+| c01fe030 | boot_candidate_c01fe030 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fe030 STW.D2T2      B3,*B15--[2]`; CALLP at c0202d44 |
+| c01fe044 | boot_candidate_c01fe044 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01fe044 CALLP.S1      0xc020d6c0,A3`; CALLP at c0202e24; CALLP at c0202e4c |
+| c01fe0d4 | boot_candidate_c01fe0d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fe0d4 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fe2c8 |
+| c01fe284 | boot_candidate_c01fe284 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fe284 CALLP.S1      0xc020d6c0,A3`; CALLP at c0202f04 |
+| c01fe2d4 | boot_candidate_c01fe2d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fe2d4 MV.L1         A4,A0`; CALLP at c01fff08 |
+| c01fe8a0 | boot_candidate_c01fe8a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fe8a0 MV.L1         A6,A5`; CALLP at c01feaba |
+| c01fe900 | boot_candidate_c01fe900 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01fe900 MV.L2         B4,B0`; CALLP at c01fea10; CALLP at c01fea8e; CALLP at c01fec06 |
+| c01fe918 | boot_candidate_c01fe918 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01fe918 MV.L2         B4,B0`; CALLP at c01fea14; CALLP at c01feb0c; CALLP at c01fec2e; CALLP at c01fec48; CALLP at c01fecd0 |
+| c01fe960 | boot_candidate_c01fe960 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fe960 MV.L1         A4,A1`; CALLP at c01fe9e2 |
+| c01fe9a8 | boot_candidate_c01fe9a8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01fe9a8 SHL.S1        A4,0x3,A0`; CALLP at c01fe9ec; CALLP at c01fedd4 |
+| c01fe9c8 | boot_candidate_c01fe9c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01fe9c8 STW.D2T2      B3,*B15--[2]`; CALLP at c01fea1a; CALLP at c01fea92; CALLP at c01fec0a |
+| c01fe9f8 | boot_candidate_c01fe9f8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fe9f8 STW.D2T2      B3,*B15--[2]`; CALLP at c01feaee |
+| c01fea28 | boot_candidate_c01fea28 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01fea28 STW.D2T2      B3,*B15--[2]`; CALLP at c01feb84; CALLP at c01fece8 |
+| c01fea72 | boot_candidate_c01fea72 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01fea72 MVK.L1        5,A0`; .word at c022dde4 |
+| c01feaa0 | boot_candidate_c01feaa0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01feaa0 STW.D2T2      B3,*B15--[4]`; .word at c022a150 |
+| c01febb4 | boot_candidate_c01febb4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01febb4 STW.D2T2      B3,*B15--[2]`; CALLP at c01fec3a; CALLP at c01fec68 |
+| c01fed00 | boot_candidate_c01fed00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fed00 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fef8c |
+| c01fedb0 | boot_candidate_c01fedb0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01fedb0 MVK.S1        0x5b00,A4`; CALLP at c01fedc6; CALLP at c01ff02c |
+| c01fedc4 | boot_candidate_c01fedc4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01fedc4 STW.D2T2      B3,*B15--[2]`; CALLP at c01ff24c; CALLP at c01ff344 |
+| c01fede0 | boot_candidate_c01fede0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fede0 MVK.S1        0x5b00,A4`; CALLP at c01feffc |
+| c01fedf4 | boot_candidate_c01fedf4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fedf4 MVK.S1        0x4b00,A4`; CALLP at c01feff4 |
+| c01fee20 | boot_candidate_c01fee20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fee20 LDW.D1T1      *A4[0],A1`; CALLP at c01fef2c |
+| c01fee38 | boot_candidate_c01fee38 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fee38 LDW.D1T1      *A4[0],A1`; CALLP at c01fef52 |
+| c01fee60 | boot_candidate_c01fee60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fee60 MV.L2         B4,B2`; CALLP at c01fef5a |
+| c01fef14 | boot_candidate_c01fef14 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fef14 STW.D2T2      B3,*B15--[4]`; CALLP at c01ff068 |
+| c01fefac | boot_candidate_c01fefac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fefac CALLP.S1      0xc020d6c0,A3`; CALLP at c01ff06c |
+| c01fefe8 | boot_candidate_c01fefe8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01fefe8 CALLP.S1      0xc020d6c0,A3`; CALLP at c01ff06e |
+| c01ff040 | boot_candidate_c01ff040 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01ff040 STW.D2T2      B3,*B15--[2]`; .word at c0229d90 |
+| c01ff074 | boot_candidate_c01ff074 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff074 MV.L2         B4,B2`; CALLP at c01ff0c4 |
+| c01ff0b0 | boot_candidate_c01ff0b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff0b0 STW.D2T2      B3,*B15--[2]`; CALLP at c01ff120 |
+| c01ff0e4 | boot_candidate_c01ff0e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff0e4 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fdf88 |
+| c01ff180 | boot_candidate_c01ff180 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff180 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fe020; CALLP at c01fe264 |
+| c01ff1f8 | boot_candidate_c01ff1f8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff1f8 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fe230 |
+| c01ff310 | boot_candidate_c01ff310 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff310 MVK.L1        0,A0`; CALLP at c01ff338 |
+| c01ff318 | boot_candidate_c01ff318 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff318 STW.D2T2      B3,*B15--[2]`; CALLP at c01fde68; CALLP at c01ff370 |
+| c01ff358 | boot_candidate_c01ff358 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff358 STW.D2T2      B3,*B15--[2]`; CALLP at c01fddec; CALLP at c01fde38 |
+| c01ff380 | boot_candidate_c01ff380 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01ff380 STW.D2T2      B3,*B15--[2]`; CALLP at c01f9be8; CALLP at c02000e4; CALLP at c0200258 |
+| c01ff394 | boot_candidate_c01ff394 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 9 direct CALLP sites | guess | `c01ff394 STW.D2T2      B3,*B15--[2]`; CALLP at c01fef18; CALLP at c01fefec; CALLP at c01ff024; CALLP at c01ff0f0; CALLP at c01ff324; CALLP at c01ffe40; CALLP at c01ffea0; CALLP at c0200094; CALLP at c020020c |
+| c01ff3cc | boot_candidate_c01ff3cc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff3cc CALLP.S1      0xc020d6c0,A3`; CALLP at c01ff04c |
+| c01ff420 | boot_candidate_c01ff420 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff420 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fa100 |
+| c01ff460 | boot_candidate_c01ff460 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff460 STW.D2T2      B3,*B15--[2]`; CALLP at c01f9a58 |
+| c01ff470 | boot_candidate_c01ff470 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01ff470 MVK.L1        0,A4`; CALLP at c01f9f90; CALLP at c01ff2d4; CALLP at c02001cc |
+| c01ff474 | boot_candidate_c01ff474 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff474 STW.D2T2      B3,*B15--[2]`; CALLP at c01fa0d4; CALLP at c01fa1cc |
+| c01ff498 | boot_candidate_c01ff498 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff498 STW.D2T2      B3,*B15--[2]`; CALLP at c01ffdb8; CALLP at c01ffe94 |
+| c01ff4c8 | boot_candidate_c01ff4c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 10 direct CALLP sites | guess | `c01ff4c8 STW.D2T2      B3,*B15--[2]`; CALLP at c01fef98; CALLP at c01ff004; CALLP at c01ff030; CALLP at c01ff12c; CALLP at c01ff348; CALLP at c01ffe84; CALLP at c01ffe90; CALLP at c01ffed0; CALLP at c02000f0; CALLP at c0200224 |
+| c01ff4d8 | boot_candidate_c01ff4d8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01ff4d8 MVK.L1        0,A4`; CALLP at c01f9b0c; CALLP at c01fa180; CALLP at c01fa1e0 |
+| c01ff4e0 | boot_candidate_c01ff4e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff4e0 STW.D2T2      B3,*B15--[2]`; CALLP at c01f9ad8 |
+| c01ff4f0 | boot_candidate_c01ff4f0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff4f0 MVK.L2        0,B0`; CALLP at c01fa078; CALLP at c01fa1b4 |
+| c01ff508 | boot_candidate_c01ff508 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff508 STW.D2T2      B3,*B15--[2]`; CALLP at c01ff164 |
+| c01ff528 | boot_candidate_c01ff528 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff528 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f9a4c; CALLP at c01fa040 |
+| c01ff544 | boot_candidate_c01ff544 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff544 STW.D2T2      B3,*B15--[2]`; CALLP at c01f5264; CALLP at c01f59b4 |
+| c01ff554 | boot_candidate_c01ff554 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff554 STW.D2T2      B3,*B15--[2]`; CALLP at c01fe004 |
+| c01ff568 | boot_candidate_c01ff568 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff568 STW.D2T2      B3,*B15--[2]`; CALLP at c01f43f0; CALLP at c01f59c0 |
+| c01ff578 | boot_candidate_c01ff578 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c01ff578 STW.D2T2      B3,*B15--[4]`; CALLP at c01f9a64; CALLP at c01ff184; CALLP at c01ff2f4; CALLP at c0200004; CALLP at c02001e4 |
+| c01ff5e0 | boot_candidate_c01ff5e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c01ff5e0 STW.D2T2      B3,*B15--[2]`; CALLP at c01ff1cc; CALLP at c01ff28c; CALLP at c01ff2b8; CALLP at c01ff2e4; CALLP at c0200028; CALLP at c02001b8; CALLP at c02001d8 |
+| c01ff608 | boot_candidate_c01ff608 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff608 MVK.L1        0,A4`; CALLP at c01f9aa0 |
+| c01ff60c | boot_candidate_c01ff60c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff60c STW.D2T2      B3,*B15--[2]`; CALLP at c01f9a90 |
+| c01ff634 | boot_candidate_c01ff634 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff634 STW.D2T2      B3,*B15--[2]`; CALLP at c01f4530 |
+| c01ff660 | boot_candidate_c01ff660 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01ff660 STW.D2T2      B3,*B15--[2]`; CALLP at c01ff1a8; CALLP at c01ff2c4; CALLP at c01ff2ec |
+| c01ff68c | boot_candidate_c01ff68c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01ff68c CALLP.S1      0xc020d6c0,A3`; CALLP at c01fa0cc; CALLP at c01fa144; CALLP at c01ffe68 |
+| c01ff6c8 | boot_candidate_c01ff6c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c01ff6c8 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f9f6c; CALLP at c01ff2a8; CALLP at c02001a8 |
+| c01ff750 | boot_candidate_c01ff750 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ff750 CALLP.S1      0xc020d6c0,A3`; CALLP at c01ff264; CALLP at c0200190 |
+| c01ff798 | boot_candidate_c01ff798 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff798 MVK.L1        1,A4`; CALLP at c01f9ef0 |
+| c01ff7a0 | boot_candidate_c01ff7a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff7a0 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f9f2c |
+| c01ff7ec | boot_candidate_c01ff7ec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff7ec CALLP.S1      0xc020d6c0,A3`; CALLP at c01f66ec |
+| c01ff84c | boot_candidate_c01ff84c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ff84c CALLP.S1      0xc020d6c0,A3`; CALLP at c01ff278 |
+| c01ff8a0 | boot_candidate_c01ff8a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c01ff8a0 STW.D2T2      B10,*B15--[2]`; materialized pointer A6 at c020ca0c |
+| c01ffda0 | boot_candidate_c01ffda0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ffda0 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fff02 |
+| c01ffdd8 | boot_candidate_c01ffdd8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c01ffdd8 LDW.D1T1      *A4[0],A1`; CALLP at c01ffe48; CALLP at c02000c6 |
+| c01ffdf8 | boot_candidate_c01ffdf8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ffdf8 MV.L2         B4,B2`; CALLP at c01ffeb8 |
+| c01ffe30 | boot_candidate_c01ffe30 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c01ffe30 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fffa2 |
+| c0200000 | boot_candidate_c0200000 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0200000 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fe024 |
+| c0200054 | boot_candidate_c0200054 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0200054 LDW.D1T1      *A4[0],A1`; CALLP at c02000ae |
+| c0200088 | boot_candidate_c0200088 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0200088 CALLP.S1      0xc020d6c0,A3`; CALLP at c0200124 |
+| c0200108 | boot_candidate_c0200108 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0200108 STW.D2T2      B3,*B15--[2]`; CALLP at c01fe0a4 |
+| c0200130 | boot_candidate_c0200130 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0200130 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fe250 |
+| c02001fc | boot_candidate_c02001fc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02001fc MVK.L1        0,A0`; CALLP at c0200218 |
+| c0200208 | boot_candidate_c0200208 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0200208 STW.D2T2      B3,*B15--[2]`; CALLP at c01fde70; CALLP at c0200250 |
+| c0200234 | boot_candidate_c0200234 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0200234 STW.D2T2      B3,*B15--[2]`; CALLP at c01fddf4; CALLP at c01fde44 |
+| c0200704 | boot_candidate_c0200704 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0200704 MV.L2         B4,B0`; .word at c022a21c |
+| c0200818 | boot_candidate_c0200818 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0200818 CALLP.S1      0xc020d6c0,A3`; materialized pointer B8 at c0200a08; materialized pointer B8 at c0200a94 |
+| c0200890 | boot_candidate_c0200890 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0200890 CALLP.S1      0xc020d6c0,A3`; CALLP at c0200840; CALLP at c0200a54 |
+| c02009d0 | boot_candidate_c02009d0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c02009d0 CALLP.S1      0xc020d6c0,A3`; CALLP at c0200fc0; CALLP at c0201014; CALLP at c02010a8; CALLP at c020110c; CALLP at c0201158 |
+| c0200b60 | boot_candidate_c0200b60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 14 direct CALLP sites | guess | `c0200b60 STW.D2T1      A14,*B15--[2]`; CALLP at c01ff398; CALLP at c01ff440; CALLP at c01ff4a8; CALLP at c01ff6a8; CALLP at c020300c; CALLP at c0203084; CALLP at c0203158; CALLP at c02031c8; CALLP at c02093c0; CALLP at c02094d0; CALLP at c022b334; CALLP at c022b76c; CALLP at c022b774; CALLP at c022be28 |
+| c0200f60 | boot_candidate_c0200f60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0200f60 CALLP.S1      0xc020d6c0,A3`; CALLP at c020b2ec |
+| c0200ff8 | boot_candidate_c0200ff8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0200ff8 STW.D2T2      B3,*B15--[2]`; CALLP at c01ff320 |
+| c0201038 | boot_candidate_c0201038 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0201038 MVK.S1        0x71a0,A4`; CALLP at c01fe034 |
+| c020104c | boot_candidate_c020104c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020104c CALLP.S1      0xc020d6c0,A3`; CALLP at c020b320 |
+| c02010f0 | boot_candidate_c02010f0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02010f0 STW.D2T2      B3,*B15--[2]`; CALLP at c020024c |
+| c0201130 | boot_candidate_c0201130 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0201130 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fe2b8 |
+| c0201170 | boot_candidate_c0201170 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0201170 MV.L2X        A4,B4`; CALLP at c01fdd48 |
+| c02011c4 | boot_candidate_c02011c4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02011c4 LDW.D1T1      *A4[0],A0`; CALLP at c0201248 |
+| c02011f4 | boot_candidate_c02011f4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c02011f4 MV.L1X        B4,A1`; CALLP at c0201260; CALLP at c0201272; CALLP at c0201280 |
+| c0201220 | boot_candidate_c0201220 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0201220 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fe0e4 |
+| c0201320 | boot_candidate_c0201320 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0201320 MV.L2         B4,B0`; CALLP at c01fb1d4; CALLP at c0202c28 |
+| c020136c | boot_candidate_c020136c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020136c STW.D2T1      A4,*+B14[32]`; CALLP at c01fb260; CALLP at c01fb26c; CALLP at c01fb360 |
+| c0201374 | boot_candidate_c0201374 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0201374 STW.D2T2      B3,*B15--[2]`; CALLP at c020146e |
+| c02013d0 | boot_candidate_c02013d0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c02013d0 STW.D2T2      B3,*B15--[2]`; CALLP at c0201486; CALLP at c020153a; CALLP at c0201624 |
+| c0201404 | boot_candidate_c0201404 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0201404 CALLP.S1      0xc020d6c0,A3`; CALLP at c020a560 |
+| c0201558 | boot_candidate_c0201558 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0201558 MVK.S2        0xffff9803,B4`; .word at c022de5c |
+| c02015b8 | boot_candidate_c02015b8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02015b8 MVK.S2        0xffff981c,B4`; .word at c022de60 |
+| c02016ac | boot_candidate_c02016ac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02016ac CALLP.S1      0xc020d6c0,A3`; CALLP at c01face0 |
+| c0201aa0 | boot_candidate_c0201aa0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c0201aa0 STW.D2T1      A14,*B15--[2]`; CALLP at c01ff464; CALLP at c01ff5a0; CALLP at c0201464; CALLP at c0202d64 |
+| c0201e60 | boot_candidate_c0201e60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0201e60 CALLP.S1      0xc020d6c0,A3`; CALLP at c0202132 |
+| c0201fc8 | boot_candidate_c0201fc8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0201fc8 CALLP.S1      0xc020d6c0,A3`; CALLP at c0202136 |
+| c02020c0 | boot_candidate_c02020c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02020c0 STW.D2T2      B3,*B15--[2]`; CALLP at c020213a |
+| c020210c | boot_candidate_c020210c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020210c CALLP.S1      0xc020d6c0,A3`; CALLP at c020c1c4 |
+| c0202160 | boot_candidate_c0202160 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0202160 STW.D2T1      A11,*B15--[2]`; materialized pointer A3 at c0206310 |
+| c0202460 | boot_candidate_c0202460 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 6 direct CALLP sites | guess | `c0202460 STW.D2T2      B10,*B15--[2]`; CALLP at c01ff514; CALLP at c0202e98; CALLP at c0202fa0; CALLP at c0202fac; CALLP at c0202fc0; CALLP at c0202fd4 |
+| c0202a60 | boot_candidate_c0202a60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0202a60 CALLP.S1      0xc020d6c0,A3`; CALLP at c0202c0c |
+| c0202b34 | boot_candidate_c0202b34 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0202b34 MV.L1         A4,A0`; CALLP at c01fb044 |
+| c0202b54 | boot_candidate_c0202b54 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0202b54 MV.L1         A4,A0`; CALLP at c0202c4a |
+| c0202b84 | boot_candidate_c0202b84 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0202b84 CALLP.S1      0xc020d6c0,A3`; CALLP at c0202d08 |
+| c0202c6c | boot_candidate_c0202c6c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0202c6c LDBU.D1T1     *A4[4],A0`; CALLP at c0202ca8; CALLP at c0202cb0 |
+| c0202c98 | boot_candidate_c0202c98 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0202c98 CALLP.S1      0xc020d6c0,A3`; CALLP at c0202d30 |
+| c0202d14 | boot_candidate_c0202d14 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0202d14 STW.D2T2      B3,*B15--[2]`; CALLP at c01fb250 |
+| c0202d40 | boot_candidate_c0202d40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0202d40 CALLP.S1      0xc020d6c0,A3`; CALLP at c020b370 |
+| c0202d84 | boot_candidate_c0202d84 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0202d84 CALLP.S1      0xc020d6c0,A3`; materialized pointer B0 at c0202f34 |
+| c0202eac | boot_candidate_c0202eac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0202eac CALLP.S1      0xc020d6c0,A3`; CALLP at c020b398 |
+| c0202f70 | boot_candidate_c0202f70 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0202f70 STW.D2T2      B3,*B15--[2]`; materialized pointer B4 at c0202ef4 |
+| c0203000 | boot_candidate_c0203000 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0203000 CALLP.S1      0xc020d6c0,A3`; CALLP at c022b794; CALLP at c022b7a0 |
+| c0203074 | boot_candidate_c0203074 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0203074 CALLP.S1      0xc020d6c0,A3`; CALLP at c022b744; CALLP at c022b74c |
+| c02030ec | boot_candidate_c02030ec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c02030ec MV.L2         B4,B0`; CALLP at c0203380; CALLP at c0203398 |
+| c0203124 | boot_candidate_c0203124 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0203124 STW.D2T2      B3,*B15--[2]`; CALLP at c0207144 |
+| c0203140 | boot_candidate_c0203140 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0203140 CALLP.S1      0xc020d6c0,A3`; CALLP at c02033a0; CALLP at c02033a8 |
+| c02032c0 | boot_candidate_c02032c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02032c0 MVK.L1        0,A4`; materialized pointer B10 at c020336c |
+| c02032c4 | boot_candidate_c02032c4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02032c4 CALLP.S1      0xc020d6c0,A3`; CALLP at c020ce30 |
+| c0203520 | boot_candidate_c0203520 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0203520 STW.D2T2      B3,*B15--[2]`; materialized pointer B4 at c0203370 |
+| c0203534 | boot_candidate_c0203534 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0203534 STW.D2T2      B3,*B15--[2]`; materialized pointer A3 at c020338c |
+| c0203800 | boot_candidate_c0203800 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 9 direct CALLP sites | guess | `c0203800 STW.D2T2      B12,*B15--[2]`; CALLP at c01fb368; CALLP at c01fbcf0; CALLP at c01fbd04; CALLP at c01ff558; CALLP at c02014d0; CALLP at c02014e0; CALLP at c02015a0; CALLP at c0201658; CALLP at c022bbe0 |
+| c0204220 | boot_candidate_c0204220 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0204220 STW.D2T2      B12,*B15--[2]`; materialized pointer B4 at c0200310; materialized pointer A6 at c0200518; materialized pointer A6 at c0206694 |
+| c02044a0 | boot_candidate_c02044a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 10 direct CALLP sites | guess | `c02044a0 STW.D2T1      A11,*B15--[2]`; CALLP at c0208c38; CALLP at c0208e78; CALLP at c0208f9c; CALLP at c020aeac; CALLP at c020afec; CALLP at c020b884; CALLP at c020b904; CALLP at c020b984; CALLP at c020bb04; CALLP at c020bb84 |
+| c0204720 | boot_candidate_c0204720 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0204720 STW.D2T1      A12,*B15--[2]`; CALLP at c01fcf80; CALLP at c020a248 |
+| c0204c20 | boot_candidate_c0204c20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0204c20 STW.D2T2      B3,*B15--[2]`; CALLP at c020b384 |
+| c0204c2c | boot_candidate_c0204c2c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0204c2c STW.D2T2      B3,*B15--[2]`; CALLP at c020b368 |
+| c0204c38 | boot_candidate_c0204c38 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0204c38 STW.D2T2      B3,*B15--[2]`; CALLP at c020b3a0 |
+| c0204c68 | boot_candidate_c0204c68 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 13 direct CALLP sites | guess | `c0204c68 STW.D2T2      B3,*B15--[12]`; CALLP at c01f8ad8; CALLP at c01f8b78; CALLP at c01f8d4c; CALLP at c01f8e70; CALLP at c01f8f80; CALLP at c01f9008; CALLP at c01f9078; CALLP at c01f9108; CALLP at c01f9240; CALLP at c01f936c; CALLP at c01f95c8; CALLP at c02007e4; CALLP at c0200aa4 |
+| c0204cc0 | boot_candidate_c0204cc0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0204cc0 STW.D2T2      B3,*B15--[2]`; CALLP at c0200ab8; CALLP at c0200ad0 |
+| c0204ccc | boot_candidate_c0204ccc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c0204ccc CALLP.S1      0xc020d6c0,A3`; CALLP at c0204da0; CALLP at c0204dc8; CALLP at c0204df0 |
+| c0204d88 | boot_candidate_c0204d88 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0204d88 CALLP.S1      0xc020d6c0,A3`; CALLP at c0200a14 |
+| c0204dd8 | boot_candidate_c0204dd8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c0204dd8 CALLP.S1      0xc020d6c0,A3`; CALLP at c01f8b10; CALLP at c01f8bac; CALLP at c01f8fb4; CALLP at c01f9270 |
+| c0204e10 | boot_candidate_c0204e10 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0204e10 STW.D2T2      B3,*B15--[12]`; CALLP at c01f4190 |
+| c0204e34 | boot_candidate_c0204e34 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0204e34 STW.D2T2      B3,*B15--[2]`; CALLP at c020b3b4 |
+| c0204e48 | boot_candidate_c0204e48 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c0204e48 STW.D2T2      B3,*B15--[12]`; CALLP at c0200954; CALLP at c0200960; CALLP at c0200a78; CALLP at c0200a88; CALLP at c02060a8; CALLP at c020614c; CALLP at c02061ec |
+| c0204e84 | boot_candidate_c0204e84 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0204e84 MVK.L1        0,A4`; .word at c0229ec8 |
+| c0204fb0 | boot_candidate_c0204fb0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0204fb0 CALLP.S1      0xc020d6c0,A3`; .word at c0229ec4 |
+| c0204fd4 | boot_candidate_c0204fd4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0204fd4 CALLP.S1      0xc020d6c0,A3`; .word at c0229ec0 |
+| c0205340 | boot_candidate_c0205340 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0205340 STW.D2T2      B12,*B15--[2]`; CALLP at c020dfa8 |
+| c02055a0 | boot_candidate_c02055a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c02055a0 MVK.L1        -1,A0`; CALLP at c02056ca; CALLP at c0205796 |
+| c02055ec | boot_candidate_c02055ec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02055ec MV.L1         A4,A0`; CALLP at c02056e0 |
+| c0205634 | boot_candidate_c0205634 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0205634 STW.D2T2      B3,*B15--[2]`; CALLP at c01fa230 |
+| c0205708 | boot_candidate_c0205708 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0205708 MV.L1         A6,A1`; CALLP at c01f9514; CALLP at c01f9668 |
+| c0205784 | boot_candidate_c0205784 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 6 direct CALLP sites | guess | `c0205784 MVK.S1        0x7930,A0`; CALLP at c01f93a0; CALLP at c01f9504; CALLP at c01f9658; CALLP at c02060c0; CALLP at c0206158; CALLP at c0206204 |
+| c0205794 | boot_candidate_c0205794 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0205794 STW.D2T2      B3,*B15--[2]`; CALLP at c01fa2e0 |
+| c02061c0 | boot_candidate_c02061c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02061c0 STW.D2T2      B3,*B15--[2]`; .word at c0229ed0 |
+| c0206280 | boot_candidate_c0206280 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0206280 STW.D2T2      B10,*B15--[2]`; materialized pointer B4 at c020a6b0; materialized pointer B0 at c022d88c; materialized pointer B0 at c022d9cc |
+| c0206390 | boot_candidate_c0206390 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0206390 MV.S1X        B15,A0`; materialized pointer B3 at c0206368 |
+| c0206480 | boot_candidate_c0206480 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c0206480 AND.L2X       -4,A4,B5`; CALLP at c020d94c; CALLP at c020d96c; CALLP at c020d98c |
+| c0206680 | boot_candidate_c0206680 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0206680 STW.D2T1      A12,*B15--[2]`; CALLP at c0201a6c |
+| c0206860 | boot_candidate_c0206860 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0206860 STW.D2T2      B10,*B15--[2]`; CALLP at c0206fa0 |
+| c0206af4 | boot_candidate_c0206af4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0206af4 STW.D2T2      B3,*B15--[2]`; CALLP at c022be88 |
+| c0206b38 | boot_candidate_c0206b38 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0206b38 MVK.S1        0x5b14,A4`; CALLP at c020ce2c |
+| c0206c00 | boot_candidate_c0206c00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0206c00 STW.D2T2      B3,*B15--[2]`; CALLP at c020a6c8 |
+| c0206dc0 | boot_candidate_c0206dc0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0206dc0 STW.D2T1      A12,*B15--[2]`; .word at c022a1d4 |
+| c02072e0 | boot_candidate_c02072e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c02072e0 MV.L1         A4,A7`; CALLP at c01f8c54; CALLP at c01f8da8; CALLP at c01f8e98; CALLP at c01f91a8; CALLP at c01f92d4; CALLP at c01f9424; CALLP at c0201234 |
+| c0207480 | boot_candidate_c0207480 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 6 direct CALLP sites | guess | `c0207480 STW.D2T1      A12,*B15--[2]`; CALLP at c01fd960; CALLP at c01fda98; CALLP at c01fdb08; CALLP at c0201470; CALLP at c0201528; CALLP at c0202cd0 |
+| c02077c0 | boot_candidate_c02077c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02077c0 MV.L2X        A4,B9`; CALLP at c020d804 |
+| c0207940 | boot_candidate_c0207940 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0207940 MVD.M2        B1,B1`; materialized pointer B0 at c022d82c |
+| c0207c40 | boot_candidate_c0207c40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 14 direct CALLP sites | guess | `c0207c40 STW.D2T1      A10,*B15--[2]`; CALLP at c01ff388; CALLP at c01ff4cc; CALLP at c0203068; CALLP at c02030e0; CALLP at c0203198; CALLP at c020320c; CALLP at c02034f4; CALLP at c020350c; CALLP at c0203524; CALLP at c0203538; CALLP at c0209478; CALLP at c0209584; CALLP at c022b808; CALLP at c022be60 |
+| c0207f40 | boot_candidate_c0207f40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c0207f40 STW.D2T1      A11,*B15--[2]`; CALLP at c020046c; CALLP at c0200650; CALLP at c0206810; CALLP at c020d3b8 |
+| c0208240 | boot_candidate_c0208240 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0208240 STW.D2T1      A12,*B15--[2]`; materialized pointer A3 at c020ab98; materialized pointer A3 at c020abb8 |
+| c02084c0 | boot_candidate_c02084c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02084c0 STW.D2T1      A10,*B15--[2]`; materialized pointer A6 at c020d26c |
+| c0208740 | boot_candidate_c0208740 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0208740 STW.D2T1      A11,*B15--[2]`; CALLP at c0203110; CALLP at c02071d8 |
+| c0208880 | boot_candidate_c0208880 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0208880 STW.D2T2      B12,*B15--[2]`; CALLP at c02039b0 |
+| c0208ae0 | boot_candidate_c0208ae0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0208ae0 STW.D2T2      B3,*B15--[2]`; materialized pointer B10 at c020c298 |
+| c0208c00 | boot_candidate_c0208c00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0208c00 STW.D2T1      A14,*B15--[2]`; CALLP at c01ff830 |
+| c0208e40 | boot_candidate_c0208e40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0208e40 STW.D2T1      A14,*B15--[2]`; CALLP at c01ff7cc |
+| c0208f60 | boot_candidate_c0208f60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c0208f60 STW.D2T1      A14,*B15--[2]`; CALLP at c01ff734; CALLP at c0202f48 |
+| c02091a0 | boot_candidate_c02091a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02091a0 STW.D2T2      B10,*B15--[2]`; CALLP at c0203b2c |
+| c02092a0 | boot_candidate_c02092a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02092a0 STW.D2T1      A10,*B15--[2]`; CALLP at c02039b4 |
+| c02093a0 | boot_candidate_c02093a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02093a0 STW.D2T1      A11,*B15--[2]`; CALLP at c01ff4e4 |
+| c02094a0 | boot_candidate_c02094a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02094a0 STW.D2T1      A11,*B15--[2]`; CALLP at c01ff488 |
+| c02096a0 | boot_candidate_c02096a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 8 direct CALLP sites | guess | `c02096a0 STW.D2T2      B12,*B15--[2]`; CALLP at c020c3c0; CALLP at c020c4dc; CALLP at c020c600; CALLP at c020c77c; CALLP at c020c7dc; CALLP at c020c8a0; CALLP at c020c900; CALLP at c020ca20 |
+| c02098a0 | boot_candidate_c02098a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02098a0 STW.D2T2      B10,*B15--[8]`; CALLP at c0209094 |
+| c02099a0 | boot_candidate_c02099a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c02099a0 STW.D2T1      A11,*B15--[2]`; CALLP at c020e0c4 |
+| c0209aa0 | boot_candidate_c0209aa0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c0209aa0 NEG.S2        B4,B5`; CALLP at c01f7274; CALLP at c01f72cc; CALLP at c01f7314 |
+| c0209c60 | boot_candidate_c0209c60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0209c60 MVK.S1        0xffffd550,A3`; CALLP at c020e06c; materialized pointer B4 at c020abe4 |
+| c0209d40 | boot_candidate_c0209d40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 10 direct CALLP sites | guess | `c0209d40 MV.L1         A4,A18`; CALLP at c01fb620; CALLP at c01fe2a8; CALLP at c01ff234; CALLP at c0200168; CALLP at c0201148; CALLP at c0202a6c; CALLP at c0202ebc; CALLP at c0203134; CALLP at c020c1d0; CALLP at c020ce6c |
+| c0209f00 | boot_candidate_c0209f00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0209f00 STW.D2T2      B10,*B15--[2]`; materialized pointer A6 at c020c88c |
+| c0209fe0 | boot_candidate_c0209fe0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c0209fe0 STW.D2T1      A11,*B15--[2]`; CALLP at c020d0b8 |
+| c020a0c0 | boot_candidate_c020a0c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020a0c0 STW.D2T1      A11,*B15--[2]`; .word at c0229ea4 |
+| c020a1a0 | boot_candidate_c020a1a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020a1a0 STW.D2T1      A14,*B15--[2]`; CALLP at c0202854; CALLP at c020cbe8 |
+| c020a400 | boot_candidate_c020a400 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020a400 LMBD.L2X      1,A4,B1`; CALLP at c020aa50; CALLP at c020bab8; CALLP at c022b5d4 |
+| c020a4c0 | boot_candidate_c020a4c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020a4c0 STW.D2T2      B3,*B15--[2]`; materialized pointer B5 at c020cf28 |
+| c020a700 | boot_candidate_c020a700 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020a700 STW.D2T1      A10,*B15--[2]`; .word at c0229ee8 |
+| c020a7c0 | boot_candidate_c020a7c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020a7c0 STW.D2T2      B3,*B15--[2]`; CALLP at c020af54 |
+| c020a940 | boot_candidate_c020a940 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020a940 STW.D2T2      B3,*B15--[2]`; CALLP at c0206f8c |
+| c020aac0 | boot_candidate_c020aac0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020aac0 LMBD.L2X      1,A4,B1`; CALLP at c022b5ec |
+| c020ab60 | boot_candidate_c020ab60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020ab60 MVK.L2        0,B0`; materialized pointer B0 at c022d80c |
+| c020ac00 | boot_candidate_c020ac00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020ac00 STW.D2T2      B3,*B15--[2]`; CALLP at c020b7cc |
+| c020aca0 | boot_candidate_c020aca0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020aca0 STW.D2T1      A11,*B15--[14]`; CALLP at c020b3e8 |
+| c020ad40 | boot_candidate_c020ad40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 8 direct CALLP sites | guess | `c020ad40 AND.D1        1,A6,A0`; CALLP at c01fb588; CALLP at c02044b8; CALLP at c020be98; CALLP at c020bebc; CALLP at c020d628; CALLP at c022b3b8; CALLP at c022b4a0; CALLP at c022b7ac |
+| c020ae80 | boot_candidate_c020ae80 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020ae80 STW.D2T2      B13,*B15--[2]`; CALLP at c01fd3ec; CALLP at c0200cd8; CALLP at c0203974 |
+| c020af20 | boot_candidate_c020af20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020af20 STW.D2T2      B13,*B15--[2]`; .word at c022dfb0 |
+| c020afc0 | boot_candidate_c020afc0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c020afc0 STW.D2T2      B13,*B15--[2]`; CALLP at c01ff710; CALLP at c01ff778; CALLP at c02029e8; CALLP at c0202a20; CALLP at c020c5a4 |
+| c020b100 | boot_candidate_c020b100 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b100 STW.D2T1      A10,*B15--[2]`; CALLP at c020d52c |
+| c020b2e0 | boot_candidate_c020b2e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b2e0 STW.D2T2      B3,*B15--[4]`; CALLP at c01ff010 |
+| c020b310 | boot_candidate_c020b310 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b310 STW.D2T2      B3,*B15--[4]`; CALLP at c01fff20 |
+| c020b360 | boot_candidate_c020b360 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b360 CALLP.S1      0xc020d6c0,A3`; CALLP at c020b37a |
+| c020b378 | boot_candidate_c020b378 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b378 STW.D2T2      B3,*B15--[2]`; CALLP at c022be00 |
+| c020b390 | boot_candidate_c020b390 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b390 STW.D2T2      B3,*B15--[2]`; CALLP at c020b3b8 |
+| c020b3ac | boot_candidate_c020b3ac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020b3ac STW.D2T2      B3,*B15--[2]`; CALLP at c020c1e8; CALLP at c022bdf0 |
+| c020b3d0 | boot_candidate_c020b3d0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b3d0 BNOP.S2       B3,5`; CALLP at c01f40a4 |
+| c020b460 | boot_candidate_c020b460 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b460 MVK.L1        0,A3`; CALLP at c02051b4 |
+| c020b4e0 | boot_candidate_c020b4e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b4e0 STW.D2T2      B3,*B15--[12]`; CALLP at c020604c |
+| c020b560 | boot_candidate_c020b560 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b560 MVK.S2        0xffffdc00,B4`; CALLP at c020a2e8 |
+| c020b5e0 | boot_candidate_c020b5e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020b5e0 STW.D2T1      A11,*B15--[2]`; materialized pointer A4 at c020d0a0 |
+| c020b660 | boot_candidate_c020b660 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020b660 STW.D2T2      B3,*B15--[2]`; CALLP at c0200348; CALLP at c02066a0 |
+| c020b6e0 | boot_candidate_c020b6e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020b6e0 MVC.S2        CSR,B4`; CALLP at c020ac74 |
+| c020b760 | boot_candidate_c020b760 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020b760 STW.D2T2      B3,*B15--[2]`; materialized pointer A6 at c020c3ac |
+| c020b860 | boot_candidate_c020b860 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020b860 MV.L1X        B4,A6`; .word at c0229f34 |
+| c020ba60 | boot_candidate_c020ba60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c020ba60 STW.D2T2      B11,*B15--[2]`; CALLP at c01fb8b4; CALLP at c01fb8f0; CALLP at c01fb9f8; CALLP at c01fd750; CALLP at c01fd78c |
+| c020bae0 | boot_candidate_c020bae0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020bae0 MV.L1X        B4,A6`; CALLP at c01ff870; CALLP at c0202ed8 |
+| c020bb60 | boot_candidate_c020bb60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020bb60 MV.L1X        B4,A6`; CALLP at c0202940; CALLP at c020d2c8 |
+| c020bbe0 | boot_candidate_c020bbe0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020bbe0 STW.D2T2      B3,*B15--[2]`; CALLP at c020d0bc |
+| c020bc60 | boot_candidate_c020bc60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c020bc60 STW.D2T1      A10,*B15--[2]`; CALLP at c0200480; CALLP at c0200664; CALLP at c0206824; CALLP at c0207da0 |
+| c020bde0 | boot_candidate_c020bde0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020bde0 STW.D2T1      A10,*B15--[2]`; CALLP at c020c480; CALLP at c020c540; CALLP at c020c720 |
+| c020bf60 | boot_candidate_c020bf60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020bf60 STW.D2T1      A11,*B15--[2]`; CALLP at c020d0a8 |
+| c020bfe0 | boot_candidate_c020bfe0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020bfe0 STW.D2T1      A11,*B15--[2]`; materialized pointer A4 at c020e084 |
+| c020c060 | boot_candidate_c020c060 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020c060 STW.D2T1      A10,*B15--[6]`; materialized pointer B4 at c0209948 |
+| c020c0e0 | boot_candidate_c020c0e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c0e0 MV.L1X        B15,A15`; CALLP at c0209918 |
+| c020c160 | boot_candidate_c020c160 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c160 MVK.L1        0,A4`; CALLP at c0200180 |
+| c020c164 | boot_candidate_c020c164 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c164 MV.L1         A4,A1`; CALLP at c020c18e |
+| c020c184 | boot_candidate_c020c184 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c184 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fff64 |
+| c020c1c0 | boot_candidate_c020c1c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c1c0 CALLP.S1      0xc020d6c0,A3`; CALLP at c02014d8 |
+| c020c280 | boot_candidate_c020c280 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c280 STW.D2T2      B10,*B15--[2]`; CALLP at c020d0b0 |
+| c020c340 | boot_candidate_c020c340 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020c340 STW.D2T2      B3,*B15--[2]`; .word at c0229e50 |
+| c020c3a0 | boot_candidate_c020c3a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c3a0 MVK.S2        0xffff9ff0,B4`; CALLP at c01ff638 |
+| c020c400 | boot_candidate_c020c400 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c400 MVK.S1        0xffffcf58,A3`; CALLP at c02091b0 |
+| c020c4c0 | boot_candidate_c020c4c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020c4c0 STW.D2T1      A11,*B15--[2]`; .word at c0229f38 |
+| c020c640 | boot_candidate_c020c640 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020c640 STW.D2T1      A10,*B15--[2]`; .word at c022a3d8 |
+| c020c7c0 | boot_candidate_c020c7c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020c7c0 STW.D2T1      A11,*B15--[2]`; CALLP at c01ff664; CALLP at c0202d78 |
+| c020c820 | boot_candidate_c020c820 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020c820 STW.D2T2      B10,*B15--[2]`; materialized pointer B4 at c01fd3d4 |
+| c020c880 | boot_candidate_c020c880 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020c880 MVK.S2        0xffffa0d0,B4`; CALLP at c01ff610 |
+| c020c8e0 | boot_candidate_c020c8e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020c8e0 MVK.S2        0xffffa110,B4`; CALLP at c01ff5b0; CALLP at c01ff5e4 |
+| c020c940 | boot_candidate_c020c940 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020c940 STW.D2T2      B10,*B15--[2]`; materialized pointer B4 at c0200cc0 |
+| c020ca00 | boot_candidate_c020ca00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020ca00 MVK.S2        0xffffa130,B4`; CALLP at c01ff5b8; CALLP at c0202d6c |
+| c020cac0 | boot_candidate_c020cac0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020cac0 STW.D2T1      A10,*B15--[2]`; materialized pointer B5 at c0200314; materialized pointer B4 at c020668c |
+| c020cb20 | boot_candidate_c020cb20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020cb20 MV.L1         A4,A3`; CALLP at c01ff590; CALLP at c0202d54 |
+| c020cb80 | boot_candidate_c020cb80 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cb80 MVK.S2        0xffffdc00,B5`; CALLP at c020a2d8 |
+| c020cc40 | boot_candidate_c020cc40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020cc40 STW.D2T2      B3,*B15--[2]`; .word at c0229e4c |
+| c020cca0 | boot_candidate_c020cca0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cca0 STW.D2T2      B3,*B15--[2]`; CALLP at c020c044 |
+| c020cd00 | boot_candidate_c020cd00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cd00 STW.D2T1      A10,*B15--[4]`; CALLP at c020d570 |
+| c020cd60 | boot_candidate_c020cd60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cd60 STW.D2T1      A10,*B15--[4]`; CALLP at c020d5b0 |
+| c020ce20 | boot_candidate_c020ce20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020ce20 STW.D2T2      B3,*B15--[2]`; CALLP at c020a4d4 |
+| c020ce60 | boot_candidate_c020ce60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020ce60 CALLP.S1      0xc020d6c0,A3`; CALLP at c0201460 |
+| c020ce90 | boot_candidate_c020ce90 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020ce90 MVK.S1        0x4af8,A4`; CALLP at c02016b4 |
+| c020cea0 | boot_candidate_c020cea0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cea0 MVK.S2        0x0020,B5`; CALLP at c02052f8 |
+| c020cee0 | boot_candidate_c020cee0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cee0 MV.L1         A4,A30`; CALLP at c022be54 |
+| c020cf20 | boot_candidate_c020cf20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020cf20 MVK.S1        0xffffffff,A5`; materialized pointer A3 at c020abd0 |
+| c020cf60 | boot_candidate_c020cf60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cf60 STW.D1T1      A6,*A4--[1]`; CALLP at c020b6b4 |
+| c020cfa0 | boot_candidate_c020cfa0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cfa0 MVK.S1        0xffffcef4,A0`; CALLP at c02021a0 |
+| c020cfe0 | boot_candidate_c020cfe0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020cfe0 MV.L1         A4,A0`; CALLP at c020a3a8 |
+| c020d060 | boot_candidate_c020d060 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020d060 STW.D2T1      A10,*B15--[2]`; materialized pointer A4 at c020c290 |
+| c020d0e0 | boot_candidate_c020d0e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020d0e0 MVK.S1        0xffffd064,A3`; CALLP at c020c344; CALLP at c020db04 |
+| c020d120 | boot_candidate_c020d120 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020d120 MVC.S2        CSR,B5`; CALLP at c01ff56c; CALLP at c020926c |
+| c020d160 | boot_candidate_c020d160 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020d160 MVC.S2        CSR,B5`; CALLP at c01ff548; CALLP at c0207700 |
+| c020d1a0 | boot_candidate_c020d1a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 23 direct CALLP sites | guess | `c020d1a0 STW.D2T2      B3,*B15--[2]`; CALLP at c01fd9a4; CALLP at c01fda08; CALLP at c01fda30; CALLP at c01fda4c; CALLP at c01fda78; CALLP at c01fdac0; CALLP at c01fdae0; CALLP at c01fdaec; CALLP at c01fdb44; CALLP at c01fdb58; CALLP at c01fdb8c; CALLP at c01fdbac; CALLP at c01fdbcc; CALLP at c01fdc14; CALLP at c01fdc34; CALLP at c01fdc54; CALLP at c01fdca4; CALLP at c01fdccc; CALLP at c01fdd00; CALLP at c01fdd18; CALLP at c02014c0; CALLP at c0201698; CALLP at c0202cf4 |
+| c020d1e0 | boot_candidate_c020d1e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d1e0 MVK.S1        0xffffd064,A3`; CALLP at c020b9e4 |
+| c020d260 | boot_candidate_c020d260 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d260 B.S1          0xc02096a0`; CALLP at c0203a84 |
+| c020d2e0 | boot_candidate_c020d2e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020d2e0 B.S1          0xc02096a0`; CALLP at c0209fc0; CALLP at c0209fc8; CALLP at c020dad0 |
+| c020d3a0 | boot_candidate_c020d3a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020d3a0 STW.D2T2      B10,*B15--[2]`; materialized pointer B4 at c0203950 |
+| c020d3e0 | boot_candidate_c020d3e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d3e0 MVK.S1        0xffffd064,A3`; CALLP at c020db64 |
+| c020d420 | boot_candidate_c020d420 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 12 direct CALLP sites | guess | `c020d420 MVK.S1        0xffffa518,A3`; CALLP at c0200354; CALLP at c02003c8; CALLP at c0200540; CALLP at c02005b4; CALLP at c0201a74; CALLP at c02066ac; CALLP at c0206728; CALLP at c0208c80; CALLP at c0208ec0; CALLP at c0208fe0; CALLP at c020a1ac; CALLP at c020a6d4 |
+| c020d460 | boot_candidate_c020d460 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d460 STW.D2T2      B3,*B15--[2]`; CALLP at c020acac |
+| c020d4a0 | boot_candidate_c020d4a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020d4a0 STW.D2T2      B3,*B15--[2]`; CALLP at c01ffd78; CALLP at c0209f94 |
+| c020d5a0 | boot_candidate_c020d5a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 42 direct CALLP sites | guess | `c020d5a0 MV.L1X        B15,A15`; CALLP at c01fbd8c; CALLP at c01fbdc4; CALLP at c01fbdec; CALLP at c01fbe20; CALLP at c01fbe4c; CALLP at c01fbe78; CALLP at c01fbea4; CALLP at c01fbecc; CALLP at c01fbef8; CALLP at c01fbf24; CALLP at c01fbf4c; CALLP at c01fbf78; CALLP at c01fbfa4; CALLP at c01fbfcc; CALLP at c01fbff8; CALLP at c01fc024; CALLP at c01fc04c; CALLP at c01fc078; CALLP at c01fc0a4; CALLP at c01fc0cc; CALLP at c01fc0f4; CALLP at c01fc118; CALLP at c01fc134; CALLP at c01fc154; CALLP at c01fc174; CALLP at c01fc194; CALLP at c01fc1b4; CALLP at c01fc1d8; CALLP at c01fc1f8; CALLP at c01fc214; CALLP at c01fc234; CALLP at c01fc254; CALLP at c01fc270; CALLP at c01fc28c; CALLP at c01fc2a8; CALLP at c01fc2c4; CALLP at c01fc2e0; CALLP at c01fc2f8; CALLP at c01fc314; CALLP at c01fc330; CALLP at c01fc354; CALLP at c0205808 |
+| c020d620 | boot_candidate_c020d620 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020d620 MVK.L1        0,A4`; CALLP at c01fe028; CALLP at c01fe244; CALLP at c01fe268 |
+| c020d624 | boot_candidate_c020d624 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d624 STW.D2T2      B3,*B15--[2]`; CALLP at c020c198 |
+| c020d634 | boot_candidate_c020d634 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d634 MVK.L1        0,A4`; CALLP at c01fe224 |
+| c020d660 | boot_candidate_c020d660 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d660 B.S1          0xc020b3e0`; CALLP at c020d7c4 |
+| c020d680 | boot_candidate_c020d680 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020d680 B.S1          0xc020a340`; materialized pointer B6 at c020b414 |
+| c020d6a0 | boot_candidate_c020d6a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 124 direct CALLP sites | guess | `c020d6a0 LDDW.D2T2     *++B15[1],B3:B2`; CALLP at c01f41a0; CALLP at c01f4420; CALLP at c01f454c; CALLP at c01f48a4; CALLP at c01f49cc; CALLP at c01f4aa4; CALLP at c01f4c40; CALLP at c01f4cd4; CALLP at c01f4f08; CALLP at c01f4fa0; CALLP at c01f5694; CALLP at c01f5754; CALLP at c01f5980; CALLP at c01f5a24; CALLP at c01f5c80; CALLP at c01f5fe4; CALLP at c01f6600; CALLP at c01f69a8; CALLP at c01f6f08; CALLP at c01f76a4; CALLP at c01f84d4; CALLP at c01f8b30; CALLP at c01f8bcc; CALLP at c01f8fe0; CALLP at c01f902c; CALLP at c01f90a4; CALLP at c01f9130; CALLP at c01f9298; CALLP at c01f9404; CALLP at c01f9578; CALLP at c01f95f0; CALLP at c01f9714; CALLP at c01f982c; CALLP at c01f9870; CALLP at c01f9980; CALLP at c01f9ab8; CALLP at c01f9bb8; CALLP at c01f9d84; CALLP at c01fa228; CALLP at c01fa2f8; CALLP at c01fb200; CALLP at c01fb38c; CALLP at c01fb5c0; CALLP at c01fb674; CALLP at c01fb698; CALLP at c01fb8e0; CALLP at c01fbb74; CALLP at c01fbce4; CALLP at c01fd7b8; CALLP at c01fd8a0; CALLP at c01fd910; CALLP at c01fda88; CALLP at c01fdaf8; CALLP at c01fdd2c; CALLP at c01fde8c; CALLP at c01fdfb4; CALLP at c01fe02c; CALLP at c01fe0d0; CALLP at c01fe280; CALLP at c01fe2cc; CALLP at c01fedac; CALLP at c01fefe4; CALLP at c01ff038; CALLP at c01ff178; CALLP at c01ff1f4; CALLP at c01ff308; CALLP at c01ff414; CALLP at c01ff454; CALLP at c01ff540; CALLP at c01ff6c4; CALLP at c01ff74c; CALLP at c01ff794; CALLP at c01ff7e8; CALLP at c01ff848; CALLP at c01ff898; CALLP at c01ffdd4; CALLP at c01ffee0; CALLP at c01ffff8; CALLP at c0200050; CALLP at c0200100; CALLP at c02001f4; CALLP at c0200814; CALLP at c020088c; CALLP at c02009cc; CALLP at c0200b4c; CALLP at c0200ff4; CALLP at c02010e8; CALLP at c020116c; CALLP at c0201308; CALLP at c02016d4; CALLP at c0201fc4; CALLP at c02020b8; CALLP at c0202144; CALLP at c0202b30; CALLP at c0202c68; CALLP at c0202d10; CALLP at c0202d80; CALLP at c0202f6c; CALLP at c0203070; CALLP at c02030e8; CALLP at c02031a8; CALLP at c0203218; CALLP at c02032b4; CALLP at c02034ec; CALLP at c0204d84; CALLP at c0204dac; CALLP at c0204dd4; CALLP at c0204e08; CALLP at c0204fa8; CALLP at c0204fd0; CALLP at c02050c4; CALLP at c0206120; CALLP at c02061b8; CALLP at c0206260; CALLP at c020b374; CALLP at c020c1b0; CALLP at c020c210; CALLP at c020ce8c; CALLP at c022b2d8; CALLP at c022b814; CALLP at c022bc80; CALLP at c022bcd8; CALLP at c022be10; CALLP at c022be6c |
+| c020d6c0 | boot_candidate_c020d6c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 128 direct CALLP sites | guess | `c020d6c0 STW.D2T2      B14,*B15--[2]`; CALLP at c01f4064; CALLP at c01f438c; CALLP at c01f4520; CALLP at c01f4834; CALLP at c01f4930; CALLP at c01f49d0; CALLP at c01f4ad0; CALLP at c01f4c78; CALLP at c01f4d80; CALLP at c01f4f44; CALLP at c01f55e8; CALLP at c01f56a0; CALLP at c01f5758; CALLP at c01f59cc; CALLP at c01f5b28; CALLP at c01f5e90; CALLP at c01f6220; CALLP at c01f68a8; CALLP at c01f6e28; CALLP at c01f7674; CALLP at c01f84a4; CALLP at c01f8aa8; CALLP at c01f8b38; CALLP at c01f8be0; CALLP at c01f8fe4; CALLP at c01f9030; CALLP at c01f90b4; CALLP at c01f9138; CALLP at c01f92a0; CALLP at c01f9408; CALLP at c01f9580; CALLP at c01f9624; CALLP at c01f97a4; CALLP at c01f9830; CALLP at c01f9874; CALLP at c01f9a2c; CALLP at c01f9ad0; CALLP at c01f9b30; CALLP at c01f9c6c; CALLP at c01f9fb0; CALLP at c01fa238; CALLP at c01fb1ac; CALLP at c01fb204; CALLP at c01fb540; CALLP at c01fb60c; CALLP at c01fb678; CALLP at c01fb6a0; CALLP at c01fb8e4; CALLP at c01fbb78; CALLP at c01fd740; CALLP at c01fd84c; CALLP at c01fd8b8; CALLP at c01fd94c; CALLP at c01fda8c; CALLP at c01fdb00; CALLP at c01fddac; CALLP at c01fdf28; CALLP at c01fdfb8; CALLP at c01fe044; CALLP at c01fe0d4; CALLP at c01fe284; CALLP at c01fed00; CALLP at c01fefac; CALLP at c01fefe8; CALLP at c01ff0e4; CALLP at c01ff180; CALLP at c01ff1f8; CALLP at c01ff3cc; CALLP at c01ff420; CALLP at c01ff528; CALLP at c01ff68c; CALLP at c01ff6c8; CALLP at c01ff750; CALLP at c01ff7a0; CALLP at c01ff7ec; CALLP at c01ff84c; CALLP at c01ffda0; CALLP at c01ffe30; CALLP at c01ffee8; CALLP at c0200000; CALLP at c0200088; CALLP at c0200130; CALLP at c0200750; CALLP at c0200818; CALLP at c0200890; CALLP at c02009d0; CALLP at c0200f60; CALLP at c020104c; CALLP at c0201130; CALLP at c0201220; CALLP at c0201404; CALLP at c02016ac; CALLP at c0201e60; CALLP at c0201fc8; CALLP at c020210c; CALLP at c0202a60; CALLP at c0202b84; CALLP at c0202c98; CALLP at c0202d40; CALLP at c0202d84; CALLP at c0202eac; CALLP at c0203000; CALLP at c0203074; CALLP at c0203140; CALLP at c02031ac; CALLP at c0203220; CALLP at c02032c4; CALLP at c0204ccc; CALLP at c0204d88; CALLP at c0204db0; CALLP at c0204dd8; CALLP at c0204e88; CALLP at c0204fb0; CALLP at c0204fd4; CALLP at c0206080; CALLP at c0206124; CALLP at c02061d0; CALLP at c020b360; CALLP at c020c184; CALLP at c020c1c0; CALLP at c020ce60; CALLP at c022b2a0; CALLP at c022b2dc; CALLP at c022ba40; CALLP at c022bc20; CALLP at c022bc84; CALLP at c022bdac; CALLP at c022be20 |
+| c020d700 | boot_candidate_c020d700 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020d700 BNOP.S2       B3,5`; materialized pointer A4 at c020b608 |
+| c020d740 | boot_candidate_c020d740 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020d740 BNOP.S2       B3,2`; CALLP at c020a5e8; CALLP at c020b634; CALLP at c020c2b8 |
+| c020d760 | boot_candidate_c020d760 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020d760 LDW.D2T2      *+B15[3],B2`; materialized pointer A3 at c020cf68 |
+| c020d780 | boot_candidate_c020d780 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d780 MV.D2X        A4,B0`; CALLP at c02023bc |
+| c020d7a0 | boot_candidate_c020d7a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020d7a0 NOP`; CALLP at c0209d28; CALLP at c020d534 |
+| c020d7c0 | boot_candidate_c020d7c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d7c0 STW.D2T2      B3,*B15--[2]`; CALLP at c020e088 |
+| c020d840 | boot_candidate_c020d840 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d840 B.S2X         A4`; CALLP at c022bb4c |
+| c020d860 | boot_candidate_c020d860 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d860 B.S1          0xc0207480`; CALLP at c020d06c |
+| c020d8a0 | boot_candidate_c020d8a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d8a0 MVK.S1        0xffffcea0,A5`; CALLP at c020b5f4 |
+| c020d8c0 | boot_candidate_c020d8c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d8c0 STW.D2T2      B3,*B15--[2]`; CALLP at c020a4c4 |
+| c020d8e0 | boot_candidate_c020d8e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d8e0 BNOP.S2       B3,4`; CALLP at c020de24 |
+| c020d940 | boot_candidate_c020d940 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d940 STW.D2T2      B3,*B15--[2]`; CALLP at c01f4880 |
+| c020d960 | boot_candidate_c020d960 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d960 STW.D2T2      B3,*B15--[2]`; CALLP at c020ac70 |
+| c020d980 | boot_candidate_c020d980 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d980 STW.D2T2      B3,*B15--[2]`; CALLP at c01f4988 |
+| c020d9a0 | boot_candidate_c020d9a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d9a0 B.S1          0xc020be60`; CALLP at c01ff800 |
+| c020d9e0 | boot_candidate_c020d9e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020d9e0 MVC.S2        CSR,B4`; CALLP at c020d0b4 |
+| c020da20 | boot_candidate_c020da20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020da20 BNOP.S1       0xc020da20,5`; materialized pointer B4 at c020b7c0 |
+| c020dac0 | boot_candidate_c020dac0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020dac0 STW.D2T2      B3,*B15--[2]`; materialized pointer A6 at c020c5ec |
+| c020dae0 | boot_candidate_c020dae0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020dae0 MVK.L1        1,A4`; CALLP at c020dc24 |
+| c020db00 | boot_candidate_c020db00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020db00 MV.L1X        B3,A2`; CALLP at c020db24 |
+| c020db60 | boot_candidate_c020db60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020db60 MV.L1X        B3,A2`; CALLP at c020db44 |
+| c020dbe0 | boot_candidate_c020dbe0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020dbe0 B.S1          0xc0207480`; CALLP at c020a72c |
+| c020dc00 | boot_candidate_c020dc00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020dc00 B.S1          0xc020d1a0`; CALLP at c01fcf50; CALLP at c020a7ac |
+| c020dc60 | boot_candidate_c020dc60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020dc60 B.S1          0xc020be60`; CALLP at c01ff854; CALLP at c0202ec8 |
+| c020dca0 | boot_candidate_c020dca0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020dca0 B.S1          0xc020be60`; CALLP at c01ff7b0 |
+| c020dce0 | boot_candidate_c020dce0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020dce0 B.S1          0xc02096a0`; CALLP at c0209fb4; CALLP at c020dd50 |
+| c020dd20 | boot_candidate_c020dd20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020dd20 LDW.D1T1      *+A4[0],A3`; CALLP at c020af5c |
+| c020dd40 | boot_candidate_c020dd40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020dd40 STW.D2T2      B3,*B15--[2]`; materialized pointer A6 at c020c8ec; materialized pointer A6 at c020d2ec |
+| c020dd60 | boot_candidate_c020dd60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020dd60 B.S1          0xc020be60`; CALLP at c01ff6d8; CALLP at c01ff764; CALLP at c02029c0 |
+| c020dd80 | boot_candidate_c020dd80 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020dd80 LDHU.D1T1     *+A4[6],A4`; CALLP at c01ff6a0; CALLP at c01ff6b4 |
+| c020dda0 | boot_candidate_c020dda0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020dda0 MVK.S1        0xffffcfe0,A3`; CALLP at c020b5e8 |
+| c020de00 | boot_candidate_c020de00 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020de00 B.S1          0xc020be60`; CALLP at c01ff6e4; CALLP at c0202f08 |
+| c020de20 | boot_candidate_c020de20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020de20 MV.L1X        B3,A0`; CALLP at c0200290 |
+| c020de40 | boot_candidate_c020de40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020de40 MVK.S1        0xffffd004,A3`; CALLP at c020b5f0 |
+| c020de60 | boot_candidate_c020de60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c020de60 LDW.D1T1      *+A4[13],A4`; CALLP at c01ff384; CALLP at c01ff42c; CALLP at c01ff4a4; CALLP at c01ff5a8; CALLP at c01ff690 |
+| c020de80 | boot_candidate_c020de80 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c020de80 MVK.S1        0xffffd014,A3`; CALLP at c01ff428; CALLP at c01ff4a0; CALLP at c01ff530; CALLP at c01ff584 |
+| c020dec0 | boot_candidate_c020dec0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 4 direct CALLP sites | guess | `c020dec0 STW.D2T2      B3,*B15--[2]`; CALLP at c020b1a8; CALLP at c020bf68; CALLP at c020bfe8; CALLP at c020d524 |
+| c020dee0 | boot_candidate_c020dee0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c020dee0 STW.D2T2      B3,*B15--[2]`; CALLP at c0204650; CALLP at c02048b8; CALLP at c020496c; CALLP at c0209710; CALLP at c020b224; CALLP at c020b2ac; CALLP at c020bfac |
+| c020df40 | boot_candidate_c020df40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020df40 B.S1          0xc020df00`; CALLP at c020a1ec |
+| c020df60 | boot_candidate_c020df60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020df60 B.S1          0xc020df20`; CALLP at c020d4b0 |
+| c020df80 | boot_candidate_c020df80 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c020df80 MVK.S1        0xffffd058,A3`; CALLP at c0202830; CALLP at c0208d8c; CALLP at c0209f74 |
+| c020dfe0 | boot_candidate_c020dfe0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c020dfe0 MVK.S1        0xffffa548,A3`; CALLP at c020cd08; CALLP at c020cd68 |
+| c020e000 | boot_candidate_c020e000 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020e000 B.S1          0xc020da60`; CALLP at c020decc |
+| c020e020 | boot_candidate_c020e020 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020e020 B.S1          0xc020da80`; CALLP at c020deec |
+| c020e0a0 | boot_candidate_c020e0a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c020e0a0 STW.D2T2      B3,*B15--[2]`; CALLP at c020c118 |
+| c020e0c0 | boot_candidate_c020e0c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020e0c0 STW.D2T2      B3,*B15--[8]`; .word at c022a570 |
+| c020e0e0 | boot_candidate_c020e0e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c020e0e0 [ B2]  STB.D2T1      A8,*+B14[28493]`; materialized pointer B8 at c02046a4 |
+| c02271c8 | boot_candidate_c02271c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02271c8 NOP`; materialized pointer A4 at c01f9f68 |
+| c02271e4 | boot_candidate_c02271e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02271e4 LDHU.D2T1     *+B14[0],A0`; materialized pointer A4 at c01f9f28 |
+| c02271ec | boot_candidate_c02271ec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02271ec NOP`; materialized pointer A4 at c01f9eec |
+| c0227a70 | boot_candidate_c0227a70 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0227a70 [ B2]  SMPYH.M1      A26,A23,A18`; .word at c022a55c |
+| c0228ddc | boot_candidate_c0228ddc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0228ddc [!B2]  EXT.S1        A28,27,14,A8`; materialized pointer A3 at c0205818 |
+| c0229098 | boot_candidate_c0229098 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229098 [ B0]  ADDU.L1       A1,A30,A1:A0`; materialized pointer A7 at c01f8040; materialized pointer B7 at c01f8170 |
+| c0229110 | boot_candidate_c0229110 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229110 [!B1]  EXT.S1        A20,26,20,A4`; materialized pointer B4 at c01fc280 |
+| c0229144 | boot_candidate_c0229144 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229144 [!B0]  EXT.S1        A16,26,12,A26`; materialized pointer A4 at c01fc308 |
+| c0229174 | boot_candidate_c0229174 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229174 MPY32.M1X     A1,B8,A1:A0`; materialized pointer A10 at c020b08c |
+| c0229358 | boot_candidate_c0229358 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229358 [!B0]  STW.D2T2      B16,*+B14[127]`; materialized pointer A7 at c01f7d8c; materialized pointer B7 at c01f7eb8 |
+| c0229414 | boot_candidate_c0229414 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229414 B.S1          0xc0229404`; materialized pointer A3 at c0208ae8 |
+| c0229654 | boot_candidate_c0229654 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229654 B.S1          0xc0229644`; materialized pointer B4 at c0208ae4 |
+| c0229658 | boot_candidate_c0229658 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229658 NOP`; .word at c022a56c |
+| c022971c | boot_candidate_c022971c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022971c NOP`; materialized pointer B4 at c0208afc |
+| c0229720 | boot_candidate_c0229720 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229720 [ A0]  LDHU.D2T2     *+B14[3598],B29`; materialized pointer B8 at c022ba88 |
+| c02297d8 | boot_candidate_c02297d8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02297d8 [ B1]  STDW.D1T2     B27:B26,*-A20[A18]`; materialized pointer B4 at c02013d4 |
+| c02297e8 | boot_candidate_c02297e8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02297e8 [ B2]  ADDK.S2       -15670,B8`; materialized pointer B4 at c0201488; materialized pointer B4 at c0201664 |
+| c022984c | boot_candidate_c022984c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022984c [!B2]  EXT.S2        B25,11,5,B0`; materialized pointer B4 at c0201600; materialized pointer B4 at c0201638 |
+| c0229870 | boot_candidate_c0229870 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229870 NOP`; materialized pointer B0 at c01fe8c8 |
+| c02298f0 | boot_candidate_c02298f0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02298f0 NOP`; materialized pointer A2 at c01fe8b4 |
+| c0229970 | boot_candidate_c0229970 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229970 NOP`; materialized pointer A0 at c01feea0 |
+| c02299f0 | boot_candidate_c02299f0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c02299f0 NOP`; materialized pointer B1 at c01fee8c |
+| c0229a70 | boot_candidate_c0229a70 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229a70 EXTU.S1       A0,0,4,A0`; materialized pointer A6 at c0207358 |
+| c0229aa8 | boot_candidate_c0229aa8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229aa8 EXTU.S1       A0,25,4,A4`; materialized pointer B1 at c0207398 |
+| c0229abc | boot_candidate_c0229abc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229abc EXTU.S1       A0,24,5,A4`; materialized pointer B0 at c02073c4 |
+| c0229acc | boot_candidate_c0229acc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229acc EXTU.S1       A1,0,5,A5`; materialized pointer A0 at c02073f0 |
+| c0229ae8 | boot_candidate_c0229ae8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229ae8 NOP`; materialized pointer A1 at c01f4554 |
+| c0229b9c | boot_candidate_c0229b9c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229b9c EXTU.S2       B0,0,0,B0`; materialized pointer B4 at c020a148; materialized pointer B4 at c020a168 |
+| c0229ba0 | boot_candidate_c0229ba0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229ba0 B.S2          0xc02b1ba8`; materialized pointer A6 at c0207340 |
+| c0229bc4 | boot_candidate_c0229bc4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229bc4 EXTU.S1       A25,8,2,A0`; materialized pointer A7 at c0207338 |
+| c0229bd8 | boot_candidate_c0229bd8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229bd8 PLD.D1         *+A0(0),0`; materialized pointer B0 at c020742c |
+| c0229be8 | boot_candidate_c0229be8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229be8 LDBU.D2T1     *+B14[3],A0`; materialized pointer A0 at c0207440 |
+| c0229bf4 | boot_candidate_c0229bf4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229bf4 [ B2]  LDW.D2T2      *+B14[30575],B28`; materialized pointer A6 at c01f7dcc; materialized pointer B1 at c01f7e78; materialized pointer A6 at c01f8080; materialized pointer B1 at c01f812c |
+| c0229c64 | boot_candidate_c0229c64 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229c64 [ B2]  LDW.D2T1      *+B14[28265],A10`; materialized pointer B4 at c02081fc |
+| c0229cb4 | boot_candidate_c0229cb4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229cb4 DPTRUNC.L1    A1:A0,A0`; materialized pointer A3 at c020de04 |
+| c0229cec | boot_candidate_c0229cec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229cec [ B2]  AND.L2        -5,B27,B26`; materialized pointer A4 at c022ba60 |
+| c0229d20 | boot_candidate_c0229d20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229d20 [ A0]  DPSP.L1       A29:A28,A0`; materialized pointer B5 at c01f96d4 |
+| c0229d54 | boot_candidate_c0229d54 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229d54 STB.D1T1      A0,*-A0[0]`; materialized pointer A3 at c020dca4 |
+| c0229d88 | boot_candidate_c0229d88 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229d88 NOP`; materialized pointer A4 at c01ff2a4 |
+| c0229da4 | boot_candidate_c0229da4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229da4 NOP`; materialized pointer A4 at c01ff260 |
+| c0229dac | boot_candidate_c0229dac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229dac NOP`; materialized pointer B0 at c01f4800; materialized pointer B0 at c01f51ac; materialized pointer A0 at c01f5c24; materialized pointer B0 at c01f5d04; materialized pointer A4 at c01ff274 |
+| c0229db0 | boot_candidate_c0229db0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229db0 NOP`; materialized pointer A0 at c01f4d20 |
+| c0229db4 | boot_candidate_c0229db4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229db4 NOP`; materialized pointer A0 at c01f4d38 |
+| c0229db8 | boot_candidate_c0229db8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229db8 NOP`; materialized pointer A3 at c01f4d88 |
+| c0229ddc | boot_candidate_c0229ddc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229ddc LDHU.D1T1     *-A0[0],A0`; materialized pointer B0 at c01f4900; materialized pointer B0 at c01f5078; materialized pointer B7 at c01f5e48 |
+| c0229de0 | boot_candidate_c0229de0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229de0 PACK2.L2      B0,B0,B0`; materialized pointer B0 at c01f4650 |
+| c0229de4 | boot_candidate_c0229de4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229de4 PACK2.L2      B0,B0,B0`; materialized pointer B0 at c01f4670 |
+| c0229de8 | boot_candidate_c0229de8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229de8 B.S1          0xc0229de0`; materialized pointer A3 at c01f4ad8 |
+| c0229e18 | boot_candidate_c0229e18 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229e18 MPY2.M1       A0,A0,A1:A0`; materialized pointer A3 at c020d9a4 |
+| c0229e78 | boot_candidate_c0229e78 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229e78 [ B0]  ADD.L1        A27,A24,A29:A28`; materialized pointer A4 at c0205558 |
+| c0229ea8 | boot_candidate_c0229ea8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229ea8 [ A0]  MPYH.M1       A3,A8,A0`; materialized pointer B5 at c01f9b98 |
+| c0229efc | boot_candidate_c0229efc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229efc NOP`; materialized pointer A4 at c02001a4 |
+| c0229f18 | boot_candidate_c0229f18 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229f18 NOP`; materialized pointer A4 at c020018c |
+| c0229f20 | boot_candidate_c0229f20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229f20 [ A0]  CMPGT2.S1     A21,A8,A0`; .word at c022a010 |
+| c0229f68 | boot_candidate_c0229f68 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229f68 LDB.D1T1      *-A0[0],A0`; materialized pointer A3 at c020dc44 |
+| c0229f8c | boot_candidate_c0229f8c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229f8c LDB.D1T1      *-A0[0],A0`; materialized pointer A3 at c020dd64 |
+| c0229fb0 | boot_candidate_c0229fb0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229fb0 [ A0]  CMPEQ4.S1X    A28,B7,A0`; materialized pointer B1 at c01f9af0; materialized pointer A5 at c01fa200 |
+| c0229ff0 | boot_candidate_c0229ff0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c0229ff0 NOP`; materialized pointer B10 at c0208c10; materialized pointer B4 at c020c3a0 |
+| c022a030 | boot_candidate_c022a030 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a030 [ A0]  STDW.D1T1     A1:A0,*A8++[A20]`; materialized pointer B5 at c020b8e4; materialized pointer B4 at c020c5e0 |
+| c022a050 | boot_candidate_c022a050 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a050 [ A0]  STH.D2T1      A0,*B8++[B20]`; materialized pointer B5 at c020b964; materialized pointer A4 at c020c770 |
+| c022a198 | boot_candidate_c022a198 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a198 PACK2.L1      A0,A0,A0`; .word at c022a0c8; materialized pointer A3 at c020dc64 |
+| c022a1c0 | boot_candidate_c022a1c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a1c0 EXTU.S1       A0,0,0,A0`; .word at c022a1bc |
+| c022a1f8 | boot_candidate_c022a1f8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a1f8 [!B1]  STNW.D1T1     A8,*++A24[19]`; materialized pointer B0 at c0202f18 |
+| c022a20c | boot_candidate_c022a20c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a20c [ A0]  LDH.D2T1      *+B14[8199],A0`; materialized pointer B4 at c0200ac8 |
+| c022a234 | boot_candidate_c022a234 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a234 EXTU.S1       A0,0,0,A0`; materialized pointer A3 at c020d920 |
+| c022a238 | boot_candidate_c022a238 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a238 [!B0]  MPYU4.M1X     A17,B12,A7:A6`; materialized pointer A3 at c020aa08 |
+| c022a24c | boot_candidate_c022a24c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a24c [ B1]  NOP`; materialized pointer B4 at c02064a0 |
+| c022a260 | boot_candidate_c022a260 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a260 NOP           11`; materialized pointer A4 at c01f5a2c |
+| c022a274 | boot_candidate_c022a274 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a274 NOP`; materialized pointer A4 at c0203d3c |
+| c022a278 | boot_candidate_c022a278 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a278 [ B2]  MVK.S1        0xffffeadc,A24`; materialized pointer A31 at c01fa778 |
+| c022a280 | boot_candidate_c022a280 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a280 NOP`; materialized pointer A3 at c020a8ac |
+| c022a288 | boot_candidate_c022a288 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a288 NOP`; materialized pointer A12 at c01ffcd0; materialized pointer B13 at c0200294; materialized pointer B5 at c0201a08; materialized pointer A13 at c020422c; materialized pointer A10 at c0205ce8; materialized pointer A14 at c0205efc; materialized pointer A12 at c02066b8; materialized pointer A13 at c0207f98 |
+| c022a298 | boot_candidate_c022a298 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a298 NOP`; materialized pointer A11 at c02097b8 |
+| c022a2a0 | boot_candidate_c022a2a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2a0 NOP`; materialized pointer A11 at c0209834 |
+| c022a2a8 | boot_candidate_c022a2a8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2a8 [!B1]  DOTP2.M1X     A2,B0,A17:A16`; materialized pointer B4 at c0202b8c |
+| c022a2b8 | boot_candidate_c022a2b8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2b8 [ A0]  NOP`; materialized pointer A8 at c02064fc |
+| c022a2c0 | boot_candidate_c022a2c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2c0 [ B0]  NOP`; materialized pointer B8 at c0206528 |
+| c022a2c4 | boot_candidate_c022a2c4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2c4 NOP`; materialized pointer B9 at c020653c |
+| c022a2d0 | boot_candidate_c022a2d0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2d0 NOP`; materialized pointer A3 at c0203d8c |
+| c022a2d4 | boot_candidate_c022a2d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2d4 NOP`; materialized pointer A3 at c0203e8c |
+| c022a2d8 | boot_candidate_c022a2d8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2d8 NOP`; materialized pointer A3 at c0203ecc |
+| c022a2dc | boot_candidate_c022a2dc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2dc NOP`; materialized pointer A3 at c0203f0c |
+| c022a2e0 | boot_candidate_c022a2e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2e0 NOP`; materialized pointer A3 at c0203f4c |
+| c022a2e4 | boot_candidate_c022a2e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2e4 NOP`; materialized pointer A3 at c0203dd0 |
+| c022a2e8 | boot_candidate_c022a2e8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2e8 NOP`; materialized pointer A3 at c0203e0c |
+| c022a2ec | boot_candidate_c022a2ec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2ec NOP`; materialized pointer A3 at c0203e4c |
+| c022a2f0 | boot_candidate_c022a2f0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2f0 NOP           9`; materialized pointer B4 at c01fc408; materialized pointer B4 at c01fc454 |
+| c022a2f4 | boot_candidate_c022a2f4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2f4 NOP`; materialized pointer B4 at c01fc358 |
+| c022a2f8 | boot_candidate_c022a2f8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2f8 NOP`; materialized pointer B4 at c01fc39c; materialized pointer B4 at c01fc3bc |
+| c022a2fc | boot_candidate_c022a2fc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a2fc NOP`; materialized pointer A3 at c02059b8; materialized pointer A3 at c02059cc |
+| c022a300 | boot_candidate_c022a300 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a300 NOP`; materialized pointer B10 at c01fc3f8 |
+| c022a304 | boot_candidate_c022a304 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a304 NOP           9`; materialized pointer B4 at c020a674 |
+| c022a308 | boot_candidate_c022a308 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a308 MPYI.M1       A8,A10,A27`; materialized pointer A3 at c0202300 |
+| c022a30c | boot_candidate_c022a30c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a30c MPYI.M1       -8,A24,A26`; materialized pointer B5 at c02021d4 |
+| c022a310 | boot_candidate_c022a310 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a310 B.S1          0xc022a304`; materialized pointer B5 at c0202234 |
+| c022a314 | boot_candidate_c022a314 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a314 B.S1          0xc022a304`; materialized pointer A3 at c0202208; materialized pointer A4 at c0202304 |
+| c022a31c | boot_candidate_c022a31c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a31c NOP`; materialized pointer B5 at c020234c |
+| c022a320 | boot_candidate_c022a320 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a320 NOP`; materialized pointer B8 at c0202254 |
+| c022a328 | boot_candidate_c022a328 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a328 B.S1          0xbfe6b320`; materialized pointer A4 at c02074c8 |
+| c022a32c | boot_candidate_c022a32c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a32c EXTU.S1       A0,0,0,A0`; materialized pointer B5 at c02075c8; materialized pointer A3 at c020c588; materialized pointer B4 at c020d1a4; materialized pointer A3 at c020dac4 |
+| c022a330 | boot_candidate_c022a330 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a330 B.S1          0xc022a324`; materialized pointer A3 at c020748c |
+| c022a334 | boot_candidate_c022a334 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a334 B.S1          0xc022a324`; materialized pointer B4 at c0207488 |
+| c022a338 | boot_candidate_c022a338 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a338 NOP`; materialized pointer B4 at c02074a4 |
+| c022a33c | boot_candidate_c022a33c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a33c NOP           9`; materialized pointer A3 at c020c664 |
+| c022a340 | boot_candidate_c022a340 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a340 B.S1          0xc0595b40`; materialized pointer B5 at c01fcb64 |
+| c022a344 | boot_candidate_c022a344 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a344 B.S1          0xc057f340`; materialized pointer A3 at c0207b4c |
+| c022a348 | boot_candidate_c022a348 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a348 B.S1          0xc055f340`; materialized pointer B5 at c01fc504; materialized pointer A3 at c01fc690; materialized pointer A5 at c01fc7c4 |
+| c022a34c | boot_candidate_c022a34c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a34c B.S1          0xc056d340`; materialized pointer B6 at c01fcd04 |
+| c022a350 | boot_candidate_c022a350 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a350 NOP`; materialized pointer A3 at c01fcf58 |
+| c022a354 | boot_candidate_c022a354 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a354 B.S1          0xc022a344`; materialized pointer A3 at c01fc4b8; materialized pointer B5 at c01fcb14; materialized pointer A3 at c0207af0 |
+| c022a358 | boot_candidate_c022a358 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a358 B.S1          0xc022a344`; materialized pointer B5 at c01fc4b0; materialized pointer A3 at c01fcb10; materialized pointer A6 at c0207ae4 |
+| c022a35c | boot_candidate_c022a35c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a35c NOP`; materialized pointer B13 at c01fc4d4; materialized pointer B4 at c01fcb38; materialized pointer B5 at c01fccb0; materialized pointer A3 at c01fcf8c; materialized pointer B4 at c0207b00 |
+| c022a360 | boot_candidate_c022a360 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a360 [ A0]  B.S1          0xc023b9fc`; materialized pointer A3 at c01fc5d4; materialized pointer A3 at c01fc618; materialized pointer A3 at c01fcce8; materialized pointer A3 at c01fcdb0; materialized pointer A3 at c01fcdc0; materialized pointer A3 at c020a708 |
+| c022a364 | boot_candidate_c022a364 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a364 NOP`; materialized pointer A3 at c020ade8 |
+| c022a368 | boot_candidate_c022a368 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a368 LDHU.D1T2     *-A0[0],B0`; materialized pointer A4 at c01fc528; materialized pointer A4 at c01fc598; materialized pointer B4 at c01fc5d8; materialized pointer B4 at c01fc614; materialized pointer A3 at c01fcc44; materialized pointer A3 at c01fcc78; materialized pointer A5 at c0207ac8 |
+| c022a36c | boot_candidate_c022a36c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a36c EXTU.S1       A0,0,0,A0`; materialized pointer B5 at c01fc62c; materialized pointer B4 at c01fcc58; materialized pointer B4 at c01fcc80; materialized pointer B6 at c0207acc |
+| c022a370 | boot_candidate_c022a370 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a370 B.S1          0xc0304360`; materialized pointer A3 at c0203ff8; materialized pointer A4 at c0208504 |
+| c022a378 | boot_candidate_c022a378 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a378 MPYI.M1       8,A20,A27`; materialized pointer B4 at c020a7c8 |
+| c022a380 | boot_candidate_c022a380 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a380 LDB.D1T1      *-A0[0],A0`; materialized pointer B5 at c020366c; materialized pointer A3 at c02041a8 |
+| c022a384 | boot_candidate_c022a384 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a384 B.S1          0xc022a384`; materialized pointer B5 at c02035d8; materialized pointer B5 at c0203728; materialized pointer A3 at c0203fb4; materialized pointer A3 at c02084c8; materialized pointer A3 at c0209e2c; materialized pointer B5 at c020a7f0 |
+| c022a388 | boot_candidate_c022a388 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a388 B.S1          0xc022a384`; materialized pointer B5 at c02035c0; materialized pointer A3 at c02036c0; materialized pointer B5 at c0203fb0; materialized pointer B4 at c02084c4; materialized pointer B4 at c0209e28; materialized pointer B5 at c020a7dc |
+| c022a38c | boot_candidate_c022a38c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a38c NOP`; materialized pointer A3 at c0203734; materialized pointer A12 at c0203fd0; materialized pointer B4 at c02084e0; materialized pointer B4 at c0209e44 |
+| c022a390 | boot_candidate_c022a390 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a390 NOP`; materialized pointer B5 at c0203618; materialized pointer B5 at c020a810 |
+| c022a394 | boot_candidate_c022a394 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a394 NOP`; materialized pointer B5 at c0203748 |
+| c022a39c | boot_candidate_c022a39c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a39c NOP`; materialized pointer A3 at c02092a8; materialized pointer A3 at c020ba68 |
+| c022a3a0 | boot_candidate_c022a3a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3a0 NOP`; materialized pointer A3 at c020b9e8 |
+| c022a3a4 | boot_candidate_c022a3a4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3a4 B.S1          0xc0367ba0`; materialized pointer A3 at c01fd4b8 |
+| c022a3a8 | boot_candidate_c022a3a8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3a8 B.S1          0xc03523a0`; materialized pointer A3 at c01fd584 |
+| c022a3ac | boot_candidate_c022a3ac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3ac B.S1          0xc033eba0`; materialized pointer B4 at c02024ac |
+| c022a3b0 | boot_candidate_c022a3b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3b0 B.S1          0xc03273a0`; materialized pointer B5 at c01fd188 |
+| c022a3b4 | boot_candidate_c022a3b4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3b4 LDHU.D1T1     *-A0[0],A0`; materialized pointer A3 at c01fd404; materialized pointer A3 at c0202678; materialized pointer A3 at c020d2a4 |
+| c022a3b8 | boot_candidate_c022a3b8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3b8 MPYI.M1       8,A14,A28`; materialized pointer A3 at c01fd270; materialized pointer A3 at c01fd28c |
+| c022a3bc | boot_candidate_c022a3bc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3bc MPYI.M1       -8,A0,A28`; materialized pointer A3 at c02024d8; materialized pointer A3 at c02025b8; materialized pointer A3 at c02025d0 |
+| c022a3c0 | boot_candidate_c022a3c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3c0 B.S1          0xc022a3c4`; materialized pointer A3 at c01fd138; materialized pointer A3 at c0202470 |
+| c022a3c4 | boot_candidate_c022a3c4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3c4 B.S1          0xc022a3c4`; materialized pointer B5 at c01fd134; materialized pointer B5 at c020246c |
+| c022a3c8 | boot_candidate_c022a3c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3c8 NOP`; materialized pointer B13 at c01fd160; materialized pointer A14 at c020248c |
+| c022a3cc | boot_candidate_c022a3cc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3cc NOP`; materialized pointer B5 at c0202638 |
+| c022a3d0 | boot_candidate_c022a3d0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3d0 NOP`; materialized pointer B4 at c01fd308 |
+| c022a3d4 | boot_candidate_c022a3d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3d4 NOP`; materialized pointer A5 at c01fd30c; materialized pointer A4 at c0202634 |
+| c022a3dc | boot_candidate_c022a3dc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3dc B.S1          0xc03873c0`; materialized pointer A3 at c0202878 |
+| c022a3e0 | boot_candidate_c022a3e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3e0 PACK2.L1      A0,A0,A0`; materialized pointer A7 at c02027a4; materialized pointer A3 at c02093e0; materialized pointer B4 at c02094b8; materialized pointer B4 at c0209f20 |
+| c022a3e4 | boot_candidate_c022a3e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3e4 MVK.S1        0x0000,A0`; materialized pointer A9 at c02027ac; materialized pointer A3 at c02093a8; materialized pointer B5 at c02094b4; materialized pointer A3 at c0209f0c |
+| c022a3e8 | boot_candidate_c022a3e8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3e8 BPOS.S1       0xc022a3e0,A0`; materialized pointer A16 at c02027a8; materialized pointer B4 at c0208d44; materialized pointer B4 at c020942c; materialized pointer A3 at c0209500; materialized pointer A6 at c0209f18 |
+| c022a3ec | boot_candidate_c022a3ec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3ec MVK.D1        0,A0`; materialized pointer A3 at c0202774; materialized pointer A3 at c020946c; materialized pointer A3 at c02094a8; materialized pointer B5 at c0209f10 |
+| c022a3f0 | boot_candidate_c022a3f0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3f0 B.S1          0xc022a3e4`; materialized pointer B6 at c0202780 |
+| c022a3f4 | boot_candidate_c022a3f4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3f4 B.S1          0xc022a3e4`; materialized pointer A5 at c0202794 |
+| c022a3fc | boot_candidate_c022a3fc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a3fc NOP`; materialized pointer A3 at c0208d2c |
+| c022a400 | boot_candidate_c022a400 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a400 B.S1          0xc0367c00`; materialized pointer A5 at c0200d84 |
+| c022a404 | boot_candidate_c022a404 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a404 B.S1          0xc03a4400`; materialized pointer A4 at c020866c |
+| c022a408 | boot_candidate_c022a408 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a408 B.S1          0xc022a400`; materialized pointer A3 at c0200cf4; materialized pointer A3 at c0207c88; materialized pointer A3 at c0207cdc; materialized pointer A3 at c0207d04; materialized pointer B6 at c020862c; materialized pointer A3 at c020dd44 |
+| c022a40c | boot_candidate_c022a40c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a40c MPYI.M1       0,A10,A29`; materialized pointer B5 at c0200b74 |
+| c022a410 | boot_candidate_c022a410 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a410 MPYI.M1       -16,A2,A29`; materialized pointer B4 at c0207c48 |
+| c022a414 | boot_candidate_c022a414 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a414 B.S1          0xc022a404`; materialized pointer B4 at c0200ba4; materialized pointer A3 at c0200d30; materialized pointer B5 at c0207c78; materialized pointer A3 at c0208608 |
+| c022a418 | boot_candidate_c022a418 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a418 B.S1          0xc022a404`; materialized pointer B12 at c0200b90; materialized pointer B5 at c0207c64; materialized pointer B5 at c0208610 |
+| c022a41c | boot_candidate_c022a41c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a41c NOP`; materialized pointer A7 at c0208624 |
+| c022a420 | boot_candidate_c022a420 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a420 NOP`; materialized pointer B5 at c0207ca8 |
+| c022a424 | boot_candidate_c022a424 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a424 NOP`; materialized pointer B7 at c0200be0 |
+| c022a42c | boot_candidate_c022a42c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a42c MPYI.M1       A16,A0,A30`; materialized pointer A3 at c0205b70 |
+| c022a430 | boot_candidate_c022a430 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a430 MPYI.M1       -8,A20,A29`; materialized pointer A3 at c0205a98 |
+| c022a434 | boot_candidate_c022a434 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a434 MPYI.M1       0,A5,A30`; materialized pointer B4 at c0208748 |
+| c022a438 | boot_candidate_c022a438 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a438 B.S1          0xc022a424`; materialized pointer B5 at c0208778 |
+| c022a43c | boot_candidate_c022a43c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a43c B.S1          0xc022a424`; materialized pointer A14 at c0205a9c; materialized pointer B5 at c0208764 |
+| c022a444 | boot_candidate_c022a444 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a444 NOP`; materialized pointer B5 at c0205bb0 |
+| c022a448 | boot_candidate_c022a448 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a448 NOP`; materialized pointer B5 at c0205aec |
+| c022a450 | boot_candidate_c022a450 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a450 NOP`; materialized pointer A3 at c020c9a8 |
+| c022a454 | boot_candidate_c022a454 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a454 B.S1          0xc048d440`; materialized pointer A4 at c020182c; materialized pointer A4 at c0201af8 |
+| c022a458 | boot_candidate_c022a458 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a458 B.S1          0xc0437c40`; materialized pointer A4 at c01ff900 |
+| c022a45c | boot_candidate_c022a45c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a45c B.S1          0xc0415440`; materialized pointer A4 at c01ff9ec; materialized pointer A3 at c0201738 |
+| c022a460 | boot_candidate_c022a460 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a460 B.S1          0xc04a6460`; materialized pointer B5 at c0203864 |
+| c022a464 | boot_candidate_c022a464 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a464 B.S1          0xc0452c60`; materialized pointer A4 at c01ffb4c |
+| c022a468 | boot_candidate_c022a468 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a468 NOP           9`; materialized pointer A31 at c0206ec4 |
+| c022a470 | boot_candidate_c022a470 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a470 MPYI.M1       A16,A21,A31`; materialized pointer B4 at c020888c |
+| c022a478 | boot_candidate_c022a478 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a478 MPYI.M1       A8,A11,A31`; materialized pointer B4 at c020800c |
+| c022a480 | boot_candidate_c022a480 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a480 MPYI.M1       0,A0,A31`; materialized pointer B4 at c02039e0 |
+| c022a484 | boot_candidate_c022a484 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a484 MPYI.M1       0,A15,A30`; materialized pointer B5 at c0205cf4; materialized pointer B4 at c0205f84 |
+| c022a488 | boot_candidate_c022a488 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a488 LDB.D1T1      *-A0[0],A0`; materialized pointer B5 at c020040c; materialized pointer A3 at c02005f0; materialized pointer A4 at c0201d18; materialized pointer A3 at c0206768 |
+| c022a490 | boot_candidate_c022a490 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a490 B.S1          0xc022a484`; materialized pointer B4 at c01ff8b0; materialized pointer A3 at c02016f4; materialized pointer A3 at c0201aa8; materialized pointer B4 at c0203814; materialized pointer B5 at c02042d0; materialized pointer B5 at c0205d88; materialized pointer B5 at c0205fac; materialized pointer B5 at c0208034; materialized pointer B5 at c02088d0 |
+| c022a494 | boot_candidate_c022a494 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a494 B.S1          0xc022a484`; materialized pointer A3 at c01ff8a8; materialized pointer B5 at c02016f0; materialized pointer B5 at c0201aac; materialized pointer A3 at c020380c; materialized pointer B5 at c02042bc; materialized pointer A3 at c0205d70; materialized pointer B5 at c0205f98; materialized pointer B5 at c0208020; materialized pointer B5 at c02088a8 |
+| c022a498 | boot_candidate_c022a498 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a498 NOP`; materialized pointer A13 at c01ff8d0; materialized pointer A12 at c0201710; materialized pointer A14 at c0201acc; materialized pointer B11 at c0203830 |
+| c022a49c | boot_candidate_c022a49c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a49c NOP`; materialized pointer B5 at c0204300; materialized pointer B5 at c02088f0 |
+| c022a4a0 | boot_candidate_c022a4a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4a0 NOP`; materialized pointer B7 at c0201cb8; materialized pointer B7 at c0203a18; materialized pointer B6 at c0205fcc; materialized pointer B5 at c0208054 |
+| c022a4a4 | boot_candidate_c022a4a4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4a4 NOP`; materialized pointer A4 at c0201cb4 |
+| c022a4a8 | boot_candidate_c022a4a8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4a8 NOP`; materialized pointer A3 at c0200304 |
+| c022a4ac | boot_candidate_c022a4ac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4ac NOP`; materialized pointer A5 at c01ffd64; materialized pointer B7 at c0201a1c |
+| c022a4b0 | boot_candidate_c022a4b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4b0 [ A0]  CMPGTDP.S1    A7:A6,A9:A8,A0`; materialized pointer B4 at c0205c70; materialized pointer B4 at c0205e80 |
+| c022a4b4 | boot_candidate_c022a4b4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4b4 NOP`; materialized pointer A3 at c0201910 |
+| c022a4b8 | boot_candidate_c022a4b8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4b8 MPY32.M1      A0,A0,A0`; materialized pointer B4 at c0201924 |
+| c022a4bc | boot_candidate_c022a4bc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4bc NOP`; materialized pointer A3 at c02004f0 |
+| c022a4c0 | boot_candidate_c022a4c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4c0 BPOS.S1       0xc022a4c0,A0`; materialized pointer A3 at c0201878; materialized pointer A4 at c0201bd0 |
+| c022a4c8 | boot_candidate_c022a4c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4c8 SPMASK        L1,L2,D1`; materialized pointer A4 at c0203bd8 |
+| c022a4cc | boot_candidate_c022a4cc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4cc B.S1          0xc022a4c4`; materialized pointer B5 at c020688c |
+| c022a4d0 | boot_candidate_c022a4d0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4d0 B.S1          0xc022a4c4`; materialized pointer B5 at c01fe3e8; materialized pointer A3 at c020686c |
+| c022a4d4 | boot_candidate_c022a4d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4d4 NOP`; materialized pointer A3 at c01fe450 |
+| c022a4dc | boot_candidate_c022a4dc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4dc NOP`; materialized pointer B5 at c0206868 |
+| c022a4e0 | boot_candidate_c022a4e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4e0 NOP`; materialized pointer A15 at c01fe320; materialized pointer B5 at c0203aac |
+| c022a4e4 | boot_candidate_c022a4e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4e4 LDHU.D1T1     *-A0[0],A0`; materialized pointer A3 at c01fe30c; materialized pointer A3 at c0209fe8 |
+| c022a4e8 | boot_candidate_c022a4e8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4e8 NOP`; materialized pointer A3 at c020a588; materialized pointer A3 at c020b0c0 |
+| c022a4ec | boot_candidate_c022a4ec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4ec B.S1          0xc022ace0`; materialized pointer A3 at c0204510 |
+| c022a4f0 | boot_candidate_c022a4f0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4f0 B.S1          0xc022a4e0`; materialized pointer B5 at c02044ec |
+| c022a4f4 | boot_candidate_c022a4f4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4f4 B.S1          0xc022a4e0`; materialized pointer B4 at c02044cc |
+| c022a4f8 | boot_candidate_c022a4f8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a4f8 NOP`; materialized pointer B6 at c02044f8 |
+| c022a504 | boot_candidate_c022a504 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a504 B.S1          0xc022a504`; materialized pointer B5 at c0204810 |
+| c022a508 | boot_candidate_c022a508 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a508 B.S1          0xc022a504`; materialized pointer B7 at c02047ac; materialized pointer B7 at c02047d0 |
+| c022a510 | boot_candidate_c022a510 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a510 NOP`; materialized pointer B5 at c0204840 |
+| c022a518 | boot_candidate_c022a518 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a518 NOP`; materialized pointer A3 at c02048f4; materialized pointer A3 at c0204918; materialized pointer A3 at c020d420 |
+| c022a51c | boot_candidate_c022a51c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a51c [ A0]  MPYHSLU.M1    A5,A8,A0`; materialized pointer A3 at c02048c8 |
+| c022a524 | boot_candidate_c022a524 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a524 [ A0]  MVK.S1        0x454a,A0`; .word at c0229ed4 |
+| c022a530 | boot_candidate_c022a530 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a530 [ A0]  SMPYHL.M1X    A22,B8,A0`; materialized pointer B4 at c020a1c4; materialized pointer A3 at c020d4a4 |
+| c022a534 | boot_candidate_c022a534 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a534 [ A0]  RSQRSP.S1X    B8,A0`; materialized pointer B4 at c0209820 |
+| c022a53c | boot_candidate_c022a53c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a53c BPOS.S1       0xc022a520,A0`; materialized pointer A3 at c0205414; materialized pointer A3 at c020548c |
+| c022a540 | boot_candidate_c022a540 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a540 [ A0]  ADD.S1        A21,A8,A0`; materialized pointer B4 at c0205378 |
+| c022a544 | boot_candidate_c022a544 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a544 [ A0]  EXT.S1        A8,20,30,A0`; materialized pointer A3 at c02053c0; materialized pointer A3 at c020542c |
+| c022a548 | boot_candidate_c022a548 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a548 MPYID.M1      A0,A0,A1:A0`; materialized pointer A3 at c020b104; materialized pointer A3 at c020b1c8; materialized pointer B4 at c020b248; materialized pointer A3 at c020cc44; materialized pointer A3 at c020cca8; materialized pointer A3 at c020dfe0 |
+| c022a54c | boot_candidate_c022a54c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a54c [ A0]  SET.S1X       B8,A5,A0`; materialized pointer B4 at c020b1b0 |
+| c022a550 | boot_candidate_c022a550 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a550 [ A0]  MVK.S1        0x45ab,A0`; materialized pointer A3 at c020dec4; materialized pointer A3 at c020dee4 |
+| c022a554 | boot_candidate_c022a554 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a554 [ A0]  SHRU.S1       A8,0x2,A0`; materialized pointer A4 at c01fa724 |
+| c022a558 | boot_candidate_c022a558 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a558 EXTU.S1       A0,0,0,A0`; materialized pointer B4 at c020bf6c |
+| c022a560 | boot_candidate_c022a560 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a560 [ A0]  EXTU.S1       A8,20,28,A0`; materialized pointer B4 at c020bdec |
+| c022a564 | boot_candidate_c022a564 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a564 [ A0]  SHL.S1X       B9:B8,0x14,A1:A0`; materialized pointer A4 at c020be2c |
+| c022a568 | boot_candidate_c022a568 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a568 [ A0]  XOR.D1X       -12,B8,A0`; materialized pointer A3 at c020bde8 |
+| c022a578 | boot_candidate_c022a578 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a578 B.S2          0xc022a960`; materialized pointer A3 at c01fc418; materialized pointer A3 at c01fc458 |
+| c022a57c | boot_candidate_c022a57c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a57c LDBU.D1T1     *-A0[4],A0`; materialized pointer A3 at c020a654 |
+| c022a580 | boot_candidate_c022a580 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a580 NOP`; materialized pointer A5 at c02021d0 |
+| c022a584 | boot_candidate_c022a584 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a584 MVK.S2        0x0100,B0`; materialized pointer B5 at c0207584 |
+| c022a588 | boot_candidate_c022a588 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a588 PACK2.L1      A4,A0,A0`; materialized pointer B4 at c020c658 |
+| c022a58c | boot_candidate_c022a58c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a58c LDB.D1T1      *-A0[4],A0`; materialized pointer B5 at c01fc5c4; materialized pointer A3 at c01fc740; materialized pointer A3 at c01fc828; materialized pointer B5 at c01fcc0c; materialized pointer B5 at c01fcc30; materialized pointer A3 at c01fccbc; materialized pointer B4 at c01fcf54; materialized pointer B7 at c0207b8c; materialized pointer B7 at c0207bd0 |
+| c022a590 | boot_candidate_c022a590 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a590 PACK2.L2      B4,B0,B0`; materialized pointer A4 at c020408c; materialized pointer B5 at c0204134; materialized pointer A3 at c0208588 |
+| c022a594 | boot_candidate_c022a594 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a594 NOP`; materialized pointer A4 at c0203598; materialized pointer B5 at c02036d4; materialized pointer A3 at c020a7c4 |
+| c022a598 | boot_candidate_c022a598 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a598 LDBU.D2T2     *+B14[128],B0`; materialized pointer B5 at c01fd24c; materialized pointer B5 at c01fd538; materialized pointer A3 at c0202594 |
+| c022a59c | boot_candidate_c022a59c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a59c NOP`; materialized pointer B4 at c01fd264; materialized pointer B4 at c01fd280; materialized pointer B4 at c02024c4; materialized pointer B4 at c02025ac; materialized pointer B4 at c02025c8 |
+| c022a5a0 | boot_candidate_c022a5a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5a0 LDBU.D2T2     *+B14[128],B0`; materialized pointer B5 at c02028f8 |
+| c022a5a4 | boot_candidate_c022a5a4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5a4 BPOS.S1       0xc022a5b0,A0`; materialized pointer B5 at c0200e24; materialized pointer B5 at c02086d4 |
+| c022a5a8 | boot_candidate_c022a5a8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5a8 NOP`; materialized pointer A3 at c0200b70; materialized pointer A3 at c0207c4c |
+| c022a5b0 | boot_candidate_c022a5b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5b0 NOP`; materialized pointer A3 at c0205a8c; materialized pointer A3 at c020874c |
+| c022a5b4 | boot_candidate_c022a5b4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5b4 BPOS.S2       0xc022a5b0,B0`; materialized pointer A3 at c01ff998; materialized pointer B5 at c01ffa88; materialized pointer B5 at c01ffbb8; materialized pointer A4 at c02017cc; materialized pointer B5 at c02018d4; materialized pointer B5 at c0201be4; materialized pointer B5 at c02038bc; materialized pointer B5 at c0203914; materialized pointer B10 at c0206e08 |
+| c022a5b8 | boot_candidate_c022a5b8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5b8 NOP`; materialized pointer B4 at c0201b04; materialized pointer B4 at c0201b80; materialized pointer B4 at c0201c20; materialized pointer A3 at c02039e4; materialized pointer A3 at c02042a4; materialized pointer B4 at c0205cec; materialized pointer A3 at c0205f80; materialized pointer A3 at c0208008; materialized pointer A3 at c0208888 |
+| c022a5bc | boot_candidate_c022a5bc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5bc NOP`; materialized pointer A3 at c02043c4 |
+| c022a5c0 | boot_candidate_c022a5c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5c0 NOP`; materialized pointer A3 at c020b664 |
+| c022a5c4 | boot_candidate_c022a5c4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5c4 MVK.S1        0x0100,A0`; materialized pointer A3 at c01fe510; materialized pointer B4 at c0203be0; materialized pointer B5 at c020694c |
+| c022a5c8 | boot_candidate_c022a5c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5c8 NOP`; materialized pointer A3 at c01fe3f0; materialized pointer B4 at c0209fec |
+| c022a5cc | boot_candidate_c022a5cc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5cc NOP           5`; materialized pointer A3 at c02045a0; materialized pointer B4 at c020466c |
+| c022a5d0 | boot_candidate_c022a5d0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5d0 NOP`; materialized pointer A3 at c020478c; materialized pointer A3 at c02047d4 |
+| c022a5d4 | boot_candidate_c022a5d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5d4 B.S1          0xc022a5c0`; materialized pointer B4 at c02048c4 |
+| c022a5d8 | boot_candidate_c022a5d8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5d8 EXTU.S2       B0,4,0,B0`; materialized pointer B4 at c020a22c |
+| c022a5dc | boot_candidate_c022a5dc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5dc NOP`; materialized pointer A3 at c020b130; materialized pointer A3 at c020b164; materialized pointer B4 at c020cca4 |
+| c022a5e0 | boot_candidate_c022a5e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5e0 STH.D2T1      A0,*++B0[0]`; materialized pointer A5 at c020cdcc |
+| c022a5e4 | boot_candidate_c022a5e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5e4 NOP`; materialized pointer A3 at c0204748; materialized pointer A3 at c0204770; materialized pointer A5 at c02098cc; materialized pointer A11 at c020a0ec; materialized pointer A3 at c020b068; materialized pointer A5 at c020cde4 |
+| c022a5e8 | boot_candidate_c022a5e8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5e8 STW.D2T2      B0,*+B15[127]`; materialized pointer B5 at c02098a8 |
+| c022a5ec | boot_candidate_c022a5ec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022a5ec NOP           3`; materialized pointer A3 at c02098ac |
+| c022a600 | boot_candidate_c022a600 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022a600 LDW.D2T1      *+B14[24],A4`; CALLP at c022aeb4 |
+| c022ae90 | boot_candidate_c022ae90 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022ae90 STW.D2T2      B3,*B15--[2]`; CALLP at c020ce24 |
+| c022aee0 | boot_candidate_c022aee0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c022aee0 MV.L2X        A4,B1`; CALLP at c022af8c; CALLP at c022b234 |
+| c022af88 | boot_candidate_c022af88 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022af88 STW.D2T2      B3,*B15--[2]`; CALLP at c022b364 |
+| c022af98 | boot_candidate_c022af98 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022af98 MV.L2X        A4,B1`; CALLP at c022b046 |
+| c022b044 | boot_candidate_c022b044 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c022b044 STW.D2T2      B3,*B15--[2]`; CALLP at c02032c8; CALLP at c022b448 |
+| c022b050 | boot_candidate_c022b050 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022b050 STW.D2T2      B3,*B15--[2]`; CALLP at c022b132 |
+| c022b130 | boot_candidate_c022b130 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022b130 STW.D2T2      B3,*B15--[2]`; CALLP at c022b7f8 |
+| c022b140 | boot_candidate_c022b140 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022b140 STW.D2T2      B3,*B15--[2]`; CALLP at c022b224 |
+| c022b220 | boot_candidate_c022b220 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c022b220 STW.D2T2      B3,*B15--[2]`; CALLP at c02034e8; CALLP at c022b804 |
+| c022b230 | boot_candidate_c022b230 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022b230 STW.D2T2      B3,*B15--[2]`; CALLP at c020ce28 |
+| c022b244 | boot_candidate_c022b244 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c022b244 LDW.D2T2      *+B14[24],B0`; CALLP at c01fd96c; CALLP at c01fdaa8; CALLP at c01fdb14 |
+| c022b268 | boot_candidate_c022b268 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022b268 LDW.D2T2      *+B14[24],B0`; CALLP at c022be84 |
+| c022b2a0 | boot_candidate_c022b2a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 8 direct CALLP sites | guess | `c022b2a0 CALLP.S1      0xc020d6c0,A3`; CALLP at c022b3a0; CALLP at c022b3d4; CALLP at c022b404; CALLP at c022b428; CALLP at c022b486; CALLP at c022b4b8; CALLP at c022b4e0; CALLP at c022b504 |
+| c022b2dc | boot_candidate_c022b2dc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 11 direct CALLP sites | guess | `c022b2dc CALLP.S1      0xc020d6c0,A3`; CALLP at c01fd764; CALLP at c01fd784; CALLP at c01fd7d4; CALLP at c01fd828; CALLP at c01fd86c; CALLP at c01fd884; CALLP at c01fd8e4; CALLP at c01fd8f4; CALLP at c01fd928; CALLP at c022bc50; CALLP at c022bcb0 |
+| c022b860 | boot_candidate_c022b860 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 20 direct CALLP sites | guess | `c022b860 MV.L2         B4,B0`; CALLP at c0206a44; CALLP at c0206a54; CALLP at c0206a68; CALLP at c0206a78; CALLP at c0206a8c; CALLP at c0206aa0; CALLP at c0206ab0; CALLP at c0206ac4; CALLP at c0206ad4; CALLP at c0206ae8; CALLP at c0206af8; CALLP at c0206b0c; CALLP at c0206b20; CALLP at c022b8c4; CALLP at c022b8d0; CALLP at c022b8e4; CALLP at c022b8f0; CALLP at c022b908; CALLP at c022b90e; CALLP at c022b920 |
+| c022b8c0 | boot_candidate_c022b8c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 5 direct CALLP sites | guess | `c022b8c0 STW.D2T2      B3,*B15--[2]`; CALLP at c01fbb84; CALLP at c022bc48; CALLP at c022bc68; CALLP at c022bca8; CALLP at c022bcc8 |
+| c022b8cc | boot_candidate_c022b8cc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c022b8cc STW.D2T2      B3,*B15--[2]`; CALLP at c01fbcec; CALLP at c01fbcf8 |
+| c022b8d8 | boot_candidate_c022b8d8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 6 direct CALLP sites | guess | `c022b8d8 STW.D2T2      B3,*B15--[2]`; CALLP at c022bc34; CALLP at c022bc40; CALLP at c022bc70; CALLP at c022bc90; CALLP at c022bca0; CALLP at c022bcd0 |
+| c022b928 | boot_candidate_c022b928 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 9 direct CALLP sites | guess | `c022b928 CMPGT.L1      0,A4,A0`; CALLP at c0206b30; CALLP at c022b9a6; CALLP at c022b9b2; CALLP at c022b9ca; CALLP at c022b9d6; CALLP at c022b9e8; CALLP at c022ba18; CALLP at c022ba26; CALLP at c022ba32 |
+| c022b968 | boot_candidate_c022b968 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 7 direct CALLP sites | guess | `c022b968 STW.D2T2      B3,*B15--[2]`; CALLP at c020a4f0; CALLP at c020a500; CALLP at c020a508; CALLP at c020a514; CALLP at c020a520; CALLP at c020a52c; CALLP at c020a534 |
+| c022b9b0 | boot_candidate_c022b9b0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c022b9b0 STW.D2T2      B3,*B15--[2]`; CALLP at c02014e8; CALLP at c0201520; CALLP at c020c1e0 |
+| c022b9c8 | boot_candidate_c022b9c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022b9c8 STW.D2T2      B3,*B15--[2]`; CALLP at c020a554 |
+| c022b9d4 | boot_candidate_c022b9d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022b9d4 STW.D2T2      B3,*B15--[2]`; CALLP at c020a54c |
+| c022b9e4 | boot_candidate_c022b9e4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022b9e4 STW.D2T2      B3,*B15--[2]`; CALLP at c020a544 |
+| c022ba0c | boot_candidate_c022ba0c | Role unknown; size uncertain; strings unverified; MMIO unassigned; 2 direct CALLP sites | guess | `c022ba0c STW.D2T2      B3,*B15--[2]`; CALLP at c020a4d8; CALLP at c020a4e8 |
+| c022ba40 | boot_candidate_c022ba40 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022ba40 CALLP.S1      0xc020d6c0,A3`; CALLP at c020a568 |
+| c022bc20 | boot_candidate_c022bc20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 27 direct CALLP sites | guess | `c022bc20 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb570; CALLP at c01fb574; CALLP at c01fb584; CALLP at c01fb640; CALLP at c01fb648; CALLP at c01fb654; CALLP at c01fb688; CALLP at c01fb690; CALLP at c01fbaa4; CALLP at c01fbaac; CALLP at c01fbab8; CALLP at c01fbc4c; CALLP at c01fbc58; CALLP at c01fbc64; CALLP at c01fbc6c; CALLP at c01fbc74; CALLP at c01fbc80; CALLP at c01fbc88; CALLP at c01fbc90; CALLP at c01fbc98; CALLP at c01fbca4; CALLP at c01fbcac; CALLP at c01fbcb4; CALLP at c01fbcb8; CALLP at c01fbcc8; CALLP at c022bce4; CALLP at c022bcfa |
+| c022bc84 | boot_candidate_c022bc84 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c022bc84 CALLP.S1      0xc020d6c0,A3`; CALLP at c01fb5a4; CALLP at c01fb658; CALLP at c01fbb40 |
+| c022bcec | boot_candidate_c022bcec | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022bcec STW.D2T2      B3,*B15--[2]`; CALLP at c01fbcd8 |
+| c022bd20 | boot_candidate_c022bd20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022bd20 MV.L1X        B15,A15`; CALLP at c022b2c4 |
+| c022bdac | boot_candidate_c022bdac | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022bdac CALLP.S1      0xc020d6c0,A3`; CALLP at c0201524 |
+| c022be20 | boot_candidate_c022be20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 1 direct CALLP sites | guess | `c022be20 CALLP.S1      0xc020d6c0,A3`; CALLP at c022bd74 |
+| c022be60 | boot_candidate_c022be60 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022be60 CALLP.S2      0xc0207c40,B3`; materialized pointer B5 at c0208394; materialized pointer A5 at c020c370 |
+| c022be80 | boot_candidate_c022be80 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 3 direct CALLP sites | guess | `c022be80 STW.D2T2      B3,*B15--[2]`; CALLP at c01fda74; CALLP at c01fdae8; CALLP at c01fdd14 |
+| c022d5f0 | boot_candidate_c022d5f0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d5f0 [ A0]  STDW.D1T1     A1:A0,*-A8[A0]`; materialized pointer A6 at c02008c4 |
+| c022d840 | boot_candidate_c022d840 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d840 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d84c |
+| c022d860 | boot_candidate_c022d860 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d860 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d86c |
+| c022d8a0 | boot_candidate_c022d8a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d8a0 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d8ac |
+| c022d8c0 | boot_candidate_c022d8c0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d8c0 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d8cc |
+| c022d8e0 | boot_candidate_c022d8e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d8e0 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d8ec |
+| c022d900 | boot_candidate_c022d900 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d900 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d90c |
+| c022d920 | boot_candidate_c022d920 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d920 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d92c |
+| c022d940 | boot_candidate_c022d940 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d940 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d94c |
+| c022d960 | boot_candidate_c022d960 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d960 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d96c |
+| c022d980 | boot_candidate_c022d980 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d980 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d98c |
+| c022d9a0 | boot_candidate_c022d9a0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d9a0 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d9ac |
+| c022d9e0 | boot_candidate_c022d9e0 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022d9e0 STW.D2T2      B0,*B15--[1]`; materialized pointer B0 at c022d9ec |
+| c022ddcc | boot_candidate_c022ddcc | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022ddcc [ A0]  MPYLUHS.M2    B31,B7,B0`; materialized pointer B0 at c01fea50 |
+| c022dde8 | boot_candidate_c022dde8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022dde8 [ A0]  LMBD.L1       A28,A7,A0`; materialized pointer B0 at c01f8c0c |
+| c022de04 | boot_candidate_c022de04 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022de04 [ A0]  LDDW.D1T1     *-A7[27],A1:A0`; materialized pointer A7 at c01f60e4 |
+| c022de20 | boot_candidate_c022de20 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022de20 [ A0]  CLR.S1        A8,0,10,A0`; materialized pointer B5 at c02009f4 |
+| c022de38 | boot_candidate_c022de38 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022de38 [ A0]  CMPEQSP.S2X   B30,A7,B0`; materialized pointer B0 at c01fddc4 |
+| c022de50 | boot_candidate_c022de50 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022de50 [ A0]  LDW.D1T1      *A8++[0],A0`; materialized pointer B5 at c020154c |
+| c022de64 | boot_candidate_c022de64 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022de64 [ A0]  LDW.D2T2      *+B14[8116],B0`; materialized pointer B5 at c01fb408 |
+| c022e484 | boot_candidate_c022e484 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e484 [!B1]  MPYI.M1       A16,A0,A2`; .word at c022e57c |
+| c022e4b4 | boot_candidate_c022e4b4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e4b4 MPYI.M1       A0,A0,A0`; .word at c022e58c |
+| c022e4c8 | boot_candidate_c022e4c8 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e4c8 [ A0]  MPYLHU.M1X    A4,B8,A0`; materialized pointer B5 at c0208248 |
+| c022e4d4 | boot_candidate_c022e4d4 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e4d4 SMPYH.M1      A8,A0,A0`; .word at c022e594; materialized pointer A6 at c020824c |
+| c022e504 | boot_candidate_c022e504 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e504 NOP`; .word at c022e5b4 |
+| c022e514 | boot_candidate_c022e514 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e514 NOP`; .word at c022e5c4 |
+| c022e524 | boot_candidate_c022e524 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e524 NOP`; .word at c022e5d4 |
+| c022e534 | boot_candidate_c022e534 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e534 NOP`; .word at c022e5e4 |
+| c022e544 | boot_candidate_c022e544 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e544 NOP`; .word at c022e5f4 |
+| c022e554 | boot_candidate_c022e554 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e554 NOP`; .word at c022e604 |
+| c022e564 | boot_candidate_c022e564 | Role unknown; size uncertain; strings unverified; MMIO unassigned; 0 direct CALLP sites | guess | `c022e564 [ A0]  MIN2.S1X      A22,B8,A0`; materialized pointer A3 at c0208258 |
+
+## Open questions
+
+All entries require control-flow and semantic review before naming or promotion. No next-target distance is a function size. See docs/helpers/CODEX_REVIEW.md for manual samples and exclusions.
