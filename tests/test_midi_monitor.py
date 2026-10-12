@@ -140,12 +140,14 @@ class TestMidiMapping(unittest.TestCase):
             self.assertFalse(ev.cid.startswith("unmapped"))
 
     def test_safety_grep_no_output_operations(self):
-        """Strict check that mapping module contains zero output/send calls."""
-        mod_file = Path(__file__).resolve().parents[1] / "tools" / "cf_midi_mapping.py"
-        text = mod_file.read_text(encoding="utf-8")
-        forbidden = ["open_output", "Output(", "pedal_g1"]
-        for bad in forbidden:
-            self.assertNotIn(bad, text, f"Found forbidden term '{bad}' in cf_midi_mapping.py")
+        """Strict check that both mapping and GUI monitor contain zero output/send calls."""
+        root_tools = Path(__file__).resolve().parents[1] / "tools"
+        for fname in ["cf_midi_mapping.py", "cf_midi_monitor.py"]:
+            mod_file = root_tools / fname
+            text = mod_file.read_text(encoding="utf-8")
+            forbidden = ["open_output", ".send(", "Output(", "pedal_g1"]
+            for bad in forbidden:
+                self.assertNotIn(bad, text, f"Found forbidden term '{bad}' in {fname}")
 
 
 if __name__ == "__main__":

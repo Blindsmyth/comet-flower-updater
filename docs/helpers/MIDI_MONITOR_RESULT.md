@@ -59,3 +59,27 @@ Implemented:
 - [`tests/test_midi_monitor.py`](file:///c:/Users/z/Documents/zoom%20project/tests/test_midi_monitor.py):
   - 9 unit tests covering all 17 controls, raw and mido CC decoding, naming persistence, CSV export, Learn mode, and safety verification.
   - All 9 tests passed. Full test suite: 86 passed.
+
+## M2. Receive-Only GUI Application (`tools/cf_midi_monitor.py`)
+
+Implemented:
+- [`tools/cf_midi_monitor.py`](file:///c:/Users/z/Documents/zoom%20project/tools/cf_midi_monitor.py):
+  - **Port Selector**: Enumerates input ports via `mido.get_input_names()`, prioritizing `ZOOM G` prefix. Connect/Disconnect toggle with background thread listening via non-blocking `iter_pending()`.
+  - **Table View**: 17 rows corresponding to the physical controls, displaying Control ID, CC, User-Editable Name, Live State (PRESSED/RELEASED or continuous value), visual level bar, hardware pin/event mapping, and interactive "Learn" button.
+  - **Live Feedback**: Row temporarily flashes green upon receiving an incoming message.
+  - **Event Log**: Real-time scrolling text log showing microsecond-level timestamps, raw hex bytes (e.g. `B0 14 7F`), resolved custom control name, and value.
+  - **Learn Mode**: Clicking "Learn" on any control engages Learn mode. The next incoming CC is bound to that control ID and persisted in the mapping.
+  - **Inline Editing**: Double-clicking on any control name opens an edit dialog to rename the control.
+  - **Persistence**: "Save Names" writes custom names to `build/loader/midi_names.json`. Existing names are loaded automatically on launch.
+  - **DAW Export**: "Export CSV" writes a full mapping CSV (`Index,Control_ID,Name,CC,Type,Pin_Desc`) for host/DAW mapping.
+  - **Offline Simulation**: "Simulate Test" dispatches standard 15-event test sequence exercising buttons, knobs, and expression pedal to verify UI responsiveness without hardware connected.
+  - **Safety Compliance**: Static grep assertion verifies complete absence of `open_output`, `.send(`, `Output(`, and `pedal_g1`. The application is strictly receive-only.
+
+### Hardware Validation Card (Owner Action Item)
+When testing on the physical pedal with controller firmware:
+1. Hold the entry button (`GPIO 0` / Rhythm-Looper button, CC 31) while powering on until the logo finishes displaying.
+2. Launch `python tools/cf_midi_monitor.py`.
+3. Select `ZOOM G Series` input port and click **Connect**.
+4. Press each footswitch and panel button, rotate each encoder knob, and move the expression pedal one at a time.
+5. Double-click each control row to name the physical legend on the pedal casing.
+6. Click **Save Names** and **Export CSV**.
