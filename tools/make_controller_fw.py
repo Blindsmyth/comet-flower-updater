@@ -11,7 +11,7 @@ Steps, each verified:
     image at CTL_BASE (free SDRAM, recon/17 "Placement in SDRAM");
  2. insert one AIS section-load record for that image just before the
     final jump-and-close command;
- 3. redirect the four stock CALLPs (HOOKS) to the controller entry points,
+ 3. redirect the five stock CALLPs (HOOKS) to the controller entry points,
     keeping each word's unit and parallel bits;
  4. re-walk the AIS, check that only the expected bytes changed, and
     decode each retargeted CALLP to its controller entry point. dis6x
@@ -48,6 +48,7 @@ HOOKS = [
     (0xc0134e14, 0x28d90, 0x1050c512, 0xc015d428, "controller_start"),
     (0xc0134df0, 0x28d6c, 0x1fe64012, 0xc0127fe0, "controller_dispatch"),
     (0xc015ffd0, 0x53f4c, 0x1fd5e693, 0xc014aef4, "controller_analog"),
+    (0xc01600b0, 0x5402c, 0x1fd5ca92, 0xc014aef4, "controller_analog"),
     (0xc0149d4c, 0x3dcc8, 0x10007193, 0xc014a0cc, "controller_worker_wait"),
 ]
 

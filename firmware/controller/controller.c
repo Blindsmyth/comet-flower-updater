@@ -1,10 +1,11 @@
 /* USB MIDI controller mode for the G1X Four main firmware (v2.00).
  *
  * Loaded by an extra AIS section into free SDRAM (see controller.cmd and
- * recon/17). Four stock calls are redirected here by direct CALLP:
+ * recon/17). Five stock calls are redirected here by direct CALLP:
  *   c0134e14 CALLP c015d428 -> controller_start    (MainApp start-up)
  *   c0134df0 CALLP c0127fe0 -> controller_dispatch (MainApp event dispatch)
  *   c015ffd0 CALLP c014aef4 -> controller_analog   (calibrated expression)
+ *   c01600b0 CALLP c014aef4 -> controller_analog   (second AD channel)
  *   c0149d4c CALLP c014a0cc -> controller_worker_wait (MIDI worker)
  *
  * The state is initialised by the AIS load itself (mode 0 = stock), so any
