@@ -14,24 +14,26 @@ import csv
 from datetime import datetime
 import json
 from pathlib import Path
+from queue import Empty, Queue
 import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from typing import Dict, List, Optional
+from typing import Any, Dict, Optional
 
 try:
     import mido
 except ImportError:
     mido = None
 
-from tools.cf_midi_mapping import (
-    ControlDef,
-    ControlEvent,
-    ControlKind,
-    DEFAULT_CONTROLS,
-    MidiStateManager,
-)
+try:
+    from tools.cf_midi_mapping import ControlEvent, ControlKind, MidiStateManager
+except ModuleNotFoundError as exc:
+    if exc.name != "tools":
+        raise
+    # Running `python tools/cf_midi_monitor.py` puts tools/, not its parent,
+    # on sys.path. Keep the documented direct launch working.
+    from cf_midi_mapping import ControlEvent, ControlKind, MidiStateManager
 
 PORT_PREFIX = "ZOOM G"
 DEFAULT_NAMES_PATH = Path(__file__).resolve().parents[1] / "build" / "loader" / "midi_names.json"
@@ -41,13 +43,14 @@ class MidiMonitorApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Comet Flower ZG1X4 - MIDI Controller Monitor")
-        self.root.geometry("960 drivingx700".replace("driving", ""))
+        self.root.geometry("960x700")
         self.root.minsize(800, 560)
 
         self.state_mgr = MidiStateManager()
         self.input_port: Optional[Any] = None
         self.listen_thread: Optional[threading.Thread] = None
         self.stop_listening = threading.Event()
+        self.incoming = Queue()
         self.highlight_timers: Dict[str, str] = {}
 
         # Load existing names if present
@@ -56,6 +59,7 @@ class MidiMonitorApp:
 
         self._build_ui()
         self._refresh_ports()
+        self.incoming_timer = self.root.after(10, self._poll_incoming)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self):
@@ -154,7 +158,7 @@ class MidiMonitorApp:
                 iid=c.cid,
                 values=(
                     c.cid,
-                    f"CC {c.cc}",
+                    f"CC {self.state_mgr.get_cc(c.cid)}" if self.state_mgr.get_cc(c.cid) is not None else "Unbound",
                     self.state_mgr.get_name(c.cid),
                     st_text,
                     bar_text,
@@ -204,8 +208,13 @@ class MidiMonitorApp:
 
         try:
             self.input_port = mido.open_input(port_name)
-            self.stop_listening.clear()
-            self.listen_thread = threading.Thread(target=self._listen_worker, daemon=True)
+            # Never clear an old session's event: its worker may still be in a
+            # backend read while the owner disconnects and reconnects.
+            self.stop_listening = threading.Event()
+            self.listen_thread = threading.Thread(
+                target=self._listen_worker,
+                args=(self.input_port, self.stop_listening), daemon=True,
+            )
             self.listen_thread.start()
 
             self.btn_connect.configure(text="Disconnect")
@@ -214,6 +223,12 @@ class MidiMonitorApp:
             self.status_var.set(f"Connected to input port: {port_name} (Receive Only)")
             self._log_line(f"--- Connected to input port: {port_name} ---")
         except Exception as e:
+            self.stop_listening.set()
+            if self.input_port is not None:
+                try:
+                    self.input_port.close()
+                except Exception:
+                    pass
             self.input_port = None
             messagebox.showerror("Connection Error", f"Failed to open port '{port_name}': {e}")
 
@@ -232,17 +247,33 @@ class MidiMonitorApp:
         self.status_var.set("Disconnected.")
         self._log_line("--- Disconnected ---")
 
-    def _listen_worker(self):
-        while not self.stop_listening.is_set():
-            if self.input_port is None:
-                break
+    def _listen_worker(self, port, stop):
+        while not stop.is_set():
             try:
-                for msg in self.input_port.iter_pending():
-                    self.root.after(0, self._handle_incoming_mido, msg)
+                for msg in port.iter_pending():
+                    if stop.is_set():
+                        return
+                    self.incoming.put((stop, "message", msg))
             except Exception as e:
-                self.root.after(0, self._log_line, f"MIDI read error: {e}")
+                self.incoming.put((stop, "error", str(e)))
                 break
-            time.sleep(0.005)
+            stop.wait(0.005)
+
+    def _poll_incoming(self):
+        # Only the Tk thread touches widgets or mapping state. Reject both
+        # messages and errors queued by disconnected sessions.
+        for _ in range(256):
+            try:
+                stop, kind, payload = self.incoming.get_nowait()
+            except Empty:
+                break
+            if stop is not self.stop_listening or stop.is_set():
+                continue
+            if kind == "message":
+                self._handle_incoming_mido(payload)
+            else:
+                self._log_line(f"MIDI read error: {payload}")
+        self.incoming_timer = self.root.after(10, self._poll_incoming)
 
     def _handle_incoming_mido(self, msg):
         ev = self.state_mgr.process_mido_message(msg)
@@ -252,6 +283,10 @@ class MidiMonitorApp:
             self._log_line(f"Raw MIDI: {msg}")
 
     def _apply_event(self, ev: ControlEvent):
+        # Learn can unbind a previous row, so refresh every displayed CC.
+        for control in self.state_mgr.controls:
+            cc = self.state_mgr.get_cc(control.cid)
+            self.tree.set(control.cid, "cc", f"CC {cc}" if cc is not None else "Unbound")
         # Update row if mapped
         if ev.cid in self.tree.get_children():
             ctrl = self.state_mgr.controls_by_cid.get(ev.cid)
@@ -263,7 +298,6 @@ class MidiMonitorApp:
                 bar_len = int((ev.value / 127.0) * 10)
                 bar_text = "[" + "#" * bar_len + " " * (10 - bar_len) + f"] {ev.value}"
 
-            self.tree.set(ev.cid, "cc", f"CC {ev.cc}")
             self.tree.set(ev.cid, "state", st_text)
             self.tree.set(ev.cid, "bar", bar_text)
             self.tree.set(ev.cid, "name", self.state_mgr.get_name(ev.cid))
@@ -380,6 +414,7 @@ class MidiMonitorApp:
 
     def _on_close(self):
         self._disconnect_port()
+        self.root.after_cancel(self.incoming_timer)
         self.root.destroy()
 
 

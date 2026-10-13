@@ -30,8 +30,8 @@ class ControlDef:
 
 # The 17 standard controls on the G1X Four controller firmware
 DEFAULT_CONTROLS: Tuple[ControlDef, ...] = (
-    ControlDef("fs_0", "Footswitch Left", 20, ControlKind.BUTTON, 0, "GPIO3 / Event 0..1"),
-    ControlDef("fs_1", "Footswitch Right", 21, ControlKind.BUTTON, 0, "GPIO5 / Event 2..3"),
+    ControlDef("fs_0", "Footswitch GPIO3", 20, ControlKind.BUTTON, 0, "GPIO3 / Event 0..1"),
+    ControlDef("fs_1", "Footswitch GPIO5", 21, ControlKind.BUTTON, 0, "GPIO5 / Event 2..3"),
     ControlDef("btn_0", "Button 0 (GPIO 4)", 22, ControlKind.BUTTON, 0, "Panel button bit 0"),
     ControlDef("btn_1", "Button 1 (GPIO 2)", 23, ControlKind.BUTTON, 0, "Panel button bit 1"),
     ControlDef("btn_2", "Button 2 (GPIO 6)", 24, ControlKind.BUTTON, 0, "Panel button bit 2"),
@@ -82,6 +82,9 @@ class MidiStateManager:
         ctrl = self.controls_by_cid.get(cid)
         return ctrl.default_name if ctrl else cid
 
+    def get_cc(self, cid: str) -> Optional[int]:
+        return next((cc for cc, mapped_cid in self.cc_to_cid.items() if mapped_cid == cid), None)
+
     def set_name(self, cid: str, name: str) -> None:
         if cid in self.controls_by_cid:
             self.custom_names[cid] = name.strip()
@@ -94,7 +97,10 @@ class MidiStateManager:
         self.learn_target_cid = None
 
     def process_raw(self, cc: int, value: int, timestamp: Optional[float] = None, channel: int = 0) -> Optional[ControlEvent]:
-        """Process incoming CC and value numbers."""
+        """Process firmware CCs on MIDI channel 1 (zero-indexed channel 0)."""
+        # Other channels remain raw in the GUI, including while Learn is armed.
+        if channel != 0:
+            return None
         ts = time.monotonic() if timestamp is None else timestamp
         raw_hex = f"B{channel:X} {cc:02X} {value:02X}"
 
@@ -103,13 +109,11 @@ class MidiStateManager:
             target_cid = self.learn_target_cid
             self.learn_target_cid = None
 
-            # Remove previous binding of this CC if any
-            old_cid = self.cc_to_cid.get(cc)
-            if old_cid and old_cid != target_cid:
-                # Displaced control gets unmapped from this CC
-                pass
-
-            # Update mapping
+            # A control and a CC each have at most one active binding.
+            self.cc_to_cid = {
+                existing_cc: cid for existing_cc, cid in self.cc_to_cid.items()
+                if cid != target_cid and existing_cc != cc
+            }
             self.cc_to_cid[cc] = target_cid
 
             ctrl = self.controls_by_cid[target_cid]
@@ -173,7 +177,8 @@ class MidiStateManager:
     def save_names(self, path: Union[str, Path]) -> None:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        data = {cid: self.custom_names.get(cid, "") for cid in self.controls_by_cid}
+        data: Dict[str, Any] = {cid: self.custom_names.get(cid, "") for cid in self.controls_by_cid}
+        data["_cc_bindings"] = {cid: self.get_cc(cid) for cid in self.controls_by_cid}
         p.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def load_names(self, path: Union[str, Path]) -> bool:
@@ -186,6 +191,14 @@ class MidiStateManager:
                 for cid, name in data.items():
                     if cid in self.controls_by_cid and isinstance(name, str):
                         self.custom_names[cid] = name.strip()
+                bindings = data.get("_cc_bindings")
+                if isinstance(bindings, dict) and set(bindings) == set(self.controls_by_cid):
+                    active = [cc for cc in bindings.values() if cc is not None]
+                    if (all(type(cc) is int and 0 <= cc <= 127 for cc in active)
+                            and len(active) == len(set(active))):
+                        self.cc_to_cid = {
+                            cc: cid for cid, cc in bindings.items() if cc is not None
+                        }
                 return True
         except Exception:
             pass
@@ -197,7 +210,8 @@ class MidiStateManager:
         lines = ["Index,Control_ID,Name,CC,Type,Pin_Desc"]
         for idx, c in enumerate(self.controls):
             name = self.get_name(c.cid).replace('"', '""')
-            lines.append(f'{idx},{c.cid},"{name}",{c.cc},{c.kind.value},"{c.pin_desc}"')
+            cc = self.get_cc(c.cid)
+            lines.append(f'{idx},{c.cid},"{name}",{cc if cc is not None else ""},{c.kind.value},"{c.pin_desc}"')
         p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     @staticmethod

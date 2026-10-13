@@ -2,7 +2,10 @@
 
 from pathlib import Path
 import tempfile
+import threading
+from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock, patch
 
 from tools.cf_midi_mapping import (
     ControlKind,
@@ -92,7 +95,7 @@ class TestMidiMapping(unittest.TestCase):
         self.mgr.set_name("btn_9", "Rhythm Toggle")
         self.assertEqual(self.mgr.get_name("fs_0"), "Preset Down")
         self.assertEqual(self.mgr.get_name("btn_9"), "Rhythm Toggle")
-        self.assertEqual(self.mgr.get_name("fs_1"), "Footswitch Right")
+        self.assertEqual(self.mgr.get_name("fs_1"), "Footswitch GPIO5")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             json_path = Path(tmpdir) / "midi_names.json"
@@ -105,7 +108,26 @@ class TestMidiMapping(unittest.TestCase):
             self.assertTrue(loaded)
             self.assertEqual(mgr2.get_name("fs_0"), "Preset Down")
             self.assertEqual(mgr2.get_name("btn_9"), "Rhythm Toggle")
-            self.assertEqual(mgr2.get_name("fs_1"), "Footswitch Right")
+            self.assertEqual(mgr2.get_name("fs_1"), "Footswitch GPIO5")
+
+    def test_other_channels_do_not_change_controls_or_consume_learn(self):
+        values = self.mgr.values.copy()
+        pressed = self.mgr.pressed.copy()
+        bindings = self.mgr.cc_to_cid.copy()
+        for channel in range(1, 16):
+            self.assertIsNone(self.mgr.process_raw(20, 127, channel=channel))
+            self.mgr.start_learn("btn_3")
+            msg = SimpleNamespace(type="control_change", channel=channel,
+                                  control=55, value=127)
+            self.assertIsNone(self.mgr.process_mido_message(msg))
+            self.assertEqual(self.mgr.learn_target_cid, "btn_3")
+            self.assertEqual(self.mgr.values, values)
+            self.assertEqual(self.mgr.pressed, pressed)
+            self.assertEqual(self.mgr.cc_to_cid, bindings)
+        learned = self.mgr.process_raw(55, 127, channel=0)
+        self.assertEqual(learned.cid, "btn_3")
+        self.assertEqual(learned.raw_bytes, "B0 37 7F")
+        self.assertIsNone(self.mgr.learn_target_cid)
 
     def test_export_csv(self):
         self.mgr.set_name("expr", "Wah / Volume")
@@ -130,6 +152,19 @@ class TestMidiMapping(unittest.TestCase):
         ev2 = self.mgr.process_raw(55, 0)
         self.assertEqual(ev2.cid, "btn_3")
         self.assertEqual(ev2.display_value, "RELEASED")
+        self.assertEqual(self.mgr.get_cc("btn_3"), 55)
+        self.assertTrue(self.mgr.process_raw(25, 127).cid.startswith("unmapped"))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            names_path = Path(tmpdir) / "names.json"
+            csv_path = Path(tmpdir) / "mapping.csv"
+            self.mgr.save_names(names_path)
+            restored = MidiStateManager()
+            self.assertTrue(restored.load_names(names_path))
+            self.assertEqual(restored.get_cc("btn_3"), 55)
+            self.assertTrue(restored.process_raw(25, 127).cid.startswith("unmapped"))
+            restored.export_csv(csv_path)
+            self.assertIn('btn_3,"Button 3 (GPIO 27)",55,', csv_path.read_text(encoding="utf-8"))
 
     def test_simulation_sequence(self):
         seq = MidiStateManager.simulation_sequence()
@@ -148,6 +183,111 @@ class TestMidiMapping(unittest.TestCase):
             forbidden = ["open_output", ".send(", "Output(", "pedal_g1"]
             for bad in forbidden:
                 self.assertNotIn(bad, text, f"Found forbidden term '{bad}' in {fname}")
+
+
+class TestMidiMonitorGui(unittest.TestCase):
+    """Exercise GUI connection/dispatch code without Tk windows or MIDI hardware."""
+
+    def test_reconnect_rejects_old_messages_errors_and_blocked_reader(self):
+        from tools.cf_midi_monitor import MidiMonitorApp
+
+        class FakePort:
+            def __init__(self, message, fail_on_release=False):
+                self.message = message
+                self.fail_on_release = fail_on_release
+                self.reads = 0
+                self.blocked = threading.Event()
+                self.release = threading.Event()
+                self.closed = False
+
+            def iter_pending(self):
+                self.reads += 1
+                yield self.message
+                self.blocked.set()
+                if not self.release.wait(5):
+                    raise RuntimeError("fake-port test timed out")
+                if self.fail_on_release:
+                    raise RuntimeError("old port closed")
+                yield self.message
+
+            def close(self):
+                self.closed = True
+
+        for fail_on_release in (False, True):
+            with self.subTest(fail_on_release=fail_on_release):
+                old = FakePort(SimpleNamespace(type="control_change", channel=0,
+                                               control=20, value=127), fail_on_release)
+                new = FakePort(SimpleNamespace(type="control_change", channel=0,
+                                               control=21, value=127))
+                root = Mock()
+                main_thread = threading.get_ident()
+
+                def after(*args):
+                    self.assertEqual(threading.get_ident(), main_thread)
+                    return "timer"
+
+                root.after.side_effect = after
+
+                def build_ui(app):
+                    app.port_combo = Mock()
+                    app.port_combo.get.return_value = "Fake input"
+                    app.btn_connect = Mock()
+                    app.btn_refresh = Mock()
+                    app.status_var = Mock()
+                    app.log_text = Mock()
+
+                with tempfile.TemporaryDirectory() as tmpdir, \
+                        patch("tools.cf_midi_monitor.DEFAULT_NAMES_PATH", Path(tmpdir) / "names.json"), \
+                        patch.object(MidiMonitorApp, "_build_ui", build_ui), \
+                        patch.object(MidiMonitorApp, "_refresh_ports"), \
+                        patch("tools.cf_midi_monitor.mido") as midi:
+                    midi.open_input.side_effect = [old, new]
+                    app = MidiMonitorApp(root)
+                    app._apply_event = Mock()
+                    app._log_line = Mock()
+                    workers = []
+                    try:
+                        app._connect_port()
+                        workers.append(app.listen_thread)
+                        self.assertTrue(old.blocked.wait(2))
+                        old_stop = app.stop_listening
+                        app._disconnect_port()
+                        app._connect_port()
+                        workers.append(app.listen_thread)
+                        self.assertTrue(new.blocked.wait(2))
+                        self.assertIsNot(app.stop_listening, old_stop)
+                        self.assertTrue(old_stop.is_set())
+                        self.assertTrue(old.closed)
+                        old.release.set()
+                        workers[0].join(2)
+                        self.assertFalse(workers[0].is_alive())
+                        self.assertEqual(old.reads, 1)
+                        self.assertEqual(new.reads, 1)
+
+                        app._poll_incoming()
+                        self.assertEqual(app.state_mgr.values["fs_0"], 0)
+                        self.assertEqual(app.state_mgr.values["fs_1"], 127)
+                        app._apply_event.assert_called_once()
+                        self.assertEqual(app._apply_event.call_args.args[0].cid, "fs_1")
+                        self.assertFalse(any("MIDI read error" in str(call)
+                                             for call in app._log_line.call_args_list))
+
+                        app.state_mgr.start_learn("btn_3")
+                        app._handle_incoming_mido(SimpleNamespace(
+                            type="control_change", channel=1, control=55, value=127))
+                        self.assertEqual(app.state_mgr.learn_target_cid, "btn_3")
+                        self.assertTrue(app._log_line.call_args.args[0].startswith("Raw MIDI:"))
+                        app._apply_event.assert_called_once()
+                        app._on_close()
+                        root.after_cancel.assert_called_once_with("timer")
+                        root.destroy.assert_called_once()
+                    finally:
+                        app.stop_listening.set()
+                        old.release.set()
+                        new.release.set()
+                        for worker in workers:
+                            worker.join(2)
+                            self.assertFalse(worker.is_alive())
 
 
 if __name__ == "__main__":

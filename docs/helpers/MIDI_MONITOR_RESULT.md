@@ -25,8 +25,8 @@ All messages arrive on MIDI Channel 1 (status `0xB0`):
 
 | Index | Control ID | Default Label | CC | Values | Physical Description / Pin |
 |---|---|---|---|---|---|
-| 0 | `fs_0` | Footswitch Left | 20 | 127 press, 0 release | Footswitch (GPIO3 / event 0..1) |
-| 1 | `fs_1` | Footswitch Right | 21 | 127 press, 0 release | Footswitch (GPIO5 / event 2..3) |
+| 0 | `fs_0` | Footswitch GPIO3 | 20 | 127 press, 0 release | Footswitch (GPIO3 / event 0..1; physical side unverified) |
+| 1 | `fs_1` | Footswitch GPIO5 | 21 | 127 press, 0 release | Footswitch (GPIO5 / event 2..3; physical side unverified) |
 | 2 | `btn_0` | Button 0 (GPIO 4) | 22 | 127 press, 0 release | Panel button (bitmap bit 0, GPIO 4) |
 | 3 | `btn_1` | Button 1 (GPIO 2) | 23 | 127 press, 0 release | Panel button (bitmap bit 1, GPIO 2) |
 | 4 | `btn_2` | Button 2 (GPIO 6) | 24 | 127 press, 0 release | Panel button (bitmap bit 2, GPIO 6) |
@@ -67,7 +67,7 @@ Implemented:
   - **Port Selector**: Enumerates input ports via `mido.get_input_names()`, prioritizing `ZOOM G` prefix. Connect/Disconnect toggle with background thread listening via non-blocking `iter_pending()`.
   - **Table View**: 17 rows corresponding to the physical controls, displaying Control ID, CC, User-Editable Name, Live State (PRESSED/RELEASED or continuous value), visual level bar, hardware pin/event mapping, and interactive "Learn" button.
   - **Live Feedback**: Row temporarily flashes green upon receiving an incoming message.
-  - **Event Log**: Real-time scrolling text log showing microsecond-level timestamps, raw hex bytes (e.g. `B0 14 7F`), resolved custom control name, and value.
+  - **Event Log**: Real-time scrolling text log showing millisecond-resolution timestamps, raw hex bytes (e.g. `B0 14 7F`), resolved custom control name, and value.
   - **Learn Mode**: Clicking "Learn" on any control engages Learn mode. The next incoming CC is bound to that control ID and persisted in the mapping.
   - **Inline Editing**: Double-clicking on any control name opens an edit dialog to rename the control.
   - **Persistence**: "Save Names" writes custom names to `build/loader/midi_names.json`. Existing names are loaded automatically on launch.
@@ -83,3 +83,18 @@ When testing on the physical pedal with controller firmware:
 4. Press each footswitch and panel button, rotate each encoder knob, and move the expression pedal one at a time.
 5. Double-click each control row to name the physical legend on the pedal casing.
 6. Click **Save Names** and **Export CSV**.
+
+## Codex review — 2026-10-12
+
+- The documented direct launch initially failed with `ModuleNotFoundError: tools`. The monitor now supports direct script launch as well as package import; a subprocess smoke test reached the window.
+- Learn initially left the target's old CC active and saved/exported only default assignments. Learn now keeps one active binding per control and CC, stores bindings alongside names in the JSON file, and exports active bindings. Old name-only JSON files still load.
+- The GPIO3/GPIO5 footswitch sides remain unverified. Their default labels now use GPIO names until the owner checks the physical pedal.
+- Offline verification: 86 tests passed. Input-port behavior and physical legends still require the owner test above.
+
+## Reconnect and channel fixes — 2026-10-13
+
+- Each connection now owns a separate stop event and captures its input port in its worker. Disconnect permanently stops that session; a quick reconnect cannot revive the old worker or let it read the new port.
+- Workers enqueue messages and errors without calling Tk. The GUI drains the queue on its own thread and rejects messages/errors from disconnected sessions. Closing cancels the queue timer; a backend read finishing later cannot touch the destroyed window.
+- Only MIDI channel 1 (zero-indexed channel 0, status `B0`) can update the fixed firmware mapping or complete Learn. Messages on channels 2–16 appear as raw MIDI and leave control state, bindings and the armed Learn target untouched.
+- Offline regression coverage now includes a fake-port GUI connection/dispatch test with real listener threads and stub widgets. It holds an old read open across reconnect, checks queued stale messages and late read errors are discarded, checks the new port has exactly one reader and its message is applied once, and verifies close cleanup. A channel regression exercises channels 2–16 and subsequent channel-1 Learn.
+- Targeted validation: `.venv/Scripts/python.exe -m pytest tests/test_midi_monitor.py -q` — **11 passed, 2 subtests passed**. Tests use no MIDI hardware. Physical host behavior and control legends remain unverified.
