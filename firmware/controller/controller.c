@@ -184,8 +184,9 @@ int controller_worker_wait(u32 event, u32 mask, u32 mode,
         sent++;
     }
     if (sent) {
-        /* c014a0cc writes -50 to *bits on timeout. Passing -49 after a
-           blind OR would feed a negative value into c0149cac/c0149ce8. */
+        /* c014a0cc returns -50 on timeout and leaves our prezeroed *bits
+           unchanged. Defensively normalize nonpositive output before
+           setting the drain bit; preserve positive stock event bits. */
         u32 observed = *bits;
         *bits = ((int)observed > 0 ? observed : 0u) | 1u;
     }

@@ -4,6 +4,23 @@ This record identifies a **DO_NOT_FLASH** candidate. It was compiled and
 packaged offline on 2026-10-12. No pedal or USB host test was performed. The
 earlier `Comet Flower ZG1X4 Controller TEST Updater.exe` remains intact.
 
+## Recheck on 2026-10-13
+
+The packaged executable still hashes to `91b9894e30946bd6205a1dab699e5900f1b9834ae6c513fad60c7fae4ff7644a`;
+its resource 0x81 still hashes to `0ecddd890ed7925471a00a749a11ccc3b8eda9c2b646ef1795bcaa81bcfc89e2`.
+The loose `build/fw/res1_controller_worker_candidate.bin` now hashes to
+`f1478153ed179d167a799ba4f94aedd3a1a4550f20ab771cfc38bc84b9d4c021`.
+They have equal lengths (496,080 bytes), but differ at 180 byte positions.
+In particular, the loose image redirects the second AD call at `c01600b0`
+to `c01a0860`; the packaged image retains stock target `c014aef4` there.
+The other four listed hook targets agree. The table below records the
+original build, not the current loose file. These artifacts are not interchangeable.
+All six packaged stage-table entries pass the offline stage checker again;
+that check does not establish runtime correctness or approve flashing.
+
+The timeout interpretation below has been corrected by the delayed-branch
+audit in `docs/helpers/WORKER_ABI_AUDIT_2026-10-13.md`.
+
 ## Changes from the earlier controller
 
 - MainApp and AD publish aligned 32-bit button, knob and expression records
@@ -15,9 +32,10 @@ earlier `Comet Flower ZG1X4 Controller TEST Updater.exe` remains intact.
   retaining its argument and return contract, with timeout argument 100 in
   controller mode. The finite wait revisits pending state after a missed wake
   or reconnect. It sets output bit 0 only after appending a complete CC so
-  the stock worker drains the ring. Stock `c014a0cc` writes `-50` to the
-  output word on timeout; the wrapper now replaces that negative value with
-  `1` after an append, while preserving positive event bits.
+  the stock worker drains the ring. Stock `c014a0cc` returns `-50` on its
+  timeout path and leaves the output word unchanged. The wrapper prezeros
+  that word and sets bit 0 after an append, preserving positive event bits;
+  its negative-output normalization is defensive.
 - The worker holds the stock inner ring lock B14[89] around a free-space
   check and three calls to stock byte append `c0149d74`. It rolls back the
   write index if an append unexpectedly fails before releasing the lock.
@@ -64,23 +82,22 @@ not the compiled worker or host delivery.
 
 ## Required before a pedal test
 
-1. Finish the worker wrapper's runtime ABI proof: timeout output `-50` is
-   traced at `c014a102..c014a10e`, and the compiled wrapper's signed check
-   is visible at `c01a058c..c01a0598`. Confirm the return behavior, stack use
-   and worst-case scheduling cost. The patched call packet itself has been
-   independently disassembled, as described above.
+1. Runtime ABI proof & timeout behavior (**audited 2026-10-13** in
+   `docs/helpers/WORKER_ABI_AUDIT_2026-10-13.md`): timeout return `-50` is
+   confirmed via delayed branch at `c014a106` (store at `c014a10e` skipped,
+   output word left untouched). Wrapper stack layout balances 72 bytes
+   (known partial call depth 312 bytes). Timeout 100 is established as 100
+   TI SYS/BIOS Clock ticks (~100 ms). Task stack headroom beyond 312 bytes
+   remains an open audit item.
 2. Trace every writer to the port-ready fields and ring during USB
-   disconnect/reset/reconnect. Confirm that a ready port with a stale ring
-   cannot interleave an old partial MIDI message with a new CC, and that
-   `c014a240` is bounded and valid from the AD task. Audit the complete
-   B14[89] lock graph, including packetizer callbacks.
-3. Establish the timeout unit and bound the retry latency and
-   CPU cost. Check the compiled publication/consumption order under task
-   preemption, and test the real worker against ring-full, overflow, reset,
-   concurrent expression and failed-wake schedules.
-4. After those proofs, rebuild under a new hash, revalidate resources/stages,
-   then observe normal-mode boot and one controller input at a time on the
-   pedal. Do not promote this candidate based on offline success alone.
+   disconnect/reset/reconnect (**audited 2026-10-13** in
+   `docs/helpers/USB_LIFECYCLE_AUDIT_2026-10-13.md`): B14[89] lock participants
+   and event 2..8 dispatch table traced; confirmed observation gap for
+   unobserved disconnect/reconnect or event-8 reset between 100 ms worker wakes.
+   Requires generation invalidation token or reset hook (`c014a018`).
+3. Rebuild under a new candidate identity to include the second AD channel hook
+   (`c01600b0 -> c01a0860`), revalidate resources/stages, and verify SHA-256
+   hashes before any pedal test.
 
 Further trace: `c0144e6c..c0144e78` clears port pointer `[9]` and ready
 field `[3]` before later USB cleanup calls. `c014a018..c014a04c` clears the
