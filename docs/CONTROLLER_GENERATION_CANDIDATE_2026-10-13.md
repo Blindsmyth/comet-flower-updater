@@ -1,5 +1,10 @@
 # Controller generation candidate — 2026-10-13
 
+Superseded for further review by the
+[lifecycle candidate](CONTROLLER_LIFECYCLE_CANDIDATE_2026-10-13.md). This is a
+historical six-hook build record; its commands require the historical source and
+tool versions. The current verifier requires seven hooks.
+
 **DO_NOT_FLASH. Offline candidate only; no hardware approval or device actions.**
 This supersedes the October 12 candidate for further review. Its old executable
 and loose firmware were preserved under their existing names.

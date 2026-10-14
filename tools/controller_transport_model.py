@@ -67,22 +67,16 @@ class ControllerTransportModel:
             self.edges.append((index, value))
         # On overflow, latest desired state repairs a dropped release after
         # all older edges drain. Rapid taps can be lost; final state cannot.
-        if self.connected:
-            self.wake_requested = True
 
     def publish_knob(self, index, value):
         if not 0 <= index < 4 or not 0 <= value <= 127:
             raise ValueError("knob/value out of range")
         self.knobs[index] = value
-        if self.connected:
-            self.wake_requested = True
 
     def publish_expression(self, value):
         if not 0 <= value <= 127:
             raise ValueError("expression out of range")
         self.expression = value
-        if self.connected:
-            self.wake_requested = True
 
     def disconnect(self):
         self.connection_epoch += 1
@@ -97,12 +91,14 @@ class ControllerTransportModel:
     def reconnect(self):
         self.connection_epoch += 1
         self.connected = True
-        self.wake_requested = True
 
     def ring_reset(self):
         """Reset-only event: readiness remains true; worker observes a token."""
         self.connection_epoch = (self.connection_epoch + 1) & 0xFFFFFFFF
-        self.wake_requested = True
+
+    def worker_restart(self):
+        """A new consumer must replay even if task/event addresses are reused."""
+        self.observed_epoch = None
 
     def _observe_epoch(self):
         if self.observed_epoch != self.connection_epoch:
@@ -141,7 +137,7 @@ class ControllerTransportModel:
 
         `during_append` injects a producer update before acceptance to test
         that a newer absolute value remains pending. The real integration
-        must supply equivalent locking and a ring-space wake trigger.
+        must supply equivalent locking and periodic passes when no wake arrives.
         """
         if free_bytes < 0 or limit < 0:
             raise ValueError("negative capacity or limit")
@@ -178,9 +174,9 @@ class ControllerTransportModel:
             else:
                 self.enqueued_expression = value
         if self.pending():
-            if free_bytes >= 3:
+            if len(accepted) == limit and limit:
                 self.wake_requested = True
-            else:
+            if free_bytes < 3:
                 self.retry_on_space = True
         else:
             self.retry_on_space = False

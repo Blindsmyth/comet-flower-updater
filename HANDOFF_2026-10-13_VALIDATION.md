@@ -1,5 +1,22 @@
 # Handoff — offline validation phase — 2026-10-13
 
+## Current continuation: lifecycle candidate
+
+The following original checkpoint is superseded by
+[the lifecycle candidate record](docs/CONTROLLER_LIFECYCLE_CANDIDATE_2026-10-13.md).
+Current firmware removes producer/reset event posts, polls at 10 Clock ticks,
+and hooks worker creation to force replay after stock teardown/reinitialization.
+Both lifecycle hooks compile as tail branches with no added stack frame.
+The suite now passes **109 tests and 2 subtests**, and all seven hooks and updater
+resources/stages pass verification. Exact hashes and reproduction commands are
+in that record; use the named `lifecycle_controller.elf`, not an older ELF.
+
+Hardware remains deferred: finish worst-case kernel/hook stack paths and USB
+ownership/timing evidence. The interrupt-stack reservation is traced to 12 KiB;
+this is allocation evidence, not a measured margin. No device was accessed.
+
+## Original validation checkpoint (historical)
+
 ## Phase status
 
 Implementation is saved in `c72f789` (`fix: replay controller state after MIDI

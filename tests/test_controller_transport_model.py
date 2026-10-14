@@ -45,7 +45,7 @@ def test_newer_motion_survives_worker_snapshot():
     m.publish_expression(25)
     first = m.worker_step(3, during_append=lambda state: state.publish_expression(90))
     assert first == [(0xB0, 11, 25)]
-    assert m.pending() and m.wake_requested
+    assert m.pending() and not m.wake_requested
     assert m.worker_step(3) == [(0xB0, 11, 90)]
 
 
@@ -116,7 +116,7 @@ def test_reset_only_between_wakes_discards_edges_and_replays_current_state():
     m.publish_button(0, False)
     m.publish_expression(73)
     m.ring_reset()
-    assert m.connected and m.wake_requested and m.pending()
+    assert m.connected and not m.wake_requested and m.pending()
     messages = drain_all(m)
     assert (0xB0, 20, 127) not in messages
     assert (0xB0, 20, 0) in messages
@@ -140,3 +140,52 @@ def test_reset_while_full_keeps_replay_pending_and_wrap_is_observed():
     assert m.worker_step(2) == []
     assert m.retry_on_space and m.pending()
     assert len(drain_all(m)) == 16
+
+
+def test_reset_without_event_post_is_observed_on_periodic_worker_pass():
+    m = ControllerTransportModel()
+    m.publish_button(0, True)
+    m.publish_button(0, False)
+    m.publish_expression(73)
+    m.ring_reset()
+    # A lost/omitted notification cannot affect token-based reconciliation.
+    m.wake_requested = False
+    messages = drain_all(m)
+    assert (0xB0, 20, 127) not in messages
+    assert (0xB0, 20, 0) in messages
+    assert (0xB0, 11, 73) in messages
+    assert len(messages) == 17
+
+
+def test_worker_recreation_replays_without_a_reset_token_change():
+    m = ControllerTransportModel()
+    m.publish_button(2, True)
+    m.publish_knob(1, 95)
+    m.publish_expression(73)
+    drain_all(m)
+    epoch = m.connection_epoch
+    # Stock teardown/init clears the ring without calling the ring-reset hook.
+    m.publish_button(0, True)
+    m.publish_button(0, False)
+    m.worker_restart()
+    assert m.connection_epoch == epoch
+    messages = drain_all(m)
+    assert (0xB0, 22, 127) in messages
+    assert (0xB0, 20, 127) not in messages
+    assert (0xB0, 20, 0) in messages
+    assert (0xB0, 41, 95) in messages
+    assert (0xB0, 11, 73) in messages
+    assert len(messages) == 17
+
+
+def test_producer_changes_and_full_ring_retry_need_no_kernel_notifications():
+    m = ControllerTransportModel()
+    m.publish_button(0, True)
+    m.publish_knob(3, 81)
+    m.publish_expression(31)
+    assert not m.wake_requested
+    assert m.worker_step(2) == []
+    # No ring-space callback or producer post: a later timed pass must recover.
+    assert not m.wake_requested
+    assert m.worker_step(9) == [(0xB0, 20, 127), (0xB0, 43, 81), (0xB0, 11, 31)]
+    assert not m.pending()

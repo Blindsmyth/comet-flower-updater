@@ -3,6 +3,59 @@
 Offline instruction audit of `build/fw/map/main.dis` and the generation candidate
 ELF. The stack gate remains open. No device operation or updater execution.
 
+## Lifecycle-candidate continuation
+
+Current identity and reproduction are in
+[the lifecycle build record](../CONTROLLER_LIFECYCLE_CANDIDATE_2026-10-13.md).
+Its reset and new worker-creation hooks are tail branches with **zero actual
+SP adjustment**, preserving incoming A4 and B3. The old reset wrapper's 24-byte
+frame and added event-post path no longer apply. Controller-mode MainApp/AD
+publication now has no event post; only the worker self-post remains. The worker
+frame is still 72 bytes and its timeout is now 10 Clock ticks.
+
+### Interrupt-stack reservation confirmed
+
+`c0163e80` loads `c0181fb8`. Instructions `c0163e94..3eb4` construct
+`(0x11813468 + 0x3000) & ~7 = 0x11816468` and store that top pointer in word 6.
+Word 5 is initialized to -1 for startup; the switch helper's zero/nonzero saved-SP
+protocol described below governs later execution. The reserved region is
+documented independently by the AIS/cinit inventory in `recon/16_audio_hw.md`
+section C7: `118134a8..118164a8` (12 KiB). Do not reclaim that memory or infer
+that its whole reservation is available from the slightly lower configured top.
+Capacity is now traced; maximum nested usage is still unmeasured/unbounded.
+
+### Kernel paths that invalidate a catalog-only bound
+
+- Finite wait `c0144580` constructs a clock object on its own stack using
+  `c016a240` (56-byte frame), `c015a520` (48-byte frame) and
+  `c016ba40` (40-byte frame for parameter copy/merge). Added to the known
+  320-byte subtotal, this is a visible **464-byte** chain before copy-helper
+  callees or preemption. It is another partial chain, not a maximum.
+- `c015a020..a294` is the clock initialization entry reached by `c016a240`;
+  it has a 40-byte frame. The catalog does not identify this hidden entry.
+- `c015de40..e054` is the task scheduler entry reached from `c016b7c0`;
+  it has a 48-byte frame, calls switch hooks and reaches the 48-byte context
+  switch at `c016aec0`. It also has an idle callback at `c01817ac` (current
+  image target `c016cc00`). Separate entry `c015e060` follows it.
+- `c0162be0..2d5a` places a task on its ready queue, has a 32-byte frame and
+  invokes registered ready hooks. It is not simply an assertion logger.
+  Separate diagnostic-related entry `c0162d60` follows it.
+- The current candidate's actual AIS data (not just the stock listing) has two
+  task hook records at `c0180630`, selected by count/pointer at `c0181860`:
+  `{0,0,0,c0160660,0,0}` and
+  `{c016e960,c0163460,0,c01690c0,0,c015cf20}`. Ready-hook fields [2] are zero;
+  switch-hook fields [3] are nonzero. `c0160660` checks stack sentinels and may
+  enter the error dispatcher `c015a7a0`; `c01690c0` performs timing accounting.
+  Their normal and failure paths must be distinguished, not omitted wholesale.
+- AIS reads also confirm the worker descriptor (`entry=c0149d40`, priority 25,
+  size 0x800) and enabled stack fill. Generic diagnostic masks at `c018007c`
+  and `c018012c` are 0x90/0x390, but their meaning is bit-specific; nonzero
+  values do not prove every diagnostic branch is enabled or disabled.
+
+Remaining stack work is now concentrated on these finite-wait/scheduler/hook
+paths, indirect diagnostics, vector entry and the existing USB drain subtree.
+No arithmetic using the partial subtotals establishes a safe margin.
+
 ## Allocation path
 
 The worker requests a **2048-byte stack**. This is now traced beyond the nearby

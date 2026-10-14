@@ -2,6 +2,39 @@
 
 Status: in progress, offline only. Candidate remains DO_NOT_FLASH.
 
+## Lifecycle-candidate continuation
+
+[Current build record](../CONTROLLER_LIFECYCLE_CANDIDATE_2026-10-13.md).
+The revised candidate addresses two additional source interleavings:
+
+1. Teardown/reinitialization clears the transmit object at `c0149f34` without
+   calling `c014a018`. A seventh hook at `c0149fa8` invalidates the worker's
+   connection/sent-state before stock task creation, ensuring replay even when
+   allocation reuses an event/task address. The init guard at `c0149f00..9f24`
+   requires old handles to be absent before this initialization proceeds.
+2. Producer/reset posts could outlive the loaded event handle during teardown.
+   They are removed. MainApp/AD only publish state, reset only updates the token
+   then performs the stock release, and the worker polls at 10 Clock ticks.
+   Its bounded replay self-post uses the event supplied to that worker.
+
+Both lifecycle wrappers compile to frame-free tail branches preserving the
+original A4 argument and B3 return. Thus the added reset post's callback-context
+and scheduler-depth concern is removed from the new candidate.
+
+The reset's transitive pre-lock operation is now traced further:
+`c01522d8 -> c01520f4(5) -> c015215a -> c015b128 -> c01387f0(5)`.
+The command-5 table entry at `c0180d54` is `c0138070`, which services one/all
+endpoint records through `c0137fe4`. It is not a leaf. Downstream ownership and
+the complete callback path remain open; stock behavior here was preserved.
+
+The event-8 producer reads request byte 1 as 1, recipient bits as 2, and the
+halfword at request offset 4 as 132 (0x84). This is a concrete endpoint-request
+shape, rather than an unnamed synthetic event. Its upstream setup routing is
+described in `recon/24_if_record_binding.md`. No request was sent to hardware.
+
+The older findings below remain historical evidence; statements about a reset
+wake, producer posts, six hooks or a 100-tick timeout describe the old candidate.
+
 ## Validation-phase follow-up
 
 The generation fix is committed in `c72f789`. The current candidate passes

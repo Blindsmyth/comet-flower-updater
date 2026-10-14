@@ -1,13 +1,14 @@
 /* USB MIDI controller mode for the G1X Four main firmware (v2.00).
  *
  * Loaded by an extra AIS section into free SDRAM (see controller.cmd and
- * recon/17). Six stock calls are redirected here by direct CALLP:
+ * recon/17). Seven stock calls are redirected here by direct CALLP:
  *   c0134e14 CALLP c015d428 -> controller_start    (MainApp start-up)
  *   c0134df0 CALLP c0127fe0 -> controller_dispatch (MainApp event dispatch)
  *   c015ffd0 CALLP c014aef4 -> controller_analog   (calibrated expression)
  *   c01600b0 CALLP c014aef4 -> controller_analog   (second AD channel)
  *   c0149d4c CALLP c014a0cc -> controller_worker_wait (MIDI worker)
  *   c014a048 CALLP c014a1c8 -> controller_reset_unlock (ring reset)
+ *   c0149fa8 CALLP c014a400 -> controller_worker_create (new transport)
  *
  * The state is initialised by the AIS load itself (mode 0 = stock), so any
  * hook that runs before controller_start takes the stock path.
@@ -42,8 +43,9 @@ State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
 #define INNER_PEND ((int (*)(u32))0xc014a094u)
 #define INNER_POST ((int (*)(u32))0xc014a1c8u)
 #define RING_APPEND ((int (*)(volatile u32 *, u32))0xc0149d74u)
-#define MIDI_EVENT (*(volatile u32 *)0xc0184f68u) /* B14[90] */
+#define TASK_CREATE ((u32 (*)(u32))0xc014a400u)
 #define MIDI_LOCK (*(volatile u32 *)0xc0184f64u)  /* B14[89] */
+#define WORKER_POLL_TICKS 10
 #define PORT_STATE ((volatile u32 *)0xc01152b8u)
 
 /* Stock MIDI ring c0117b28: read index +0, write index +4, 1025 positions
@@ -68,19 +70,28 @@ struct {
     volatile u32 generation;       /* changed only under MIDI_LOCK */
 } tx = { 0 };
 
+/* Stock init rejects any remaining worker/lock/event handles before arriving
+   here and has already cleared the ring. Invalidate consumer state BEFORE
+   creating the replacement worker: handle addresses may be reused. Producers
+   retain their desired values; the new worker discards stale edges and replays
+   those values on its first ready pass. No added kernel operation is needed. */
+u32 controller_worker_create(u32 descriptor)
+{
+    if (ctl_state.mode)
+        tx.connected = 0;
+    return TASK_CREATE(descriptor);
+}
+
 /* c014a018 has already cleared the ring and packetizer under MIDI_LOCK.
-   Publish before releasing that same lock; wake only after release. Preserve
-   the stock release result and the mode-off release behavior. This covers
+   Publish before releasing that same lock. The worker's finite wait observes
+   the token without an added event-post/scheduler call on this USB callback
+   path. Preserve the stock release result and mode-off behavior. This covers
    resets through c014a018, not arbitrary/unknown writes to port or ring. */
 int controller_reset_unlock(u32 lock)
 {
-    int result;
-    if (!ctl_state.mode)
-        return INNER_POST(lock);
-    tx.generation++;
-    result = INNER_POST(lock);
-    EVENT_POST(MIDI_EVENT, 1u);
-    return result;
+    if (ctl_state.mode)
+        tx.generation++;
+    return INNER_POST(lock);
 }
 
 static u32 ring_free(void)
@@ -124,7 +135,8 @@ static void queue_button(u32 control, u32 value)
         tx.btn_edge[tail] = (index << 8) | value;
         tx.btn_tail = next;
     }
-    EVENT_POST(MIDI_EVENT, 1u);
+    /* The worker polls. Producers never acquire a kernel handle that USB
+       teardown can delete between a handle load and an event post. */
 }
 
 /* Called in the stock MIDI worker after its event wait and before its ring
@@ -139,7 +151,7 @@ int controller_worker_wait(u32 event, u32 mask, u32 mode,
         return EVENT_WAIT(event, mask, mode, bits, timeout);
 
     *bits = 0;
-    result = EVENT_WAIT(event, mask, mode, bits, 100);
+    result = EVENT_WAIT(event, mask, mode, bits, WORKER_POLL_TICKS);
     if (INNER_PEND(MIDI_LOCK) != 0)
         return result;
     if (!port_ready()) {
@@ -205,7 +217,7 @@ int controller_worker_wait(u32 event, u32 mask, u32 mode,
     INNER_POST(MIDI_LOCK);
     /* Continue a bounded replay promptly; do not spin on a full ring. */
     if (sent == 4u)
-        EVENT_POST(MIDI_EVENT, 1u);
+        EVENT_POST(event, 1u); /* this worker owns the supplied live event */
     if (sent) {
         /* c014a0cc returns -50 on timeout and leaves our prezeroed *bits
            unchanged. Defensively normalize nonpositive output before
@@ -254,7 +266,6 @@ void controller_event(const int *event)
             u32 prior = tx.knob_record[index];
             tx.knob_record[index] = ((prior + 0x200u) & ~0x1ffu) |
                                     0x100u | (u32)value;
-            EVENT_POST(MIDI_EVENT, 1u);
         }
     } else if (id >= 0 && id <= 3) {
         queue_button(20u + (u32)(id / 2), (id & 1) ? 0u : 127u);
@@ -277,6 +288,5 @@ void controller_analog(u32 value)
             return;
         tx.expr_record = ((prior + 0x200u) & ~0x1ffu) |
                           0x100u | value;
-        EVENT_POST(MIDI_EVENT, 1u);
     }
 }

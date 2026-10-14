@@ -62,7 +62,7 @@ sector are preserved. This is NOT firmware-only packaging. --firmware and
 
 With --controller-fw <res1_controller_worker_candidate.bin>
 (tools/make_controller_fw.py), the main firmware becomes stock v2.00 plus USB
-MIDI controller mode: six redirected CALLPs and one extra AIS section in free SDRAM, checked
+MIDI controller mode: seven redirected CALLPs and one extra AIS section in free SDRAM, checked
 structurally here; const-data edits (logo, start-up text) are allowed too. The image is larger than Zoom's, so it is appended to the
 end of the resource section and resource 0x81 is pointed at it; the
 updater's (already invalid) signature block is dropped. Same stage limits

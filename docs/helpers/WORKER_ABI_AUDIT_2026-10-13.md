@@ -56,15 +56,19 @@ Total known depth below wrapper-entry SP: **312 bytes** (72 + 56 + 184), before 
 ### Kernel architecture & Clock tick definition
 The firmware runs on **TI SYS/BIOS** (TI-RTOS Kernel with XDC runtime). In SYS/BIOS (`ti.sysbios.knl.Event`, `ti.sysbios.knl.Clock`), all wait and sleep durations are expressed in **Clock ticks**.
 
-- Clock tick period: Standard SYS/BIOS configuration specifies `Clock.tickPeriod = 1000 µs` (1 ms per tick, 1 kHz).
+- Clock tick period: a standard/default SYS/BIOS value is not evidence for this
+  image. The earlier assertion of a confirmed 1000 µs period is withdrawn pending
+  an instruction/configuration trace or measurement of this firmware's timer.
 - Tick servicing: The 32-bit tick counter at `0xc0182054` increments on periodic timer interrupt callback `diag_counter_tick_cb` (`c016a2e0`).
 - Argument scaling: Neither `c014a0cc` nor `c0144580` applies scaling or prescaling; timeout argument A8 is passed directly as raw Clock ticks.
 
 ### Concrete values
 - `A8 = -1` (`0xFFFFFFFF`): `BIOS_WAIT_FOREVER` (blocks indefinitely until event bits arrive).
 - `A8 = 0`: `BIOS_NO_WAIT` (polls without yielding).
-- `A8 = 100`: **100 Clock ticks** = **100 ms** (0.10 seconds).
-With timeout 100, the controller worker wakes up and re-evaluates port readiness, reconnect, and pending edges every ~100 ms even when no hardware event occurs.
+- `A8 = 100`: **100 Clock ticks**; conversion to milliseconds is not established.
+  This was the generation candidate's value. The current lifecycle candidate
+  uses 10 Clock ticks. Its scheduler delay and real polling interval remain to
+  be established; neither timeout guarantees a wall-clock wake deadline.
 
 ## Remaining gates and recommended corrections
 
