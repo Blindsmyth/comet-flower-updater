@@ -116,3 +116,12 @@ checks. Full rebuild/package commands remain in
 The pre-existing untracked `.agents/` and `bridge/` directories are preserved and
 excluded from the validation commits. Recheck Git status on resume. The older
 implementation handoff's working-tree description is historical.
+
+## Update 2026-10-13 (stack bound)
+
+Static worker-stack ceiling computed: **1784 of 2048 B** (conditional; 22 callback
+sites unresolved). See `docs/helpers/STACK_BOUND_2026-10-13.md`, tools
+`tools/stack_depth.py` / `tools/stack_paths.py`. Commit `0523215`. Stack and USB
+lifecycle gates remain OPEN; DO_NOT_FLASH stands. A request for Argon is in
+`bridge/to_argon.md`; drop the reply in `bridge/from_argon/` and resume by
+ingesting it, rebuilding if patched, and rerunning the verification commands above.
