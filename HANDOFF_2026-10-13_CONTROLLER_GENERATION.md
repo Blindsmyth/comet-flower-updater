@@ -1,5 +1,9 @@
 # Handoff — controller generation candidate — 2026-10-13
 
+Validation-phase continuation: [HANDOFF_2026-10-13_VALIDATION.md](HANDOFF_2026-10-13_VALIDATION.md).
+The working-tree and remaining-gate descriptions below record the earlier
+implementation handoff; use the continuation for current status.
+
 ## Current status
 
 The reset generation fix is implemented, compiled and packaged offline. **DO_NOT_FLASH: physical hardware testing and flashing remain unapproved.** No updater was launched or pedal touched.

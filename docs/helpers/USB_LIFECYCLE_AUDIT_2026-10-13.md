@@ -2,6 +2,40 @@
 
 Status: in progress, offline only. Candidate remains DO_NOT_FLASH.
 
+## Validation-phase follow-up
+
+The generation fix is committed in `c72f789`. The current candidate passes
+`tools/verify_controller_candidate.py`: all six hook targets match the ELF,
+embedded firmware matches the loose image, all BIN resources match the official
+template plus the three explicit inputs, and all eight stage-table rows match
+the required six operations followed by two zero rows. This establishes artifact
+identity and structure, not callback context or runtime lifecycle correctness.
+
+Additional bounded instruction evidence:
+
+- Registration `c0145154..5160` passes callback `c0144c0c` to `c0152410`.
+  The latter stores it at `c011ac80` (`c0152436`). A producer at
+  `c0151f30..1f40` loads that callback and invokes it with event **8** when its
+  input discriminator is 132. This links one indirect producer to the reset-only
+  branch. The discriminator's host meaning and all caller contexts remain open.
+- `c0148a64` calls `c0148a50`, clears `c0116308`, then calls
+  `c0148648(0)`. These leaf helpers clear `c0116300` and offsets +4/+8/+9
+  from `c0116308`. There is no port-readiness write or indirect callback in this
+  particular packetizer-reset subtree. This does not cover downstream ownership
+  or the separate `c01522d8` subtree.
+- Reset's first call `c01522d8` reads flags at `c011ac84` and may call
+  `c01520f4(5, -1, c011ac80)` before taking the MIDI lock. Its transitive
+  effects still need inspection; classifying it as a leaf would be incorrect.
+- Normal teardown `c0149e80..9ef4` requests worker deletion first, event deletion
+  second, and lock deletion third. Each handle is cleared only on its own
+  successful deletion. Calls continue after an earlier deletion failure, so this
+  sequence alone does not prove that callbacks cannot post a deleted event or
+  that a failed worker deletion cannot overlap later cleanup. Trace teardown
+  callers and external serialization before changing or approving the hook.
+
+The stack follow-up is in [STACK_AUDIT_2026-10-13.md](STACK_AUDIT_2026-10-13.md).
+Neither audit closes the hardware gate.
+
 Follow-up: the [generation candidate](../CONTROLLER_GENERATION_CANDIDATE_2026-10-13.md)
 now hooks the unlock boundary inside `c014a018` and serializes worker generation
 observation, acceptance and sent-state commit. The findings below describe the

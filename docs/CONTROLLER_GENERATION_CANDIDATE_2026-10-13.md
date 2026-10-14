@@ -89,13 +89,15 @@ timeout 100 goes into A8 at `c01a01c8`, and the stock wait result is retained
 in A15 at `c01a01d4`. Successful lock acquisition precedes generation reads
 at `c01a0270/274`; batch release occurs at `c01a05d8` before the optional wake.
 
-The known partial worker wait depth therefore remains **312 bytes**
-(72 + 56 + 184). This is not a worst-case stack bound. The reset hook adds
-another call path needing its own preemption audit. The static word `0x800`
-near the worker entry descriptor (`c0180520`, with `c0149d40` at `c0180518`)
-is a lead, not a verified task stack allocation or proof of spare capacity.
-Task allocation, deeper kernel calls, ISR nesting and worst-case headroom
-remain open. Do not infer a safe margin by subtracting 312 from that word.
+The known partial worker wait depth remains **312 bytes** below wrapper entry
+(72 + 56 + 184), or **320 bytes** including the stock worker's 8-byte frame.
+The [stack follow-up](helpers/STACK_AUDIT_2026-10-13.md) now traces the 2048-byte
+stack request through task creation and allocation, identifies the `0xBE` fill
+mechanism and 48-byte context-switch frame, and locates an interrupt stack
+switch. The interrupt path uses 352 bytes plus alignment on the interrupted
+stack before switching. These are partial costs, not worst-case headroom.
+Deeper kernel calls, vector/nesting coverage and the reset caller's separate
+stack remain open. No safe margin or hardware readiness is established.
 
 ## Rebuild
 
@@ -103,7 +105,7 @@ remain open. Do not infer a safe margin by subtracting 312 from that word.
 .venv/Scripts/python.exe tools/make_controller_fw.py --base build/fw/res1_cfupd.bin --out build/fw/res1_controller_generation_candidate.bin
 .venv/Scripts/python.exe tools/make_fs_restore_updater.py 'C:/Users/z/Downloads/G1X FOUR_v2.00_Win_E/ZOOM G1X FOUR System v2.00 Updater.exe' build/controller/DO_NOT_FLASH_controller_generation_candidate.exe --controller-fw build/fw/res1_controller_generation_candidate.bin --presets build/fw/cfupd_res85.bin --image build/fw/cfupd_res88.bin
 .venv/Scripts/python.exe tools/check_updater_stages.py build/controller/DO_NOT_FLASH_controller_generation_candidate.exe
-.venv/Scripts/python.exe build/controller/verify_generation.py
+.venv/Scripts/python.exe tools/verify_controller_candidate.py --firmware build/fw/res1_controller_generation_candidate.bin --updater build/controller/DO_NOT_FLASH_controller_generation_candidate.exe --elf build/controller/controller.elf --reference-updater 'C:/Users/z/Downloads/G1X FOUR_v2.00_Win_E/ZOOM G1X FOUR System v2.00 Updater.exe' --presets build/fw/cfupd_res85.bin --effects build/fw/cfupd_res88.bin --manifest build/controller/phase_validation_manifest.json
 .venv/Scripts/python.exe -m pytest -q
 ```
 
