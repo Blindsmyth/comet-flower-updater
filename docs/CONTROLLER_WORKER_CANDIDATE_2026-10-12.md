@@ -1,5 +1,9 @@
 # Controller worker candidate: offline build and remaining gates
 
+The newer [generation candidate](CONTROLLER_GENERATION_CANDIDATE_2026-10-13.md)
+implements reset invalidation and has a separately verified updater identity.
+It also remains DO_NOT_FLASH. This document preserves the older build record.
+
 This record identifies a **DO_NOT_FLASH** candidate. It was compiled and
 packaged offline on 2026-10-12. No pedal or USB host test was performed. The
 earlier `Comet Flower ZG1X4 Controller TEST Updater.exe` remains intact.

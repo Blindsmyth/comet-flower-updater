@@ -108,3 +108,35 @@ def test_ring_wrap_and_atomic_capacity_at_1025_positions():
     assert ring.append_cc((0xB0, 21, 0))
     assert ring.write == 1  # wrapped after writing positions 1023, 1024, 0
     assert ring.consume(6) == [0xB0, 20, 127, 0xB0, 21, 0]
+
+
+def test_reset_only_between_wakes_discards_edges_and_replays_current_state():
+    m = ControllerTransportModel()
+    m.publish_button(0, True)
+    m.publish_button(0, False)
+    m.publish_expression(73)
+    m.ring_reset()
+    assert m.connected and m.wake_requested and m.pending()
+    messages = drain_all(m)
+    assert (0xB0, 20, 127) not in messages
+    assert (0xB0, 20, 0) in messages
+    assert (0xB0, 11, 73) in messages
+    assert len(messages) == 17
+
+
+def test_reset_after_acceptance_replays_values_even_when_unchanged():
+    m = ControllerTransportModel()
+    m.publish_button(2, True)
+    assert m.worker_step(3) == [(0xB0, 22, 127)]
+    m.ring_reset()  # accepted message was discarded from the transport
+    assert (0xB0, 22, 127) in drain_all(m)
+
+
+def test_reset_while_full_keeps_replay_pending_and_wrap_is_observed():
+    m = ControllerTransportModel()
+    m.connection_epoch = m.observed_epoch = 0xFFFFFFFF
+    m.ring_reset()
+    assert m.connection_epoch == 0
+    assert m.worker_step(2) == []
+    assert m.retry_on_space and m.pending()
+    assert len(drain_all(m)) == 16

@@ -47,6 +47,7 @@ class ControllerTransportModel:
     def __init__(self):
         self.connected = True
         self.connection_epoch = 0
+        self.observed_epoch = 0
         self.desired_buttons = [0] * self.BUTTONS
         self.enqueued_buttons = [0] * self.BUTTONS
         self.edges = deque()
@@ -98,8 +99,21 @@ class ControllerTransportModel:
         self.connected = True
         self.wake_requested = True
 
+    def ring_reset(self):
+        """Reset-only event: readiness remains true; worker observes a token."""
+        self.connection_epoch = (self.connection_epoch + 1) & 0xFFFFFFFF
+        self.wake_requested = True
+
+    def _observe_epoch(self):
+        if self.observed_epoch != self.connection_epoch:
+            self.observed_epoch = self.connection_epoch
+            self.edges.clear()
+            self.enqueued_buttons = [None] * self.BUTTONS
+            self.enqueued_knobs = [None] * 4
+            self.enqueued_expression = None
+
     def pending(self):
-        return bool(self.edges) or any(a != b for a, b in zip(self.desired_buttons, self.enqueued_buttons)) or any(
+        return self.observed_epoch != self.connection_epoch or bool(self.edges) or any(a != b for a, b in zip(self.desired_buttons, self.enqueued_buttons)) or any(
             a != b for a, b in zip(self.knobs, self.enqueued_knobs)
         ) or self.expression != self.enqueued_expression
 
@@ -134,6 +148,7 @@ class ControllerTransportModel:
         self.wake_requested = False
         if not self.connected:
             return []
+        self._observe_epoch()
         accepted = []
         for _ in range(limit):
             item = self._next()

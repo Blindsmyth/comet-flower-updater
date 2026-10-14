@@ -1,12 +1,13 @@
 /* USB MIDI controller mode for the G1X Four main firmware (v2.00).
  *
  * Loaded by an extra AIS section into free SDRAM (see controller.cmd and
- * recon/17). Five stock calls are redirected here by direct CALLP:
+ * recon/17). Six stock calls are redirected here by direct CALLP:
  *   c0134e14 CALLP c015d428 -> controller_start    (MainApp start-up)
  *   c0134df0 CALLP c0127fe0 -> controller_dispatch (MainApp event dispatch)
  *   c015ffd0 CALLP c014aef4 -> controller_analog   (calibrated expression)
  *   c01600b0 CALLP c014aef4 -> controller_analog   (second AD channel)
  *   c0149d4c CALLP c014a0cc -> controller_worker_wait (MIDI worker)
+ *   c014a048 CALLP c014a1c8 -> controller_reset_unlock (ring reset)
  *
  * The state is initialised by the AIS load itself (mode 0 = stock), so any
  * hook that runs before controller_start takes the stock path.
@@ -63,8 +64,24 @@ struct {
     volatile u32 knob_record[4];     /* sequence, valid bit, value */
     volatile u32 expr_record;
     u32 btn_sent[12], knob_sent[4], expr_sent;
-    u32 connected;
+    u32 connected, observed_generation;
+    volatile u32 generation;       /* changed only under MIDI_LOCK */
 } tx = { 0 };
+
+/* c014a018 has already cleared the ring and packetizer under MIDI_LOCK.
+   Publish before releasing that same lock; wake only after release. Preserve
+   the stock release result and the mode-off release behavior. This covers
+   resets through c014a018, not arbitrary/unknown writes to port or ring. */
+int controller_reset_unlock(u32 lock)
+{
+    int result;
+    if (!ctl_state.mode)
+        return INNER_POST(lock);
+    tx.generation++;
+    result = INNER_POST(lock);
+    EVENT_POST(MIDI_EVENT, 1u);
+    return result;
+}
 
 static u32 ring_free(void)
 {
@@ -80,12 +97,11 @@ static int port_ready(void)
     return PORT_STATE[3] == 1u && PORT_STATE[9] != 0u;
 }
 
+/* Caller holds MIDI_LOCK through both acceptance and sent-state commit. */
 static int append_cc(u32 control, u32 value)
 {
     u32 original;
     int ok = 0;
-    if (INNER_PEND(MIDI_LOCK) != 0)
-        return 0;
     if (port_ready() && ring_free() >= 3u) {
         original = RING[1];
         if (RING_APPEND(RING, 0xb0u) == 0 &&
@@ -95,7 +111,6 @@ static int append_cc(u32 control, u32 value)
         else
             RING[1] = original; /* no consumer can observe a partial CC */
     }
-    INNER_POST(MIDI_LOCK);
     return ok;
 }
 
@@ -125,15 +140,19 @@ int controller_worker_wait(u32 event, u32 mask, u32 mode,
 
     *bits = 0;
     result = EVENT_WAIT(event, mask, mode, bits, 100);
+    if (INNER_PEND(MIDI_LOCK) != 0)
+        return result;
     if (!port_ready()) {
         if (tx.connected) {
             tx.connected = 0;
             tx.btn_head = tx.btn_tail; /* discard transient old-session edges */
         }
+        INNER_POST(MIDI_LOCK);
         return result;
     }
-    if (!tx.connected) {
+    if (!tx.connected || tx.observed_generation != tx.generation) {
         tx.connected = 1;
+        tx.observed_generation = tx.generation;
         tx.btn_head = tx.btn_tail;
         for (i = 0; i < 12; i++)
             tx.btn_sent[i] = ~0u;
@@ -183,6 +202,10 @@ int controller_worker_wait(u32 event, u32 mask, u32 mode,
         }
         sent++;
     }
+    INNER_POST(MIDI_LOCK);
+    /* Continue a bounded replay promptly; do not spin on a full ring. */
+    if (sent == 4u)
+        EVENT_POST(MIDI_EVENT, 1u);
     if (sent) {
         /* c014a0cc returns -50 on timeout and leaves our prezeroed *bits
            unchanged. Defensively normalize nonpositive output before

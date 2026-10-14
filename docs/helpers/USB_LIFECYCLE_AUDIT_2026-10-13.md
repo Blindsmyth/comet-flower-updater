@@ -2,6 +2,11 @@
 
 Status: in progress, offline only. Candidate remains DO_NOT_FLASH.
 
+Follow-up: the [generation candidate](../CONTROLLER_GENERATION_CANDIDATE_2026-10-13.md)
+now hooks the unlock boundary inside `c014a018` and serializes worker generation
+observation, acceptance and sent-state commit. The findings below describe the
+pre-fix source; lifecycle completeness and context gates remain open.
+
 ## Scope and evidence
 Bounded trace of port readiness/pointer writers, transmit ring reset, and B14[89] lock participants against build/fw/map/main.dis. No source changes or device actions.
 
