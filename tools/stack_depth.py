@@ -1,138 +1,170 @@
-"""Static worst-case stack depth over main.dis (conservative upper bound).
+"""Inventory stack frames and call-graph blockers; this is NOT a stack proof.
 
-Frame = sum of every SP decrement in a function (pushes + SUB/ADDK), which
-over-approximates (epilogue restores are ignored; decrements in mutually
-exclusive branches are summed).  Tail branches out of a function are charged
-the caller's full frame.  Indirect branches/calls and cycles are reported,
-not silently bounded: a result with unresolved items is NOT a proof.
-
-usage: stack_depth.py ROOT_HEX [ROOT_HEX ...]
+Catalog extents and SP decrements are triage evidence. They do not model control
+flow, live save-helper frames, stack switching or interrupts. Unresolved
+register branches and cycles never produce a finite total.
+Run: stack_depth.py [--resolve] [--report FILE] ROOT_HEX [ROOT_HEX ...]
 """
+import argparse
 import bisect
 import csv
+import hashlib
+import json
 import re
-import sys
 from pathlib import Path
 
-DIS = Path('build/fw/map/main.dis')
-TSV = Path('build/fw/map/subsystems.tsv')
 HIDDEN = {0xc015a020, 0xc015a2a0, 0xc015de40, 0xc015e060, 0xc0162a60,
-          0xc0162d60, 0xc0155dc0, 0xc0169170, 0xc0160820}
+          0xc0162d60, 0xc0155dc0, 0xc0169170, 0xc0160820,
+          0xc014a120, 0xc014a160, 0xc014a170, 0xc016b940}
 SIZE = {'STW': 4, 'STDW': 8, 'STH': 2, 'STB': 1}
-
-INS = []
-for _l in DIS.read_text().splitlines():
-    _m = re.match(r'^([0-9a-f]{8})\s+[0-9a-f]{4,8}\s+(.*)', _l)
-    if _m:
-        INS.append((int(_m[1], 16), _m[2]))
-ADDRS = [a for a, _ in INS]
-
-
-def data_code_pointers():
-    """Every 32-byte-aligned code pointer in the kernel config/data block.
-
-    Indirect branches load handlers from this block, so these are the
-    candidate targets (a sound over-approximation of data-driven callbacks).
-    """
-    import struct
-    d = Path('build/fw/map/main.elf').read_bytes()
-    shoff, = struct.unpack_from('<I', d, 0x20)
-    ent, num = struct.unpack_from('<HH', d, 0x2e)
-    out = set()
-    for i in range(num):
-        _, t, _, addr, off, sz = struct.unpack_from('<6I', d, shoff + i * ent)
-        if t != 1 or not addr or not 0xc0180000 <= addr + sz <= 0xc0182000:
-            continue
-        for k in range(0, sz - 3, 4):
-            v, = struct.unpack_from('<I', d, off + k)
-            if 0xc0110000 <= v < 0xc0180000 and v % 32 == 0 and 0xc0180000 <= addr + k < 0xc0181b24:
-                out.add(v)
-    return sorted(out)
+SAVE_HELPERS = {0xc016e020, 0xc016e000}
+LIMITATIONS = [
+    'Catalog extents are provisional; local control flow and repeated pushes are not bounded.',
+    'Save/restore helpers can keep SP adjustments live across sibling calls.',
+    'Return aliases, computed transfers and runtime pointer writers require instruction review.',
+    'Task/interrupt stack switching, preemption and interrupt nesting are not modeled.',
+    'Callback mappings are image observations, not proof that runtime targets are exhaustive.',
+]
 
 
-RESOLVE = '--resolve' in sys.argv
-if RESOLVE:
-    sys.argv.remove('--resolve')
-    # Restrict to the task-hook records (c0180630..c0180660) plus the generic
-    # handler slot at c018172c: the pointer sweep over the whole config block
-    # pulls in every application callback and is not a useful bound.
-    PTRS = [0xc0160660, 0xc016e960, 0xc0163460, 0xc01690c0, 0xc015cf20,
-            0xc016eaa0]
-STARTS = sorted({int(r['addr'], 16) for r in csv.DictReader(
-    TSV.open(), delimiter='\t')} | HIDDEN)
+def parse_disassembly(text):
+    instructions = []
+    for line in text.splitlines():
+        match = re.match(r'^([0-9a-f]{8})\s+[0-9a-f]{4,8}\s+(.*)', line)
+        if match:
+            instructions.append((int(match[1], 16), match[2]))
+    return sorted(instructions)
 
 
-def extent(f):
-    i = bisect.bisect_right(STARTS, f)
-    return f, (STARTS[i] if i < len(STARTS) else f + 0x400)
+class StackInventory:
+    def __init__(self, instructions, starts, callbacks=None):
+        self.instructions = instructions
+        self.addresses = [a for a, _ in instructions]
+        self.starts = sorted(set(starts))
+        self.callbacks = callbacks or {}
+
+    def analyze(self, function):
+        index = bisect.bisect_right(self.starts, function)
+        end = self.starts[index] if index < len(self.starts) else None
+        frame, edges, issues, assumptions = 0, set(), [], []
+        if function not in self.starts:
+            issues.append({'kind': 'UNCATALOGUED_ENTRY', 'site': hex(function)})
+        if function not in self.addresses:
+            issues.append({'kind': 'MISSING_INSTRUCTION', 'site': hex(function)})
+        if end is None:
+            issues.append({'kind': 'UNKNOWN_EXTENT', 'site': hex(function)})
+        if issues:
+            # Do not scan unknown entries through adjacent functions or data.
+            return {'entry': hex(function), 'end': hex(end) if end is not None else None,
+                    'frame_decrements_bytes': None, 'edges': [],
+                    'issues': issues, 'assumptions': []}
+        start = bisect.bisect_left(self.addresses, function)
+        stop = bisect.bisect_left(self.addresses, end)
+        for address, line in self.instructions[start:stop]:
+            match = re.search(r'\b(STW|STDW|STH|STB)\.\S+\s+\S+,\*B15--\[(\d+)\]', line)
+            if match:
+                frame += SIZE[match[1]] * int(match[2])
+            match = re.search(r'ADDK\.\S+\s+-(0x[0-9a-f]+|\d+),B15', line)
+            if match:
+                frame += int(match[1], 0)
+            match = re.search(r'SUB\.\S+\s+B15,(0x[0-9a-f]+|\d+),B15', line)
+            if match:
+                frame += int(match[1], 0)
+            match = re.search(r'\b(CALLP|BNOP|B)\.\S+\s+(0x[0-9a-f]{8}|[AB]\d+)\b', line)
+            if not match:
+                continue
+            op, target = match[1], match[2]
+            if target.startswith('0x'):
+                target = int(target, 16)
+                if op == 'CALLP' or not function <= target < end:
+                    edges.add(target)
+                if target in SAVE_HELPERS:
+                    issues.append({'kind': 'LIVE_SAVE_HELPER', 'site': hex(address),
+                                   'target': hex(target)})
+            elif op != 'CALLP' and target == 'B3':
+                # A prior stack load or MV B3 does not prove another register
+                # remains a return address at this site or across delay slots.
+                continue
+            elif address in self.callbacks:
+                record = self.callbacks[address]
+                edges.update(int(t, 16) for t in record['targets'])
+                assumptions.append({'site': hex(address), **record})
+            else:
+                issues.append({'kind': 'INDIRECT', 'site': hex(address), 'instruction': line.strip()})
+        return {'entry': hex(function), 'end': hex(end), 'frame_decrements_bytes': frame,
+                'edges': sorted(edges), 'issues': issues, 'assumptions': assumptions}
+
+    def report(self, root):
+        # State is local to one root: multi-root order cannot hide issues.
+        nodes, active, done, cycles = {}, [], {}, set()
+
+        def visit(function):
+            if function in active:
+                cycles.add(tuple(active[active.index(function):] + [function]))
+                return None
+            if function in done:
+                return done[function]
+            node = self.analyze(function)
+            nodes[function] = node
+            active.append(function)
+            depths = [visit(target) for target in node['edges']]
+            active.pop()
+            if node['issues'] or any(d is None for d in depths):
+                total = None
+            else:
+                total = node['frame_decrements_bytes'] + max(depths, default=0)
+            done[function] = total
+            return total
+
+        total = visit(root)
+        functions = [{**node, 'edges': [hex(t) for t in node['edges']]}
+                     for _, node in sorted(nodes.items())]
+        return {'root': hex(root), 'status': 'NOT_A_STACK_PROOF',
+                'stack_bound_bytes': None, 'accounted_frame_bytes': total,
+                'cycles': [[hex(t) for t in cycle] for cycle in sorted(cycles)],
+                'limitations': LIMITATIONS, 'functions': functions}
 
 
-def analyze(f):
-    """Return (frame_bytes, direct_callees, tail_callees, indirect_sites)."""
-    lo, hi = extent(f)
-    frame, calls, tails, ind = 0, set(), set(), []
-    i = bisect.bisect_left(ADDRS, lo)
-    while i < len(INS) and INS[i][0] < hi:
-        a, l = INS[i]
-        i += 1
-        m = re.search(r'\b(STW|STDW|STH|STB)\.\S+\s+\S+,\*B15--\[(\d+)\]', l)
-        if m:
-            frame += SIZE[m[1]] * int(m[2])
-        m = re.search(r'ADDK\.\S+\s+-(\d+),B15', l)
-        if m:
-            frame += int(m[1])
-        m = re.search(r'SUB\.\S+\s+B15,(0x[0-9a-f]+|\d+),B15', l)
-        if m:
-            frame += int(m[1], 0)
-        m = re.search(r'\b(CALLP|BNOP|B)\.\S+\s+(0x[0-9a-f]{8}|[AB]\d+)', l)
-        if not m:
-            continue
-        op, t = m[1], m[2]
-        if t.startswith('0x'):
-            t = int(t, 16)
-            if op == 'CALLP':
-                calls.add(t)
-            elif not lo <= t < hi:
-                tails.add(t)
-        elif t not in ('B3', 'A3'):
-            # A register reloaded from the stack or copied from B3 within the
-            # same function is a return (compiler pops B3 into another reg).
-            ret = re.compile(r'(LDW\.\S+\s+\*\+?B15\S*,%s\b|MV\.\S+\s+B3,%s\b)'
-                             % (t, t))
-            if not any(ret.search(x) for _, x in INS[bisect.bisect_left(ADDRS, lo):i]):
-                ind.append((a, l.strip()))
-    return frame, calls, tails, ind
-
-
-MEMO, STACK, ISSUES = {}, [], []
-
-
-def depth(f):
-    if f in MEMO:
-        return MEMO[f]
-    if f in STACK:
-        ISSUES.append(('CYCLE', f, STACK[-1]))
-        return 0, [f]
-    STACK.append(f)
-    frame, calls, tails, ind = analyze(f)
-    for a, l in ind:
-        ISSUES.append(('INDIRECT', f, a, l))
-    best, path = 0, []
-    extra = set(PTRS) if RESOLVE and ind else set()
-    for t in sorted(calls | tails | extra):
-        d, p = depth(t)
-        if d > best:
-            best, path = d, p
-    STACK.pop()
-    MEMO[f] = (frame + best, [f] + path)
-    return MEMO[f]
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('roots', nargs='+', type=lambda value: int(value, 16))
+    parser.add_argument('--dis', type=Path, default=Path('build/fw/map/main.dis'))
+    parser.add_argument('--catalog', type=Path, default=Path('build/fw/map/subsystems.tsv'))
+    parser.add_argument('--resolve', action='store_true', help='use site-specific image observations')
+    parser.add_argument('--callbacks', type=Path, default=Path('docs/helpers/stack_callbacks.json'))
+    parser.add_argument('--report', type=Path, help='save an inventory with input hashes as JSON')
+    parser.add_argument('--details', action='store_true', help='print individual blockers and cycles')
+    args = parser.parse_args(argv)
+    inputs = {'analyzer': Path(__file__), 'disassembly': args.dis, 'catalog': args.catalog}
+    callbacks = {}
+    if args.resolve:
+        inputs['callbacks'] = args.callbacks
+        data = json.loads(args.callbacks.read_text())
+        expected = data.get('disassembly_sha256')
+        if not expected or hashlib.sha256(args.dis.read_bytes()).hexdigest() != expected:
+            parser.error('callback observations do not match this disassembly SHA-256')
+        callbacks = {int(site, 16): record for site, record in data['sites'].items()}
+    with args.catalog.open() as stream:
+        starts = {int(row['addr'], 16) for row in csv.DictReader(stream, delimiter='\t')}
+    inventory = StackInventory(parse_disassembly(args.dis.read_text()), starts | HIDDEN, callbacks)
+    reports = [inventory.report(root) for root in args.roots]
+    for report in reports:
+        functions = report['functions']
+        issues = [issue for function in functions for issue in function['issues']]
+        assumptions = sum(len(function['assumptions']) for function in functions)
+        print(f"{report['root']}: NOT_A_STACK_PROOF; {len(functions)} functions, "
+              f"{len(issues)} blockers, {len(report['cycles'])} cycles, {assumptions} site assumptions")
+        if args.details:
+            for issue in issues:
+                print(' ', issue['kind'], issue['site'], issue.get('instruction', issue.get('target', '')))
+            for cycle in report['cycles']:
+                print('  CYCLE', ' -> '.join(cycle))
+    if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        result = {'schema_version': 1, 'inputs': {name: {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+                             for name, path in inputs.items()}, 'reports': reports}
+        args.report.write_text(json.dumps(result, indent=2) + '\n')
 
 
 if __name__ == '__main__':
-    for r in sys.argv[1:]:
-        f = int(r, 16)
-        d, p = depth(f)
-        print(f'{r}: worst-case {d} bytes via ' + ' -> '.join(hex(x) for x in p))
-    print(f'\n{len(MEMO)} functions visited, {len(ISSUES)} unresolved items')
-    for it in ISSUES:
-        print(' ', it[0], *[hex(x) if isinstance(x, int) else x for x in it[1:]])
+    main()

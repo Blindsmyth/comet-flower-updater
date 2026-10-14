@@ -7,7 +7,7 @@ compiled TI C6000 code, and the community has built custom ZD2 effects for the M
 Plus pedals ([stomphacks](https://github.com/thammer/stomphacks)). This project
 works toward bringing that to the G1 Four family.
 
-Status and next steps: **[HANDOFF_2026-10-05.md](HANDOFF_2026-10-05.md)**.
+Status and next steps: **[HANDOFF_2026-10-14_LEAD.md](HANDOFF_2026-10-14_LEAD.md)**.
 
 ## Features
 - **Inspect**: header, target, CRC check, INFO/dspload, blocks, and the embedded

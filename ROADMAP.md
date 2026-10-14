@@ -1,5 +1,10 @@
 # Roadmap — Comet Flower ZG1X4 (written 2026-10-10)
 
+Latest lead checkpoint: [HANDOFF_2026-10-14_LEAD.md](HANDOFF_2026-10-14_LEAD.md).
+The seven-hook lifecycle MIDI candidate passes offline packaging checks;
+worker stack and USB lifecycle gates remain open. The prior 1,784-byte stack
+ceiling is withdrawn; do not use it to approve a hardware test.
+
 Update 2026-10-11: The main-image extractor now has names for 2790/2790 discovered starts, and `check_rows.py` reports zero mechanical failures. The 802 res5 boot rows remain uncertain candidates. Semantic review of the map is still open; see `docs/helpers/CODEX_REVIEW.md`. The feature-by-feature evidence gate is in `docs/FEATURE_PREFLIGHT_AUDIT_2026-10-11.md`.
 
 End goal (owner, 2026-10-06): a Comet Flower firmware for the Zoom G1X Four:

@@ -1,5 +1,10 @@
 # Indirect-callback resolution for the worker stack bound - 2026-10-13
 
+**Superseded in part:** [the 2026-10-14 continuation](STACK_CONTINUATION_2026-10-14.md)
+traces additional slots and runtime registrations, corrects `c013ce6c` to a
+formatter callback, and distinguishes ready/switch hook fields. The 1,784-byte
+ceiling is withdrawn. The table below records the earlier analysis.
+
 **DO_NOT_FLASH stands. Offline analysis only; no device accessed.** Follow-up to
 `STACK_BOUND_2026-10-13.md`. Method: for each unresolved register branch, find
 the instructions that load the branch register, recover the config-slot address

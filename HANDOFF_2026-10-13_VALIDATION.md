@@ -1,5 +1,10 @@
 # Handoff — offline validation phase — 2026-10-13
 
+Latest continuation: [HANDOFF_2026-10-14_LEAD.md](HANDOFF_2026-10-14_LEAD.md).
+The 1,784-byte stack ceiling below is withdrawn; the revised analyzer reports
+unresolved bounds explicitly. Candidate hashes remain unchanged, and both
+offline gates remain open.
+
 ## Current continuation: lifecycle candidate
 
 The following original checkpoint is superseded by

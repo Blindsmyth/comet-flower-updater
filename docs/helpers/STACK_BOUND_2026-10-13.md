@@ -1,5 +1,10 @@
 # Static worker-stack bound - 2026-10-13
 
+**Superseded:** [the 2026-10-14 continuation](STACK_CONTINUATION_2026-10-14.md)
+withdraws the 1,784-byte ceiling after reviewing callback resolution, live
+save-helper frames and catalog extents. This note preserves the historical
+calculation, not a current bound. The updated tool reports no finite ceiling.
+
 **DO_NOT_FLASH. Offline analysis only; no device or updater touched.** Tool:
 `tools/stack_depth.py` (recursive walker over `build/fw/map/main.dis`).
 `tools/stack_paths.py` lists per-root prologue spills and outgoing branches.

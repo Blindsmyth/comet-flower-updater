@@ -1,0 +1,23 @@
+{
+  "disassembly_sha256": "e824b1e0effdaaca35cf87bd3a0bcc9b6242291e4def5e471120b28a762c82d1",
+  "observed_elf_sha256": "b0625c7a055020ddcbc61bb6966311891ead03bb6dae865b6f3f72ed45fb3946",
+  "evidence": "STACK_CALLBACKS_2026-10-13.md and STACK_CONTINUATION_2026-10-14.md; observations are conditional on runtime writers and image identity",
+  "sites": {
+    "c0144784": {"source": "c01802e4", "targets": ["c015d160"]},
+    "c0162990": {"source": "c018173c", "targets": ["c0161540"]},
+    "c0162d34": {"source": "c018173c", "targets": ["c0161540"]},
+    "c0164438": {"source": "c018173c", "targets": ["c0161540"]},
+    "c015dfec": {"source": "c018173c", "targets": ["c0161540"]},
+    "c015de82": {"source": "c01817ac", "targets": ["c016cc00"]},
+    "c015a978": {"source": "c01819f8", "targets": ["c0168c40"]},
+    "c016a648": {"source": "c0181a40", "targets": ["c016bb40"]},
+    "c016a650": {"source": "c0181a40", "targets": ["c016bb40"]},
+    "c016a668": {"source": "c0181a40", "targets": ["c016bb40"]},
+    "c0169aac": {"source": "MVK/MVKH constant", "targets": ["c0167940"]},
+    "c0150bf8": {"source": "c0180d1c", "targets": ["c0161540"]},
+    "c013ce6c": {"source": "c0181a48 formatter callback loaded in branch delay slots at c013cdb0", "targets": ["c015aa20"]},
+    "c016b992": {"source": "c0183aec via c016e0c0; three traced registration arguments, completeness unproved", "targets": ["c016e200", "c016e060", "c01654a0"]},
+    "c0162c70": {"source": "c0181860 records field [2], both zero in audited image", "targets": []},
+    "c015df2c": {"source": "c0181860 records field [3]", "targets": ["c0160660", "c01690c0"]}
+  }
+}
