@@ -90,6 +90,12 @@ and missing edges; counts are triage findings, not distinct proven callbacks.
 
 Add `--details` for individual findings. Current inventory:
 
+The analyzer also accepts `--extents FILE` and `--transfers FILE` for reviewed
+function ranges and return/continuation sites. It verifies the disassembly hash
+and every quoted instruction anchor before use, retains annotations as explicit
+assumptions, and keeps annotated stack-switch sites as blockers. These inputs
+improve graph accuracy; they do not establish a runtime stack bound.
+
 | Root | Functions | Blocker records | DFS cycle records | Site assumptions |
 |---|---:|---:|---:|---:|
 | `c014a0cc` | 100 | 62 | 8 | 14 |
