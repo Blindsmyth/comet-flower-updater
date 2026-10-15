@@ -128,7 +128,7 @@ def build_payload(diag=False):
     run(CGT / "bin/cl6x", "--silicon_version=6740", "--abi=eabi", "--c99",
         "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
         "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
-        "--compile_only", *srcs)
+        "--compile_only", *(["--define=CTL_DIAG"] if diag else []), *srcs)
     elf = out / (stem + ".elf")
     run(CGT / "bin/lnk6x", "--ram_model", "--map_file=%s" % (out / (stem + ".map")),
         "--output_file=%s" % elf, *objs, cmd_file)

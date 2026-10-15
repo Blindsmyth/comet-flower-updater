@@ -55,6 +55,13 @@ State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
    and one MIDI-worker consumer. All shared records are aligned 32-bit words.
    An edge is published by writing its word before advancing tail. */
 
+#ifdef CTL_DIAG
+/* Offline diagnostic build only (make_controller_fw.py --diag-teardown). */
+void controller_diag_request(void);
+int controller_diag_peek(u32 *control, u32 *value);
+void controller_diag_commit(void);
+#endif
+
 #define BTN_QLEN 16u
 #pragma DATA_SECTION(tx, ".ctl_state")
 struct {
@@ -174,6 +181,15 @@ int controller_worker_pump(u32 event, volatile u32 *bits, int result)
     }
 
     while (sent < 4u) {
+#ifdef CTL_DIAG
+        if (controller_diag_peek(&packed, &value)) {
+            if (!append_cc(packed, value))
+                break;
+            controller_diag_commit();
+            sent++;
+            continue;
+        }
+#endif
         head = tx.btn_head;
         if (head != tx.btn_tail) {
             packed = tx.btn_edge[head];
@@ -253,6 +269,10 @@ void controller_event(const int *event)
             ctl_state.entry_held = 0;
         return;
     }
+#ifdef CTL_DIAG
+    if (id == 4)
+        controller_diag_request();
+#endif
     if (id >= 25 && id <= 28) {
         int index = id - 25, old = ctl_state.knob[index], d = event[2], value;
         if (d > 127 - old)

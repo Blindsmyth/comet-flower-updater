@@ -111,3 +111,82 @@ void controller_diag_consumer(u32 idx, u32 queue)
     }
     _restore_interrupts(csr);
 }
+
+/* ---- Readback (diag build only) -------------------------------------------
+   The ring is useless unless it leaves the device. On the combined footswitch
+   gesture (event 4) the MIDI worker snapshots ctl_diag plus TX record fields,
+   then streams the snapshot as Control Change messages on channel 1 through
+   the same ring/append path as ordinary controller output:
+     CC119=127                        begin
+     CC102..106 = word bits 0-6, 7-13, 14-20, 21-27, 28-31   (one word = 5 CCs)
+     CC119=1                          end
+   Words: DUMP_MAGIC, word count, Diag (102 words), then for TX slots 1..4 the
+   record (0xc011297c + 0x2a8*N) fields [2],[3],[5],[9]. Field [5] stuck
+   nonzero after a reconnect is the liveness signature from
+   docs/helpers/SOL_EXPIRY_RECOVERY_REPORT.md (Claude review).
+   peek/commit run only in the MIDI worker under MIDI_LOCK; request runs in
+   MainApp and only increments a word. */
+#define DUMP_MAGIC 0x31504d44u                 /* 'DMP1' */
+#define DIAG_WORDS (sizeof(Diag) / 4u)
+#define TXREC(n) ((volatile u32 *)(0xc011297cu + 0x2a8u * (n)))
+#define DUMP_WORDS (2u + DIAG_WORDS + 16u)
+#define DUMP_CCS (5u * DUMP_WORDS + 2u)
+
+#pragma DATA_SECTION(diag_dump, ".ctl_state")
+struct {
+    volatile u32 req;   /* MainApp increments */
+    u32 seen;           /* worker: last req snapshotted */
+    u32 pos;            /* next CC index; DUMP_CCS when idle */
+    u32 w[DUMP_WORDS];
+} diag_dump = { 0, 0, DUMP_CCS };
+
+void controller_diag_request(void)
+{
+    diag_dump.req++;
+}
+
+static void diag_snapshot(void)
+{
+    u32 i, k = 0, n;
+    u32 csr = _disable_interrupts();
+    diag_dump.w[k++] = DUMP_MAGIC;
+    diag_dump.w[k++] = DUMP_WORDS - 2u;
+    for (i = 0; i < DIAG_WORDS; i++)
+        diag_dump.w[k++] = ((volatile u32 *)&ctl_diag)[i];
+    for (n = 1; n <= 4u; n++) {
+        diag_dump.w[k++] = TXREC(n)[2];
+        diag_dump.w[k++] = TXREC(n)[3];
+        diag_dump.w[k++] = TXREC(n)[5];
+        diag_dump.w[k++] = TXREC(n)[9];
+    }
+    _restore_interrupts(csr);
+}
+
+/* Next CC to send, if any. A new request restarts from a fresh snapshot. */
+int controller_diag_peek(u32 *control, u32 *value)
+{
+    u32 p, part;
+    if (diag_dump.req != diag_dump.seen) {
+        diag_dump.seen = diag_dump.req;
+        diag_snapshot();
+        diag_dump.pos = 0;
+    }
+    p = diag_dump.pos;
+    if (p >= DUMP_CCS)
+        return 0;
+    if (p == 0 || p == DUMP_CCS - 1u) {
+        *control = 119u;
+        *value = p == 0 ? 127u : 1u;
+        return 1;
+    }
+    part = (p - 1u) % 5u;
+    *control = 102u + part;
+    *value = (diag_dump.w[(p - 1u) / 5u] >> (7u * part)) & 0x7fu;
+    return 1;
+}
+
+void controller_diag_commit(void)
+{
+    if (diag_dump.pos < DUMP_CCS)
+        diag_dump.pos++;
+}
