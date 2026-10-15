@@ -138,4 +138,48 @@ two uses never collide.
 
 ## 4. Which slots use which mode
 
+**Finding 4a (confidence: likely).** An undocumented function around `c0121f24`-`c0122044` (not in
+`recon/map/chunk_02.md` — new) explicitly, individually checks field [2] for **slots 4, 3, 2, 1 in
+that order** (unrolled, one block per slot; slot 0 is not part of this pattern). Each block: if
+field [2] != 0 (ring mode), skip the slot entirely; if field [2] == 0 (counted) and field [8] is
+negative, clear field [8] to 0 and report a slot-specific error code (132/131/130/129 for
+slots 4/3/2/1), then fall through to a shared per-slot status write. The branch polarity is explicit
+below so it is not inverted:
+
+```text
+c0121f24   MVK.S1   0x3424,A4         ; A4 = field[2] addr of slot 4
+c0121f2c   LDW.D1T1 *A4[0],A0         ; A0 = field[2] value
+c0121f2e [A0]BNOP.S1 0xc0121f4c,5     ; A0 != 0 (ring mode) -> skip this slot's error check entirely
+c0121f30   LDW.D1T1 *A4[8],A0         ; (only when A0==0, counted) A0 = field[8]
+c0121f32   CMPGT.L1 0,A0,A0           ; (0 > field8) i.e. field8 negative?
+c0121f34[!A0]BNOP.S1 0xc0121f4c,5     ; not negative -> skip the clear+report
+c0121f3a   MVK.L1   7,A0              ; negative -> report code 7 ... and 132 (slot 4's code) below
+```
+(Same shape repeats at `c0121f74` for slot 3 with `0x317c`/code 131, `c0121fc8` for slot 2 with
+`0x2ed4`/code 130, `c0122018` for slot 1 with `0x2c2c`/code 129.)
+
+**Finding 4b (confidence: likely).** The completion-queue handler `c011faa0` (§3, Finding 3a) reads
+field [2] dynamically for a slot number extracted from the popped CPPI queue entry
+(`SHRU B0,0x1b,B1`), range-checked to `1 <= B1 < 5` before the field-[2] lookup — so slots 1-4 are the
+only ones this dynamic path ever touches too.
+
+```text
+c011fac4   SHL.S2    B4,0x5,B0
+c011fad0   CMPLT.L2  0,B1,B0        ; B1 > 0 ?
+c011fad4[!B0]BNOP.S1  0xc011fb70,5  ; B1<=0 -> bail (slot 0 excluded)
+c011fad8   CMPGT.L2  5,B1,B0        ; B1 < 5 ?
+c011fae0[!B0]BNOP.S1  0xc011fb70,5  ; B1>=5 -> bail
+```
+
+**Finding 4c (confidence: likely, ties to §1).** Slot 0 never appears in either the static per-slot
+mode check (4a) or the dynamic one (4b) — it is handled by separate EP0-control-transfer logic
+elsewhere, consistent with it being the USB control endpoint rather than a TX/RX data slot. Because
+no code anywhere sets field [2] nonzero (§1, Finding 1a/1c), **the mode checks in both 4a and 4b
+currently always take the "counted" branch at runtime for slots 1-4** — the ring-mode branches in
+both functions are live, reachable code, but dead in practice for this firmware image. The brief's
+assumption that slot 4 = MIDI IN and slot 1 = the ISO audio IN endpoint could not be confirmed or
+refuted from `main.dis`/`refs.txt`/chunk docs alone (no naming evidence tying slot numbers to USB
+endpoint/class roles was found in this pass) — **unknown**.
+
+
 ## 5. Verdict for USB audio
