@@ -54,7 +54,90 @@ at c0160ee2..ee6"): yes, matches.
 
 ## 2. `ua_map_thunk` (`firmware/usb_audio/ua_thunks.asm`)
 
-(pending)
+**OK, confirmed** on all four sub-questions (entry state, return target,
+clobber set, single-caller claim). Independently re-derived from
+`main.dis`, not taken on faith from review 1 or the source comments.
+
+Stock `c015c66c` body (full function, `c015c66c`..`c015c6b2`):
+```
+c015c66c  MV.L1 A4,A0 || MV.S1 A6,A4 || MV.L2 B4,B0
+c015c672  CMPEQ.L1 6,A0,A0
+c015c674 [!A0] BNOP .. c015c6ac,5      <- gate; overwritten by the patch
+c015c678.. (writes IF0/IF1/EP3/EP0x84/record_vector, A0<-0)
+c015c6a8  BNOP .. c015c6b0,5
+c015c6ac  MVK 0xffff8a5c,A0            (reject value)
+c015c6b0  MV A0,A4
+c015c6b2  BNOP B3,5                     <- function's real return
+```
+Entry state at the gate: A0 = (pre-swap A4 == 6), A4 = slot (from caller's
+A6), B0 = record (from caller's B4) — matches the asm file's comment and
+the thunk's own `[!A0] B ua_map_reject` / fall-through structure exactly.
+Truth table: `[!A0]` (A0==0, i.e. original selector != 6) → reject;
+`A0!=0` (selector==6) → proceed to the map writes. Same predicate sense
+candidate and stock.
+
+Single caller — re-verified independently (brief specifically asked to
+re-check this, not just trust review 1):
+```
+$ grep -n "c015c66c" main.dis | grep -v '^c015c66c'
+c015c760  CALLP.S2 0xc015c66c,B3     <- only textual reference
+$ grep -c "ffffc66c" main.dis   -> 0   (no MVKL/MVKH-built function-pointer constant)
+$ grep -n "c015c768" main.dis | grep -v '^c015c768'   -> (no hits: nothing else branches to the
+                                                           continuation either)
+```
+Confirmed: exactly one caller, no jump-table/constant alias, and no other
+branch target lands on the claimed continuation `c015c768`. Confidence:
+confirmed.
+
+Return-to-`c015c768` rationale: the patch's own `CALLP.S2 ua_map_thunk`
+(written over the gate, mid-function) necessarily clobbers B3 with a
+return address *inside* `c015c66c`, not the outer caller's real
+continuation — hence the thunk must hardcode `B3 = 0xc015c768` itself
+(`MVKL`/`MVKH`) rather than inherit B3. Verified this is the only
+correct target: `c015c760`'s own CALLP delay-slot bundle sets up A4/A6/B4
+as the callee's inputs, and `c015c768` (`ADD.L2 B1,1,B1`) is the real
+post-return loop-continuation code (reads the call's A4 result via
+`CMPEQ.L1 0,A4,A0` right after).
+
+Clobber set — the thunk touches only A0/A4/A5 (+B3 for its own
+reconstructed return address), a strict *subset* of stock's own
+{A0,A4,A5,B0,B4}: stock additionally burns B4 as a scratch temp
+(`MVK 68,B4; ADD B4,A5,B4`) to reach the EP 0x84 address, which the thunk
+instead reaches via a plain immediate offset, needing no B4 scratch. Traced
+the caller's loop (`c015c750`..`c015c798`) to confirm B4 is never read
+between one call's return (`c015c768`) and the next iteration's own fresh
+`MV.L2X A0,B4` (c015c766) — so stock's B4 clobber was never observable
+anyway; the thunk being stricter is strictly safe, not just coincidentally
+OK.
+
+Slot-0 / slot-1/2 map writes — **strides computed, not eyeballed**:
+- `record_vector` write: `STW B0,*A5[A4]` at base `0xc011aa18`, same in
+  both stock and thunk (A4=slot is the index; word-scaled, slot·4).
+- IF0/IF1: thunk's `*A5[0]`/`*A5[1]` off base `0xc011aac0` = `0xc011aac0`,
+  `0xc011aac4`. Stock's `STDW A5:A4,*0xc011aac0[0]` (double-word store at
+  index 0) writes the same two addresses (base+0, base+4) in one
+  instruction — same two target words, confirmed equal.
+- EP3/EP 0x84: thunk's base `0xc011aa4c`; `*A5[0]` = `0xc011aa4c` (EP3
+  OUT); `*A5[17]` = `0xc011aa4c + 17*4` = `0xc011aa4c + 68` =
+  **`0xc011aa90`**. Stock computes the same second address explicitly via
+  `MVK.S2 68,B4; ADD.L2X B4,A5,B4` → `0xc011aa4c+68=0xc011aa90`. Computed
+  both ways, same result: confirmed, not eyeballed.
+- Slot 1/2 (new, stock never exercises these): base `0xc011aac0`
+  (`interface_map`), `*A5[2]` = `0xc011aac0+2*4` = `0xc011aac8` (IF2),
+  `*A5[3]` = `0xc011aac0+3*4` = `0xc011aacc` (IF3). Matches design doc's
+  table.
+
+Success/reject return value: thunk's `MVK 0,A4` (success) and
+`MVKL/MVKH 0xffff8a5c,A4` (reject) reproduce stock's `A0=0`→`A4=0` and
+`MVK 0xffff8a5c,A0`→`A4` exactly (stock's single-instruction MVK sign-
+extends `0x8a5c` to `0xffff8a5c` directly; the thunk's two-instruction
+MVKL/MVKH form is less efficient but numerically identical). Confirmed OK.
+
+One structural point (carried over from review 1, independently re-derived
+here, still **RISK not BUG**): the patch replaces a conditional `[!A0]
+BNOP` with an unconditional `CALLP`, relying on CALLP's own bundled delay
+slot not disturbing A0/A4/B0 (confirmed true at `c015c760`'s bundle) and on
+the thunk re-doing the `[!A0]` test itself. Sound as implemented.
 
 ## 3. IF3 SETUP callback (`usb_audio.c` / `ua_glue.c`)
 
