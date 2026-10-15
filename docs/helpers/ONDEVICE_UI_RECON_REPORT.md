@@ -103,6 +103,66 @@ policy (the complete set of indirect stock drawing callbacks is not proven).
 
 ## 3. Text drawing
 
+**Finding (confirmed graphics ABIs; likely formatter identification).**  The
+glyph ABI is consistent across the family:
+
+```c
+void glyph(unsigned ctx /* A4 */, int ch /* B4 */,
+           int x /* A6 */, int y /* B6 */);
+void string(unsigned ctx /* A4 */, const char *s /* B4 */,
+            int x /* A6 */, int y /* B6 */);
+```
+
+The relevant routines are:
+
+| routine | role / font | instruction evidence |
+|---|---|---|
+| `c011d2d4` | one 5x7 glyph in a 6x8 cell | `MPY 6,A2,A0`; font base `c01787e0` (ASCII 0x20 lands at `c01788a0`) |
+| `c011e000` | 5x7 string, 6-pixel advance; handles tab/form-feed controls | `c011e028 CALLP c011d2d4`; `c011e038 ADD 6,A8,A0` |
+| `c011d590` / `c011e0a4` | one/string bold 7x7, 7-pixel advance | font base `c01782d0`; `MPY 7,A2,A0` |
+| `c011e898` / `c011e930` | one/string 14x18 glyph | `c011e904 MPYLI 42`; bitmap `c01757f8`; draw width 14, height 18; string advances 14 |
+| `c011e96c` and following string wrapper | 16x21 glyph/string | computed 48-byte glyphs from `c0174170` |
+| `c011ea30` and `c011ea84` | 11x13 glyph and centered string | table `c0176250`, width 11, height 13 |
+| `c011eb08` | one 8x13 glyph | `c011eb2c..c011eb40` selects `c0177180`, width 8, height 13 |
+| `c011ebc8` | centered 8x13 string | obtains length, computes approximately half of `9*len`, then calls `c011eb08` |
+| `c011ec48` | left-aligned 8x13 string | calls `c011eb08` and advances x by 9 at `c011ec68` |
+
+All sanitize unsupported characters to space before indexing their tables;
+for example `c011eb10..c011eb28` accepts ASCII 0x20..0x7e and substitutes
+0x20 otherwise.  For compact controller status, the stock small-status font
+is the 5x7/6x8 family (`c011d2d4` + `c011e000`), not the 8x13 title family.
+
+`c016c360` is a `sprintf`-style variadic formatter, most plausibly
+`int sprintf(char *dst /* A4 */, const char *fmt /* B4 */, ...)`.  It saves
+the destination (`c016c370 MV A4,B4`), delegates to the common printf engine
+`c014fa40` at `c016c38c`, and explicitly writes the terminating zero at the
+returned/end pointer at `c016c3b8`.  Stock UI code uses it to construct local
+strings before drawing, e.g. `c0159528..c0159540` builds a stack string and
+passes it to `c011ec48`.  Confidence on the formatter's purpose and argument
+order is **likely** because the TI variadic stack-home convention obscures the
+source-level prototype; the null-terminated formatted-output behavior is
+confirmed.
+
+A minimal safe short-line sequence in UpdateUI task context is:
+
+```text
+take B14[149]
+optional: c016c360(local, "CC %u %u", cc, value)
+A4 = *(B14 + 122*4)       ; context index
+B4 = literal-or-local     ; NUL-terminated ASCII
+A6 = x; B6 = y
+CALLP c011e000            ; 5x7 status line
+CALLP c016f420            ; dirty-page panel flush for that context
+release B14[149]
+```
+
+For a literal banner the formatter is unnecessary.  If an existing UpdateUI
+iteration already owns the lock and performs the normal flush, do not take
+the lock recursively or add a second flush; just issue the text call inside
+that owned draw phase.  Confidence: **confirmed** for glyph/string signatures,
+font tables and advances; **likely** for the exact C return type of
+`c016c360`.
+
 ## 4. Controller-mode screen behavior
 
 ## 5. LEDs
