@@ -1,5 +1,32 @@
 # Ungated TX submitters `c0120c14` and `c01219d0`
 
+> **Claude review (2026-10-15).** I spot-checked the predicates. `c0120c78`/`c0120c90`, `c012197a`/`c0121980`,
+> `c0121b0c`/`c0121b10` and `c0120c28`/`c0120c38` all match. One framing correction follows.
+>
+> **TX field [2] is a mode selector, not "enabled".** Two observations:
+> - The public enqueue `c0120f64` *only* works when [2] == 0. `c0120f88 [!B0] BNOP 0xc0120f94` goes to the
+>   store/submit when [2] == 0. Otherwise `c0120f8c` returns `0xffff8ad0`, loaded by `c0120f90` in its delay slot.
+> - `c0120550` adjusts [5] only when [2] == 0 (`c01205e2`). Both direct submitters require [2] != 0.
+>
+> So the slot is in one of two disjoint modes:
+> - **[2] == 0, counted mode.** The enqueue defers on [5] != 0, and completions decrement [5]. This is the mode
+>   the expiry review covered.
+> - **[2] != 0, ring mode.** The kick `c0120c44` starts a chain when [9] == -1. Each queue-34 completion then
+>   submits the next ring entry through case D (`c01219d0`), and [5] is not used as a count.
+>
+> **The "uncounted descriptor / cross-accounting" concern in §3 needs a mode switch while descriptors are
+> outstanding.** Within one mode, [5] is not mixed. Its ring-mode equivalent: the chain normally has one
+> descriptor in flight, because each completion submits exactly one successor. Suppose an expired abort leaves
+> a ring descriptor outstanding, `c011fd40` sets [9] = -1, and the kick restarts the chain. The slot then has
+> **two concurrent chains** (doubled traffic, or overlapping ring buffers). That is the real ring-mode risk.
+> Its trigger, the caller of the kick, is still untraced.
+>
+> **Open:**
+> - Who writes field [2], and which slots use ring mode? A first search for `0x2984`/`0x297c`/`0x2c08` stores
+>   found no direct writer of [2]. My guess is that MIDI IN (slot 4) uses counted mode and ring mode is the
+>   isochronous/audio path. That matters for the USB-audio work.
+> - The caller of `c0120c44`.
+
 Static analysis of `build/fw/map/main.dis`. No device or executable was accessed, no firmware was changed, and nothing was pushed.
 
 ## 1. Enclosing routines
