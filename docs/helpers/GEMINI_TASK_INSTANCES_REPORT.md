@@ -82,4 +82,38 @@ Static analysis report on task instances and lifecycle of the USB event loop `0x
 
 ## 4. Mailbox
 
-*Pending analysis.*
+- **Confidence**: confirmed
+- **Mailbox handle**: `c0138318` receives from **B14 slot 95** (`*+B14[95]`), which holds the handle created at `c013876c` (via `c014a4d4` Mailbox creator) and stored at `c0138790`.
+  - Disassembly of the receive call (`c0138318`):
+    ```
+    c0138310   106ba410           CALLP.S1      0xc016e020,A3
+    c0138314   07be09c2           SUB.D2        B15,0x10,B15
+    c0138318   1023e293           CALLP.S2      0xc014a214,B3
+    c013831c   e1a08000           .fphead       n, l, W, BU, br, nosat, 0001101b
+    c0138320   02005f6d ||        LDW.D2T1      *+B14[95],A4
+    c0138324   023c805a ||        ADD.L2        4,B15,B4
+    ```
+  - Routine `c014a214` is a direct wrapper around SYS/BIOS `Mailbox_pend`:
+    ```
+    c014a214       31f7           STW.D2T2      B3,*B15--[2]
+    c014a216       ff26           MVK.L1        -1,A6
+    c014a218   10389012 ||        CALLP.S2      0xc0166680,B3
+    c014a220       0626           MVK.L1        0,A4
+    c014a222       71f7           LDW.D2T2      *++B15[2],B3
+    c014a226       a1ef           BNOP.S2       B3,5
+    ```
+    It calls `c0166680` (`Mailbox_pend`) with timeout `A6 = -1` (`BIOS_WAIT_FOREVER`), message buffer in `B4 = B15 + 4`, and mailbox handle in `A4 = B14[95]`.
+- **Exclusivity (does any other task receive from this handle?)**:
+  - **Confirmed NO**.
+  - A complete scan of all instructions referencing `B14[95]` across `main.dis` reveals exactly 8 instructions:
+    1. `c01382b8`: `LDW *+B14[95], B0` in `usb_worker_shutdown` (`c013826c`) — check handle prior to teardown.
+    2. `c01382cc`: `STW B0, *+B14[95]` in `usb_worker_shutdown` — clear handle to 0 on teardown.
+    3. `c0138320`: `LDW *+B14[95], A4` in `usb_worker_task` (`c0138310`) — pass handle to receive helper `c014a214`.
+    4. `c0138740`: `LDW *+B14[95], B0` in `usb_worker_start` (`c0138720`) — error check.
+    5. `c0138784`: `STW B0, *+B14[95]` in `usb_worker_start` — error clear.
+    6. `c0138790`: `STW A0, *+B14[95]` in `usb_worker_start` — store newly created mailbox handle.
+    7. `c0138918`: `LDW *+B14[95], A4` in `usb_command_dispatch` (`c01387f0`) — pass handle to `c014a174` (`Mailbox_post`).
+    8. `c0138a08`: `LDW *+B14[95], A4` in `usb_command_dispatch` (`c01387f0`) — pass handle to `c014a174` (`Mailbox_post`).
+  - Receiver helper `c014a214` has exactly **1 caller** in the entire firmware: `c0138318`.
+  - Direct callers to SYS/BIOS `Mailbox_pend` (`c0166680`) were also verified: 5 total call sites exist (`c013abc8`, `c013b108`, `c014a218`, `c01534a4`, `c01534c8`); all other sites service different mailboxes (`B14[172]`, `B14[162]`, or passed arguments).
+  - Therefore, `c0138310` (`usb_worker_task`) is the exclusive receiver for `B14[95]`. `B14[95]` is populated exclusively by `usb_command_dispatch` (`c01387f0`).
