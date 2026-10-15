@@ -96,7 +96,7 @@ c0120b64       db7a    [!A0]  BNOP.S1       0xc0120c3a,5
 
 Confidence: **confirmed**.
 
-**Finding 2b (confirmed).** `c01219d0` uses the upstream queue-event route detailed in Finding 2c through the case-D call at `c0121b38`: valid popped type-16 descriptor, slot 1..4, `A15 == 0`, and TX field [2] != 0. Within `c0121960`, it reaches the submit exactly when TX field [9] is nonnegative. Field [8] controls only whether the incremented ring index wraps to zero. There is no field-[5] or field-[3] predicate, and the earlier `c0120550` call cannot change field [5] on this route because field [2] is nonzero. Queue 28 availability is tested only inside `c0120250` (`c0120260..0270`), after this call site has been reached.
+**Finding 2b (confirmed).** `c01219d0` uses the upstream queue-event route detailed in Finding 2c through the case-D call at `c0121b38`: valid popped type-16 descriptor, slot 1..4, `A15 != 0`, and TX field [2] != 0. Within `c0121960`, it reaches the submit exactly when TX field [9] is nonnegative. Field [8] controls only whether the incremented ring index wraps to zero. There is no field-[5] or field-[3] predicate, and the earlier `c0120550` call cannot change field [5] on this route because field [2] is nonzero. Queue 28 availability is tested only inside `c0120250` (`c0120260..0270`), after this call site has been reached.
 
 | Case-D state | Result |
 |---|---|
@@ -133,16 +133,25 @@ c01219d4       d056 ||        MV.D1X        B0,A6
 
 Confidence: **confirmed**.
 
-**Finding 2c (confirmed).** The other route to `c0120c14` begins in `c01219f4` and is queue-driven. It requires a nonempty input queue (`c011fa20` returns an index >= 0), a type-16 descriptor (`c011fa54` true), extracted slot 1..4, incoming dispatch flag `A15 == 0`, and TX field [2] != 0. The dispatcher calls `c0120550` first, but that routine skips all field-[5] accounting when field [2] != 0. In `c0121960`, entry field [9] < 0 skips `c01219d0`, runs `c01207c8` (which resets I/O field [9] to `-1` and clears TX field [3]), then calls `c0120b2c`; its final gate is again only field [5] != 0. Field [3] is written, not tested. Therefore this route reaches `c0120c14` for any positive/nonzero field [5], even though that same value can denote an outstanding count.
+**Finding 2c (confirmed).** The other route to `c0120c14` begins in `c01219f4` and is queue-driven. It requires a nonempty input queue (`c011fa20` returns an index >= 0), a type-16 descriptor (`c011fa54` true), extracted slot 1..4, incoming dispatch flag `A15 != 0`, and TX field [2] != 0. The dispatcher calls `c0120550` first, but that routine skips all field-[5] accounting when field [2] != 0. In `c0121960`, entry field [9] < 0 skips `c01219d0`, runs `c01207c8` (which resets I/O field [9] to `-1` and clears TX field [3]), then calls `c0120b2c`; its final gate is again only field [5] != 0. Field [3] is written, not tested. Therefore this route reaches `c0120c14` for any positive/nonzero field [5], even though that same value can denote an outstanding count.
 
 | Queue-event predicates after a valid type-16 pop | Result |
 |---|---|
 | slot outside 1..4 | no case-D call |
-| `A15 != 0` | RX-side dispatch, no case-D call |
-| `A15 == 0`, TX field [2] = 0 | case C/state-update path, no case-D call |
-| `A15 == 0`, TX field [2] != 0, field [9] >= 0 | case D reaches `c01219d0`, not `c0120c14` |
+| `A15 == 0` | RX-side dispatch, no case-D call |
+| `A15 != 0`, TX field [2] = 0 | case C/state-update path, no case-D call |
+| `A15 != 0`, TX field [2] != 0, field [9] >= 0 | case D reaches `c01219d0`, not `c0120c14` |
 | same, field [9] < 0, field [5] = 0 | reset path calls `c0120b2c`, which returns without submit |
 | same, field [9] < 0, field [5] != 0 | reset path reaches `c0120c14` |
+
+```text
+c0121a94       0626           MVK.L1        0,A4
+c0121a96       0786           MV.L1         A15,A0
+c0121a98       ae2a    [ A0]  BNOP.S1       0xc0121af0,5
+c0121af0       0c33           MVK.S2        168,B0
+c0121b00   0014c228           MVK.S1        0x2984,A0
+c0121b04   006008e8           MVKH.S1       0xc0110000,A0
+```
 
 ```text
 c0121a04   1ffc0412           CALLP.S2      0xc011fa20,B3
