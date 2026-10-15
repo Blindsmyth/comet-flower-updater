@@ -1,4 +1,4 @@
-"""Score the G1 Hiwatt (G_*) against the 16x desktop-circuit reference (ref_*)
+﻿"""Score the G1 Hiwatt (G_*) against the 16x desktop-circuit reference (ref_*)
 written by hiwatt_accuracy.cpp: harmonic amplitudes H1..H9 (within 60 dB of
 H1) and the in-band non-harmonic (alias) energy, as ts808_accuracy.py does.
 
@@ -12,7 +12,7 @@ import numpy as np
 
 D = Path(__file__).resolve().parents[2] / "build" / "host" / (sys.argv[1] if len(sys.argv) > 1 else "hw")
 SR = 44100
-MODELS = {"G": 1, "G2": 1, "R4A": 4}   # prefix -> rate multiple
+MODELS = {"G": 1, "G2": 1, "R1A": 1, "R2A": 2, "R4A": 4, "R4": 4, "R8": 8, "M08": 4, "M12": 4, "M14": 4, "M15": 4, "M30": 4}   # prefix -> rate multiple
 
 
 def decimate_ref(x, os=16):

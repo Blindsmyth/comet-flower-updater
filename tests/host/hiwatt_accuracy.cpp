@@ -1,4 +1,4 @@
-// Hiwatt DR103 accuracy bench: the G1 chain (effects/common/hiwatt_amp.h,
+﻿// Hiwatt DR103 accuracy bench: the G1 chain (effects/common/hiwatt_amp.h,
 // float, 44.1 kHz in, 4x inside) against the desktop circuit model.
 //
 // Reference: Comet Flower's HiwattDR103Processor::process per-sample chain,
@@ -73,11 +73,11 @@ struct DNet {
 };
 
 static std::vector<float> reference(double f0, double amp, const Knobs& kn, double secs, int os,
-                                    bool adaa)
+                                    int adaa)   // bit i: ADAA on tube stage i (true = all five)
 {
     Adaa ad[5];
     auto tube = [&](int i, double x, double b, double a, double c) {
-        return adaa ? ad[i](x, b, a, c) : tubeD(x, b, a, c);
+        return (adaa >> i) & 1 ? ad[i](x, b, a, c) : tubeD(x, b, a, c);
     };
     using namespace hiwatt_case;
     const double fs = (double)SR * os;
@@ -124,6 +124,8 @@ int main(int argc, char** argv)
 {
     std::string dir = argc > 1 ? argv[1] : ".";
     const bool variants = argc > 2 && std::string(argv[2]) == "variants";
+    const bool rates = argc > 2 && std::string(argv[2]) == "rates";   // ADAA chain at 1x / 2x / 4x
+    const bool masks = argc > 2 && std::string(argv[2]) == "masks";   // 4x, ADAA on some stages only
     const Knobs knobs[] = {
         { 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, "noon" },
         { 1.0, 0.5, 0.5, 0.5, 1.0, 0.5, "cranked" },
@@ -136,12 +138,23 @@ int main(int argc, char** argv)
             for (double amp : { 0.05, 0.25, 0.7 }) {
                 char tag[64];
                 std::snprintf(tag, sizeof tag, "%s_f%d_a%03d", kn.name, (int)f0, (int)(amp * 100));
-                write(dir + "/ref_" + tag + ".f32", reference(f0, amp, kn, secs, 16, true));
+                write(dir + "/ref_" + tag + ".f32", reference(f0, amp, kn, secs, 16, 31));
                 if (variants) {   // the same double chain at 4x / 8x: what each rate can reach
-                    write(dir + "/R4_" + tag + ".f32", reference(f0, amp, kn, secs, 4, false));
-                    write(dir + "/R4A_" + tag + ".f32", reference(f0, amp, kn, secs, 4, true));
-                    write(dir + "/R8_" + tag + ".f32", reference(f0, amp, kn, secs, 8, false));
+                    write(dir + "/R4_" + tag + ".f32", reference(f0, amp, kn, secs, 4, 0));
+                    write(dir + "/R4A_" + tag + ".f32", reference(f0, amp, kn, secs, 4, 31));
+                    write(dir + "/R8_" + tag + ".f32", reference(f0, amp, kn, secs, 8, 0));
                 }
+                if (rates) {   // what each rate can reach with ADAA (double, desktop chain)
+                    std::vector<float> r;
+                    r = reference(f0, amp, kn, secs, 1, 31); write(dir + "/R1A_" + tag + ".f32", r);
+                    r = reference(f0, amp, kn, secs, 2, 31); write(dir + "/R2A_" + tag + ".f32", r);
+                    r = reference(f0, amp, kn, secs, 4, 31); write(dir + "/R4A_" + tag + ".f32", r);
+                }
+                if (masks)     // M<bits>: stages 0..4 = V1, V2, V3a, PI, power
+                    for (int m : { 8, 12, 14, 15, 30 }) {
+                        char p[16]; std::snprintf(p, sizeof p, "/M%02d_", m);
+                        write(dir + p + tag + ".f32", reference(f0, amp, kn, secs, 4, m));
+                    }
                 HwState s = {}; HwCoeffs k;
                 hw_coeffs(&k, (float)kn.vol, (float)kn.tre, (float)kn.mid, (float)kn.bas,
                           (float)kn.mas, (float)kn.pre);
