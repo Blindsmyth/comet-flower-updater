@@ -41,6 +41,42 @@ which is outside this brief's stated inputs (`main.dis`/`refs.txt`/`recon/map/ch
 
 ## 2. Caller of the kick `c0120c44`
 
+**Finding 2a (confidence: confirmed).** `c0120c44` is a genuine standalone function, not a fallthrough
+tail: the instruction immediately before it (`c0120c3c`/`c0120c40`) is `BNOP.S2 B3,5`, a real return
+from the *previous* routine, and `c0120c44` opens with its own prologue `STW.D2T2 B3,*B15--[2]`. A
+search of the whole disassembly for the low halfword `0x0c44` (as an MVK/MVKH operand pair), for the
+literal `0xc0120c44`, and in `refs.txt` found **zero** hits of any kind — no `CALLP`, no address
+constant, no `.word` table entry.
+
+```text
+c0120c3c   .fphead  ...  (end of prior routine)
+c0120c40       BNOP.S2  B3,5              ; prior routine's real return
+c0120c44       STW.D2T2 B3,*B15--[2]      ; c0120c44's own prologue — not reached by fallthrough
+```
+
+**Conclusion for Q2: unknown/unreachable in this disassembly.** `c0120c44` has no visible caller
+anywhere in `main.dis` or `refs.txt`. Either it is dead code in this build, or it is reached by a
+mechanism this static view cannot see (e.g. a function-pointer table stored as data rather than code).
+This matches the existing `recon/map/chunk_02.md` entry for `c0120c44` ("no CALLP or address-constant
+caller found") and Codex's partial Finding 2a in the companion report.
+
+**Finding 2b (confidence: confirmed — full body trace, new).** Tracing `c0120c44` end-to-end: it is a
+**ring-mode-only** operation. It returns the shared error code `0xffff8ad0` immediately if the masked
+channel (`A4 & 0xF`) is 0, *or* if the target slot's field [2] is 0 (counted mode). Only when field [2]
+is nonzero does it look at field [9]; if field [9] is exactly -1 it calls `c0120b2c`
+(`usb_tx_desc_prepare`) to start the chain, otherwise it just stores the caller's value into field [5]
+and returns.
+
+```text
+c0120c6c       LDW.D2T2  *+B4[2],B0        ; B0 = field[2] (mode) of record_base(channel)
+c0120c70   [!B0]BNOP.S1  0xc0120c80,5      ; mode==0 (counted) -> skip to error return 0xffff8ad0
+c0120c74       LDW.D2T2  *B4[9],B0         ; B0 = field[9] (ring index)
+c0120c8c       CMPEQ.L2  -1,B0,B0          ; exactly -1 ?
+c0120c90  [!B0]BNOP.S1   0xc0120c98,5      ; not -1 -> just stored field[5] above, return 0 (no (re)kick)
+c0120c94       CALLP.S2  0xc0120b2c,B3     ; -1 (idle) -> start the chain via usb_tx_desc_prepare
+```
+
+
 ## 3. Ring setup
 
 ## 4. Which slots use which mode
