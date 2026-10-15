@@ -1,5 +1,22 @@
 # TX ring-mode slots and ring starter
 
+> **Claude review (2026-10-15).** This report was filled in by a Sonnet subagent after Codex hit its cap.
+> - **Confirmed: field [2] is only ever written 0.** At `c011feba`, `STW A1(=0),*B6[9]` with
+>   B6 = `0xc0112c08` (`c011fe74/78`, `c011fea4`) targets `0xc0112c2c` = slot 1 field [2]
+>   (`0xc0112984 + 0x2a8`). No TX record address lies in any `main.elf` section, so the image has no
+>   non-zero initializer. **Ring mode is dormant in stock**: both its checks always take the counted branch.
+> - **Correction.** "`c011fd40` is a different 168-byte-stride table" is wrong. `MVK 168` followed by
+>   `SET A0,9,9` is 0x2a8, and `c011fd5a` forms the TX record base. `c011fd40` clears [6]..[8] and
+>   sets [9] = -1 on the same TX record (see the review in SOL_EXPIRY_RECOVERY_REPORT).
+> - **The open item in §3 is answered elsewhere.** The ring index is committed to [9] by case D at
+>   `c0121988`/`c0121996` (SOL_DIRECT_SUBMITTERS_REPORT §2b), not by `c011faa0`.
+> - **Consequences.**
+>   - The ring-mode double-chain risk is moot for stock.
+>   - The counted-mode findings (deferral, liveness) cover every live TX path.
+>   - For USB audio, the dormant ring machinery is a candidate base: an ISO stream would set [2]
+>     non-zero, fill record+0x168, set [8] and [9] = -1, then kick `c0120c44`. Its entry layout and the
+>     slot-to-endpoint mapping are unresolved (see recon/23_cppi_iso.md).
+
 Static analysis of `build/fw/map/main.dis` and `build/fw/map/refs.txt`, with names from `recon/map/chunk_*.md` used only through grep. No device, pedal, or executable was accessed; no firmware was changed; nothing was pushed.
 
 ## 1. Writers of TX field [2]
