@@ -1,5 +1,23 @@
 # Review 2: second independent review of the USB audio candidate (2026-10-15)
 
+> **Claude review (2026-10-15).** The verdicts hold. One piece of reasoning was wrong, and two RISKs are narrowed.
+> - **Item 1, return value: the callers DO read A4.** They branch on it. `c0135022 MV A4,A1` then
+>   `c0135024 [A1] BNOP c013536c` (error path). The same holds at `c0152524/26` (`MV A4,A0; [A0] BNOP`)
+>   and `c01357f0/f2`. The veneer's `A4 = 0` for A4 ∈ {1, 2} is therefore the **success status
+>   those callers require**, not a don't-care. The verdict OK stands, for this reason instead.
+> - **Alt-array capacity (RISK narrowed to likely safe).** The IF3 callback itself writes
+>   `c011a1b3` (`MVK 0xffffa1b3` in `ua_if3_request`). The nearest other stock-referenced object
+>   is at `c011a1b8` (`11818d08`, `c016176c`, `c0161840`), so the alt array has 8 bytes and
+>   interfaces 0..3 fit. Open: the trip count of the stock clear loops (`c0135676`,
+>   `c01359d6`, SPLOOPD with ILC from B0) is not derived. If they clear fewer than 4 bytes,
+>   GET_INTERFACE(3) can report a stale 1 after a SET_CONFIGURATION. That is cosmetic; hosts
+>   rarely ask.
+> - **New (low) RISK: nothing resets `usb_audio_state` on SET_CONFIGURATION or bus reset.** A reset
+>   while streaming leaves `stream_enabled = 1`. The effect looks benign: the host does not poll EP1
+>   until it selects alt 1, so TXPKTRDY stays set and the SOF tick only counts `missed_sof`. The
+>   next SET_INTERFACE(3, x) flushes and restarts. Watch `missed_sof` in the enumeration test
+>   (sleep/resume, driver reload).
+
 > **Headline.** No bug found; the STRING fix (`9ac88a4`) holds. All three
 > scope items are OK on independent re-trace (predicate tables, delay
 > slots, strides computed not eyeballed, single-caller re-confirmed,
