@@ -136,8 +136,9 @@ def build_payload(diag=False):
     return elf
 
 
-def elf_image(elf):
+def elf_image(elf, region=(CTL_BASE, CTL_SIZE)):
     """Contiguous bytes of all allocated sections, plus the symbol table."""
+    region_base, region_size = region
     e = elf.read_bytes()
     shoff = struct.unpack_from("<I", e, 0x20)[0]
     shent, shnum, shstr = struct.unpack_from("<HHH", e, 0x2e)
@@ -146,7 +147,7 @@ def elf_image(elf):
     name = lambda s: e[names + s[0]:e.index(b"\0", names + s[0])].decode()
     alloc = [s for s in sh if s[2] & 2 and s[5]]          # SHF_ALLOC, size > 0
     for s in alloc:
-        if not (CTL_BASE <= s[3] and s[3] + s[5] <= CTL_BASE + CTL_SIZE):
+        if not (region_base <= s[3] and s[3] + s[5] <= region_base + region_size):
             sys.exit("section %s at %#x outside the reserved region" % (name(s), s[3]))
         if name(s) in (".cinit", ".switch", ".init_array"):
             sys.exit("section %s needs run-time support: refused" % name(s))
