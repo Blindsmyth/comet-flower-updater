@@ -30,7 +30,26 @@ Static analysis report on task instances and lifecycle of the USB event loop `0x
 
 ## 2. Task creation
 
-*Pending analysis.*
+- **Confidence**: confirmed
+- **Descriptor table**: `0xc0138310` is stored at offset `+0x08` of static descriptor `0xc01800bc` in DATA section `sc016f780`.
+  - Descriptor fields at `0xc01800bc`:
+    - `+0x08` (`0xc01800c4`): `0xc0138310` — Entry function pointer (`usb_worker_task`)
+    - `+0x0c` (`0xc01800c8`): `0x0000001e` — Priority: **30** (`0x1e`)
+    - `+0x10` (`0xc01800cc`): `0x00000800` — Stack size: **2048 bytes** (`0x800` = 2 KiB)
+    - `+0x18` (`0xc01800d4`): `0xc01817d0` — Name pointer -> `"UsbTask"` (`c01817d0: .word 0x54627355, 0x006b7361`)
+- **Creation routine (`c014a400`)**:
+  - The descriptor `0xc01800bc` is passed in `A4` to `c014a400` at `c01387ac` in `usb_worker_start` (`c0138720`):
+    ```
+    c01387a8   02005e28           MVK.S1        0x00bc,A4
+    c01387ac   10238c13           CALLP.S2      0xc014a400,B3
+    c01387b0   02600c68 ||        MVKH.S1       0xc0180000,A4
+    c01387b4       0246           MV.L1         A4,A0
+    c01387b6       a5aa    [ A0]  BNOP.S1       0xc01387cc,5
+    ...
+    c01387cc   00005e7c           STW.D2T1      A0,*+B14[94]
+    ```
+  - Routine `c014a400` (`TASK_CREATE` in `controller.c`) initializes a 56-byte SYS/BIOS `Task_Params` structure via `c016e8a0` from default template `0xc01800f4`, unpacks the fields (`*A4[2]` -> fxn, `*A4[3]` -> priority, `*A4[4]` -> stackSize, `*A4[6]` -> name), and calls the SYS/BIOS task creator `c0165920` (`Task_create`).
+  - The returned non-zero task handle is saved into `*+B14[94]`.
 
 ## 3. Instance count
 
