@@ -1,5 +1,14 @@
 # Task Instances Report: USB Event Loop `0xc0138310`
 
+> **Claude review (2026-10-15): verified.**
+> - **Guard.** The `LDW *+B14[94],B0` at `c0138778` is in the delay slots of `c0138776 [A0] BNOP`, so it
+>   executes on both paths. On the mailbox-created path, `c0138798 [!B0] BNOP 0xc01387a8` reaches the
+>   create (`c01387ac`, descriptor `0xc01800bc`) only when the handle is 0.
+> - **Descriptor.** The words at `c01800c4/c8/cc` match (entry `c0138310`, priority 30, stack 0x800).
+> - **Callers.** `c0138720` has exactly one direct caller.
+> - **Result.** At most one `UsbTask` instance exists. This closes the last assumption of
+>   `USB_Q25_ASSOCIATION_2026-10-15.md` §2.
+
 Static analysis report on task instances and lifecycle of the USB event loop `0xc0138310` in `build/fw/map/main.dis`.
 
 ## 1. Every reference to `0xc0138310`

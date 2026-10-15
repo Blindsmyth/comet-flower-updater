@@ -51,7 +51,7 @@ CLEAR_FEATURE(ENDPOINT_HALT) for EP 0x84, which arrives through slot 3 (`c01359e
 [GEMINI_OP8_REPORT.md](GEMINI_OP8_REPORT.md).
 
 **Bounded finding:** every identified abort runs in a single task loop, so
-aborts are sequential, not nested. This assumes one task runs `c0138310`, which has not been proven. Op 8's producer is now traced to the same loop.
+aborts are sequential, not nested. One task instance runs `c0138310` (`GEMINI_TASK_INSTANCES_REPORT.md`: one creation site, guarded on `B14[94]`). Op 8's producer is traced to the same loop.
 
 ## 3. Consequence: a stale descriptor needs a prior expired poll
 
@@ -90,6 +90,6 @@ detect this case.
 - **If a fix is needed:** at `c0120744`, compare the word0 channel against N−1
   and keep polling on a mismatch instead of accepting the entry. That would be
   a new named candidate. Nothing has been built.
-- Still open: whether `c0138310` runs as a single task instance. Since resolved
+- Since resolved: a single `c0138310` task instance (GEMINI_TASK_INSTANCES_REPORT),
   elsewhere: entry IRQ state (USB_ABORT_ENTRY_IRQ), the op-8 producer
   (GEMINI_OP8_REPORT), and recovery after expiry (SOL_EXPIRY_RECOVERY_REPORT review).
