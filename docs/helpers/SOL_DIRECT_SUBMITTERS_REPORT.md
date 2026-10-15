@@ -133,7 +133,7 @@ c01219d4       d056 ||        MV.D1X        B0,A6
 
 Confidence: **confirmed**.
 
-**Finding 2c (confirmed).** The other route to `c0120c14` begins in `c01219f4` and is queue-driven. It requires a nonempty input queue (`c011fa20` returns an index >= 0), a type-16 descriptor (`c011fa54` true), extracted slot 1..4, incoming dispatch flag `A15 != 0`, and TX field [2] != 0. The dispatcher calls `c0120550` first, but that routine skips all field-[5] accounting when field [2] != 0. In `c0121960`, entry field [9] < 0 skips `c01219d0`, runs `c01207c8` (which resets I/O field [9] to `-1` and clears TX field [3]), then calls `c0120b2c`; its final gate is again only field [5] != 0. Field [3] is written, not tested. Therefore this route reaches `c0120c14` for any positive/nonzero field [5], even though that same value can denote an outstanding count.
+**Finding 2c (confirmed predicates; unknown memory-fault behavior).** The other route to `c0120c14` begins in `c01219f4` and is queue-driven. It requires a nonempty input queue (`c011fa20` returns an index >= 0), a type-16 descriptor (`c011fa54` true), extracted slot 1..4, incoming dispatch flag `A15 != 0`, and TX field [2] != 0. The dispatcher calls `c0120550` first, but that routine skips all field-[5] accounting when field [2] != 0. In `c0121960`, entry field [9] < 0 skips `c01219d0`, runs `c01207c8` (which resets I/O field [9] to `-1` and clears TX field [3]), then calls `c0120b2c`; its final branch gate is field [5] != 0. Field [3] is written, not tested. However, `c0120b2c` then treats field [5] as a pointer (`c0120b66..70`, and again through alias `A7`), so a small outstanding count continues along the static control-flow path but may fault before `c0120c14`. On the kick route field [5] was just replaced with caller `B4`; on this reset route it was not. Thus nonzero field [5] is sufficient for the branch path, not proof that the call executes successfully.
 
 | Queue-event predicates after a valid type-16 pop | Result |
 |---|---|
@@ -142,7 +142,7 @@ Confidence: **confirmed**.
 | `A15 != 0`, TX field [2] = 0 | case C/state-update path, no case-D call |
 | `A15 != 0`, TX field [2] != 0, field [9] >= 0 | case D reaches `c01219d0`, not `c0120c14` |
 | same, field [9] < 0, field [5] = 0 | reset path calls `c0120b2c`, which returns without submit |
-| same, field [9] < 0, field [5] != 0 | reset path reaches `c0120c14` |
+| same, field [9] < 0, field [5] != 0 | reset path continues toward `c0120c14`; intervening pointer loads must succeed |
 
 ```text
 c0121a94       0626           MVK.L1        0,A4
@@ -151,6 +151,15 @@ c0121a98       ae2a    [ A0]  BNOP.S1       0xc0121af0,5
 c0121af0       0c33           MVK.S2        168,B0
 c0121b00   0014c228           MVK.S1        0x2984,A0
 c0121b04   006008e8           MVKH.S1       0xc0110000,A0
+```
+
+```text
+c0120b60       a00d           LDW.D2T1      *B4[5],A0
+c0120b64       db7a    [!A0]  BNOP.S1       0xc0120c3a,5
+c0120b66       9047           MV.L2X        A0,B4
+c0120b68       100d           LDW.D2T2      *B4[0],B0
+c0120b70       218c           LDW.D1T1      *A7[1],A0
+c0120b76       418c           LDW.D1T1      *A7[2],A0
 ```
 
 ```text
@@ -190,7 +199,7 @@ c01219e0   1ffdbd13           CALLP.S2      0xc01207c8,B3
 c01219e8   1ffe2993           CALLP.S2      0xc0120b2c,B3
 ```
 
-Confidence: **confirmed**.
+Confidence: **confirmed** for predicates and pointer use; **unknown** whether a small count faults, aliases mapped memory, or reaches the submit on hardware.
 
 ## 3. Does it update field [5]?
 
