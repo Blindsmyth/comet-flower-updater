@@ -16,8 +16,10 @@ owners as a patch tool that converts their own downloaded Zoom v2.00 updater
 - Firmware map: all 2790 extracted starts named (1415 confirmed, 1340 likely,
   35 guess); 802 boot rows are uncertain candidate starts. Mechanical checks
   pass; a full semantic and indirect-target audit has not been completed.
-- USB audio: static analysis finished (recon/21 S1..S7). Prototype exists
-  (`firmware/usb_audio_proto/`). Nothing is built for the pedal.
+- USB audio: static analysis finished (recon/21 S1..S7). An offline silence-stream
+  candidate builds (`tools/make_usb_audio_fw.py`,
+  docs/USB_AUDIO_SILENCE_CANDIDATE_2026-10-15.md; DO_NOT_FLASH). It layers on stock
+  or on the controller candidate. No host or pedal has seen it.
 - Effects on file: CF 808 (808X, circuit-exact), CF RAT, CF Muff, DR103
   (Hiwatt), TS Drive, probes. Several are installed; cost tests are pending.
 - Update-mode file-system recovery worked once on the pedal; current updater
@@ -52,9 +54,10 @@ Rules: autosave OFF, never save experimental effects, install only through
 update-mode images (docs/DSP_RULES.md, docs/RECOVERY_G1.md).
 
 ## Phase C — USB audio (after B1 passes)
-1. Apply patch list v2 (recon/20 §2.6): 192-byte descriptor, relocate the
-   pointer array c00643c0, register IF2/IF3 after `usbmidi_open` (recon/24),
-   patch c015c66c for the 3-slot registry.
+1. ~~Apply patch list v2~~ done offline 2026-10-15: the descriptor builder is replaced
+   (supersedes the P1-P3 relocation), IF2/IF3 are registered, the c015c66c map is
+   rewritten via the c015c674 gate, and the SOF hook is in place. Pending: an
+   independent review and a strict UAC1 validator.
 2. Silence-stream test image; owner checks enumeration (Windows/macOS UAC1)
    and MIDI coexistence.
 3. Producer tap at `11818c64` (recon/21 S1): copy the finished 128-byte TX
