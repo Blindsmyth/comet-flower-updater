@@ -1,6 +1,13 @@
 # Review 2: second independent review of the USB audio candidate (2026-10-15)
 
-> Headline: TBD
+> **Headline.** No bug found; the STRING fix (`9ac88a4`) holds. All three
+> scope items are OK on independent re-trace (predicate tables, delay
+> slots, strides computed not eyeballed, single-caller re-confirmed,
+> callee-side trace of the shared ACK primitive). Two minor, unconfirmed
+> RISKs are carried forward for the record, not blockers: the alt-array's
+> true capacity past offset+3 wasn't independently proven bounded, and
+> CLEAR_FEATURE(interface) wasn't traced to the same depth as GET_STATUS/
+> SET_FEATURE. 223 tests pass (223 > the 206 baseline).
 
 Scope per `docs/helpers/BRIEF_REVIEW2_USB_AUDIO.md`. Reviewed against
 `build/fw/map/main.dis` (stock) and a fresh rebuild of
@@ -230,13 +237,40 @@ found by the grep I could run, but "no conflict found" is weaker than
 
 ## 4. Anything else found
 
-(pending)
+**No new bug found.** Checks performed:
+
+- **Rebuild and tests.** `build/usb_audio/usb_audio.dis` was already
+  current relative to the committed sources (its mtime postdates every
+  firmware/tool source file touched by the STRING fix, and `git diff
+  --stat HEAD -- firmware/ tools/make_usb_audio_fw.py` is empty, so no
+  uncommitted drift). Ran
+  `.venv/Scripts/python.exe -m pytest tests tools/test_usb_audio_proto.py -q`:
+  **223 passed, 615 subtests passed** (the brief's "206 must pass" baseline
+  is exceeded, not short — consistent with tests added after the fix
+  commit, no regression). Did not run `make_usb_audio_fw.py` myself (the
+  harness's own auto-mode classifier blocked it as a local-destructive
+  action); relied on the pre-existing, verified-current artifact instead.
+- **Patch-site list cross-check.** `tools/make_usb_audio_fw.py`'s `PATCHES`
+  list (lines 46-55) matches the design doc's table exactly: the same 7
+  `BUILDER_CALLS` addresses, the same `c0145158`/`c015c674`/`c016f770+774`
+  sites and target symbols. The "exact stock word" guard values in the
+  tuples (e.g. `0xd026a120` at `c015c674`) match the raw bytes independently
+  observed in `main.dis` at those addresses. A separate `TAP_PATCHES` list
+  (lines 61-68, `--tap`/ROADMAP C3 real-audio variant) exists in the same
+  file but is a different candidate, not built by the plain
+  `make_usb_audio_fw.py` invocation this brief covers, and out of scope.
+- **Compiled-output spot checks.** Confirmed `usb_audio_descriptor_veneer`,
+  `ua_map_thunk`, and `ua_ep0_ack` all compiled with their symbols resolved
+  correctly (no unresolved/truncated branch targets) by grepping the
+  disassembly directly, e.g. the veneer's stock tail-branch disassembles as
+  `B.S1 stock_descriptor_builder (PC-292544 = 0xc0160ec0)` — the linked
+  address matches the documented stock address exactly.
 
 ## Summary of verdicts
 
 | # | item | verdict |
 |---|---|---|
-| 1 | descriptor veneer delegation | TBD |
-| 2 | `ua_map_thunk` | TBD |
-| 3 | IF3 SETUP callback | TBD |
-| 4 | other | TBD |
+| 1 | descriptor veneer delegation (all 7 sites) | OK, confirmed |
+| 2 | `ua_map_thunk` (entry/return/clobber/slots, single-caller) | OK, confirmed |
+| 3 | IF3 SETUP callback (offsets, alt storage, other requests, ACK) | OK, confirmed (one minor unconfirmed RISK: alt-array capacity past offset+3) |
+| 4 | other (rebuild/tests, patch-list cross-check, compiled-output spot check) | nothing new found; 223 tests pass |
