@@ -125,8 +125,12 @@ obligations in `docs/helpers/USB_ABORT_OWNERSHIP_2026-10-14.md`:
 | 3 q25 association | narrowed: needs a prior expired poll; diag detects it (0x2) | USB_Q25_ASSOCIATION |
 | 4 expiry recovery | counted mode: no premature reuse; **liveness risk**: stuck [5] stalls the slot | SOL_EXPIRY_RECOVERY_REPORT (Claude review) |
 
-Ring mode (TX field [2] != 0) has a separate double-chain risk; see
-SOL_DIRECT_SUBMITTERS_REPORT (Claude review). The diag build now has a MIDI
+Ring mode (TX field [2] != 0) is dormant in stock: [2] is only ever written 0
+(SOL_TX_MODE_REPORT review), so its double-chain risk is moot. Its kick/case-D
+machinery is a candidate base for USB-audio ISO IN. Association assumptions are
+closed: a single UsbTask (GEMINI_TASK_INSTANCES_REPORT), and op 8 = host
+CLEAR_FEATURE(HALT) on EP 0x84 (GEMINI_OP8_REPORT). The diag readback also
+reports the measured worker-stack high-water mark. The diag build now has a MIDI
 readback (both footswitches), so the owner test in
 OWNER_DIAG_TEST_PREP_2026-10-15 can produce data.
 
