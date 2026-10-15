@@ -151,6 +151,11 @@ question without proving either a race or complete serialization.
    the queue-pending indication; proving its exclusion or safe coexistence
    is necessary before interpreting poll expiry as hardware failure.
 3. Prove the matching endpoint's teardown completion on every path, or
+   *2026-10-15:* narrowed in
+   [USB_Q25_ASSOCIATION_2026-10-15.md](USB_Q25_ASSOCIATION_2026-10-15.md).
+   Only `c0120650` feeds q25, and all identified aborts run sequentially in a
+   single task, so mis-association needs a prior expired poll plus Hwi latency.
+   Original text:
    specify reviewed recovery that preserves buffer ownership after expiry.
 4. Trace later initialization and failure recovery before claiming buffer
    reuse is safe. A bounded iteration count and descriptor recycling are

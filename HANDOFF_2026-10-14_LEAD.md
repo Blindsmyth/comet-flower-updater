@@ -89,7 +89,13 @@ superseded by this continuation.
   recycles to q28 too, and an empty pop exits safely. Each descriptor has one
   owner whether or not preemption occurs. Poll expiry is therefore not evidence
   of hardware failure. Still open: endpoint association (shared q25) and the
-  entry interrupt state. Suite: **173 passed, 504 subtests**.
+  entry interrupt state.
+- 2026-10-15: q25 association
+  ([USB_Q25_ASSOCIATION_2026-10-15.md](docs/helpers/USB_Q25_ASSOCIATION_2026-10-15.md)).
+  Only `c0120650` (N=1..4) feeds q25; RX teardowns use q27. All identified
+  abort callers dispatch from the `c0138370` task (`c01383ea`), so aborts are
+  sequential. Mis-association requires a prior expired poll. The diag's
+  FAULT_CHANNEL_MISMATCH would detect it. Suite: **175 passed, 544 subtests**.
 
 Details and next instruction-level work:
 [STACK_CONTINUATION_2026-10-14.md](docs/helpers/STACK_CONTINUATION_2026-10-14.md),
@@ -110,7 +116,9 @@ The original untracked `.agents/` and `bridge/` directories were preserved.
    remains unmeasured. Prioritize teardown descriptor association, Hwi exclusion
    or safe coexistence, and poll-expiry ownership using the abort follow-up.
    *Update 2026-10-15:* descriptor ownership under coexistence and q25
-   expiry are resolved; endpoint association remains the next item.
+   expiry are resolved. Endpoint association has been narrowed: it needs a prior
+   expiry. Next: obligation 4 (post-expiry recovery / reuse) and the op-8
+   producer.
 3. For hardware runtime diagnosis, prepare a bounded owner-run procedure using
    the diagnostic candidate (`--diag-teardown`) and `tools/decode_ctl_diag.py`
    to capture `ctl_diag` state upon disconnect/reconnect events. Keep the
