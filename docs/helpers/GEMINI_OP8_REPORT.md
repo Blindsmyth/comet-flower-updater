@@ -1,5 +1,18 @@
 # Report: MIDI Port Callback (0xc011ac80) and Op 8 Producers
 
+> **Claude review (2026-10-15): verified.**
+> - **Request decode.** `c0151eec` CMPEQ 11 branches SET_INTERFACE elsewhere (`c0151f5a`).
+>   `c0151ef6`/`c0151f00..0f08` require bRequest == 1 (CLEAR_FEATURE) and recipient == endpoint.
+>   `c0151f20..0f2c` dispatch on wIndex: 3 → op 7, 0x84 → op 8.
+> - **wValue.** It is not checked, so any endpoint CLEAR_FEATURE qualifies. HALT is the only standard
+>   endpoint feature, so the label stands.
+> - **Consequence.** A host-side halt clear or pipe reset on MIDI IN runs `c014a018`, which does the
+>   ring reset and then the TX abort `c0120650` on slot 4. This runs in the event task (slot 3 of
+>   `0xc01807a0`), which closes the "op 8 producer" assumption in `USB_Q25_ASSOCIATION_2026-10-15.md` §2.
+> - **Test idea.** Hosts issue this request on pipe reset. With pyusb it could even be issued on demand
+>   from the owner PC, to trigger an abort on purpose during a diag run. That would be an owner-run step,
+>   not done here.
+
 Investigation into who invokes the MIDI port callback registered at `0xc011ac80` (`c0144c0c`) and with which event numbers, specifically whether op 8 (ring reset, `c0144d0c`) is invoked.
 
 ## 1. All loads of 0xc011ac80

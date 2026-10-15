@@ -46,11 +46,12 @@ The handler table `c01807a0..c01807c8` has exactly one dispatch site:
 the event-service task entry `c0138310`. The
 [lifecycle continuation](USB_LIFECYCLE_CONTINUATION_2026-10-14.md) traces the
 known producers of callback `c0144c0c` events 2/3/5 to walkers in the same
-table. **No producer was traced for op 8** (`c0144d0c`).
+table. *Update:* op 8 (`c0144d0c`) is produced by `c0151ed0` (`c0151f30`) on a host
+CLEAR_FEATURE(ENDPOINT_HALT) for EP 0x84, which arrives through slot 3 (`c01359e4`) of the same table. See
+[GEMINI_OP8_REPORT.md](GEMINI_OP8_REPORT.md).
 
 **Bounded finding:** every identified abort runs in a single task loop, so
-aborts are sequential, not nested. This assumes one task runs `c0138310` and
-that op 8 has no producer outside the loop. Neither has been proven.
+aborts are sequential, not nested. This assumes one task runs `c0138310`, which has not been proven. Op 8's producer is now traced to the same loop.
 
 ## 3. Consequence: a stale descriptor needs a prior expired poll
 
