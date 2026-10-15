@@ -185,6 +185,59 @@ Confidence: **confirmed**.
 
 ## 3. Does it update field [5]?
 
+**Finding 3a (confirmed).** A successful `c0120c14` submit does **not** increment TX field [5]. `c0120250` returns zero on success (`c0120324`); the zero row falls through at `c0120c28`, stores field [3] = 3 and calls `c01200f4`. Both success and failure then execute `c0120c38`, which sets field [5] to zero. This is the opposite of the normal post-success increment at `c01204aa..04ae`.
+
+```text
+c0120318   1ffeee13           CALLP.S2      0xc011fa70,B3
+c0120320       01cc ||        LDW.D1T1      *A7[0],A4
+c0120322       83c7 ||        MV.L2         B7,B4
+c0120324       0626           MVK.L1        0,A4
+```
+
+```text
+c0120c26       0246           MV.L1         A4,A0
+c0120c28       a2aa    [ A0]  BNOP.S1       0xc0120c34,5
+c0120c2c       6013 ||        MVK.S2        3,B0
+c0120c2e       7005           STW.D2T2      B0,*B4[3]
+c0120c30   1ffe9a92           CALLP.S2      0xc01200f4,B3
+c0120c34       9487           MV.L2X        A9,B4
+c0120c36       1407           MV.L2X        A8,B0
+c0120c38       b005           STW.D2T2      B0,*B4[5]
+```
+
+For comparison, the ordinary wrapper increments only after `c0120250` returns success:
+
+```text
+c01204a2       0246           MV.L1         A4,A0
+c01204a4       a54a    [ A0]  BNOP.S1       0xc01204b0,5
+c01204aa       b00d           LDW.D2T2      *B4[5],B0
+c01204ac       2401           ADD.L2        B0,1,B0
+c01204ae       b005           STW.D2T2      B0,*B4[5]
+```
+
+The descriptor still returns through queue 24, then the Hwi forwards it to queue 32 when field [2] is zero or queue 34 when field [2] is nonzero. The `c01219f4` consumer calls `c0120550`, but that function decrements only if field [2] == 0 and signed field [5] > 0. Consequently this descriptor has no dedicated count: with field [5] still zero it is ignored; if another operation has made the aggregate positive, its return can decrement that aggregate instead. The positive-only guard prevents this path from making field [5] negative or wrapping through zero, but it does not prevent undercount or cross-accounting.
+
+```text
+c011fb70       03c6           MV.L1         A7,A0
+c011fb72       a36a    [ A0]  BNOP.S1       0xc011fb7a,5
+c011fb74       f11b           CALLP.S2      0xc011fa70,B3
+c011fb76       8346 ||        MV.L1         A6,A4
+c011fb7a       f11b           CALLP.S2      0xc011fa70,B3
+c011fb80       4232 ||        MVK.S1        34,A4
+```
+
+```text
+c01205e0       400c ||        LDW.D1T1      *A4[2],A0
+c01205e2       a72a    [ A0]  BNOP.S1       0xc0120618,5
+c01205e6       a01c           LDW.D1T1      *A4[5],A1
+c01205e8       10a6           CMPLT.L1      0,A1,A0
+c01205ea       a73a    [!A0]  BNOP.S1       0xc0120618,5
+c01205ec       ec80           ADD.L1        A1,-1,A0
+c01205f0       a004           STW.D1T1      A0,*A4[5]
+```
+
+Confidence: **confirmed**.
+
 ## 4. Endpoint/direction
 
 ## 5. Verdict
