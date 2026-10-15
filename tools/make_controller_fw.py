@@ -54,6 +54,13 @@ HOOKS = [
     (0xc0149fa8, 0x3df24, 0x10008c13, 0xc014a400, "controller_worker_create"),
 ]
 
+# OFFLINE diagnostic only (--diag-teardown); never in HOOKS, so the updater
+# packager and lifecycle verifier keep refusing it. Stock word 1ffe6292 at
+# c0120744 is CALLP c011fa54 (type==16 test) inside the abort drain loop.
+DIAG_HOOKS = [
+    (0xc0120744, 0x146c0, 0x1ffe6292, 0xc011fa54, "controller_diag_teardown_hook"),
+]
+
 
 def callp_target(addr, word):
     cst = (word >> 7) & 0x1fffff
@@ -104,17 +111,26 @@ def run(*cmd):
     return r.stdout
 
 
-def build_payload():
-    OUT.mkdir(parents=True, exist_ok=True)
+def build_payload(diag=False):
+    """diag=True builds the OFFLINE teardown-diagnostic candidate into its own
+    directory (build/controller/diag) so the lifecycle outputs are untouched."""
+    out = OUT / "diag" if diag else OUT
+    out.mkdir(parents=True, exist_ok=True)
+    stem = "controller_diag" if diag else "controller"
+    srcs = [SRC / "controller.c", SRC / "controller_hooks.asm"]
+    objs = [out / "controller.obj", out / "controller_hooks.obj"]
+    if diag:
+        srcs += [SRC / "controller_diag.c", SRC / "controller_diag_hooks.asm"]
+        objs += [out / "controller_diag.obj", out / "controller_diag_hooks.obj"]
+    cmd_file = SRC / ("controller_diag.cmd" if diag else "controller.cmd")
     run(CGT / "bin/cl6x", "--silicon_version=6740", "--abi=eabi", "--c99",
         "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
-        "--keep_asm", "--asm_directory=%s" % OUT, "--obj_directory=%s" % OUT,
-        "--compile_only", SRC / "controller.c", SRC / "controller_hooks.asm")
-    elf = OUT / "controller.elf"
-    run(CGT / "bin/lnk6x", "--ram_model", "--map_file=%s" % (OUT / "controller.map"),
-        "--output_file=%s" % elf, OUT / "controller.obj",
-        OUT / "controller_hooks.obj", SRC / "controller.cmd")
-    run(CGT / "bin/dis6x", elf, OUT / "controller.dis")
+        "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
+        "--compile_only", *srcs)
+    elf = out / (stem + ".elf")
+    run(CGT / "bin/lnk6x", "--ram_model", "--map_file=%s" % (out / (stem + ".map")),
+        "--output_file=%s" % elf, *objs, cmd_file)
+    run(CGT / "bin/dis6x", elf, out / (stem + ".dis"))
     return elf
 
 
@@ -167,13 +183,14 @@ def base_kind(base, stock):
                      "or stock with const-data edits only")
 
 
-def build(base_path, out_path, stock_path):
+def build(base_path, out_path, stock_path, diag=False):
     base = Path(base_path).read_bytes()
     try:
         kind = base_kind(base, Path(stock_path).read_bytes())
     except ValueError as exc:
         sys.exit(str(exc))
-    lo, img, syms = elf_image(build_payload())
+    lo, img, syms = elf_image(build_payload(diag))
+    hooks = HOOKS + (DIAG_HOOKS if diag else [])
     if lo != CTL_BASE or len(img) > CTL_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (FREE_SDRAM[0] <= lo and lo + len(img) <= FREE_SDRAM[1]):
@@ -190,7 +207,7 @@ def build(base_path, out_path, stock_path):
                 sys.exit("payload overlaps AIS section %#x+%#x" % (a, n))
 
     data = bytearray(base[:close_off])
-    for vma, off, stock, target, sym in HOOKS:
+    for vma, off, stock, target, sym in hooks:
         word = struct.unpack_from("<I", data, off)[0]
         if word != stock or callp_target(vma, word) != target:
             sys.exit("hook site %#x does not hold the stock CALLP" % vma)
@@ -201,7 +218,7 @@ def build(base_path, out_path, stock_path):
 
     # Verify: stock bytes unchanged except the hooks; walk the new AIS.
     changed = [i for i in range(close_off) if data[i] != base[i]]
-    allowed = {off + k for _, off, _, _, _ in HOOKS for k in range(4)}
+    allowed = {off + k for _, off, _, _, _ in hooks for k in range(4)}
     if not set(changed) <= allowed:
         sys.exit("unexpected byte changes at %s" % [hex(i) for i in changed if i not in allowed])
     if data[-8:] != base[-8:]:
@@ -212,7 +229,7 @@ def build(base_path, out_path, stock_path):
         sys.exit("re-walk did not find the controller section")
     if bytes(data[load[0] + 12:load[0] + 12 + len(img)]) != img:
         sys.exit("controller payload mismatch after re-walk")
-    for vma, off, _, _, sym in HOOKS:
+    for vma, off, _, _, sym in hooks:
         word = struct.unpack_from("<I", data, off)[0]
         if callp_target(vma, word) != syms[sym]:
             sys.exit("hook %#x does not reach %s" % (vma, sym))
@@ -221,7 +238,7 @@ def build(base_path, out_path, stock_path):
     tmp.write_bytes(data)
     os.replace(tmp, out_path)
     print("controller payload %#x..%#x (%d bytes)" % (lo, lo + len(img), len(img)))
-    for vma, off, stock, _, sym in HOOKS:
+    for vma, off, stock, _, sym in hooks:
         print("hook %#x: %08x -> %08x CALLP %s (%#x)" % (
             vma, stock, struct.unpack_from("<I", data, off)[0], sym, syms[sym]))
     print("wrote %s (%d bytes, base %s, SHA-256 %s)" % (
@@ -236,5 +253,8 @@ if __name__ == "__main__":
     ap.add_argument("--out", default=str(ROOT / "build/fw/res1_controller_worker_candidate.bin"))
     ap.add_argument("--stock", default=str(ROOT / "build/fw/res1_493412.bin"),
                     help="stock v2.00 res1, to check a const-edited base")
+    ap.add_argument("--diag-teardown", action="store_true",
+                    help="OFFLINE diagnostic candidate (adds the c0120744 trace hook); "
+                         "output is not accepted by the updater packager")
     a = ap.parse_args()
-    build(a.base, a.out, a.stock)
+    build(a.base, a.out, a.stock, a.diag_teardown)

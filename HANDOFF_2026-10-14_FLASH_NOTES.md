@@ -47,3 +47,8 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
 - Browser automation of Gemini was REMOVED on purpose (ToS/account risk). Do NOT recreate it. Argon round trips are manual: clipboard out (bridge/to_argon.md), user saves reply to bridge/from_argon/response.md.
 
 - Argon NOT used. Claude did the patch-site feasibility pass: docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md. Best hook site c0120744 (32-bit CALLP to c011fa54). Next: resolve its 'Unproved' list items 1,2,4 (decode c0120658..0674 and c011faa0), then add a HOOKS row + ring trace in controller.c as a SEPARATE named candidate, add test, rebuild, run pytest. Never claim it fixes ownership.
+
+### Later 2026-10-14 (Claude): diagnostic candidate implemented
+- See sections 6-7 of docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md. Build: tools/make_controller_fw.py --diag-teardown. Offline only, observer only, NOT packageable.
+- Tests: tests/test_diag_teardown_hook.py. Baseline now 160 + 3.
+- Remaining ideas in order: (a) second observer at the Hwi consumer move-to-queue-32 (c011fb74/c011fb7a, both 16-bit-compact CALLP? check width first) or queue-32 consumer c0121a18..24; (b) host-side model test of ring semantics; (c) update HANDOFF_2026-10-14_LEAD.md Continue list; (d) owner-run test prep (flash decision is the owner's).

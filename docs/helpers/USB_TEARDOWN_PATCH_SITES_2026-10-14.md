@@ -65,3 +65,38 @@ Expiry can only be inferred: a request without a following `c0120734` event.
 3. Writer of `0x01e0001c` and whether repeated writes in the poll loop are harmless (UNVERIFIED).
 4. Free payload space and `HOOKS` row additions in `tools/make_controller_fw.py` (needs word + AIS offset lookup for `c0120744`).
 5. Tests: extend `tests/` to assert the new hook row decodes to the new symbol and the stock word is unchanged elsewhere.
+
+## 6. Addendum (second pass, same day) — resolved items
+
+Resolved "Unproved" 1, 2, 3, 4 from section 5 (decode from `main.dis`; still no hardware run):
+
+1. **Template words.** For slot N, template words are at `c01805c4+12N` (word0), `c01805c8+12N` (word1), `c01805cc+12N` (word2).
+   Stored for MIDI N=4 = `{22,24,25}` (per USB_TEARDOWN_DECISION). The abort poll/drain uses **word2 = 25**
+   (`c0120674` LDW `*-B4[1]` -> A14; same word gives `A8 = 1<<25` at `c012068c..0698`). The late drain uses word0 = 22
+   (`c0120778`). So the drain loop at `c0120734..0762` is on queue **25 (shared TX teardown queue)**.
+2. **Poll.** `c0120716..0728`: reads pending register `0x01e04090` (`15<<21` + `0x4090` from `c01206f4..06f8`) and tests bit 25;
+   while clear it re-writes teardown request word A3 to `0x01e0001c` (`ADDAW A2,7`) and loops up to 128 times
+   (`c01206fa`: A6=128). Expiry (A1==128) skips the drain via `c0120732 [!A0] BNOP c0120764`.
+3. **Hwi consumer `c011faa0(q)`.** Pops queue q (`c011fa20`), runs the type test (`c011fa54`). If type != 16 it jumps to
+   `c011fb70` with A7=0 and pushes the descriptor to **queue 32** (`c011fb74` -> `c011fa70(32)`); if type == 16 it
+   further inspects word1 `[31:27]` (must be 1..5), looks up per-channel state, and pushes to queue 34 or 32
+   (`c011fb72..fb80`). Therefore a type-19 teardown descriptor reaching the Hwi first is **moved to queue 32 and never
+   appears in queue 25 for the abort poll** — the poll then runs to expiry. This is the control-flow race; whether it
+   occurs on hardware is still unmeasured.
+4. **Hook row.** `c0120744` file offset `0x146c0`, stock word `1ffe6292`, target `c011fa54` (verified by decode; also
+   `c0120734 @0x146b0 1ffe6013`, `c0120754 @0x146d0 1ffe5c13`, `c0120780 @0x146fc`, `c0120798 @0x14714` all decode to
+   `c011fa20`).
+
+## 7. Implemented: offline diagnostic candidate (observer only)
+
+- `firmware/controller/controller_diag.c` (ring of 24x16 B + header = 400 B in `.ctl_state`, sticky fault bits),
+  `controller_diag_hooks.asm` (80-byte register-preserving thunk, tail-calls `c011fa54`), `controller_diag.cmd`.
+- Build: `python tools/make_controller_fw.py --diag-teardown --out build/controller/diag_teardown_candidate.bin`
+  (separate object dir `build/controller/diag/`; payload 3648 B vs 2880 B lifecycle). Lifecycle build is byte-identical
+  to before (SHA `3e7f5236...28b9`). `DIAG_HOOKS` is not in `HOOKS`, so `make_fs_restore_updater.py` and
+  `verify_controller_candidate.py` do not accept it. It is **not** an updater input.
+- Fault bits: `0x1` type-19 popped+recycled by the abort drain, `0x2` channel mismatch (mapping `slot-1` verified only
+  for slot 4), `0x4` ring wrapped.
+- Limits: this site only sees entries the abort loop pops. A teardown moved to queue 32 by the Hwi (item 3) is *not*
+  observed here — a second observer in the Hwi consumer or at the queue-32 consumer (`c0121a18..24`) would be needed.
+  Stack gate still open: thunk adds 80 B + the C callee frame to the abort path.
