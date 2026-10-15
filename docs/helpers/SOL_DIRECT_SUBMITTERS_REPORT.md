@@ -267,4 +267,69 @@ Confidence: **confirmed**.
 
 ## 4. Endpoint/direction
 
+**Finding 4 (confirmed direction/range and ZLP capability; likely MIDI semantic label).** Both sites are generic **TX/device-to-host data** paths for software slots 1..4, not EP0 and not RX refill paths. `c0120b2c` derives the `0xc011297c + 0x2a8*N` TX record from slot `N`; `c0121960` names that base directly. Both sites index the TX template array at `0xc01805c4 + 12*N` and call the common descriptor builder. Their callers exclude slot zero (`c0120c50` on the kick route; `c0121a84..90` on the event route). Thus slot 4 is included but not special: its template at `c01805f4` submits to queue 22 and returns normally to queue 24. Per the established endpoint map supplied with this investigation, slot 4 is MIDI IN, so these sites can transmit MIDI IN data but also serve TX slots 1..3.
+
+```text
+c0120b30       0c32           MVK.S1        168,A0
+c0120b32       2822           SET.S1        A0,9,9,A0
+c0120b34   00c00800           MPY32.M1      A0,A16,A1
+c0120b38   0016042a           MVK.S2        0x2c08,B0
+c0120b40   006008ea           MVKH.S2       0xc0110000,B0
+c0120b44       8c12           MVK.S1        140,A0
+c0120b4a       2822           SET.S1        A0,9,9,A0
+c0120b4c   048012f8           SUB.L1X       B0,A0,A9
+```
+
+Here `SET 168,9,9` produces `0x2a8`, and the second `SET`-derived constant is `0x28c`, so `A9 = 0xc0112c08 + 0x2a8*N - 0x28c = 0xc011297c + 0x2a8*N`.
+
+```text
+c0121964       0c32           MVK.S1        168,A0
+c0121966       2822           SET.S1        A0,9,9,A0
+c0121968   03240570           MPYLI.M1      A0,A9,A7:A6
+c012196c   0014be2a           MVK.S2        0x297c,B0
+c0121970   006008ea           MVKH.S2       0xc0110000,B0
+c0121976       1351           ADD.L2X       B0,A6,B5
+```
+
+```text
+c01805d0   00000010           .word 0x00000010
+c01805d4   00000018           .word 0x00000018
+c01805d8   00000019           .word 0x00000019
+c01805e8   00000014           .word 0x00000014
+c01805ec   00000018           .word 0x00000018
+c01805f0   00000019           .word 0x00000019
+c01805f4   00000016           .word 0x00000016
+c01805f8   00000018           .word 0x00000018
+```
+
+The last omitted word of slot 4 is teardown-return queue 25 at `c01805fc`; the shown slot-4 words are submit queue 22 and normal-return queue 24.
+
+```text
+c01202c6       218c           LDW.D1T1      *A7[1],A0
+c01202d0   00029408           EXTU.S1       A0,20,20,A0
+c01202d4       14a8           OR.L1X        A0,B1,A0
+c01202da       4005           STW.D2T1      A0,*B4[2]
+c0120320       01cc ||        LDW.D1T1      *A7[0],A4
+c0120322       83c7 ||        MV.L2         B7,B4
+```
+
+Neither call site requires a positive length. Both load TX field [10] into `B6`; `c0120250` masks that value into descriptor word 0 without a zero test. Therefore these are data-descriptor paths that can also emit a zero-length packet when field [10] is zero, rather than dedicated ZLP routines.
+
+```text
+c0120c0e       c06d           LDW.D2T1      *B4[6],A6
+c0120c14   1ffeca13           CALLP.S2      0xc0120250,B3
+c0120c18       586d ||        LDW.D2T2      *B4[10],B6
+c01219c4       586d           LDW.D2T2      *B4[10],B6
+c01219d0   1ffd1213 ||        CALLP.S2      0xc0120250,B3
+```
+
+```text
+c0120252       a347           MV.L2         B6,B5
+c01202b0   01154a0a           EXTU.S2       B5,10,10,B2
+c01202b4   000bff8a           SET.S2        B2,31,31,B0
+c01202b8   001002f6           STW.D2T2      B0,*+B4[0]
+```
+
+Confidence: **confirmed** for TX table, slot range, queue values and lack of a length gate; **likely** for the higher-level MIDI IN label inherited from the endpoint map.
+
 ## 5. Verdict
