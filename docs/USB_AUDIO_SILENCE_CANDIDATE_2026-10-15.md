@@ -45,8 +45,11 @@ set (`c0151f5a..f74`). Every other request, and every IF2 request, returns
 1. The direct EP1 FIFO and TXCSR addresses (`0x01e00424` / `0x01e00512`) come from the datasheet only.
 2. PIO ISO TXCSR semantics (0x6001), the highest risk. Whether `c015af48`'s A4=128 ACK convention fits IF3 (copied from MIDI) is likely, not proven.
 3. Worst-case SOF Hwi timing.
-4. Host class binding (Windows `usbaudio.sys`, macOS, Linux). Pending: a strict
-   offline UAC1 descriptor validator (`tools/uac1_validate.py`, in progress).
+4. Host class binding (Windows `usbaudio.sys`, macOS, Linux). Offline, the 192-byte
+   configuration passes the strict UAC1/MIDI validator (`tools/uac1_validate.py`,
+   with 0 violations). Windows legacy grouping without an IAD yields two functions,
+   {IF0, IF1} MIDI and {IF2, IF3} audio (Microsoft Learn, "Enumeration of interface
+   collections on audio devices without IADs"). Actual driver binding is still host-only.
 5. `ua_usbmidi_open` covers only the `c0145158` open path. If MIDI is re-opened
    elsewhere without IF2/IF3, the audio interfaces fall back to stock handling;
    stock SET_INTERFACE would then configure EP1 for CPPI DMA. MIDI itself is unaffected.
