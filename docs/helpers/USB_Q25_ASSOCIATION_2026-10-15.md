@@ -90,6 +90,6 @@ detect this case.
 - **If a fix is needed:** at `c0120744`, compare the word0 channel against N−1
   and keep polling on a mismatch instead of accepting the entry. That would be
   a new named candidate. Nothing has been built.
-- Still open: the entry interrupt state of `c0120650`, a producer for op 8, a
-  single instance of the `c0138310` task, and recovery after expiry
-  (obligation 4).
+- Still open: whether `c0138310` runs as a single task instance. Since resolved
+  elsewhere: entry IRQ state (USB_ABORT_ENTRY_IRQ), the op-8 producer
+  (GEMINI_OP8_REPORT), and recovery after expiry (SOL_EXPIRY_RECOVERY_REPORT review).
