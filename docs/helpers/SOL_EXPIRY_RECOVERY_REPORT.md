@@ -120,6 +120,31 @@ through `c0120550`.  It **can** touch whatever pointer is in field [7] when
 the late completion is consumed; whether that pointer can already name a new
 buffer is answered by the next-submit analysis below.
 
+**Finding 2a (confirmed).** The Hwi is not the end of the type-16 lifecycle.
+At `c011fb70..fb80` it forwards the descriptor to queue 32 when TX field [2]
+is zero, or queue 34 when field [2] is nonzero.  The deferred consumer
+`c01219f4` recognizes type 16 and calls `c0120550` with B4=1 and B6 equal to
+the descriptor's extracted slot.  Consequently the late in-flight descriptor
+does eventually decrement field [5] exactly once.  The abort did not account
+that descriptor, so this is not a double decrement.  If this decrement reaches
+zero and a buffer is staged in field [6], `c0120550` may resubmit it—but only
+after the old descriptor has returned from DMA.
+
+Evidence (deferred type-16 accounting):
+
+```text
+c0121a18   1ffc0a92           CALLP.S2      0xc011fa54,B3
+c0121a20       0246           MV.L1         A4,A0
+c0121a22       a32a    [ A0]  BNOP.S1       0xc0121a38,5
+c0121a74   1ffd5e13           CALLP.S2      0xc0120550,B3
+c0121a78       2627 ||        MVK.L2        1,B4
+c0121a7a       c786 ||        MV.L1         A15,A6
+c0121a80       d517 ||        MV.D2X        A10,B6
+c0121a82       814e ||        MV.S1         A2,A4
+```
+
+Confidence: **confirmed**.
+
 Confidence: **confirmed** for queue routing, counter non-interaction and the
 store; **likely** for the store's higher-level completion/result meaning.
 
