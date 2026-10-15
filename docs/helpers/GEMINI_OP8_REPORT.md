@@ -190,4 +190,75 @@ Therefore, **Op 8 is the host-driven USB endpoint halt clear handler for MIDI IN
 
 ## 4. Context
 
-*Pending analysis.*
+Both call sites (`c0151f30`/`c0151f48` and `c01520d4`) are reached directly from handler table **`0xc01807a0`**, which is dispatched solely at **`c01383ea`** by the USB event service task loop (`c0138370`).
+
+### 4.1 Dispatch at `c01383ea`
+
+```text
+c01383d4   023c42e6           LDW.D2T2      *+B15[2],B4
+c01383d8   0283d02a           MVK.S2        0x07a0,B5
+c01383e0   02e00c6a           MVKH.S2       0xc0180000,B5
+c01383e6       948d           LDW.D2T2      *B5[B4],B0
+c01383ea       006f           BNOP.S2       B0,0
+c01383ec   01848162           ADDKPC.S2     0xc01383f0,B3,4
+```
+Table `0xc01807a0` entries:
+- Index 0 (`0xc01807a0`): `c015e880`
+- Index 1 (`0xc01807a4`): `c015e924`
+- Index 2 (`0xc01807a8`): `c015e9d0`
+- Index 3 (`0xc01807ac`): `c01359e4`
+- **Confidence**: confirmed.
+
+### 4.2 Context for Call Sites `c0151f30` (Op 8) and `c0151f48` (Op 7)
+
+- **Enclosing function**: `c0151ed0` (`usb_if_request_callback_veneer`).
+- **Direct caller (Level 1)**: `c01359e4` (`usb_ctrl_setup_common_decoder`).
+  - Calls `c0151ed0` via interface record offset +12 (`*B4[3]`) at `c0135a60`:
+    ```text
+    c0135a50       8047           MV.L2         B0,B4
+    c0135a52       700d           LDW.D2T2      *B4[3],B0
+    c0135a58   301ca120    [!B0]  BNOP.S1       0xc0135a78,5
+    c0135a60   00000362           B.S2          B0
+    c0135a64   01846162           ADDKPC.S2     0xc0135a70,B3,3
+    ```
+- **Direct caller of `c01359e4` (Level 2)**: `c0138370` (`usb_event_service_loop`).
+  - `c01359e4` is stored directly at `0xc01807ac` (table `0xc01807a0` slot 3).
+  - Called at `c01383ea` when event index `B4 == 3`.
+- **Reached from `0xc01807a0` at `c01383ea`?**: **YES** (via slot 3).
+- **Confidence**: confirmed.
+
+### 4.3 Context for Call Site `c01520d4` (Ops 2, 3, 4, 5)
+
+- **Enclosing function**: `c0151ff4` (`usb_if_record_field_1384`).
+- **Direct callers (Level 1)**: Walkers that call `record[2]` (offset +8):
+  1. **`c015e880`** at `c015e8ec BNOP.S2 B0,0` / `c015e8f4 MVK 0,A4` (Op 2):
+     ```text
+     c015e8e4       508d           LDW.D2T2      *B5[2],B0
+     c015e8ec       006f           BNOP.S2       B0,0
+     c015e8f4   0200a358           MVK.L1        0,A4
+     ```
+  2. **`c015e924`** at `c015e988 BNOP.S2 B0,0` / `c015e990 MVK 1,A4` (Op 4):
+     ```text
+     c015e980       508d           LDW.D2T2      *B5[2],B0
+     c015e988       006f           BNOP.S2       B0,0
+     c015e990   0204a358           MVK.L1        1,A4
+     ```
+  3. **`c015e9d0`** at `c015ea30 B.S2 B0` / `c015ea38 MVK 2,A4` (Op 3):
+     ```text
+     c015ea28       508d           LDW.D2T2      *B5[2],B0
+     c015ea30   00000362           B.S2          B0
+     c015ea38       4626           MVK.L1        2,A4
+     ```
+  4. **`c0135660`** (`usb_set_configuration_handler`) at `c013578e` / `c0135798 MVK 3,A4` (Op 5):
+     ```text
+     c0135784       508d           LDW.D2T2      *B5[2],B0
+     c013578e       006f ||        BNOP.S2       B0,0
+     c0135798   020ca358           MVK.L1        3,A4
+     ```
+- **Direct callers of Level 1 (Level 2)**:
+  - `c015e880` is slot 0 of `0xc01807a0` -> called directly by `c0138370` at `c01383ea`.
+  - `c015e924` is slot 1 of `0xc01807a0` -> called directly by `c0138370` at `c01383ea`.
+  - `c015e9d0` is slot 2 of `0xc01807a0` -> called directly by `c0138370` at `c01383ea`.
+  - `c0135660` is standard request table `0xc0180210[9]`, called from `c0135aaa` inside `c01359e4`, which is slot 3 of `0xc01807a0` called by `c0138370` at `c01383ea`.
+- **Reached from `0xc01807a0` at `c01383ea`?**: **YES** (all 4 paths stem from slots 0, 1, 2, and 3).
+- **Confidence**: confirmed.
