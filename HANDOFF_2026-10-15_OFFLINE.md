@@ -126,7 +126,7 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
    (-2.6k cycles), once ~2 KB of code is freed.
 7. **Patch tool (Phase E)** groundwork: it converts the owner's own v2.00
    updater and redistributes no Zoom binaries.
-8. **NAM feasibility (owner question, 2026-10-15).** The target is **NAM A2**,
+8. **NAM feasibility (owner question, 2026-10-15). LAST on the list: only after everything else.** The target is **NAM A2**,
    tested after the current work. A2 is a WaveNet-like stack: 23 layers, k = 6
    (k = 15 degrid), receptive field ~6,350 samples at 48 kHz, leaky ReLU, `.namb`
    embedded format. A2-Lite is 3 channels, A2-Full 8.
