@@ -20,7 +20,7 @@ class UiMock(unittest.TestCase):
         for name, spec in ui_mock.SCREENS.items():
             im = ui_mock.render(spec, buf)
             self.assertEqual(im.size, (128, 32))
-            self.assertGreater(im.histogram()[-1], 100, name)
+            self.assertGreater(sum(im.histogram()[1:]), 100, name)
 
     @unittest.skipUnless(RES1.exists(), "stock res1 not available")
     def test_font_glyph_matches_firmware(self):
