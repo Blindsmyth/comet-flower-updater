@@ -62,3 +62,4 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
 
 ### 2026-10-15 (Claude): abort obligation 1 narrowed
 - docs/helpers/USB_TX_TEMPLATE_WRITERS_2026-10-15.md. The TX template table (c01805c4) has no instruction-level writer; bulk/external writes to its writable section remain unexcluded. Corrected the abort doc: the tail drain at c0120778 is the slot's submit queue (word [0]), not runtime state. Baseline: 171 passed, 471 subtests. Next: obligation 2 (Hwi c011fc8c->c011faa0 coexistence with the c0120650 poll; entry interrupt state).
+- Obligation 2 (ownership part) done: docs/helpers/USB_HWI_COEXISTENCE_2026-10-15.md, tests/test_usb_hwi_coexistence.py. Baseline: 173 passed, 504 subtests. Next: obligation 3, endpoint association on shared queue 25 (teardown descriptor channel field, word 0 bits; does stock ever check it?), then the entry interrupt state of c0120650.

@@ -138,6 +138,10 @@ question without proving either a race or complete serialization.
 
 1. Trace all runtime writers to the TX templates and per-channel queue words.
 2. Establish the entry interrupt state and serialization for `c0120650`.
+   *2026-10-15:* descriptor ownership under Hwi preemption is resolved in
+   [USB_HWI_COEXISTENCE_2026-10-15.md](USB_HWI_COEXISTENCE_2026-10-15.md).
+   Every queue-25 entry is recycled to 28 exactly once, via either consumer.
+   The entry interrupt state is still unproved.
    The Hwi path `c011fc8c -> c011faa0` also drains queue 25. Determine whether
    it can run during this poll. For a non-type-16 descriptor, `c011faa0`
    bypasses the ordinary packet branch at `c011fab6`: A7 was set to zero

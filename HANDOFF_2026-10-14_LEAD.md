@@ -81,7 +81,15 @@ superseded by this continuation.
   The table at `c01805c4` has six references, all reads, and no instruction-level
   writer. The abort tail at `c0120778` drains template word [0], the submit
   queue (22 for MIDI IN), not runtime state. Pinned by
-  `tests/test_tx_template_writers.py`. Suite: **171 passed, 471 subtests**.
+  `tests/test_tx_template_writers.py`. 
+- 2026-10-15: Hwi coexistence
+  ([USB_HWI_COEXISTENCE_2026-10-15.md](docs/helpers/USB_HWI_COEXISTENCE_2026-10-15.md)).
+  The Hwi `c011fc8c` drains queue 25 unconditionally and forwards teardown
+  descriptors via q32 to `c01219f4`, which recycles them to q28. The abort drain
+  recycles to q28 too, and an empty pop exits safely. Each descriptor has one
+  owner whether or not preemption occurs. Poll expiry is therefore not evidence
+  of hardware failure. Still open: endpoint association (shared q25) and the
+  entry interrupt state. Suite: **173 passed, 504 subtests**.
 
 Details and next instruction-level work:
 [STACK_CONTINUATION_2026-10-14.md](docs/helpers/STACK_CONTINUATION_2026-10-14.md),
@@ -101,6 +109,8 @@ The original untracked `.agents/` and `bridge/` directories were preserved.
    lifecycle review using the current lifecycle candidate. Poll/lock timing
    remains unmeasured. Prioritize teardown descriptor association, Hwi exclusion
    or safe coexistence, and poll-expiry ownership using the abort follow-up.
+   *Update 2026-10-15:* descriptor ownership under coexistence and q25
+   expiry are resolved; endpoint association remains the next item.
 3. For hardware runtime diagnosis, prepare a bounded owner-run procedure using
    the diagnostic candidate (`--diag-teardown`) and `tools/decode_ctl_diag.py`
    to capture `ctl_diag` state upon disconnect/reconnect events. Keep the
