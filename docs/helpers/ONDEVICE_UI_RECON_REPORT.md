@@ -232,3 +232,73 @@ unmapped board signal cannot be excluded without a schematic/board test, and
 the brief forbids touching the pedal.
 
 ## 6. Hook proposal
+
+**Finding/design (likely; no build).**  The smallest safe design is one UI
+consumer plus state-only producer hooks.  Keep three aligned 32-bit words in
+the controller's explicitly allocated state: `ui_mode_dirty`, an atomically
+packed `last_cc = valid | (cc<<8) | value`, and `usb_ui_state` with values
+0=not connected, 1=connected, 2=audio streaming.  A lost intermediate CC
+display update is acceptable; the most recent complete packed store wins.
+
+### UI consumer
+
+Redirect UpdateUI's `c013c74e CALLP c013c4e4` to a wrapper, preserving the
+original call in normal mode.  This site executes in `g_Task_UpdateUI`, after
+the task has selected the current screen.  In controller mode the wrapper
+owns a dedicated 128x32 controller frame:
+
+1. clear context `*(B14+122*4)` using the stock framebuffer clear path
+   (`c011f8d8`, as stock callers use with context 0);
+2. draw `MIDI CTRL` with `c011e000` on the first 6x8 line;
+3. if valid, format/draw `CC nnn  vvv` on the next line;
+4. draw exactly one of `USB: OFF`, `USB: MIDI`, or `USB: AUDIO` on the bottom
+   line;
+5. flush through `c014db8c`, which takes `B14[149]` and calls `c016f420`.
+
+Cache the last rendered packed words so the wrapper only clears, redraws and
+flushes when state changes.  `controller_start` (MainApp context) sets the
+initial dirty word immediately after it successfully latches mode, producing
+the banner on the next UpdateUI pass.  The existing UpdateUI wait/loop remains
+alive; no new display task is needed.  If latency proves unacceptable, post
+the existing UpdateUI wake event from MainApp task context only after its
+exact handle/lifetime is identified; do not invent a new B14 slot.
+
+### CC and USB producers
+
+At `controller_event` behind the existing `c0134df0` dispatch hook (MainApp
+task), publish the packed CC/value only when a CC is actually accepted into
+controller desired state.  At the `c015ffd0`/`c01600b0` analog wrappers (AD
+task), publish CC11/value with one aligned store.  This gives button, knob and
+expression feedback without calling UI code from either producer.
+
+For USB, the MIDI worker may publish 0/1 using the already audited readiness
+test `c01152b8[3] == 1 && c01152b8[9] != 0`, but that means MIDI transport
+ready, not audio streaming.  General connection state should instead follow
+the existing configure/reset/disconnect lifecycle around `c0135660` and
+`c01359b8`.  State 2 must be published only by the future audio patch's
+validated SET_INTERFACE alt-1 success path (the existing write/call is
+`c013596e STB ...; c0135970 CALLP c01357c8`) and cleared on alt 0, reset and
+disconnect.  The SOF Hwi site `c011fcb4` may update a bounded activity
+timestamp/counter with a single store if “actively streaming” must mean
+recent packets rather than merely alt 1; UpdateUI converts that into state 2.
+Do not infer streaming from USB enumeration or MIDI port readiness.
+
+### Context rules
+
+Producer hooks must **not** call `c011e000`, `c011ec48`, `c016c360`,
+`c016f420`, or `c014db8c`; must not acquire `B14[149]`; and must not wait,
+allocate, format strings, or post from audio Swi/SOF Hwi context.  In
+particular the MIDI worker already participates in USB locks, and the AD task
+uses `B14[149]` for its serial transaction: drawing or flushing there would
+create avoidable latency and lock-order risk.  Only UpdateUI formats and
+touches the framebuffer.  The SOF/audio/control hooks publish scalars and
+return.
+
+This design intentionally replaces the stale patch view while controller
+mode is active; normal mode remains the original `c013c4e4` call.  It adds no
+LED work, no display task and no polling in real-time contexts.  Confidence:
+**likely** for the hook design and site; **confirmed** for the stated task
+contexts of MainApp/AD/MIDI, drawing ABI, flush wrapper, and the separation
+between MIDI-ready and audio-stream state.  Patch placement, ABI-preserving
+trampolines, the exact UpdateUI wake primitive, and the future USB-audio
+lifecycle remain implementation proof gates.  No image was built.
