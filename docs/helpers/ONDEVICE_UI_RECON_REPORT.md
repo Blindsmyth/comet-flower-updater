@@ -149,20 +149,17 @@ confirmed.
 A minimal safe short-line sequence in UpdateUI task context is:
 
 ```text
-take B14[149]
 optional: c016c360(local, "CC %u %u", cc, value)
 A4 = *(B14 + 122*4)       ; context index
 B4 = literal-or-local     ; NUL-terminated ASCII
 A6 = x; B6 = y
 CALLP c011e000            ; 5x7 status line
-CALLP c016f420            ; dirty-page panel flush for that context
-release B14[149]
+CALLP c014db8c            ; normal wrapper: lock, c016f420, unlock
 ```
 
 For a literal banner the formatter is unnecessary.  If an existing UpdateUI
-iteration already owns the lock and performs the normal flush, do not take
-the lock recursively or add a second flush; just issue the text call inside
-that owned draw phase.  Confidence: **confirmed** for glyph/string signatures,
+iteration already performs the normal flush, do not add a second flush; just
+issue the text call before it.  Confidence: **confirmed** for glyph/string signatures,
 font tables and advances; **likely** for the exact C return type of
 `c016c360`.
 
