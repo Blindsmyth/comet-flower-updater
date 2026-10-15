@@ -85,14 +85,17 @@ task; no independent periodic framebuffer-copy task was found.
 The shared serialization object is `B14[149]`.  The clear wrapper
 `c014db8c` takes it (`c014db94 CALLP c0161200`), calls `c016f420` at
 `c014dba4`, then releases it at `c014dba8`.  UpdateUI also brackets screen
-work with this same object at `c013c72c..c013c74e` and releases it at
-`c013c748`.  This is the same shared hardware/SPI lock used by the AD serial
-path; it is not a lock internal to `c011c508`, whose body contains no lock.
+state/service work with this same object at `c013c72c..c013c748`, but releases
+it at `c013c744` **before** the later `c013c74e CALLP c013c4e4`; therefore
+that sequence is not evidence that all drawing is locked.  This is the same
+shared hardware/SPI lock used by the AD serial path; it is not a lock internal
+to `c011c508`, whose body contains no lock.
 
 Consequences: a MainApp task may safely *request* a redraw through an
 existing UI event/dirty-state path that UpdateUI consumes.  New drawing
-should run in UpdateUI while holding the established `B14[149]` discipline,
-then use the normal flush path.  Calling glyph/bitmap or flush routines
+should run in UpdateUI and use the locked normal flush path; it must not
+assume the glyph/bitmap calls themselves are serialized by `B14[149]`.
+Calling glyph/bitmap or flush routines
 directly from the MIDI worker is unsafe policy: the primitives are not
 self-locking and `c014db8c` may block on the shared lock.  The MIDI worker
 should only publish compact status and signal a UI request; it must not draw,
