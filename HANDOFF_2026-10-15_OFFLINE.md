@@ -126,7 +126,17 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
    (-2.6k cycles), once ~2 KB of code is freed.
 7. **Patch tool (Phase E)** groundwork: it converts the owner's own v2.00
    updater and redistributes no Zoom binaries.
-8. **NAM feasibility (owner question, 2026-10-15).**
+8. **NAM feasibility (owner question, 2026-10-15).** The target is **NAM A2**,
+   tested after the current work. A2 is a WaveNet-like stack: 23 layers, k = 6
+   (k = 15 degrid), receptive field ~6,350 samples at 48 kHz, leaky ReLU, `.namb`
+   embedded format. A2-Lite is 3 channels, A2-Full 8.
+   - Compute: A2-Lite looks plausible (rough ~2k MACs/sample, ~25-35k
+     cycles/block); A2-Full does not fit.
+   - The real blocker is memory: the dilation history is ~19k floats (~76 KB)
+     for A2-Lite, against 392 B of state and a 40 KiB slot heap. First find
+     how stock delay/reverb effects get their delay-line memory.
+   - Also: the pedal runs 44.1 kHz, the models 48 kHz.
+   The earlier LSTM notes below are superseded.
    - Standard WaveNet NAM does not fit: compute and state are far over the limits.
    - Small LSTM captures (hidden size ~12-16) look plausible: an estimated
      15-30k cycles per block, ~128 B of state, a few KB of weights.
