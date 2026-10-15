@@ -53,7 +53,32 @@ Static analysis report on task instances and lifecycle of the USB event loop `0x
 
 ## 3. Instance count
 
-*Pending analysis.*
+- **Confidence**: confirmed
+- **Count of distinct creation sites**: **1** distinct creation site (`c01387ac` in `c0138720` `usb_worker_start`).
+  - *Note*: While `c014a400` is called from 3 locations in the firmware (`c01387ac`, `c0149fa8`, `c014be08`), only `c01387ac` passes descriptor `0xc01800bc` pointing to `0xc0138310`. The other two sites instantiate different tasks (`c0149d40` and `c014bb48`).
+- **Reachability and re-execution**:
+  - The single call chain reaching `c0138720` in the static disassembly is:
+    `c01341e4` (`mainapp_frame_update` @ `c0134354`) -> `c016c120` (`preload_ready_flag_init` @ `c016c150`) -> `c016ab8c` (@ `c016ab98`) -> `c016ab70` (@ `c016ab80`) -> `c015af18` (API wrapper @ `c015af20`) -> `c0138720` (`usb_worker_start`).
+  - Because `c015af18` is an exposed subsystem start veneer (paired with `c015af0c` shutdown and `c015af00` reset), the creating code is capable of being called more than once during firmware lifecycle (e.g. system re-init or restart).
+- **Instance guards**:
+  - **Confirmed YES**, guarded by two layers:
+    1. *Prior instance teardown*: `usb_worker_start` (`c0138720`) unconditionally begins by invoking `usb_worker_shutdown` (`c013826c`), which pend-drains and deletes any active worker handle in `B14[94]` (`c014a260`, `c014a160`, `c014a2b0`) and clears `*+B14[94] = 0`:
+       ```
+       c0138720       31f7           STW.D2T2      B3,*B15--[2]
+       c0138722       b4db           CALLP.S2      0xc013826c,B3
+       ```
+    2. *Handle non-zero guard*: `usb_worker_start` explicitly loads `B14[94]` into `B0` and tests if it is zero before calling `c014a400`:
+       ```
+       c0138778   00005e6e           LDW.D2T2      *+B14[94],B0
+       ...
+       c0138798   3014a120    [!B0]  BNOP.S1       0xc01387a8,5
+       c013879c   e0808000           .fphead       n, l, W, BU, br, nosat, 0000100b
+       c01387a0       b61b           CALLP.S2      0xc0138300,B3
+       c01387a4   024566a8           MVK.S1        0xffff8acd,A4
+       c01387a8   02005e28           MVK.S1        0x00bc,A4
+       ```
+       If `B14[94]` is already non-zero (teardown failed to release it), the code does *not* jump to `c01387a8`; it aborts through `c01387a0` and returns error `0xffff8acd`.
+- **Conclusion**: Exactly **1** task instance exists at any time. The instance count is strictly **0 or 1**; multiple concurrent instances can never exist.
 
 ## 4. Mailbox
 
