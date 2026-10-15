@@ -35,7 +35,7 @@
 
 #include "ts808_sd.h"          /* sd_expf, ts_rcp, TS_INLINE */
 #include "os_hbiir.h"
-#include "hiwatt_nets.h"
+#include "hiwatt_netgen.h"     /* the networks, straight-line (tools/gen_hw_nets.py) */
 #include "hiwatt_cab.h"
 #include "hw_blob.h"
 
@@ -85,14 +85,14 @@
 typedef struct {
     HbiState1 up1, dn1;             /* 1x <-> 2x */
     HbiState2 up2, dn2;             /* 2x <-> 4x */
-    float ax[5];                    /* ADAA: previous input of each tube stage */
+    float ax[4];                    /* ADAA: previous input of V1, V2, V3a, PI */
     float dcx, dcy;                 /* input DC guard */
     float xv1[2], xst[5], xbh[5];   /* network states (capacitor volts) */
     float uv1, ust, ub0, ub1;       /* previous network inputs */
     float resid, sag;               /* NFB residual, sag envelope */
     float pre_last;                 /* preamp ceiling at the end of the last block */
     float cab[HW_CAB_N][2];         /* cab biquads, TDF-II */
-} HwState;                          /* 74 floats = 296 B, all zero = reset */
+} HwState;                          /* 73 floats = 292 B, all zero = reset */
 
 #define HW_V1_SZ MNA_SS_SIZE(2, 1)
 #define HW_ST_SZ MNA_SS_SIZE(5, 1)
@@ -101,31 +101,15 @@ typedef struct {
     float v1[HW_V1_SZ], st[HW_ST_SZ], bh[HW_BH_SZ];   /* packed (mna_ss.h) */
 } HwCoeffs;                                          /* 87 floats */
 
-/* a table system at knob position kn (0..1): exact at the 101 positions */
-TS_INLINE void hw_tabsys(float *out, int base, int sz, float kn)
-{
-    float pos = (kn < 0.0f ? 0.0f : (kn > 1.0f ? 1.0f : kn)) * 100.0f, fr;
-    int i = (int)pos, j;
-    const float *a, *b;
-    if (i > 99) i = 99;
-    fr = pos - (float)i;
-    a = hw_blob + base + i * sz;
-    b = a + sz;
-    for (j = 0; j < sz; ++j) out[j] = a[j] + fr * (b[j] - a[j]);
-}
-
 /* knobs 0..1: Volume (Normal 470k-A), Treble, Middle, Bass, Master, Presence */
 TS_INLINE void hw_coeffs(HwCoeffs *k, float vol, float tre, float mid, float bas,
                          float mas, float pre)
 {
-    hw_tabsys(k->v1, HW_BLOB_V1, HW_V1_SZ, vol);
-    hw_tabsys(k->bh, HW_BLOB_BH, HW_BH_SZ, pre);
-    {
-        MnaNet n;
-        float w[MNA_MAXN];
-        hw_stack(&n, w, tre, mid, bas, mas);
-        mna_derive(&n, w, HW_FS_OS, k->st);
-    }
+    /* every block, ~1.6k cycles static for all three (was ~25k measured for
+     * the stack's generic solve, plus 20.6 KB of V1 / back-half tables) */
+    hw_v1_derive(vol, HW_FS_OS, k->v1);
+    hw_bh_derive(pre, HW_FS_OS, k->bh);
+    hw_stack_derive(tre, mid, bas, mas, HW_FS_OS, k->st);
 }
 
 /* tanh, branch-free: odd polynomial below 0.25 (relative accuracy for small
@@ -246,10 +230,9 @@ TS_INLINE float hw_cabinet(HwState *s, float x)
     return x;
 }
 
-/* bias, negative-half scale, idle output of V1, V2, V3a, PI, EL34 pair */
-static const float hw_pre_par[5][3] = {
+/* bias, negative-half scale, idle output of V1, V2, V3a (PI and EL34: inline) */
+static const float hw_pre_par[3][3] = {
     { HW_B1, HW_K1, HW_I1 }, { HW_B2, HW_K2, HW_I2 }, { HW_B3, HW_K3, HW_I3 },
-    { HW_BPI, HW_KPI, HW_IPI }, { HW_BPW, HW_KPW, HW_IPW },
 };
 
 /* Fast ADAA: the same-region, small-step case (nearly every sample), with no
@@ -393,26 +376,20 @@ TS_INLINE void hw_block(HwState *s, const HwCoeffs *k, float *io, int cab_on)
         s->ub0 = u0;
         s->ub1 = u1;
 
-        /* PI (LTP), then the EL34 pair: one pass each (one inlined copy) */
-        y = d * (1.0f / HW_HPI);
-        rail = 1.0f - 0.3f * HW_SAG_DEPTH * s->sag; /* PI: preamp rail */
-#if defined(__TI_COMPILER_VERSION__)
-#pragma UNROLL(1)
-#endif
-        for (st = 3; st < 5; ++st) {
-            const float *tp = hw_pre_par[st];
-            xi = y;
-            y = hw_tube_fast(xi, s->ax[st], tp[0], tp[1], rail, tp[2], &ok);
-            if (!ok) { t = s->ax[st]; y = hw_tube_adaa(xi, &t, tp[0], tp[1], rail, tp[2]); }
-            s->ax[st] = xi;
-            if (st == 3) {
-                r = y < 0.0f ? -y : y;              /* sag from the PI output */
-                s->sag += (r - s->sag) * (r > s->sag ? HW_SAG_ATT : HW_SAG_REL);
-                rail = 1.0f - HW_SAG_DEPTH * s->sag;
-                /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V */
-                y = -y * HW_APIHPI * (0.5f / HW_HPWR);
-            }
-        }
+        /* PI (LTP), ADAA: preamp rail */
+        xi = d * (1.0f / HW_HPI);
+        rail = 1.0f - 0.3f * HW_SAG_DEPTH * s->sag;
+        y = hw_tube_fast(xi, s->ax[3], HW_BPI, HW_KPI, rail, HW_IPI, &ok);
+        if (!ok) { t = s->ax[3]; y = hw_tube_adaa(xi, &t, HW_BPI, HW_KPI, rail, HW_IPI); }
+        s->ax[3] = xi;
+        r = y < 0.0f ? -y : y;                      /* sag from the PI output */
+        s->sag += (r - s->sag) * (r > s->sag ? HW_SAG_ATT : HW_SAG_REL);
+        rail = 1.0f - HW_SAG_DEPTH * s->sag;
+        /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V.
+         * The EL34 pair runs without ADAA: on the 16x reference bench it adds
+         * nothing to the worst alias (-46.6 dB with V1/V2/V3a/PI ADAA only,
+         * tests/host/hiwatt_accuracy.cpp masks), and it sits in the serial loop. */
+        y = hw_tube(-y * HW_APIHPI * (0.5f / HW_HPWR), HW_BPW, HW_KPW, rail, HW_IPW);
         y *= HW_VTAP;                               /* 16-ohm tap volts */
         s->resid += HW_RESID_A * ((y - HW_KTAPLIN * d) - s->resid);
         a[n] = y * HW_OUT;

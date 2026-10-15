@@ -7,8 +7,9 @@
  *
  * Mono DSP on channel A, written to both channels; bypass crossfade per
  * channel. Guard prologue and output clamp as in stomphacks gain.c.
- * Per block: knobs smoothed, the networks set up (tone stack derived on the
- * stack, not in state: state stays under the G1's ~392 B), then hw_block.
+ * Per block: knobs smoothed, the three networks derived (hiwatt_netgen.h,
+ * on the stack, not in state: state stays under the G1's ~392 B), then
+ * hw_block.
  */
 #include <stdint.h>
 #if defined(__TI_COMPILER_VERSION__)
@@ -18,21 +19,21 @@
 #if defined(HW_DIAG) && HW_DIAG && !defined(__TI_COMPILER_VERSION__)
 static unsigned TSCL;                /* host build: a counter that never moves */
 #endif
-/* on the pedal only the tone stack (10 nodes, 1 input) is derived: smaller
- * solver scratch, smaller stack frame (stock maximum 1536 B) */
+/* the pedal derives the networks with hiwatt_netgen.h; the generic
+ * mna_derive is not compiled in, small scratch sizes only for its headers */
 #define MNA_MAXN 10
 #define MNA_MAXU 1
 #include "hiwatt_amp.h"
 
 typedef struct {
-    HwState dsp;                     /* 296 B */
+    HwState dsp;                     /* 292 B */
     float vol, tre, mid, bas, mas, pre;   /* knobs smoothed per block */
     float primed;
 #if HW_DIAG
     float cyc[3];                    /* smoothed cycles per block, per slot */
     float phase, nblk;               /* test tone, block counter */
 #endif
-} KernelState;                       /* 324 B (344 B with HW_DIAG) = state_bytes */
+} KernelState;                       /* 320 B (340 B with HW_DIAG) = state_bytes */
 
 #ifndef HW_DIAG
 #define HW_DIAG 0

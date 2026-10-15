@@ -12,9 +12,9 @@
   "kernel_section": "text",
   "allow_stack": true,
   "opt_for_space": null,
-  "state_bytes": 344,
+  "state_bytes": 340,
   "scaffold": "cleanroom",
-  "const_blob": { "symbol": "hw_blob", "words": 6175, "init": "blob.bin" },
+  "const_blob": { "symbol": "hw_blob", "words": 1024, "init": "blob.bin" },
   "params": [
     { "name": "Volume", "max": 100, "default": 50,
       "explanation": "Normal channel volume, 470k audio taper." },
