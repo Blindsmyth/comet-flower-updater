@@ -72,7 +72,79 @@ Neither `c01520f4` nor any of its action targets reads or writes word 0 (`*A6[0]
 
 ## 2. Every call through the loaded pointer
 
-*Pending analysis.*
+### 2.1 Argument Register Read by `c0144c0c`
+
+The callback dispatcher routine at `c0144c0c` begins:
+```text
+c0144c0c   10528410           CALLP.S1      0xc016e020,A3
+c0144c10       2246           MV.L1         A4,A1
+c0144c12       834e ||        MV.S1         A6,A4
+c0144c14   0007c058           SUB.L1        A1,0x2,A0
+c0144c18   0000cbd8           CMPLTU.L1     0x6,A0,A0
+c0144c20   c086a120    [ A0]  BNOP.S1       0xc0144d2c,5
+c0144c2c       448a ||        SHL.S1        A1,0x2,A0
+c0144c2e       0c00           ADD.L1        A0,-8,A0
+```
+- Instruction `c0144c10 MV.L1 A4, A1` moves **`A4`** into `A1`.
+- `A1` is tested for range 2..8 (`SUB 2`, `CMPLTU 6`) and used as index into table `0xc01843d8` via `(A1 - 2) * 4`.
+- **Conclusion**: The event-number argument passed by callers is in **`A4`**.
+- **Confidence**: confirmed.
+
+### 2.2 Indirect Calls Following Load 1 (`c0151ed0`)
+
+In `c0151ed0`, the callback pointer loaded into `A0` at `c0151f18` is called indirectly at two distinct sites:
+
+1. **Call Site 1 (`c0151f48`)**: passes `A4 = 7` (Event 7)
+   ```text
+   c0151f48   00001362           B.S2X         A0
+   c0151f4c   01866162           ADDKPC.S2     0xc0151f58,B3,3
+   c0151f50       e626           MVK.L1        7,A4
+   c0151f52       0627 ||        MVK.L2        0,B4
+   c0151f54   03000028 ||        MVK.S1        0x0000,A6
+   ```
+   - Reached when `wIndex == 3` (MIDI OUT Endpoint 3).
+   - **Confidence**: confirmed.
+
+2. **Call Site 2 (`c0151f30`)**: passes `A4 = 8` (Event 8)
+   ```text
+   c0151f30   00001362           B.S2X         A0
+   c0151f34   01896162           ADDKPC.S2     0xc0151f44,B3,3
+   c0151f38       0e26           MVK.L1        8,A4
+   c0151f3a       0627 ||        MVK.L2        0,B4
+   c0151f40   03000028 ||        MVK.S1        0x0000,A6
+   ```
+   - Reached when `wIndex == 132` (`0x84`, MIDI IN Endpoint 4).
+   - **Confidence**: confirmed.
+
+### 2.3 Indirect Calls Following Load 2 (`c0151ff4`)
+
+In `c0151ff4`, the callback pointer loaded into `B0` at `c01520cc` is called indirectly at a single call site (`c01520d4`), with four incoming branches setting `A4`:
+
+```text
+c01520d4   00000362           B.S2          B0
+c01520d8   018a6162           ADDKPC.S2     0xc01520e8,B3,3
+c01520e0   0200a35b           MVK.L2        0,B4
+c01520e4   033c9058 ||        ADD.L1X       4,B15,A6
+```
+
+The value of `A4` reaching `c01520d4` depends on the incoming record event (0..3):
+- **Record event 0** branches to `c0152058`, setting `c0152094 MVK.L1 2, A4` -> passes **`A4 = 2`** (Event 2).
+- **Record event 1** branches to `c0152034`, setting `c0152054 MVK.L1 4, A4` -> passes **`A4 = 4`** (Event 4).
+- **Record event 2** branches to `c01520b4`, setting `c01520c0 MVK.L1 3, A4` -> passes **`A4 = 3`** (Event 3).
+- **Record event 3** branches to `c01520a4`, setting `c01520ae MVK.L1 5, A4` -> passes **`A4 = 5`** (Event 5).
+- **Confidence**: confirmed.
+
+### 2.4 Complete Summary of Event Numbers 2..8 and Call Sites
+
+| Event # | Call Site Address | Enclosing Function | Trigger Condition |
+|:---:|:---:|:---|:---|
+| **2** | `c01520d4` | `c0151ff4` | Record event 0 dispatched (via `c015e880` at `c015e8f4`) |
+| **3** | `c01520d4` | `c0151ff4` | Record event 2 dispatched (via `c015e9d0` at `c015ea38`) |
+| **4** | `c01520d4` | `c0151ff4` | Record event 1 dispatched (via `c015e924` at `c015e990`) |
+| **5** | `c01520d4` | `c0151ff4` | Record event 3 dispatched (via `c0135660` at `c0135798`) |
+| **6** | *None* | *None* | Unreferenced. Table entry 6 (`0xc01843e8`) points to `c0144d2c` (no-op return 0). |
+| **7** | `c0151f48` | `c0151ed0` | USB standard request `CLEAR_FEATURE(ENDPOINT_HALT)` on EP 3 (OUT) |
+| **8** | `c0151f30` | `c0151ed0` | USB standard request `CLEAR_FEATURE(ENDPOINT_HALT)` on EP 0x84 (IN) |
 
 ## 3. Op 8
 
