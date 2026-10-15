@@ -165,6 +165,43 @@ font tables and advances; **likely** for the exact C return type of
 
 ## 4. Controller-mode screen behavior
 
+**Finding (likely visible result; confirmed surviving paths).**  Controller
+entry does not install a screen.  `controller_start` first calls stock
+`c015d428`, then samples/latches controller mode; MainApp subsequently enters
+the ordinary loop at `c0134db8`.  Independently, UpdateUI entry `c013c754`
+continues to dispatch and draw the selected stock screen.  Consequently the
+post-boot display is normally the stock current-patch/effect screen produced
+by startup/UpdateUI.  Once controller mode consumes local control events,
+their normal handlers no longer change the selected screen or perform their
+screen actions, so that stock patch presentation becomes visually stale.
+The exact first visible frame is **likely**, not deterministic from the static
+trace alone, because MainApp and UpdateUI scheduling plus an already attached
+editor can affect which stock frame wins.
+
+The framebuffer is not simply frozen.  The controller dispatch trampoline
+returns to `c0134dc4`, so each MainApp cycle still executes
+`c0134dc4 CALLP c01537f4`; UpdateUI itself continues its
+`c013c764..c013c8fc` loop and can redraw from unchanged stock state.  The
+housekeeping routine can also call `c01537a8` at `c0153810`, retaining its
+system-event path.  Predicate audit for that call:
+
+```text
+c0153800 LDW *+B14[162],A4
+c0153804 LDW *+B14[105],B0
+c015380a CMPLTU A4,B0,A0
+c015380c [A0] BNOP c0153814
+c0153810 CALLP c01537a8
+```
+
+Truth table: when unsigned `B14[162] < B14[105]`, `[A0]` is true and the call
+is skipped; when it is false, `c01537a8` runs.  Therefore controller mode does
+not guarantee total UI isolation: UpdateUI redraws still occur and qualifying
+system housekeeping may change the screen.  What is suppressed is the normal
+screen transition/action attached to each consumed local MainApp event.
+Confidence: **confirmed** for preserved housekeeping, live UpdateUI loop and
+suppressed handlers; **likely** for “normal patch screen, then stale” as the
+user-visible boot result.
+
 ## 5. LEDs
 
 ## 6. Hook proposal
