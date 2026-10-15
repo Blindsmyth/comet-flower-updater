@@ -12,6 +12,15 @@ applies recon/20 2.6 patch list v2, reworked as follows:
   - c0145158 CALLP c0152410 (usbmidi_open) -> ua_usbmidi_open (P5 registration);
   - c015c674 "[!A0] BNOP c015c6ac,5" -> CALLP.S2 ua_map_thunk (P5 map writer);
   - c016f770/c016f774 MVK/MVKH 0x11818e80 -> usb_audio_sof_tick (P10 SOF hook).
+With --tap (real-audio tap, ROADMAP C3) the payload is built from
+usb_audio_tap.c (which includes usb_audio.c unchanged) into build/usb_audio_tap,
+and the patch list changes:
+  - c016f770/c016f774 -> usb_audio_sof_tick_tap (SOF packets from the ring);
+  - 11818c88..11818c94, four zero words of dead padding after the audio Swi
+    epilogue -> MVK/MVKH B31, B B31, NOP 5 to ua_tx_pack_tap (the stock
+    1181->c0 veneer shape, as at 11818ea0);
+  - 11818c64 CALLP 11818aa0 (TX pack) -> CALLP 11818c88. ua_tx_pack_tap runs
+    the stock pack, then copies the block into the ring.
 Every patched word is checked against its stock value first. Afterwards
 only those bytes may differ; the AIS is re-walked and each patch decoded.
 
@@ -44,25 +53,44 @@ PATCHES = [(a, None, "callp", BUILDER, "usb_audio_descriptor_veneer")
     (0xc016f770, 0x0fc7402a, "mvk_lo", 0x8e80, "usb_audio_sof_tick"),
     (0xc016f774, 0x0f88c0ea, "mvk_hi", 0x1181, "usb_audio_sof_tick"),
 ]
+TAP_VENEER = 0x11818c88
+# Stock 1181->c0 veneer words at 11818ea0..11818eac: MVK.S2/MVKH.S2 B31,
+# B.S2 B31, NOP 5. Only the MVK/MVKH fields are replaced.
+VENEER_MVK, VENEER_MVKH, VENEER_B, VENEER_NOP5 = (0x0ffaca2a, 0x0fe00a6a,
+                                                  0x007c0362, 0x00008000)
+TAP_PATCHES = [p for p in PATCHES if p[2] not in ("mvk_lo", "mvk_hi")] + [
+    (0xc016f770, 0x0fc7402a, "mvk_lo", 0x8e80, "usb_audio_sof_tick_tap"),
+    (0xc016f774, 0x0f88c0ea, "mvk_hi", 0x1181, "usb_audio_sof_tick_tap"),
+    (TAP_VENEER + 0, 0, "veneer_lo", None, "ua_tx_pack_tap"),
+    (TAP_VENEER + 4, 0, "veneer_hi", None, "ua_tx_pack_tap"),
+    (TAP_VENEER + 8, 0, "fixed", VENEER_B, None),
+    (TAP_VENEER + 12, 0, "fixed", VENEER_NOP5, None),
+    (0x11818c64, 0x1fffc812, "callp", 0x11818aa0, TAP_VENEER),
+]
+TAP_OUT = ROOT / "build" / "usb_audio_tap"
+TAP_RETAIN = ["--retain=ua_tx_pack_tap", "--retain=usb_audio_sof_tick_tap"]
+
 # A fresh unconditional, non-parallel CALLP.S2: the stock word at c0134e14
 # ("CALLP.S2 0xc015d428,B3"); only its displacement is replaced.
 CALLP_S2_TEMPLATE = 0x1050c512
 
 
-def build_payload():
-    OUT.mkdir(parents=True, exist_ok=True)
-    srcs = [PROTO / "usb_audio.c", PROTO / "usb_audio_hooks.asm",
+def build_payload(tap=False):
+    out = TAP_OUT if tap else OUT
+    out.mkdir(parents=True, exist_ok=True)
+    main = PROTO / ("usb_audio_tap.c" if tap else "usb_audio.c")
+    srcs = [main, PROTO / "usb_audio_hooks.asm",
             GLUE / "ua_glue.c", GLUE / "ua_thunks.asm"]
-    objs = [OUT / (p.stem + ".obj") for p in srcs]
+    objs = [out / (p.stem + ".obj") for p in srcs]
     ctl.run(ctl.CGT / "bin/cl6x", "--silicon_version=6740", "--abi=eabi", "--c99",
             "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
-            "--keep_asm", "--asm_directory=%s" % OUT, "--obj_directory=%s" % OUT,
+            "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
             "--compile_only", *srcs)
-    elf = OUT / "usb_audio.elf"
-    ctl.run(ctl.CGT / "bin/lnk6x", "--ram_model",
-            "--map_file=%s" % (OUT / "usb_audio.map"),
+    elf = out / "usb_audio.elf"
+    ctl.run(ctl.CGT / "bin/lnk6x", "--ram_model", *(TAP_RETAIN if tap else []),
+            "--map_file=%s" % (out / "usb_audio.map"),
             "--output_file=%s" % elf, *objs, GLUE / "ua.cmd")
-    ctl.run(ctl.CGT / "bin/dis6x", elf, OUT / "usb_audio.dis")
+    ctl.run(ctl.CGT / "bin/dis6x", elf, out / "usb_audio.dis")
     return elf
 
 
@@ -90,6 +118,10 @@ def stock_ok(vma, word, kind, ref):
     return True
 
 
+def target_of(sym, syms):
+    return sym if isinstance(sym, int) else syms[sym]
+
+
 def patched_word(vma, word, kind, target):
     if kind == "callp":
         return ctl.callp_retarget(vma, word, target)
@@ -97,13 +129,17 @@ def patched_word(vma, word, kind, target):
         return ctl.callp_retarget(vma, CALLP_S2_TEMPLATE, target)
     if kind == "mvk_lo":
         return mvk_set(word, target & 0xffff)
+    if kind == "veneer_lo":
+        return mvk_set(VENEER_MVK, target & 0xffff)
+    if kind == "veneer_hi":
+        return mvk_set(VENEER_MVKH, target >> 16)
     return mvk_set(word, target >> 16)
 
 
 def expected(kind, target):
     if kind in ("callp", "callp_over"):
         return target
-    return target & 0xffff if kind == "mvk_lo" else target >> 16
+    return target & 0xffff if kind in ("mvk_lo", "veneer_lo") else target >> 16
 
 
 def decode(vma, word, kind):
@@ -112,9 +148,9 @@ def decode(vma, word, kind):
     return mvk_field(word)
 
 
-def build(base_path, out_path):
+def build(base_path, out_path, tap=False):
     base = Path(base_path).read_bytes()
-    lo, img, syms = ctl.elf_image(build_payload(), (UA_BASE, UA_SIZE))
+    lo, img, syms = ctl.elf_image(build_payload(tap), (UA_BASE, UA_SIZE))
     if lo != UA_BASE or len(img) > UA_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (ctl.FREE_SDRAM[0] <= lo and lo + len(img) <= ctl.FREE_SDRAM[1]):
@@ -131,12 +167,12 @@ def build(base_path, out_path):
 
     data = bytearray(base[:close_off])
     plan = []
-    for vma, stock, kind, ref, sym in PATCHES:
+    for vma, stock, kind, ref, sym in (TAP_PATCHES if tap else PATCHES):
         off = vma_offset(base, vma)
         word = struct.unpack_from("<I", data, off)[0]
         if (stock is not None and word != stock) or not stock_ok(vma, word, kind, ref):
             sys.exit("patch site %#x does not hold the expected stock word (%08x)" % (vma, word))
-        new = patched_word(vma, word, kind, syms[sym])
+        new = ref if kind == "fixed" else patched_word(vma, word, kind, target_of(sym, syms))
         struct.pack_into("<I", data, off, new)
         plan.append((vma, off, word, new, kind, sym))
     padded = img + b"\0" * (-len(img) % 4)
@@ -154,8 +190,15 @@ def build(base_path, out_path):
         sys.exit("re-walk did not find the USB audio section")
     if bytes(data[load[0] + 12:load[0] + 12 + len(img)]) != img:
         sys.exit("USB audio payload mismatch after re-walk")
-    for vma, off, _, _, kind, sym in plan:
-        if decode(vma, struct.unpack_from("<I", data, off)[0], kind) != expected(kind, syms[sym]):
+    for vma, off, _, new, kind, sym in plan:
+        got = struct.unpack_from("<I", data, off)[0]
+        if kind == "fixed":
+            ok = got == new
+        elif kind in ("veneer_lo", "veneer_hi"):
+            ok = mvk_field(got) == expected(kind, target_of(sym, syms))
+        else:
+            ok = decode(vma, got, kind) == expected(kind, target_of(sym, syms))
+        if not ok:
             sys.exit("patch %#x does not reach %s" % (vma, sym))
 
     out_path = Path(out_path)
@@ -165,7 +208,8 @@ def build(base_path, out_path):
     os.replace(tmp, out_path)
     print("usb audio payload %#x..%#x (%d bytes)" % (lo, lo + len(img), len(img)))
     for vma, off, old, new, kind, sym in plan:
-        print("patch %#x: %08x -> %08x %s %s (%#x)" % (vma, old, new, kind, sym, syms[sym]))
+        dest = "" if sym is None else " %s (%#x)" % (sym if isinstance(sym, str) else "veneer", target_of(sym, syms))
+        print("patch %#x: %08x -> %08x %s%s" % (vma, old, new, kind, dest))
     print("wrote %s (%d bytes, SHA-256 %s)" % (out_path, len(data),
                                                hashlib.sha256(data).hexdigest()))
     return bytes(data), plan, syms
@@ -175,6 +219,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", default=str(ROOT / "build/fw/res1_493412.bin"))
-    ap.add_argument("--out", default=str(ROOT / "build/usb_audio/DO_NOT_FLASH_usb_audio_silence.bin"))
+    ap.add_argument("--out")
+    ap.add_argument("--tap", action="store_true",
+                    help="real-audio tap build (ROADMAP C3) instead of silence")
     a = ap.parse_args()
-    build(a.base, a.out)
+    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap
+                               else "build/usb_audio/DO_NOT_FLASH_usb_audio_silence.bin"))
+    build(a.base, out, a.tap)
