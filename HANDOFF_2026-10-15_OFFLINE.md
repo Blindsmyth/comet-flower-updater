@@ -22,8 +22,8 @@ list) and [ROADMAP.md](ROADMAP.md).
 | Feature | Offline state | Next hardware step (owner) |
 |---|---|---|
 | USB MIDI controller (B1) | The 7-hook lifecycle build is verified. The USB abort review is complete (below). | Run the diag build first, then the MIDI test. |
-| USB audio (C) | The silence-stream candidate builds and has been reviewed. One bug (STRING descriptors) was found and fixed. | Enumeration test after B1 passes. |
-| Effects, 5 slots (B2/D) | CF 808/RAT/Muff/TS exist. DR103 needs a redesign. The cycle budget is unresolved (two methods differ by about 2×). | Cost measurements and a full patch. |
+| USB audio (C) | Silence candidate: two reviews; the STRING bug was fixed and review 2 found no bug. Real-audio tap candidate built (`--tap`, 17 tests). | Enumeration test after B1 passes, then the tap test. |
+| Effects, 5 slots (B2/D) | CF 808/RAT/Muff/TS exist. DR103 needs a redesign. Budget very likely 132.4k cycles per block; 50.6k is busy cycles (TSCL stops in IDLE). CF ClkT is built to confirm. | Run CF ClkT (`docs/CYCLE_BUDGET_2026-10-15.md`), then a full patch. |
 | Slot-0 residency (B4) | The patch is ready and hash-pinned. | Heavy-effect test. |
 | Patch tool (E) | Not started. | — |
 
@@ -61,6 +61,24 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
 - The descriptors pass the strict validator `tools/uac1_validate.py`, including
   the Windows legacy grouping check (it should appear as two functions).
 - Review: `docs/helpers/REVIEW_USB_AUDIO_CANDIDATE.md`, with Claude's response.
+
+## Session 2 (2026-10-15 afternoon): queue items 1-3 done
+
+- **1. Done.** Review 2 (Sonnet; Codex was capped): `docs/helpers/REVIEW2_USB_AUDIO_CANDIDATE.md`.
+  No bug found. The Claude review corrects one claim: the callers do branch on the
+  veneer's A4 (0 = success). It also adds one low RISK: nothing resets the stream
+  state on SET_CONFIGURATION or bus reset.
+- **2. Done.** Real-audio tap: `docs/USB_AUDIO_TAP_CANDIDATE_2026-10-15.md`,
+  `make_usb_audio_fw.py --tap`. A veneer at `11818c88` (dead padding) and the CALLP at
+  `11818c64` call `ua_tx_pack_tap`. The samples are recomputed from the planar inputs
+  `11f038b0`/`11f038f0`. An SPSC ring feeds async 44/45 pacing by fill level. The
+  silence image is byte-identical (`bfee93d1…`).
+- **3. Done (static); one pedal run left.** `docs/CYCLE_BUDGET_2026-10-15.md`. Stock
+  sets PDCCMD = 0x1FFFF (GEMPD) at boot. The existing DR103 and Probe data rule out a
+  139.5 MHz core, so the budget is about 132.4k cycles per block. CF ClkT
+  (`effects/clkt`, `build/CLKT.ZD2`) settles it: compare TSCL per block at Load 0
+  and Load 50 against the 19.2 MHz TIMER64P0.
+- Tests: **226 passed**.
 
 ## Offline work queue (in order)
 
