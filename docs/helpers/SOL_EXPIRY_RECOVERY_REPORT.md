@@ -298,3 +298,95 @@ resume leaves all of them as-is.
 Confidence: **confirmed**.
 
 ## 5. Verdict
+
+**Finding 5 (confirmed as a software-permitted path; actual hardware overlap
+likely, not observed).** Under the question's premise that the old host packet
+descriptor is still DMA-owned when the 128 polls expire, the stock software
+does **not** establish a buffer-ownership barrier before reporting/proceeding
+and accepting more TX work.  It is therefore possible for the same buffer to
+be reused while the old DMA transaction still owns it.  Static analysis does
+not prove that a real caller supplies the same address in this window, or that
+the DMA engine continues accessing it after the FIFO/channel operations.
+
+Concrete paths:
+
+1. **Immediate post-abort re-enqueue (confirmed permission; same-address use
+   is caller-dependent).** Expiry branches directly to the common tail,
+   flushes, and disables/re-enables the channel with queue 24.  The surviving
+   in-flight descriptor keeps field [5] nonzero.  `c0120f64` accepts a caller's
+   pointer/length into fields [6]/[7], and that nonzero count is the predicate
+   that calls `c01204b4`, rather than a predicate that blocks it.  No address
+   comparison detects reuse of the old buffer.  If the caller passes the old
+   address, a new descriptor is submitted while the old one has not returned.
+
+2. **Full-reset then re-enqueue (confirmed permission; same-address use is
+   caller-dependent).** `c0121224` invokes the same possibly-expiring abort,
+   then `c011fd40` or `c011fd98` clears saved TX buffer/scratch fields without
+   clearing outstanding field [5] or waiting for queue 24.  The same
+   `c0120f64 -> c01204b4 -> c0120250` path can consequently submit a reused
+   address immediately.
+
+3. **Internal direct submitters (confirmed absence of an ownership gate;
+   reach/timing of same-address reuse is likely).** `c0120c00` and `c01219d0`
+   call `c0120250` after loading/computing buffer inputs.  Neither tests field
+   [3], field [5], queue 24, or the old descriptor identity at the call site.
+   Their higher-level triggering and buffer identity were not fully traced,
+   so they are additional permitted paths, not proof of an occurrence.
+
+Evidence (expiry and unconditional common hardware tail):
+
+```text
+c0120730       2f08           CMPLT.L1      A1,A6,A0
+c0120732       a8ba    [!A0]  BNOP.S1       0xc0120764,5
+c01207ac       e89b           CALLP.S2      0xc0120628,B3
+c01207b0       a41b           CALLP.S2      0xc01201e0,B3
+c01207b4       0627 ||        MVK.L2        0,B4
+c01207b6       0312 ||        MVK.S1        0,A6
+c01207b8       a41b           CALLP.S2      0xc01201e0,B3
+c01207c0       2627 ||        MVK.L2        1,B4
+```
+
+Evidence (a direct submit with no intervening ownership test):
+
+```text
+c0120c0c       9487 ||        MV.L2X        A9,B4
+c0120c0e       c06d           LDW.D2T1      *B4[6],A6
+c0120c10   00021c40 ||        ADDAW.D1      A0,A16,A0
+c0120c14   1ffeca13           CALLP.S2      0xc0120250,B3
+c0120c18       586d ||        LDW.D2T2      *B4[10],B6
+c0120c1a       1040 ||        ADD.L1X       A0,B0,A4
+```
+
+Paths that do **not** create a premature reuse on consistent state:
+
+- The abort's own `c0120550` resubmit can occur in general (Finding 1), but
+  an unreturned DMA descriptor still contributes to field [5].  Draining
+  queued descriptors cannot reduce that count to zero, so the old in-flight
+  case does not take the resubmit edge unless the count was already wrong.
+- The late descriptor's queue-24 -> queue-32/34 -> `c0120550` chain accounts
+  it only after the descriptor has returned.  It therefore neither
+  double-counts nor frees/resubmits that descriptor prematurely.
+- The direct `c011fab8..fb6e` result store is gated by TX field [2] != 0 and
+  field [9] <= 0.  With an ordinary still-in-flight submission, field [9]
+  remains positive, so this store is skipped.  A full reset clears fields
+  [6]..[11] while leaving field [2] set; a late completion can then reach the
+  store with a cleared field-[7] pointer.  That is a separate possible bad
+  write, not evidence that it writes a caller-reused buffer.
+
+What remains unproven:
+
+- whether expiry in a real run means the packet DMA engine still owns or can
+  access the host buffer (the Hwi can also consume queue 25 and induce expiry);
+- whether `c0120628` plus the disable/enable writes cancel all old memory
+  accesses despite the missing matching teardown descriptor;
+- the actual caller buffer lifetime and whether it reuses the identical
+  address before the late queue-24 return;
+- interrupt timing, endpoint association after a prior expiry, and the real
+  latency of the deferred queue-32/34 consumer;
+- the higher-level reach conditions and buffer identity for the `c0120c00`
+  and `c01219d0` direct-submit paths.
+
+Final confidence: **confirmed** that firmware permits new submission and does
+not enforce buffer identity/ownership after expiry; **likely** that this can
+overlap a genuinely still-active DMA transfer under the question's premise;
+no runtime occurrence is claimed.
