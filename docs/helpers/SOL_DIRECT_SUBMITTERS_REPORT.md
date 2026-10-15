@@ -238,6 +238,33 @@ c01205f0       a004           STW.D1T1      A0,*A4[5]
 
 Confidence: **confirmed**.
 
+**Finding 3b (confirmed).** A successful `c01219d0` submit also does **not** increment field [5]. The next instruction is an unconditional branch to the epilogue, so the `c0120250` result is ignored and there is no post-success state update at all. Its completion follows the same queue 24 -> 32/34 -> `c0120550` path described above. Because submission required field [2] != 0, an unchanged field [2] routes the return to queue 34 and makes `c0120550` skip field [5]. If field [2] becomes zero before Hwi/consumer processing, the return may decrement whatever positive aggregate is then present; zero or negative values are skipped. It therefore cannot drive field [5] negative or wrap through zero, but the newly submitted descriptor is uncounted and can be cross-accounted against another positive value.
+
+```text
+c01219c8       9487           MV.L2X        A9,B4
+c01219ca       2040           ADD.L1        A1,A0,A4
+c01219cc   04000029 ||        MVK.S1        0x0000,A8
+c01219d0   1ffd1213 ||        CALLP.S2      0xc0120250,B3
+c01219d4       d056 ||        MV.D1X        B0,A6
+c01219d6       a5ca           BNOP.S1       0xc01219ee,5
+c01219ee       71f7           LDW.D2T2      *++B15[2],B3
+```
+
+The Hwi's queue choice is controlled by the live field [2] value loaded into `A7`:
+
+```text
+c011fb0c       2040           ADD.L1        A1,A0,A4
+c011fb0e       007c           LDW.D1T1      *A4[0],A7
+c011fb70       03c6           MV.L1         A7,A0
+c011fb72       a36a    [ A0]  BNOP.S1       0xc011fb7a,5
+c011fb74       f11b           CALLP.S2      0xc011fa70,B3
+c011fb76       8346 ||        MV.L1         A6,A4
+c011fb7a       f11b           CALLP.S2      0xc011fa70,B3
+c011fb80       4232 ||        MVK.S1        34,A4
+```
+
+Confidence: **confirmed**.
+
 ## 4. Endpoint/direction
 
 ## 5. Verdict
