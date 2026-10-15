@@ -32,7 +32,7 @@ The diagnostic candidate is an **observer-only instrumented build** designed to 
 ## 2. Memory Structure: `ctl_diag`
 
 The diagnostic structure resides at a fixed address in SDRAM:
-- **Base Address**: `0xc01a0da0` as of the 2026-10-15 readback build (it was `0xc01a0b00` before). Always take it from `build/controller/diag/controller_diag.map`; the decoder locates the magic itself.
+- **Base Address**: `0xc01a0ea0` as of the 2026-10-15 readback+stack build (it was `0xc01a0b00` before). Always take it from `build/controller/diag/controller_diag.map`; the decoder locates the magic itself.
 - **Total Size**: 408 bytes (`0x198`). The readback snapshot `diag_dump` follows it in `.ctl_state`.
 - **Magic**: `0x54444731` (`b"1GDT"` in little-endian ASCII).
 
@@ -106,13 +106,17 @@ memory-dump channel, so the diag build streams its own snapshot.
 2. Run `.venv/Scripts/python.exe tools/capture_ctl_diag.py --port ZOOM --out build/diag_capture.json`.
    It is receive-only and opens no MIDI output.
 3. On the pedal, press **both footswitches together** (event 4).
-4. The worker snapshots `ctl_diag` together with TX records 1..4 (fields
-   [2], [3], [5] and [9]). It sends the snapshot as about 600 CCs on channel 1:
+4. The worker snapshots `ctl_diag`, TX records 1..4 (fields [2], [3], [5]
+   and [9]), and the MIDI worker's stack high-water mark. That is the count of
+   untouched 0xbe fill bytes above the stack base, the same fill the stock check
+   `c016e300` uses. It sends the snapshot as about 600 CCs on channel 1:
    CC119=127 to begin, CC102..106 for 7-bit word slices, CC119=1 to end.
    The tool decodes the stream when the end marker arrives.
 5. To decode later: `.venv/Scripts/python.exe tools/decode_ctl_diag.py --cc-log build/diag_capture.json`.
 
-Reading the result: TX slot 4 `outstanding[5]` is the MIDI IN count. It should
+Reading the result: `Worker stack: peak N of 2048` is the first *measured* worker-stack
+figure (the static bound is still open). Do the readback after exercising the disconnect,
+reconnect and heavy-traffic scenarios: the mark only ever grows. TX slot 4 `outstanding[5]` is the MIDI IN count. It should
 be 0 when the pedal is idle and connected. A value that stays non-zero after a
 reconnect, together with missing controller CCs, is the liveness stall
 described in `SOL_EXPIRY_RECOVERY_REPORT.md` (Claude review). If TX is

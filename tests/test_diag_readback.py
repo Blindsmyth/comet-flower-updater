@@ -30,10 +30,11 @@ def fw_stream(words):
     return out
 
 
-def snapshot(diag_words, tx):
+def snapshot(diag_words, tx, stack=(0x800, 0xc0300000, 0x500)):
     body = list(diag_words)
     for slot in range(1, 5):
         body += tx[slot]
+    body += list(stack)
     return [0x31504D44, len(body)] + body
 
 
@@ -79,10 +80,31 @@ class DiagReadback(unittest.TestCase):
         self.assertEqual(rep["tx_records"][4]["field5_outstanding"], 1)
         self.assertEqual(rep["tx_records"][4]["field9"], -1)
         self.assertIn("outstanding[5]=1", dcd.format_diag_text(rep))
+        self.assertEqual(rep["worker_stack"]["peak_used_bytes"], 0x800 - 0x500)
+        self.assertIn("peak 768 of 2048", dcd.format_diag_text(rep))
+
+    def test_stack_guard_failure_reported(self):
+        words = snapshot([dcd.MAGIC] + [0] * 101, {s: [0] * 4 for s in range(1, 5)},
+                         stack=(0, 0, 0xFFFFFFFF))
+        rep = dcd.decode_cc_stream(fw_stream(words))
+        self.assertIsNone(rep["worker_stack"]["peak_used_bytes"])
+        self.assertIn("not measured", dcd.format_diag_text(rep))
+
+    def test_stack_scan_matches_stock_check(self):
+        # stock c016e300 compares the byte at task word [8] with 0xbe
+        self.assertIn("p[n] == 0xbeu", DIAG_C)
+        self.assertIn("*size = t[7];", DIAG_C)
+        self.assertIn("*base = t[8];", DIAG_C)
+        dis = ROOT / "build" / "fw" / "map" / "main.dis"
+        if dis.exists():
+            text = dis.read_text(errors="replace")
+            self.assertRegex(text, r"(?m)^c016e300\s+\S+\s+LDB\.D1T1\s+\*\+A4\[0\],A3")
+            self.assertRegex(text, r"(?m)^c016e304\s+\S+\s+MVK\.S1\s+0xffffffbe,A4")
+            self.assertRegex(text, r"(?m)^c0160680\s+\S+\s+\|\|\s+\[ A0\]\s+LDW\.D1T1\s+\*\+A10\[8\],A4")
 
     def test_rejects_truncated_frame(self):
         words = snapshot([dcd.MAGIC] + [0] * 101, {s: [0] * 4 for s in range(1, 5)})
-        stream = fw_stream(words)
+        stream = fw_stream(words)  # noqa
         with self.assertRaises(ValueError):
             dcd.decode_cc_stream(stream[:-1])                       # no end marker
         with self.assertRaises(ValueError):

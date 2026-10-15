@@ -121,7 +121,12 @@ void controller_diag_consumer(u32 idx, u32 queue)
      CC102..106 = word bits 0-6, 7-13, 14-20, 21-27, 28-31   (one word = 5 CCs)
      CC119=1                          end
    Words: DUMP_MAGIC, word count, Diag (102 words), then for TX slots 1..4 the
-   record (0xc011297c + 0x2a8*N) fields [2],[3],[5],[9]. Field [5] stuck
+   record (0xc011297c + 0x2a8*N) fields [2],[3],[5],[9], then the MIDI worker
+   stack: size (task word 7), base (task word 8), and the count of untouched
+   0xbe fill bytes up from the base (high-water mark; c016e300 is the stock
+   check of the base byte against 0xbe; c0152878..2910 stores size/base). The
+   scan runs only if size == 0x800 (the worker descriptor's request) and the
+   base lies in DDR; otherwise the count is 0xffffffff. Field [5] stuck
    nonzero after a reconnect is the liveness signature from
    docs/helpers/SOL_EXPIRY_RECOVERY_REPORT.md (Claude review).
    peek/commit run only in the MIDI worker under MIDI_LOCK; request runs in
@@ -129,7 +134,7 @@ void controller_diag_consumer(u32 idx, u32 queue)
 #define DUMP_MAGIC 0x31504d44u                 /* 'DMP1' */
 #define DIAG_WORDS (sizeof(Diag) / 4u)
 #define TXREC(n) ((volatile u32 *)(0xc011297cu + 0x2a8u * (n)))
-#define DUMP_WORDS (2u + DIAG_WORDS + 16u)
+#define DUMP_WORDS (2u + DIAG_WORDS + 16u + 3u)
 #define DUMP_CCS (5u * DUMP_WORDS + 2u)
 
 #pragma DATA_SECTION(diag_dump, ".ctl_state")
@@ -137,8 +142,33 @@ struct {
     volatile u32 req;   /* MainApp increments */
     u32 seen;           /* worker: last req snapshotted */
     u32 pos;            /* next CC index; DUMP_CCS when idle */
+    u32 worker;         /* task handle returned by the worker create */
     u32 w[DUMP_WORDS];
-} diag_dump = { 0, 0, DUMP_CCS };
+} diag_dump = { 0, 0, DUMP_CCS, 0 };
+
+void controller_diag_worker(u32 task)
+{
+    diag_dump.worker = task;
+}
+
+static void diag_stack(u32 *size, u32 *base, u32 *unused)
+{
+    volatile u32 *t = (volatile u32 *)diag_dump.worker;
+    volatile unsigned char *p;
+    u32 n = 0;
+    *size = *base = 0;
+    *unused = 0xffffffffu;
+    if (diag_dump.worker < 0xc0000000u || diag_dump.worker >= 0xd0000000u)
+        return;
+    *size = t[7];
+    *base = t[8];
+    if (*size != 0x800u || *base < 0xc0000000u || *base >= 0xd0000000u - 0x800u)
+        return;
+    p = (volatile unsigned char *)*base;
+    while (n < *size && p[n] == 0xbeu)
+        n++;
+    *unused = n;
+}
 
 void controller_diag_request(void)
 {
@@ -160,6 +190,7 @@ static void diag_snapshot(void)
         diag_dump.w[k++] = TXREC(n)[9];
     }
     _restore_interrupts(csr);
+    diag_stack(&diag_dump.w[k], &diag_dump.w[k + 1], &diag_dump.w[k + 2]);
 }
 
 /* Next CC to send, if any. A new request restarts from a fresh snapshot. */

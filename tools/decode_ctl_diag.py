@@ -147,7 +147,7 @@ def decode_cc_stream(pairs):
     words = words_from_cc(pairs)
     if len(words) < 2 or words[0] != DUMP_MAGIC:
         raise ValueError("readback frame does not start with DMP1 magic")
-    if words[1] != len(words) - 2 or words[1] != DUMP_DIAG_WORDS + 4 * len(DUMP_TX_FIELDS):
+    if words[1] != len(words) - 2 or words[1] != DUMP_DIAG_WORDS + 4 * len(DUMP_TX_FIELDS) + 3:
         raise ValueError(f"readback word count {words[1]} does not match frame ({len(words) - 2})")
     body = words[2:]
     report = decode_diag(struct.pack(f"<{DUMP_DIAG_WORDS}I", *body[:DUMP_DIAG_WORDS]), 0)
@@ -158,6 +158,12 @@ def decode_cc_stream(pairs):
         tx[slot] = {"field2_enabled": f[2], "field3_state": f[3],
                     "field5_outstanding": f[5], "field9": f[9] - (1 << 32) if f[9] >> 31 else f[9]}
     report["tx_records"] = tx
+    size, base, unused = body[k:k + 3]
+    report["worker_stack"] = {
+        "size": size, "base": hex(base),
+        "unused_fill_bytes": None if unused == 0xFFFFFFFF else unused,
+        "peak_used_bytes": None if unused == 0xFFFFFFFF else size - unused,
+    }
     report["source"] = "midi_readback"
     return report
 
@@ -182,6 +188,13 @@ def format_diag_text(diag):
         for slot, r in diag["tx_records"].items():
             lines.append(f"  slot {slot}: enabled[2]={r['field2_enabled']} state[3]={r['field3_state']} "
                          f"outstanding[5]={r['field5_outstanding']} [9]={r['field9']}")
+    if "worker_stack" in diag:
+        w = diag["worker_stack"]
+        if w["peak_used_bytes"] is None:
+            lines.append(f"Worker stack:    not measured (size={w['size']}, base={w['base']}; guard failed)")
+        else:
+            lines.append(f"Worker stack:    peak {w['peak_used_bytes']} of {w['size']} bytes used "
+                         f"({w['unused_fill_bytes']} untouched 0xbe bytes above base {w['base']})")
     lines.append("")
     if diag["entries"]:
         header = f"{'Seq':>5} {'Site':<35} {'Aux':>5} {'Idx':>5} {'Word0':>10} {'Type':>5} {'Ch':>4} {'TSCL':>10}"

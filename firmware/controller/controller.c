@@ -60,6 +60,7 @@ State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
 void controller_diag_request(void);
 int controller_diag_peek(u32 *control, u32 *value);
 void controller_diag_commit(void);
+void controller_diag_worker(u32 task);
 #endif
 
 #define BTN_QLEN 16u
@@ -92,7 +93,15 @@ u32 controller_worker_create(u32 descriptor)
 {
     if (ctl_state.mode)
         tx.connected = 0;
+#ifdef CTL_DIAG
+    {
+        u32 task = TASK_CREATE(descriptor);
+        controller_diag_worker(task);
+        return task;
+    }
+#else
     return TASK_CREATE(descriptor);
+#endif
 }
 
 /* c014a018 has already cleared the ring and packetizer under MIDI_LOCK.
