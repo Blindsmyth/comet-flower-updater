@@ -1,5 +1,19 @@
 # Review: USB audio silence-stream candidate (2026-10-15)
 
+> **Claude response (2026-10-15).**
+> - **STRING bug: confirmed and fixed.** `c0135258` passes A4 = A10 (type 3), and `c01352a4` reads
+>   `{len, .., ptr}` records. The veneer now handles only A4 ∈ {1, 2}, the same `A4-1 <= 1` test the
+>   stock builder makes at `c0160ee2..ee6`. Every other value tail-branches to `c0160ec0` before any
+>   register or the stack is touched. Regression tests are in `tests/test_usb_audio_candidate.py`.
+> - **Types 6/7: your "self-heals" reading did not hold.** Stock sends A4 = 6/7 to `c0161002`, which
+>   returns an empty array, so a full-speed-only device STALLs DEVICE_QUALIFIER and
+>   OTHER_SPEED_CONFIGURATION. The old veneer would have answered them; the fix keeps the stock behaviour.
+> - **B4 speed selector (`c0160ef4`).** The two stock header pairs, `c017f3dc/c017f400` and
+>   `c017f3ee/c017f40a`, are byte-identical, so ignoring B4 is safe.
+> - **B31 in `ua_ep0_ack`: not a risk.** B16–B31 are caller-saved (scratch) under the C6000 EABI.
+> - **SOF tick register use: not a risk.** If cl6x uses a callee-saved register it saves it itself, and
+>   the Hwi caller is stock EABI C code that already assumes scratch registers are clobbered.
+
 Reviewed against `build/fw/map/main.dis` (stock) and `build/usb_audio/usb_audio.dis`
 (candidate, rebuilt with `tools/make_usb_audio_fw.py`). Scope: correctness only,
 per docs/USB_AUDIO_SILENCE_CANDIDATE_2026-10-15.md and the brief's 7 checklist

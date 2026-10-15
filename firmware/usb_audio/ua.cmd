@@ -8,6 +8,7 @@
 --retain="*(.ua_state)"
 --retain="*(.text:ua_map)"
 --retain="*(.text:ua_ack)"
+stock_descriptor_builder = 0xc0160ec0;   /* stock USB descriptor builder */
 MEMORY {
     CTL2: o = 0xc01a8000, l = 0x8000
 }

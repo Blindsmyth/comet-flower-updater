@@ -10,6 +10,7 @@
 --retain="usb_audio_copy_descriptors"
 --retain="desc_ptrs"
 --retain="usb_audio_state"
+stock_descriptor_builder = 0xc0160ec0;   /* stock USB descriptor builder */
 MEMORY {
     CTL2: o = 0xc01a8000, l = 0x8000
 }

@@ -80,6 +80,19 @@ class UsbAudioCandidateBuild(unittest.TestCase):
         regs = set(re.findall(r"\b([AB]\d+)\b", re.sub(r"0x[0-9a-f]+", "", body)))
         self.assertTrue(regs <= {"A0", "A4", "A5", "B0", "B3"}, regs)
 
+    def test_descriptor_veneer_delegates_non_fragment_types(self):
+        # Regression for the STRING-descriptor bug (REVIEW_USB_AUDIO_CANDIDATE.md):
+        # the veneer may only replace A4 = 1/2; all else goes to stock c0160ec0
+        # before anything (B3, A6, B4, stack) is touched.
+        dis = (ua.OUT / "usb_audio.dis").read_text(errors="replace")
+        body = dis[dis.index("usb_audio_descriptor_veneer:"):].splitlines()[1:5]
+        text = "\n".join(body)
+        self.assertRegex(body[0], r"ADD\.L1\s+A4,-1,A0")
+        self.assertRegex(body[1], r"CMPLTU\.L1\s+1,A0,A0")
+        self.assertRegex(body[2], r"\[ A0\]\s+B\.S1\s+stock_descriptor_builder .*= 0xc0160ec0\)")
+        self.assertRegex(body[3], r"NOP\s+5")
+        self.assertNotIn("B15", text)
+
     def test_layers_onto_controller_lifecycle_candidate(self):
         with tempfile.TemporaryDirectory() as d:
             life = Path(d) / "life.bin"
@@ -110,6 +123,12 @@ class UsbAudioStockFacts(unittest.TestCase):
             ("c016f770", r"MVK\.S2\s+0xffff8e80,B31"), ("c016f778", r"B\.S2\s+B31"),
             ("c0151f60", r"\|\|\s+MVK\.S1\s+128,A4"), ("c0151f64", r"\|\|\s+CALLP\.S2\s+0xc015af48,B3"),
             ("c0151f6c", r"\|\|\s+MVK\.S1\s+0xfffffffe,A8"),
+            # stock builder: A4-1 <= 1 builds fragments; 3 = string table; 6/7 empty
+            ("c0160ee2", r"ADD\.L1\s+A7,-1,A0"), ("c0160ee4", r"CMPLTU\.L1\s+1,A0,A0"),
+            ("c0160ee6", r"\[!A0\]\s+BNOP\.S1\s+0xc0160ef4,4"),
+            ("c0160eea", r"CMPEQ\.L1\s+3,A4,A0"), ("c0160eec", r"\[ A0\]\s+BNOP\.S1\s+0xc0161008,5"),
+            # the string caller reads {len, .., ptr} records, not fragments
+            ("c0135262", r"\|\|\s+MV\.S1\s+A10,A4"), ("c01352a4", r"LDW\.D1T1\s+\*A4\[1\],A5"),
             # GET_INTERFACE reads the alt array the IF3 callback writes
             ("c0134e7c", r"MVK\.S1\s+0xffffa1b0,A5"), ("c0134e8c", r"LDB\.D1T1\s+\*A4\[A5\],A0"),
         ]:
