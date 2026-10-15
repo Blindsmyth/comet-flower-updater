@@ -148,7 +148,45 @@ The value of `A4` reaching `c01520d4` depends on the incoming record event (0..3
 
 ## 3. Op 8
 
-*Pending analysis.*
+Call site **`c0151f30`** passes **`8`**.
+
+### 3.1 Disassembly Excerpt
+
+```text
+c0151f28       8413           MVK.S2        132,B0
+c0151f2a       2469           CMPEQ.L2      B1,B0,B0
+c0151f2c   3038a120    [!B0]  BNOP.S1       0xc0151f90,5
+c0151f30   00001362           B.S2X         A0
+c0151f34   01896162           ADDKPC.S2     0xc0151f44,B3,3
+c0151f38       0e26           MVK.L1        8,A4
+c0151f3a       0627 ||        MVK.L2        0,B4
+c0151f40   03000028 ||        MVK.S1        0x0000,A6
+```
+- **Address**: `c0151f30` (branch instruction) with argument set at `c0151f38` in delay slot.
+- **Enclosing function**: `c0151ed0` (`usb_if_request_callback_veneer`).
+- **Confidence**: confirmed.
+
+### 3.2 Electrical and USB Protocol Trigger
+
+`c0151ed0` is the USB interface request handler installed for the MIDI streaming interface (record `0xc018137c`). It decodes control endpoint (EP0) SETUP packets:
+1. `bRequest == 1` (`CLEAR_FEATURE`): checked at `c0151ef6`.
+2. `bmRequestType` recipient == 2 (`ENDPOINT`): checked at `c0151f04`.
+3. `wIndex` (endpoint address, loaded from `*+B4[2]` at `c0151f0c`):
+   - If `wIndex == 3` (MIDI Bulk OUT endpoint): branch taken to `c0151f48` passing `A4 = 7`.
+   - If `wIndex == 132` (`0x84`, MIDI Bulk IN endpoint): branch taken to `c0151f30` passing `A4 = 8`.
+   - Any other endpoint or request type: exits unhandled with `0xffff8a5b` (STALL).
+
+### 3.3 Effect of Op 8
+
+In `c0144c0c`, passing `A4 = 8` indexes table `0xc01843d8` at entry 8 (`0xc01843f0`), executing:
+```text
+c0144d0c   100a6312           CALLP.S2      0xc014a018,B3
+c0144d10   0016a120           BNOP.S1       0xc0144d2c,5
+```
+`c014a018` is `midi_tx_state_reset`, which acquires mutex `B14[89]`, calls `c01522d8`, resets the TX ring buffer at `0xc0117b28`, clears running status mode at `0xc0117b18+12`, and clears cable-0 output state via `c0148a64`.
+
+Therefore, **Op 8 is the host-driven USB endpoint halt clear handler for MIDI IN (`CLEAR_FEATURE(ENDPOINT_HALT)` on EP 0x84)**.
+- **Confidence**: confirmed.
 
 ## 4. Context
 
