@@ -115,7 +115,7 @@ def lit(v):
     return f"{v:.9e}f"
 
 
-def tail(e, S, T, wz, cap_nf, symmetric):
+def tail(e, S, T, wz, cap_nf, symmetric, hd=None):
     """The common tail: S (k x k), T (k lists, one per input), wz (k + nu)
     -> packed [dA k*k][dB k*nu][cy k][dy nu] written to out[]."""
     k, nu = len(S), len(T[0])
@@ -133,7 +133,8 @@ def tail(e, S, T, wz, cap_nf, symmetric):
             acc = e.sub(acc, e.mul(cy[r], T[r][u]))
         dy.append(acc)
     e.note("M = S + hD; dA = -2h D M^-1, dB = h D M^-1 T")
-    hd = [e.tmp(f"h * {lit(1.0e3 / c)}") for c in cap_nf]
+    if hd is None:
+        hd = [e.tmp(f"h * {lit(1.0e3 / c)}") for c in cap_nf]
     Mm = [[S[r][c] if r != c else e.tmp(f"{S[r][c]} + {hd[r]}") for c in range(k)] for r in range(k)]
     ident = [["1.0f" if r == c else None for r in range(k)] for c in range(k)]
     sol = e.solve(Mm, ident + [[T[r][u] for r in range(k)] for u in range(nu)])
@@ -153,7 +154,31 @@ def tail(e, S, T, wz, cap_nf, symmetric):
         L.append(f"    out[{k * k + k * nu + k + u}] = {'0.0f' if dy[u] is None else dy[u]};")
 
 
-def laplacian(e, nn, res, caps, inj, wout):
+def head_store(e, S, T, wz, cap_nf, symmetric):
+    """Store a 5-state network's S, T (padded to 2 inputs), wz and h D into
+    *w (HwTail): the dense tail then runs once, shared (hw_tail_derive)."""
+    k, nu = len(S), len(T[0])
+    if symmetric:
+        for r in range(k):
+            for c in range(r):
+                S[r][c] = S[c][r]
+    L = e.lines
+    e.note("hand over to the shared tail (HwTail)")
+    for r in range(k):
+        for c in range(k):
+            L.append(f"    w->S[{r}][{c}] = {'0.0f' if S[r][c] is None else S[r][c]};")
+    for r in range(k):
+        for u in range(2):
+            v = T[r][u] if u < nu else None
+            L.append(f"    w->T[{r}][{u}] = {'0.0f' if v is None else v};")
+    for c in range(k + 2):
+        v = wz[c] if c < k + nu else None
+        L.append(f"    w->wz[{c}] = {'0.0f' if v is None else v};")
+    for r, cnf in enumerate(cap_nf):
+        L.append(f"    w->hd[{r}] = h * {lit(1.0e3 / cnf)};")
+
+
+def laplacian(e, nn, res, caps, inj, wout, finish=None):
     """GTH elimination of a grounded resistor network. res: (i, j, uS expr),
     j = -1 ground; caps: (i, j, nF); inj: node -> input-current expr (one
     input); wout: node -> output weight expr. Writes the packed system."""
@@ -213,7 +238,7 @@ def laplacian(e, nn, res, caps, inj, wout):
         for node, w in wout.items():
             acc = e.add(acc, e.mul(w, Z[node][c]))
         wz.append(acc)
-    tail(e, S, T, wz, [c for _, _, c in caps], symmetric=True)
+    (finish or tail)(e, S, T, wz, [c for _, _, c in caps], symmetric=True)
 
 
 def gen_stack():
@@ -238,7 +263,7 @@ def gen_stack():
            (B_, D, gtb), (D, CN, gtc), (D, -1, gleg), (CN, F, "(1.0e6f / 22e3f)"),
            (F, GN, gmid), (GN, -1, gbas), (IN, K, "(1.0e6f / 100e3f)")]
     caps = [(IN, A, 1.0), (A, B_, 0.22), (F, GN, 1.0), (K, GN, 47.0), (K, -1, 47.0)]
-    laplacian(e, 8, res, caps, {IN: gsrc}, {D: gout})
+    laplacian(e, 8, res, caps, {IN: gsrc}, {D: gout}, finish=head_store)
     return e
 
 
@@ -359,26 +384,107 @@ def gen_bh():
     wz = [e.tmp(f"{lit(wZ0[c])} - ({lit(wW0[0])} * {P[0][c]} + {lit(wW0[1])} * {P[1][c]})") for c in range(7)]
     S = [row[:5] for row in ST]
     T = [row[5:] for row in ST]
-    tail(e, S, T, wz, [c for _, _, c in BH_CAPS], symmetric=False)
+    head_store(e, S, T, wz, [c for _, _, c in BH_CAPS], symmetric=False)
     return e
 
 
+# The dense tail as rolled loops: one Gauss routine (no pivoting: S and S + hD
+# are well conditioned for these nets, see the host check) run in two passes.
+# Straight-line it was 4.4 KB of the 30 KB code region; rolled ~0.6 KB for
+# ~1-2k more cycles per block.
+TAIL_C = r"""/* dense tail of a 5-state network -> packed MNA_SS_SIZE(5, 2), compact:
+ * pass 0 solves S^T cy^T = wz_x^T, pass 1 (S + hD) X = [I | T];
+ * dA = -2 hD X_I, dB = hD X_T, dy = wz_u - cy T. One copy serves the stack
+ * and the back half (code size: the 30 KB code region). Rows rolled, the 12
+ * columns always all computed and unrolled (constant bounds; entries left of
+ * the pivot column are never read again, so updating them is harmless).
+ * Measured trade-offs (static, cl6x -O2): straight-line 4.4 KB / ~1.4k
+ * cycles for both nets; this form ~1 KB / ~4k; rows unrolled too, 3 KB and
+ * slower (the variable pivot serialises the loads and stores). */
+#if defined(__TI_COMPILER_VERSION__)
+#define HW_TAIL_UNROLL(n) _Pragma(HW_TAIL_STR(UNROLL(n)))
+#define HW_TAIL_STR(x) #x
+#else
+#define HW_TAIL_UNROLL(n)
+#endif
+MNA_INLINE void hw_tail_derive(const HwTail *w, float *out)
+{
+    float a[5][12];
+    int pass, i, j, k;
+#if defined(__TI_COMPILER_VERSION__)
+#pragma UNROLL(1)
+#endif
+    for (pass = 0; pass < 2; ++pass) {
+        for (i = 0; i < 5; ++i) {
+            for (j = 0; j < 5; ++j) {
+                a[i][j] = pass ? w->S[i][j] + (i == j ? w->hd[i] : 0.0f) : w->S[j][i];
+                a[i][5 + j] = pass ? (i == j ? 1.0f : 0.0f) : (j ? 0.0f : w->wz[i]);
+            }
+            a[i][10] = pass ? w->T[i][0] : 0.0f;
+            a[i][11] = pass ? w->T[i][1] : 0.0f;
+        }
+        for (k = 0; k < 5; ++k) {
+            float inv = mna_rcp(a[k][k]);
+            for (i = k + 1; i < 5; ++i) {
+                float f = a[i][k] * inv;
+                HW_TAIL_UNROLL(12)
+                for (j = 0; j < 12; ++j) a[i][j] -= f * a[k][j];
+            }
+        }
+        for (k = 4; k >= 0; --k) {
+            float inv = mna_rcp(a[k][k]);
+            for (i = k + 1; i < 5; ++i) {
+                float f = a[k][i];
+                HW_TAIL_UNROLL(7)
+                for (j = 5; j < 12; ++j) a[k][j] -= f * a[i][j];
+            }
+            HW_TAIL_UNROLL(7)
+            for (j = 5; j < 12; ++j) a[k][j] *= inv;
+        }
+        if (!pass) {
+            for (i = 0; i < 5; ++i) MNA_CY(out, 5, 2, i) = a[i][5];
+            for (j = 0; j < 2; ++j) {
+                float acc = w->wz[5 + j];
+                for (i = 0; i < 5; ++i) acc -= a[i][5] * w->T[i][j];
+                MNA_DY(out, 5, 2, j) = acc;
+            }
+        }
+    }
+    for (i = 0; i < 5; ++i) {
+        for (j = 0; j < 5; ++j) MNA_DA(out, 5, 2, i, j) = -2.0f * w->hd[i] * a[i][5 + j];
+        MNA_DB(out, 5, 2, i, 0) = w->hd[i] * a[i][10];
+        MNA_DB(out, 5, 2, i, 1) = w->hd[i] * a[i][11];
+    }
+}
+"""
+
+
 def main():
-    parts = []
-    for name, sig, doc, e in (
-        ("hw_stack_derive", "float t, float mid, float b, float mv, float fs, float *out",
-         "tone stack + master: t, mid, b, mv in 0..1 as hw_stack; out = MNA_SS_SIZE(5, 1)", gen_stack()),
-        ("hw_v1_derive", "float vol01, float fs, float *out",
-         "V1 network + Volume (0..1) as hw_v1net; out = MNA_SS_SIZE(2, 1)", gen_v1()),
-        ("hw_bh_derive", "float pres01, float fs, float *out",
-         "back half + Presence (0..1) as hw_backhalf; out = MNA_SS_SIZE(5, 2)", gen_bh()),
-    ):
-        parts.append(f"/* {doc} ({e.n} temporaries) */\n"
-                     f"MNA_INLINE void {name}({sig})\n{{\n"
-                     f"    float h = 0.5f * mna_rcp(fs);\n" + "\n".join(e.lines) + "\n}\n")
+    def fn(name, sig, doc, e, prelude="    float h = 0.5f * mna_rcp(fs);\n"):
+        return (f"/* {doc} ({e.n} temporaries) */\n"
+                f"MNA_INLINE void {name}({sig})\n{{\n" + prelude + "\n".join(e.lines) + "\n}\n")
+    parts = [
+        "/* a 5-state network before its dense tail: S = E^T Zx, T = E^T Zu (2\n"
+        " * inputs, unused ones zero), wz = w^T [Zx | Zu], hd = h D */\n"
+        "typedef struct { float S[5][5], T[5][2], wz[7], hd[5]; } HwTail;\n",
+        TAIL_C,
+        fn("hw_stack_head", "float t, float mid, float b, float mv, float fs, HwTail *w",
+           "tone stack + master up to the tail: t, mid, b, mv in 0..1 as hw_stack;\n"
+           " * one input (T[.][1], wz[6] zero)", gen_stack()),
+        fn("hw_bh_head", "float pres01, float fs, HwTail *w",
+           "back half + Presence (0..1) as hw_backhalf, up to the tail", gen_bh()),
+        fn("hw_v1_derive", "float vol01, float fs, float *out",
+           "V1 network + Volume (0..1) as hw_v1net; out = MNA_SS_SIZE(2, 1)", gen_v1()),
+        "/* whole derivations (host tests); the stack is packed with 2 inputs */\n"
+        "MNA_INLINE void hw_stack_derive(float t, float mid, float b, float mv, float fs, float *out)\n"
+        "{\n    HwTail w;\n    hw_stack_head(t, mid, b, mv, fs, &w);\n    hw_tail_derive(&w, out);\n}\n",
+        "MNA_INLINE void hw_bh_derive(float pres01, float fs, float *out)\n"
+        "{\n    HwTail w;\n    hw_bh_head(pres01, fs, &w);\n    hw_tail_derive(&w, out);\n}\n",
+    ]
     hdr = ("/* hiwatt_netgen.h - GENERATED by tools/gen_hw_nets.py; do not edit.\n"
            " * The DR103 networks of hiwatt_nets.h derived as straight-line code (no\n"
-           " * loops, pivoting or structural zeros), packed as mna_derive writes them.\n"
+           " * loops, pivoting or structural zeros), packed as mna_derive writes them\n"
+           " * (the tone stack with a second, zero input column).\n"
            " * Host check: tests/host/build_hiwatt_netgen_test.bat. */\n"
            "#ifndef HIWATT_NETGEN_H\n#define HIWATT_NETGEN_H\n\n"
            "#include \"hiwatt_nets.h\"\n\n" + "\n".join(parts) + "\n#endif /* HIWATT_NETGEN_H */\n")

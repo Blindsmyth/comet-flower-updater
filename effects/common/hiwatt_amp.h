@@ -11,24 +11,27 @@
  *
  * Differences from the desktop, each measured (tests/host/hiwatt_*):
  *   - the three networks are capacitor-state systems without the desktop's
- *     stray capacitors (hiwatt_nets.h); the tone stack (4 knobs) is
- *     re-derived in float every block, the V1 network (Volume) and the back
- *     half (Presence) come from tables derived at all 101 knob positions;
+ *     stray capacitors (hiwatt_nets.h), all re-derived in float every block
+ *     by straight-line code generated for their fixed topologies
+ *     (hiwatt_netgen.h, tools/gen_hw_nets.py; no knob tables);
  *   - ADAA in float, with the antiderivative split so it does not need the
- *     desktop's double precision (see hw_tube_adaa);
+ *     desktop's double precision (see hw_tube_adaa), on V1, V2, V3a and the
+ *     PI; the EL34 pair without ADAA (no loss in worst alias on the bench);
  *   - polyphase IIR half-bands of our own design (os_hbiir.h);
- *   - the preamp tube ceilings follow the sag as a ramp over each 16-sample
+ *   - the preamp and PI ceilings follow the sag as a ramp over each 16-sample
  *     block, one block late (the desktop: every sample; a per-block step
- *     left sidebands at -78 dB when the sag works hard); the PI and power
- *     stages follow it per sample.
+ *     left sidebands at -78 dB when the sag works hard); the power stage
+ *     follows it per sample.
  * Tube transfer, bias points, headroom calibration, sag and NFB constants are
  * the desktop's (HiwattDR103Processor.cpp, AmpStages.h).
  *
- * Processing is block-oriented and stage-major (hw_block): each preamp tube
- * and network runs over all 64 4x samples of a block before the next, so the
- * C674x compiler can software-pipeline them; only the NFB loop (back half,
- * PI, power) runs sample by sample. Measured on the pedal, the first
- * sample-major version cost ~224k cycles per block (2026-10-05).
+ * Processing is block-oriented and stage-major (hw_block): resampling, each
+ * preamp tube and each network run over a whole block before the next, with
+ * their states in locals, so the C674x compiler can software-pipeline them;
+ * only the NFB loop (back half, PI, sag, power, residual) runs sample by
+ * sample, and its chain sets the cost (hw_nfb_block). Measured on the pedal,
+ * the first sample-major version cost ~224k cycles per block (2026-10-05);
+ * the 2026-10-15 redesign is ~36k static (docs/DR103_REDESIGN_2026-10-15.md).
  */
 #ifndef HIWATT_AMP_H
 #define HIWATT_AMP_H
@@ -57,6 +60,7 @@
 #define HW_GRID      0.08f                    /* slope above the plate ceiling */
 #define HW_LN2       0.6931471805599453f
 #define HW_NB        64                       /* 4x samples per 16-frame block */
+
 /* restrict: without it the compiler assumes the block buffers may overlap and
  * serialises the tube fast pass (ii 123 instead of the resource bound) */
 #if defined(__cplusplus)
@@ -95,21 +99,32 @@ typedef struct {
 } HwState;                          /* 73 floats = 292 B, all zero = reset */
 
 #define HW_V1_SZ MNA_SS_SIZE(2, 1)
-#define HW_ST_SZ MNA_SS_SIZE(5, 1)
+#define HW_ST_SZ MNA_SS_SIZE(5, 2)              /* the stack: second input unused */
 #define HW_BH_SZ MNA_SS_SIZE(5, 2)
 typedef struct {
     float v1[HW_V1_SZ], st[HW_ST_SZ], bh[HW_BH_SZ];   /* packed (mna_ss.h) */
-} HwCoeffs;                                          /* 87 floats */
+} HwCoeffs;                                          /* 93 floats */
 
-/* knobs 0..1: Volume (Normal 470k-A), Treble, Middle, Bass, Master, Presence */
+/* knobs 0..1: Volume (Normal 470k-A), Treble, Middle, Bass, Master, Presence.
+ * Every block (hiwatt_netgen.h; was ~25k cycles measured for the stack's
+ * generic solve, plus 20.6 KB of V1 / back-half tables). The stack and the
+ * back half share one copy of the dense tail (code size). */
 TS_INLINE void hw_coeffs(HwCoeffs *k, float vol, float tre, float mid, float bas,
                          float mas, float pre)
 {
-    /* every block, ~1.6k cycles static for all three (was ~25k measured for
-     * the stack's generic solve, plus 20.6 KB of V1 / back-half tables) */
+    HwTail w;                       /* one, reused: the frame stays small */
+    int i;
     hw_v1_derive(vol, HW_FS_OS, k->v1);
-    hw_bh_derive(pre, HW_FS_OS, k->bh);
-    hw_stack_derive(tre, mid, bas, mas, HW_FS_OS, k->st);
+#if defined(__TI_COMPILER_VERSION__)
+#pragma UNROLL(1)
+#endif
+    for (i = 0; i < 2; ++i) {
+        if (i)
+            hw_bh_head(pre, HW_FS_OS, &w);
+        else
+            hw_stack_head(tre, mid, bas, mas, HW_FS_OS, &w);
+        hw_tail_derive(&w, i ? k->bh : k->st);
+    }
 }
 
 /* tanh, branch-free: odd polynomial below 0.25 (relative accuracy for small
@@ -160,11 +175,15 @@ TS_INLINE float hw_tube(float x, float bias, float kneg, float ceil, float idle)
 /* mean of tanh over [p, p + 2d], |d| < HW_ADAA_BIG / 2 (times a, region 2) */
 TS_INLINE float hw_mean_tanh(float p, float d)
 {
-    float tm = hw_tanh_acc(p + d), d2 = d * d, z, z2;
+    /* tanh(d)/d and tanh(d) depend on the step only, off the critical path;
+     * atanh(z)/z in Estrin form, z^8/9 dropped (|z| < tanh(1/8): < 7e-9) */
+    float tm = hw_tanh_acc(p + d), d2 = d * d, z, z2, z4;
     float tdd = 1.0f - d2 * (1.0f / 3 - d2 * (2.0f / 15 - d2 * (17.0f / 315 - d2 * (62.0f / 2835))));
-    z = tm * d * tdd;
+    float td = d * tdd, tt = tm * tdd;
+    z = tm * td;
     z2 = z * z;
-    return tm * tdd * (1.0f + z2 * (1.0f / 3 + z2 * (1.0f / 5 + z2 * (1.0f / 7 + z2 * (1.0f / 9)))));
+    z4 = z2 * z2;
+    return tt * ((1.0f + z2 * (1.0f / 3)) + z4 * (1.0f / 5 + z2 * (1.0f / 7)));
 }
 
 TS_INLINE float hw_g(float t)            /* log1p(e^-2t), t >= 0 */
@@ -217,18 +236,40 @@ TS_INLINE float hw_tube_adaa(float x, float *x1, float bias, float kneg, float c
     return acc * ts_rcp(hi - lo) - idle;
 }
 
-TS_INLINE float hw_cabinet(HwState *s, float x)
+/* the cab over a 16-sample block, in place, in two passes (biquads 0-4,
+ * then 5-8): a sample loop outside, the biquads unrolled inside with their
+ * states in locals, so the compiler pipelines across samples. All nine in one
+ * loop need 45 coefficients + 18 states: register pressure pushed it from
+ * the resource bound (23) to ii 79. */
+#define HW_CAB_PASS(first, cnt)                                                \
+    for (i = first; i < first + cnt; ++i) { z[i][0] = s->cab[i][0]; z[i][1] = s->cab[i][1]; } \
+    for (n = 0; n < 16; ++n) {                                                 \
+        float x = io[n];                                                       \
+        HW_CAB_UNROLL(cnt)                                                     \
+        for (i = first; i < first + cnt; ++i) {                                \
+            const float *c = hw_cab[i];                                        \
+            float y = c[0] * x + z[i][0];                                      \
+            z[i][0] = c[1] * x - c[3] * y + z[i][1];                           \
+            z[i][1] = c[2] * x - c[4] * y;                                     \
+            x = y;                                                             \
+        }                                                                      \
+        io[n] = x;                                                             \
+    }                                                                          \
+    for (i = first; i < first + cnt; ++i) { s->cab[i][0] = z[i][0]; s->cab[i][1] = z[i][1]; }
+#if defined(__TI_COMPILER_VERSION__)
+#define HW_CAB_PRAGMA(x) _Pragma(#x)
+#define HW_CAB_UNROLL(cnt) HW_CAB_PRAGMA(UNROLL(cnt))
+#else
+#define HW_CAB_UNROLL(cnt)
+#endif
+TS_INLINE void hw_cab_block(HwState *s, float *io)
 {
-    int i;
-    for (i = 0; i < HW_CAB_N; ++i) {
-        const float *c = hw_cab[i];
-        float y = c[0] * x + s->cab[i][0];
-        s->cab[i][0] = c[1] * x - c[3] * y + s->cab[i][1];
-        s->cab[i][1] = c[2] * x - c[4] * y;
-        x = y;
-    }
-    return x;
+    float z[HW_CAB_N][2];
+    int i, n;
+    HW_CAB_PASS(0, 5)
+    HW_CAB_PASS(5, 4)
 }
+#undef HW_CAB_PASS
 
 /* bias, negative-half scale, idle output of V1, V2, V3a (PI and EL34: inline) */
 static const float hw_pre_par[3][3] = {
@@ -269,39 +310,162 @@ TS_INLINE void hw_tube_block(const float *HW_RESTRICT x, float *HW_RESTRICT y, f
         float xp = n == 0 ? prev : x[n - 1], c = c0 + dc * (float)(n + 1);
         y[n] = hw_tube_fast(x[n], xp, bias, kneg, c, idle, &ok);
     }
-    /* rare exact fix-ups. The test is recomputed here, cheaply (no tanh):
-     * storing a flag from the fast pass costs it ii 46 instead of 26
-     * (register pressure). */
-    for (n = 0; n < HW_NB; ++n) {
-        float xp = n == 0 ? prev : x[n - 1], c = c0 + dc * (float)(n + 1);
-        if (!hw_fast_ok(x[n], xp, bias, c)) {
-            float t = xp;
+    /* rare exact fix-ups. The test is recomputed in its own pass, cheaply (no
+     * tanh; storing a flag from the fast pass costs it ii 46 instead of 26,
+     * register pressure), and branch-free: it lists the samples to fix, so
+     * only those run the branchy exact path (a fix-up test inside one loop
+     * kept that loop from pipelining: ~40 cycles per sample). */
+    {
+        unsigned char idx[HW_NB];   /* bytes: the frame stays small */
+        int cnt = 0, i;
+        for (n = 0; n < HW_NB; ++n) {
+            float xp = n == 0 ? prev : x[n - 1], c = c0 + dc * (float)(n + 1);
+            idx[cnt] = n;
+            cnt += !hw_fast_ok(x[n], xp, bias, c);
+        }
+        for (i = 0; i < cnt; ++i) {
+            float xp, c, t;
+            n = idx[i];
+            xp = n == 0 ? prev : x[n - 1];
+            c = c0 + dc * (float)(n + 1);
+            t = xp;
             y[n] = hw_tube_adaa(x[n], &t, bias, kneg, c, idle);
         }
     }
     *x1 = x[HW_NB - 1];
 }
 
-/* a one-input network over the block: y[n] = net(g * v[n]) */
-TS_INLINE void hw_net_block(const float *HW_RESTRICT m, int k, float *HW_RESTRICT xs,
-                            float *HW_RESTRICT up, const float *HW_RESTRICT v, float g,
-                            float *HW_RESTRICT y)
+/* One-input networks over the block: y[n] = net(g * v[n]), delta form
+ * (mna_ss.h). Written per size with the products summed as trees: the
+ * sequential "acc +=" chain set the loop-carried bound (stack: 36 cycles per
+ * sample); the compiler may not reassociate floats itself. States and the
+ * previous input in locals (through the pointers the recurrence went via
+ * memory). */
+TS_INLINE void hw_net2_block(const float *HW_RESTRICT m, float *HW_RESTRICT xs,
+                             float *HW_RESTRICT up, const float *HW_RESTRICT v, float g,
+                             float *HW_RESTRICT y)
 {
-    int n, i, j;
+    float x0 = xs[0], x1 = xs[1], ul = *up;
+    const float a00 = MNA_DA(m, 2, 1, 0, 0), a01 = MNA_DA(m, 2, 1, 0, 1);
+    const float a10 = MNA_DA(m, 2, 1, 1, 0), a11 = MNA_DA(m, 2, 1, 1, 1);
+    const float b0 = MNA_DB(m, 2, 1, 0, 0), b1 = MNA_DB(m, 2, 1, 1, 0);
+    const float c0 = MNA_CY(m, 2, 1, 0), c1 = MNA_CY(m, 2, 1, 1), e = MNA_DY(m, 2, 1, 0);
+    int n;
     for (n = 0; n < HW_NB; ++n) {
-        float u = g * v[n], su = u + *up, dx[MNA_MAXK], o = MNA_DY(m, k, 1, 0) * u;
-        for (i = 0; i < k; ++i) {
-            float acc = MNA_DB(m, k, 1, i, 0) * su;
-            for (j = 0; j < k; ++j) acc += MNA_DA(m, k, 1, i, j) * xs[j];
-            dx[i] = acc;
-        }
-        for (i = 0; i < k; ++i) {
-            xs[i] += dx[i];
-            o += MNA_CY(m, k, 1, i) * xs[i];
-        }
-        *up = u;
-        y[n] = o;
+        float u = g * v[n], su = u + ul;
+        float d0 = (b0 * su + a00 * x0) + a01 * x1;
+        float d1 = (b1 * su + a11 * x1) + a10 * x0;
+        x0 += d0;
+        x1 += d1;
+        ul = u;
+        y[n] = e * u + (c0 * x0 + c1 * x1);
     }
+    xs[0] = x0; xs[1] = x1; *up = ul;
+}
+
+TS_INLINE void hw_net5_block(const float *HW_RESTRICT m, float *HW_RESTRICT xs,
+                             float *HW_RESTRICT up, const float *HW_RESTRICT v, float g,
+                             float *HW_RESTRICT y)
+{
+#define A(i, j) MNA_DA(m, 5, 2, i, j)
+#define ROW(i) ((MNA_DB(m, 5, 2, i, 0) * su + A(i, 0) * x0) \
+                + ((A(i, 1) * x1 + A(i, 2) * x2) + (A(i, 3) * x3 + A(i, 4) * x4)))
+    float x0 = xs[0], x1 = xs[1], x2 = xs[2], x3 = xs[3], x4 = xs[4], ul = *up;
+    int n;
+    for (n = 0; n < HW_NB; ++n) {
+        float u = g * v[n], su = u + ul;
+        float d0 = ROW(0), d1 = ROW(1), d2 = ROW(2), d3 = ROW(3), d4 = ROW(4);
+        x0 += d0; x1 += d1; x2 += d2; x3 += d3; x4 += d4;
+        ul = u;
+        y[n] = MNA_DY(m, 5, 2, 0) * u + ((MNA_CY(m, 5, 2, 0) * x0 + MNA_CY(m, 5, 2, 1) * x1)
+               + (MNA_CY(m, 5, 2, 2) * x2 + (MNA_CY(m, 5, 2, 3) * x3 + MNA_CY(m, 5, 2, 4) * x4)));
+    }
+    xs[0] = x0; xs[1] = x1; xs[2] = x2; xs[3] = x3; xs[4] = x4; *up = ul;
+#undef ROW
+#undef A
+}
+
+/* The NFB loop over the block: back half (u0 = V3a grid volts, x[] in H3
+ * units; u1 = -residual), PI, sag, power stage, tap, residual; y[] = output.
+ *
+ * The residual closes a loop through the PI, the sag and the power stage, one
+ * sample late, so this loop is serial: its cost is the length of that chain.
+ * Variants scored on the 16x bench (tests/host/hiwatt_accuracy.cpp) to allow
+ * pipelining, all rejected: residual 2-4 samples late (max harmonic error
+ * 16 -> 25-32 dB); a branch-free PI with a midpoint fallback (worst alias
+ * -46 -> -30 dB); the NFB section at 2x (23 dB / -39 dB).
+ * What shortens the chain instead:
+ *   - the residual-independent part of the back half (q, P) for sample n+1
+ *     is computed in iteration n, so d is one multiply-add after the residual;
+ *   - the PI rail ramps over the block like the preamp rails (no bench change);
+ *   - locals instead of the struct (the recurrences went through memory). */
+TS_INLINE void hw_nfb_block(HwState *s, const float *HW_RESTRICT m,
+                            const float *HW_RESTRICT x, float *HW_RESTRICT out,
+                            float p0, float dp)
+{
+#define DA(i, j) MNA_DA(m, 5, 2, i, j)
+#define DB(i, u) MNA_DB(m, 5, 2, i, u)
+#define CY(i)    MNA_CY(m, 5, 2, i)
+    /* d = DY0 u0 + DY1 u1 + CY . (xo + q + DB1 s1), s1 = u1 + ub1:
+     *   = P + k1 u1 + c1 ub1,  P = DY0 u0 + CY . (xo + q) */
+    const float c1 = CY(0) * DB(0, 1) + CY(1) * DB(1, 1) + CY(2) * DB(2, 1)
+                   + CY(3) * DB(3, 1) + CY(4) * DB(4, 1);
+    const float k1 = MNA_DY(m, 5, 2, 1) + c1;
+    float x0 = s->xbh[0], x1 = s->xbh[1], x2 = s->xbh[2], x3 = s->xbh[3], x4 = s->xbh[4];
+    float ub1 = s->ub1, sag = s->sag, axp = s->ax[3], resid = s->resid;
+    float u0 = HW_H3 * x[0], s0 = u0 + s->ub0;
+    float q0, q1, q2, q3, q4, P;
+    int n;
+#define HW_NFB_PARTIAL()                                                        \
+    q0 = DB(0, 0) * s0 + DA(0, 0) * x0 + DA(0, 1) * x1 + DA(0, 2) * x2 + DA(0, 3) * x3 + DA(0, 4) * x4; \
+    q1 = DB(1, 0) * s0 + DA(1, 0) * x0 + DA(1, 1) * x1 + DA(1, 2) * x2 + DA(1, 3) * x3 + DA(1, 4) * x4; \
+    q2 = DB(2, 0) * s0 + DA(2, 0) * x0 + DA(2, 1) * x1 + DA(2, 2) * x2 + DA(2, 3) * x3 + DA(2, 4) * x4; \
+    q3 = DB(3, 0) * s0 + DA(3, 0) * x0 + DA(3, 1) * x1 + DA(3, 2) * x2 + DA(3, 3) * x3 + DA(3, 4) * x4; \
+    q4 = DB(4, 0) * s0 + DA(4, 0) * x0 + DA(4, 1) * x1 + DA(4, 2) * x2 + DA(4, 3) * x3 + DA(4, 4) * x4; \
+    P = MNA_DY(m, 5, 2, 0) * u0 + (CY(0) * (x0 + q0) + CY(1) * (x1 + q1))                \
+      + (CY(2) * (x2 + q2) + CY(3) * (x3 + q3) + CY(4) * (x4 + q4));
+    HW_NFB_PARTIAL()
+    for (n = 0; n < HW_NB; ++n) {
+        float u1 = -resid, s1 = u1 + ub1, d, xi, y, r, rail, rpw;
+        int ok;
+        d = P + k1 * u1 + c1 * ub1;
+        x0 += q0 + DB(0, 1) * s1;                   /* delta form: the small */
+        x1 += q1 + DB(1, 1) * s1;                   /* step first, then the  */
+        x2 += q2 + DB(2, 1) * s1;                   /* state                 */
+        x3 += q3 + DB(3, 1) * s1;
+        x4 += q4 + DB(4, 1) * s1;
+        ub1 = u1;
+        {                                           /* sample n+1's partials */
+            float u0n = HW_H3 * x[n + 1 < HW_NB ? n + 1 : n];
+            s0 = u0n + u0;
+            u0 = u0n;
+            HW_NFB_PARTIAL()
+        }
+
+        /* PI (LTP), ADAA, preamp rail (ramped over the block) */
+        xi = d * (1.0f / HW_HPI);
+        rail = p0 + dp * (float)(n + 1);
+        y = hw_tube_fast(xi, axp, HW_BPI, HW_KPI, rail, HW_IPI, &ok);
+        if (!ok) { float t = axp; y = hw_tube_adaa(xi, &t, HW_BPI, HW_KPI, rail, HW_IPI); }
+        axp = xi;
+        r = y < 0.0f ? -y : y;                      /* sag from the PI output */
+        sag += (r - sag) * (r > sag ? HW_SAG_ATT : HW_SAG_REL);
+        rpw = 1.0f - HW_SAG_DEPTH * sag;
+        /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V.
+         * The EL34 pair runs without ADAA: on the 16x reference bench it adds
+         * nothing to the worst alias (-46.6 dB with V1/V2/V3a/PI ADAA only,
+         * tests/host/hiwatt_accuracy.cpp masks), and it sits in this loop. */
+        y = hw_tube(-y * HW_APIHPI * (0.5f / HW_HPWR), HW_BPW, HW_KPW, rpw, HW_IPW);
+        y *= HW_VTAP;                               /* 16-ohm tap volts */
+        resid += HW_RESID_A * ((y - HW_KTAPLIN * d) - resid);
+        out[n] = y * HW_OUT;
+    }
+    s->xbh[0] = x0; s->xbh[1] = x1; s->xbh[2] = x2; s->xbh[3] = x3; s->xbh[4] = x4;
+    s->ub0 = u0; s->ub1 = ub1; s->sag = sag; s->ax[3] = axp; s->resid = resid;
+#undef HW_NFB_PARTIAL
+#undef DA
+#undef DB
+#undef CY
 }
 
 /* One 16-frame block through the amp, in place; the cab unless cab_on is 0. */
@@ -309,19 +473,20 @@ TS_INLINE void hw_block(HwState *s, const HwCoeffs *k, float *io, int cab_on)
 {
     float a[HW_NB], b[HW_NB];
     float pre, p0, dp;
-    int n, ok, st;
+    int n, st;
 
-    for (n = 0; n < 16; ++n) {                      /* 1x -> 4x */
-        float p, q;
-        hbi_up1(&s->up1, io[n], &p, &q);
-        hbi_up2(&s->up2, p, &a[4 * n], &a[4 * n + 1]);
-        hbi_up2(&s->up2, q, &a[4 * n + 2], &a[4 * n + 3]);
-    }
-    for (n = 0; n < HW_NB; ++n) {                   /* jack volts, DC guard, V1 units */
-        float v = a[n] * HW_IN_SCALE, y = v - s->dcx + HW_DC_R * s->dcy;
-        s->dcx = v;
-        s->dcy = y;
-        a[n] = y * (1.0f / HW_H1);
+    hbi1_up_blk(&s->up1, io, b, 16);                /* 1x -> 2x -> 4x, stage-major */
+    hbi2_up_blk(&s->up2, b, a, 32);
+    {                                               /* jack volts, DC guard, V1 units */
+        float dx = s->dcx, dy = s->dcy;
+        for (n = 0; n < HW_NB; ++n) {
+            float v = a[n] * HW_IN_SCALE, y = v - dx + HW_DC_R * dy;
+            dx = v;
+            dy = y;
+            a[n] = y * (1.0f / HW_H1);
+        }
+        s->dcx = dx;
+        s->dcy = dy;
     }
     /* preamp rails: 30 % of the sag, ramped over the block from last block's
      * end (all-zero state: pre_last 0 means "not set yet") */
@@ -339,68 +504,20 @@ TS_INLINE void hw_block(HwState *s, const HwCoeffs *k, float *io, int cab_on)
         const float *tp = hw_pre_par[st];
         hw_tube_block(a, b, &s->ax[st], tp[0], tp[1], p0, dp, tp[2]);
         if (st == 0) {
-            hw_net_block(k->v1, 2, s->xv1, &s->uv1, b, HW_MU3 * HW_H1, a);
+            hw_net2_block(k->v1, s->xv1, &s->uv1, b, HW_MU3 * HW_H1, a);
             for (n = 0; n < HW_NB; ++n) a[n] *= 1.0f / HW_H2;
         } else if (st == 1) {
-            hw_net_block(k->st, 5, s->xst, &s->ust, b, HW_MU3 * HW_H2, a);
+            hw_net5_block(k->st, s->xst, &s->ust, b, HW_MU3 * HW_H2, a);
             for (n = 0; n < HW_NB; ++n) a[n] *= 1.0f / HW_H3;
         }
     }
 
-    /* the NFB loop, sample by sample: back half (u0 = V3a grid volts,
-     * u1 = -residual), PI, sag, power stage, tap, residual */
-    for (n = 0; n < HW_NB; ++n) {
-        const float *m = k->bh;
-        float u0 = HW_H3 * b[n], u1 = -s->resid, s0 = u0 + s->ub0, s1 = u1 + s->ub1;
-        float d = MNA_DY(m, 5, 2, 0) * u0 + MNA_DY(m, 5, 2, 1) * u1, dx[5], xi, y, r, t, rail;
-        int i, j;
-        /* fully unrolled: as a 5-trip software-pipelined loop it costs ii 30 */
-#if defined(__TI_COMPILER_VERSION__)
-#pragma UNROLL(5)
-#endif
-        for (i = 0; i < 5; ++i) {
-            float acc = MNA_DB(m, 5, 2, i, 0) * s0 + MNA_DB(m, 5, 2, i, 1) * s1;
-#if defined(__TI_COMPILER_VERSION__)
-#pragma UNROLL(5)
-#endif
-            for (j = 0; j < 5; ++j) acc += MNA_DA(m, 5, 2, i, j) * s->xbh[j];
-            dx[i] = acc;
-        }
-#if defined(__TI_COMPILER_VERSION__)
-#pragma UNROLL(5)
-#endif
-        for (i = 0; i < 5; ++i) {
-            s->xbh[i] += dx[i];
-            d += MNA_CY(m, 5, 2, i) * s->xbh[i];
-        }
-        s->ub0 = u0;
-        s->ub1 = u1;
+    hw_nfb_block(s, k->bh, b, a, p0, dp);
 
-        /* PI (LTP), ADAA: preamp rail */
-        xi = d * (1.0f / HW_HPI);
-        rail = 1.0f - 0.3f * HW_SAG_DEPTH * s->sag;
-        y = hw_tube_fast(xi, s->ax[3], HW_BPI, HW_KPI, rail, HW_IPI, &ok);
-        if (!ok) { t = s->ax[3]; y = hw_tube_adaa(xi, &t, HW_BPI, HW_KPI, rail, HW_IPI); }
-        s->ax[3] = xi;
-        r = y < 0.0f ? -y : y;                      /* sag from the PI output */
-        s->sag += (r - s->sag) * (r > s->sag ? HW_SAG_ATT : HW_SAG_REL);
-        rail = 1.0f - HW_SAG_DEPTH * s->sag;
-        /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V.
-         * The EL34 pair runs without ADAA: on the 16x reference bench it adds
-         * nothing to the worst alias (-46.6 dB with V1/V2/V3a/PI ADAA only,
-         * tests/host/hiwatt_accuracy.cpp masks), and it sits in the serial loop. */
-        y = hw_tube(-y * HW_APIHPI * (0.5f / HW_HPWR), HW_BPW, HW_KPW, rail, HW_IPW);
-        y *= HW_VTAP;                               /* 16-ohm tap volts */
-        s->resid += HW_RESID_A * ((y - HW_KTAPLIN * d) - s->resid);
-        a[n] = y * HW_OUT;
-    }
-
-    for (n = 0; n < 16; ++n) {                      /* 4x -> 1x, cab */
-        float p = hbi_down2(&s->dn2, a[4 * n], a[4 * n + 1]);
-        float q = hbi_down2(&s->dn2, a[4 * n + 2], a[4 * n + 3]);
-        float x = hbi_down1(&s->dn1, p, q);
-        io[n] = cab_on ? hw_cabinet(s, x) : x;
-    }
+    hbi2_down_blk(&s->dn2, a, b, 32);               /* 4x -> 2x -> 1x, cab */
+    hbi1_down_blk(&s->dn1, b, io, 16);
+    if (cab_on)
+        hw_cab_block(s, io);
 }
 
 #endif /* HIWATT_AMP_H */

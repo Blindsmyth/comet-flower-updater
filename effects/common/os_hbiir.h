@@ -60,4 +60,59 @@ TS_INLINE float hbi_down2(HbiState2 *h, float a, float b)
     return 0.5f * (hbi_path(hbi2_c, h->s, HBI2_N, 0, b) + hbi_path(hbi2_c, h->s, HBI2_N, 1, a));
 }
 
+/* Block forms, stage-major: one stage over a whole buffer, the state held in
+ * locals so the C6x compiler can software-pipeline across samples (each
+ * section only depends on its own state: ~8-cycle recurrence). Sample-major
+ * calls of the single-sample forms serialise every section of both stages
+ * (DR103: ~220 cycles per input sample for up1 + 2 x up2). Same arithmetic,
+ * same order per section, so the output is bit-identical.
+ *   up:   y[2i], y[2i+1] = paths of x[i], i < n
+ *   down: y[i] = (path0(x[2i+1]) + path1(x[2i])) / 2, i < n */
+#define HBI_BLOCK_FN(name, N, C, HT)                                          \
+TS_INLINE void name##_up_blk(HT *h, const float *x, float *y, int n)         \
+{                                                                             \
+    float st[N];                                                              \
+    int i, k;                                                                 \
+    for (k = 0; k < N; ++k) st[k] = h->s[k];                                  \
+    for (i = 0; i < n; ++i) {                                                 \
+        float a = x[i], b = x[i];                                             \
+        for (k = 0; k < N; k += 2) {                                          \
+            float w = a - C[k] * st[k];                                       \
+            a = C[k] * w + st[k];                                             \
+            st[k] = w;                                                        \
+        }                                                                     \
+        for (k = 1; k < N; k += 2) {                                          \
+            float w = b - C[k] * st[k];                                       \
+            b = C[k] * w + st[k];                                             \
+            st[k] = w;                                                        \
+        }                                                                     \
+        y[2 * i] = a;                                                         \
+        y[2 * i + 1] = b;                                                     \
+    }                                                                         \
+    for (k = 0; k < N; ++k) h->s[k] = st[k];                                  \
+}                                                                             \
+TS_INLINE void name##_down_blk(HT *h, const float *x, float *y, int n)       \
+{                                                                             \
+    float st[N];                                                              \
+    int i, k;                                                                 \
+    for (k = 0; k < N; ++k) st[k] = h->s[k];                                  \
+    for (i = 0; i < n; ++i) {                                                 \
+        float a = x[2 * i + 1], b = x[2 * i];                                 \
+        for (k = 0; k < N; k += 2) {                                          \
+            float w = a - C[k] * st[k];                                       \
+            a = C[k] * w + st[k];                                             \
+            st[k] = w;                                                        \
+        }                                                                     \
+        for (k = 1; k < N; k += 2) {                                          \
+            float w = b - C[k] * st[k];                                       \
+            b = C[k] * w + st[k];                                             \
+            st[k] = w;                                                        \
+        }                                                                     \
+        y[i] = 0.5f * (a + b);                                                \
+    }                                                                         \
+    for (k = 0; k < N; ++k) h->s[k] = st[k];                                  \
+}
+HBI_BLOCK_FN(hbi1, HBI1_N, hbi1_c, HbiState1)
+HBI_BLOCK_FN(hbi2, HBI2_N, hbi2_c, HbiState2)
+
 #endif /* OS_HBIIR_H */
