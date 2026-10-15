@@ -79,6 +79,63 @@ c0120c94       CALLP.S2  0xc0120b2c,B3     ; -1 (idle) -> start the chain via us
 
 ## 3. Ring setup
 
+**Finding 3a (confidence: likely).** The ring's length and index live in the *top-level* record's own
+field [8] and field [9] (`record_base(N)+32` / `+36`), not in a separate sub-struct header at
+`record+0x168` — the ring *array* starts at `record+0x168`, but its length/index bookkeeping is the
+same field [8]/[9] the rest of the record uses. This is traced inside the completion-queue handler
+`c011faa0` (part of the function housing the queue-24/25 pop loop, called from the USB ISR `c011fc8c`
+per chunk_02.md). For a slot number `B1` pulled from the popped queue entry (masked to range 1-4, see
+§4), after confirming field [2] != 0 (ring mode) and field [9] >= 0 (not idle), it computes the next
+ring slot, wrapping at field [8] (length), and copies that ring entry through a pointer stored in
+field [7]:
+
+```text
+c011fb4a   LDW.D2T2  *B6[9],B0      ; B0 = field[9] = current ring index   (B6 = record_base(B1))
+c011fb4c   LDW.D2T2  *B6[8],B1      ; B1 = field[8] = ring length
+c011fb50   ADD.L2    B0,1,B3        ; B3 = index+1
+c011fb52   CMPLT.L2  B3,B1,B0       ; (index+1 < length) ?
+c011fb54 [B0]BNOP.S1 0xc011fb60,5   ; yes -> keep B3; no -> B3 falls to...
+c011fb58   MVK.L2    0,B3           ; ...wrap to 0
+c011fb60   ADDAW.D2  B5,B3,B6       ; B6 = record_base(B1) + 4*B3
+c011fb64   ADDK.S2   360,B6         ; B6 += 0x168  => ring entry at the new (wrapped) index
+c011fb68   LDW.D2T2  *B5[7],B5  ||  ; B5 = field[7] (an indirection-target pointer)
+c011fb6a   LDW.D2T2  *B6[0],B0      ; B0 = ring[new_index]
+c011fb6e   STW.D2T2  B0,*B5[0]      ; *(field[7])[0] = ring[new_index]  -- hands the fetched entry off
+```
+
+This single step **does not store the new index (B3) back to field [9]**; within this 0xc011fb28-fb6e
+window the index advance looks like it is computed but not committed, so either the commit happens
+on a path not shown here or this is a read-ahead/peek rather than the actual advance. Flagging as
+**unknown** which routine (if any) persists the new index — `c01219d0`/`c0121960` (the brief's other
+ring-resubmit candidates) were not traced in this pass; budget ran out before reaching them.
+
+**Finding 3b (confidence: likely).** The same field [2] value gates both this ring-advance block and
+the downstream completion-queue routing in the same function: right after this block (at `c011fb70`),
+a *second*, independently-reloaded copy of field [2] decides whether the completion is pushed onto
+queue 34 (`A4=34`, ring path) or onto a per-slot queue number from the caller (`A4=A6`, counted path)
+— matching the brief's "queue-34 completion resubmits" model exactly.
+
+**Finding 3c (confidence: unknown).** No instruction was found that writes the ring *array contents*
+(buffer pointers at `record+0x168+4*k`) or that initializes field [8] (length) to a specific nonzero
+value for any slot. `c011fd40`/`c01204b4`/`c01216c4`/`c01218d8` (the brief's candidates) were checked:
+`c011fd40` touches a *different*, 168-byte-stride table (confirmed in chunk_02.md), not this ring;
+`c01216c4` and `c01218d8` (see below) increment the top-level field [8]/[10] by a transfer-size delta
+on every completion — bookkeeping, not ring initialization.
+
+```text
+c01216e0   LDW.D2T2  *B4[10],B0     ; B4 = record_base(4)+stride*N  (c01216a8's own routine)
+c01216e2   ADD.L2X   B0,A3,B0       ; += A3 (a caller-supplied delta, likely bytes transferred)
+c01216e4   STW.D2T2  B0,*B4[10]
+c01216e6   LDW.D2T2  *B4[8],B0
+c01216ea   STW.D2T1  A0,*B4[8]      ; field[8] += A3 too (same delta, parallel counter)
+```
+
+So field [8] appears to be **dual-purpose by mode**: a fixed ring length in ring mode, but a running
+signed byte/credit counter in counted mode (also checked for going negative and cleared, with error
+codes 130-133 reported, by the per-endpoint poll in §4's Finding 4a) — consistent, but not proof the
+two uses never collide.
+
+
 ## 4. Which slots use which mode
 
 ## 5. Verdict for USB audio
