@@ -5,6 +5,7 @@
 --retain="usb_audio_descriptor_veneer"
 --retain="usb_audio_setup_ep1"
 --retain="usb_audio_sof_tick"
+--retain="usb_audio_set_alt"
 --retain="usb_audio_build_descriptors"
 --retain="usb_audio_copy_descriptors"
 --retain="desc_ptrs"

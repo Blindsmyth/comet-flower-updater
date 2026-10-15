@@ -44,6 +44,14 @@ typedef unsigned char  u8;
 typedef unsigned short u16;
 typedef unsigned int   u32;
 
+/* The host regression harness replaces these lvalues with in-memory registers.
+   Target builds always use the physical, volatile MMIO accesses below. */
+#ifndef USB_AUDIO_REG8
+#define USB_AUDIO_REG8(address)  (*(volatile u8 *)(address))
+#define USB_AUDIO_REG16(address) (*(volatile u16 *)(address))
+#define USB_AUDIO_REG32(address) (*(volatile u32 *)(address))
+#endif
+
 /* ------------------------------------------------------------------ *
  * MMIO: USB0 MUSB-type controller registers actually used here.
  * Confidence is per-register; see recon/20 items 1.3/1.7/2.3 for the
@@ -52,34 +60,34 @@ typedef unsigned int   u32;
 
 /* CONFIRMED: c0121336 (A10 = 0x1e0040e) and c0121338 (STB endpoint# here
    selects which endpoint the indexed registers below address). */
-#define USB_INDEX        (*(volatile u16 *)0x01e0040eu)
+#define USB_INDEX        USB_AUDIO_REG8(0x01e0040eu)
 
 /* CONFIRMED: INDEX+2, c0121406/0c (recon/18 B2, re-traced recon/20 1.7). */
-#define USB_TXMAXP       (*(volatile u16 *)0x01e00410u)
+#define USB_TXMAXP       USB_AUDIO_REG16(0x01e00410u)
 
 /* CONFIRMED (recon/20 1.7): INDEX+4, c012142e + the CSR store at
    c0121444. Indexed: only for task-context set-up, never from the SOF Hwi. */
-#define USB_TXCSR        (*(volatile u16 *)0x01e00412u)
+#define USB_TXCSR        USB_AUDIO_REG16(0x01e00412u)
 
 /* CONFIRMED (recon/21 3.3): direct (non-indexed) EP1 TXCSR. Stock reads it
    and clears bit 5 at c0122000..c0122014. The SOF Hwi uses this one so it
    never writes INDEX, which the USB Swi may be in the middle of using. */
-#define USB_EP1_TXCSR    (*(volatile u16 *)0x01e00512u)
+#define USB_EP1_TXCSR    USB_AUDIO_REG16(0x01e00512u)
 
 /* CONFIRMED: POWER, byte register. Stock read-modify-writes it (SOFTCONN,
    bit 6: set at c0120e1a..20, cleared at c011ff4a..4c). Bit 7 is ISOUPDATE
    (SPRUFM9H 2.7.1.4.1.2): an ISO packet loaded into the FIFO waits for the
    next SOF, so the first packet after alt 1 is never sent early. */
-#define USB_POWER        (*(volatile u8  *)0x01e00401u)
+#define USB_POWER        USB_AUDIO_REG8(0x01e00401u)
 #define POWER_ISOUPDATE  0x80u
 
 /* CONFIRMED: INDEX+0x54, c01213f6/0121402 (recon/18 B2). */
-#define USB_TXFIFOSZ     (*(volatile u8  *)0x01e00462u)
+#define USB_TXFIFOSZ     USB_AUDIO_REG8(0x01e00462u)
 
 /* CONFIRMED: INDEX+0x56 per recon/18 3.3's own figure (TXFIFOADDR units
    are 8-byte, EXTU ...,16,19 at c01214c0 converts byte offset to this
    unit encoding; not independently re-derived bit-by-bit in this pass). */
-#define USB_TXFIFOADDR   (*(volatile u16 *)0x01e00464u)
+#define USB_TXFIFOADDR   USB_AUDIO_REG16(0x01e00464u)
 
 /* LIKELY, not firmware-confirmed: EP0's FIFO data register is confirmed
    fixed at 0x1e00420 (c0122380/86, non-indexed). Standard MUSB layout
@@ -90,7 +98,7 @@ typedef unsigned int   u32;
    pattern", flagged again in recon/20 item 4 as something to confirm on
    hardware (a bus fault or dead read here would be the first sign this
    guess is wrong). */
-#define USB_EP1_FIFO     (*(volatile u32 *)0x01e00424u)
+#define USB_EP1_FIFO     USB_AUDIO_REG32(0x01e00424u)
 
 /* TXCSR bits (recon/21 3.3). Stock's CSR word is 209 << 6 = 0x3440 =
    MODE | DMAEN | DMAMODE | CLRDATATOG, plus ISO from bmAttributes.
@@ -199,11 +207,15 @@ void usb_audio_sof_tick(void)
  * does). Stock c01212e0 therefore never configures EP1 here; the DMA-clear
  * write stays in case design (a) is used, where EP1 arrives at 0x7440.
  * ------------------------------------------------------------------ */
-void usb_audio_set_alt(u8 alt)
+int usb_audio_set_alt(u32 alt)
 {
+    /* Reject the complete SETUP wValue, before narrowing it or changing state.
+       In particular 0x100 must not be accepted as alternate zero. */
+    if (alt > 1u)
+        return -1;
+
     /* Stop the producer first so the Hwi does not load a packet mid-flush. */
     usb_audio_state.stream_enabled = 0;
-    usb_audio_state.if3_alt = alt;
 
     if (alt == 1) {
         usb_audio_setup_ep1();
@@ -215,13 +227,16 @@ void usb_audio_set_alt(u8 alt)
         USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_CLRDATATOG |
                         TXCSR_FLUSHFIFO;                       /* 0x6048 */
         usb_audio_state.frame_phase = 0;
+        usb_audio_state.if3_alt = 1;
         usb_audio_state.stream_enabled = 1;
     } else {
         /* alt 0 has no endpoints; drop anything still queued. Twice: the
            FIFO is double-buffered (SPRUFM9H Table 65 note). */
         USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
         USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
+        usb_audio_state.if3_alt = 0;
     }
+    return 0;
 }
 
 /* ------------------------------------------------------------------ *
@@ -310,18 +325,26 @@ void usb_audio_build_descriptors(void)
     desc_ptrs[i++] = (const u8 *)0;
 }
 
-/* Bounded copy into the stock reply buffer c0119fb0 (as `out`), mirroring stock's min(total,
+/* Bounded CONFIGURATION-only copy into the stock reply buffer c0119fb0
+   (as `out`), mirroring stock's min(total,
    host wLength) clipping (recon/17 B1 finding2: c013506c/70/76/80,
    c01350c6/ca) but with an explicit per-fragment bound against
-   host_wlength so it can never write past what the caller asked for.
+   host_wlength and the explicitly supplied destination capacity. The pointer
+   list includes device_desc at slot 0 for the stock walker; it is NOT part
+   of the configuration response and must never be prepended here.
    Returns the byte count actually copied. Task context (called from the
    same control-request path as the stock clipping code). */
-u32 usb_audio_copy_descriptors(u8 *out, u32 host_wlength)
+u32 usb_audio_copy_descriptors(u8 *out, u32 host_wlength, u32 out_capacity)
 {
     u32 copied = 0;
     int i;
 
-    for (i = 0; i < DESC_COUNT - 1 && desc_ptrs[i] != (const u8 *)0; i++) {
+    if (out == (u8 *)0)
+        return 0;
+    if (host_wlength > out_capacity)
+        host_wlength = out_capacity;
+
+    for (i = 1; i < DESC_COUNT - 1 && desc_ptrs[i] != (const u8 *)0; i++) {
         const u8 *frag = desc_ptrs[i];
         u32 n = frag[0];      /* bLength is always the first byte */
         u32 j;

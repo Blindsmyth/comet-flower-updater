@@ -38,14 +38,12 @@ State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
    it does not return it (recon/18 1.2). */
 #define READ_SWITCHES ((void (*)(u32 *))0xc0156f00u)
 #define STOCK_ANALOG ((void (*)(u32))0xc014aef4u)
-#define EVENT_WAIT ((int (*)(u32, u32, u32, volatile u32 *, int))0xc014a0ccu)
 #define EVENT_POST ((int (*)(u32, u32))0xc014a240u)
 #define INNER_PEND ((int (*)(u32))0xc014a094u)
 #define INNER_POST ((int (*)(u32))0xc014a1c8u)
 #define RING_APPEND ((int (*)(volatile u32 *, u32))0xc0149d74u)
 #define TASK_CREATE ((u32 (*)(u32))0xc014a400u)
 #define MIDI_LOCK (*(volatile u32 *)0xc0184f64u)  /* B14[89] */
-#define WORKER_POLL_TICKS 10
 #define PORT_STATE ((volatile u32 *)0xc01152b8u)
 
 /* Stock MIDI ring c0117b28: read index +0, write index +4, 1025 positions
@@ -69,6 +67,14 @@ struct {
     u32 connected, observed_generation;
     volatile u32 generation;       /* changed only under MIDI_LOCK */
 } tx = { 0 };
+
+/* Written only by the one live MIDI worker's assembly wait thunk. Preserve
+   the supplied event across EVENT_WAIT without retaining a controller frame
+   on the worker stack. Worker creation is serialized after old handles have
+   been removed; a deleted old worker must never resume. Do not replace this
+   with a reload of the latest global event handle after the wait. */
+#pragma DATA_SECTION(controller_wait_event, ".ctl_state")
+volatile u32 controller_wait_event = 0;
 
 /* Stock init rejects any remaining worker/lock/event handles before arriving
    here and has already cleared the ring. Invalidate consumer state BEFORE
@@ -139,19 +145,13 @@ static void queue_button(u32 control, u32 value)
        teardown can delete between a handle load and an event post. */
 }
 
-/* Called in the stock MIDI worker after its event wait and before its ring
-   drain. A finite wait revisits pending state when a wake or reconnect event
-   was missed. The caller tests bit 0 of *bits after the call. */
-int controller_worker_wait(u32 event, u32 mask, u32 mode,
-                           volatile u32 *bits, int timeout)
+/* The assembly controller_worker_wait tail-calls the stock finite wait, then
+   tail-calls this pump with the original supplied event, worker SP+4 bits,
+   and stock result. The stock worker resumes at c0149d56 after we return.
+   No controller frame remains live during EVENT_WAIT or task suspension. */
+int controller_worker_pump(u32 event, volatile u32 *bits, int result)
 {
-    int result;
     u32 sent = 0, i, head, packed, value;
-    if (!ctl_state.mode)
-        return EVENT_WAIT(event, mask, mode, bits, timeout);
-
-    *bits = 0;
-    result = EVENT_WAIT(event, mask, mode, bits, WORKER_POLL_TICKS);
     if (INNER_PEND(MIDI_LOCK) != 0)
         return result;
     if (!port_ready()) {

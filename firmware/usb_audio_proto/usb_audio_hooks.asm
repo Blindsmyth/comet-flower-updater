@@ -23,11 +23,16 @@
     .ref desc_ptrs
 
 usb_audio_descriptor_veneer:
-    STW   .D2T2 B3,*B15--[2]
+    ; A6 is caller-saved under EABI; the C builder may overwrite it.
+    ; Preserve the stock out-pointer above the callee's stack frame.
+    STW   .D2T2 B3,*B15--[4]
+    STW   .D2T1 A6,*+B15[3]
     CALLP .S2   usb_audio_build_descriptors,B3
-    LDW   .D2T2 *++B15[2],B3
+    LDW   .D2T1 *+B15[3],A6
+    LDW   .D2T2 *++B15[4],B3
     NOP   4
     MVKL  .S1   desc_ptrs,A0
     MVKH  .S1   desc_ptrs,A0
     STW   .D1T1 A0,*A6[0]
+    MVK   .S1   0,A4
     BNOP  .S2   B3,5
