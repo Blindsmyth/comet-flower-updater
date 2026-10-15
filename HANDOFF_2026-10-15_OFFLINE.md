@@ -12,7 +12,7 @@ list) and [ROADMAP.md](ROADMAP.md).
 
 - Python: `.venv/Scripts/python.exe`. Run the tests with
   `.venv/Scripts/python.exe -m pytest tests tools/test_usb_audio_proto.py -q`.
-  **226 passed, 615 subtests.** Never leave the suite red.
+  **228 passed, 615 subtests.** Never leave the suite red.
 - Lifecycle controller candidate SHA-256: `3e7f5236…28b9`. It must stay
   byte-identical; `tests/test_diag_readback.py` rebuilds it and checks the hash.
 - Commit small and often, on `master`. Do not push unless the owner asks.
@@ -96,6 +96,20 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
 - **Pedal step (owner, after CF ClkT):** DR103D cost run, then CF DR103 alone.
 - Tests: 226 pytest pass. Host checks pass: netgen, kernel, ADAA, nets, accuracy.
 
+## Session 4 (2026-10-15 night): stack watermark read path reviewed, GUI review
+
+- **Queue 5 (stack gate), the measured path:** the watermark's own read path is reviewed.
+  Every Task_create fills the whole new stack with 0xbe (`c015298c -> c015f800 -> c016b140`,
+  gated by the halfword at `c0181ac4`). Each new transport creates a new worker, so the
+  **mark resets on reconnect**. The owner doc's "only ever grows" was wrong. The readback
+  now carries a worker-creation count (`worker instance #k`). The owner procedure is
+  corrected: read back before unplugging, and again after the reconnect.
+  `ctl_diag` is now at `c01a0ec0`. The lifecycle hash is unchanged.
+- **GUI (owner request):** `docs/helpers/GUI_REVIEW_2026-10-15.md`. **CF Loader crashed on
+  launch** (invalid geometry string). That is fixed, with a window smoke test. The open
+  indicator and workflow items are listed there.
+- Tests: **228 passed**.
+
 ## Offline work queue (in order)
 
 1. **Second independent review of the USB audio candidate** (Codex Sol, medium).
@@ -124,6 +138,8 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
 6. ~~**DR103 redesign**~~ done offline (session 3). Pedal measurement pending.
    Option if cycles are short: return to the straight-line tail
    (-2.6k cycles), once ~2 KB of code is freed.
+6b. **CF Loader GUI fixes** (`docs/helpers/GUI_REVIEW_2026-10-15.md`): do V4, V5, V1
+   and W1 offline. W3 and W4 wait for the CF ClkT run; W5 and W6 wait for the hardware gates.
 7. **Patch tool (Phase E)** groundwork: it converts the owner's own v2.00
    updater and redistributes no Zoom binaries.
 8. **NAM feasibility (owner question, 2026-10-15). LAST on the list: only after everything else.** The target is **NAM A2**,
