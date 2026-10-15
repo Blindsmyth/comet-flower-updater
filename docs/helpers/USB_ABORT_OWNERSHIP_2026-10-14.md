@@ -158,5 +158,11 @@ question without proving either a race or complete serialization.
    Original text:
    specify reviewed recovery that preserves buffer ownership after expiry.
 4. Trace later initialization and failure recovery before claiming buffer
+   *2026-10-15:* see the Claude review at the top of
+   [SOL_EXPIRY_RECOVERY_REPORT.md](SOL_EXPIRY_RECOVERY_REPORT.md).
+   The enqueue and `c0120550` gate on the outstanding count, so they cannot reuse a
+   buffer prematurely. The submitters `c0120c00`/`c01219d0` are unresolved. New
+   **liveness** risk: an outstanding descriptor that never returns stalls that slot's
+   TX for good, because no reset clears field [5]. Original text:
    reuse is safe. A bounded iteration count and descriptor recycling are
    insufficient ownership evidence on their own.

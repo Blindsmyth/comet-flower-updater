@@ -95,7 +95,14 @@ superseded by this continuation.
   Only `c0120650` (N=1..4) feeds q25; RX teardowns use q27. All identified
   abort callers dispatch from the `c0138370` task (`c01383ea`), so aborts are
   sequential. Mis-association requires a prior expired poll. The diag's
-  FAULT_CHANNEL_MISMATCH would detect it. Suite: **175 passed, 544 subtests**.
+  FAULT_CHANNEL_MISMATCH would detect it.
+- 2026-10-15: entry IRQ state is likely GIE=1
+  ([USB_ABORT_ENTRY_IRQ_2026-10-15.md](docs/helpers/USB_ABORT_ENTRY_IRQ_2026-10-15.md)).
+  Obligation 4: Sol report plus Claude review
+  ([SOL_EXPIRY_RECOVERY_REPORT.md](docs/helpers/SOL_EXPIRY_RECOVERY_REPORT.md)).
+  No premature buffer reuse via the enqueue (it defers while field [5] != 0).
+  Liveness risk: a never-returned descriptor stalls that slot's TX permanently.
+  Direct submitters `c0120c00`/`c01219d0` are untraced. Suite: **177 passed, 579 subtests**.
 
 Details and next instruction-level work:
 [STACK_CONTINUATION_2026-10-14.md](docs/helpers/STACK_CONTINUATION_2026-10-14.md),

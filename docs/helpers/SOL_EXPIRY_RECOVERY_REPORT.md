@@ -1,5 +1,35 @@
 # TX abort poll-expiry recovery
 
+> **Claude review (2026-10-15). Read this first: two predicates are inverted and one store was missed.**
+> Pinned by `tests/test_usb_expiry_recovery.py`.
+>
+> 1. **`c0120fa0 [B0] BNOP 0xc0120fa8` skips the `c01204b4` call when outstanding field [5] != 0.**
+>    The public enqueue `c0120f64` stores the pointer and length in [6]/[7] and *defers*
+>    while a descriptor is outstanding. It submits only when the count is 0. The
+>    deferred buffer is submitted later by `c0120550` (row "count reaches 0, field [6] != 0"),
+>    which runs only after a returned descriptor decrements the count. **Verdict paths 1
+>    and 2 below are therefore wrong:** the enqueue cannot submit while the old descriptor
+>    is still outstanding.
+> 2. **`c011fb36 CMPGT 0,B0,B0; c011fb38 [B0] BNOP`** skips the per-completion store when
+>    field [9] < 0. The store happens when field [9] >= 0, not when it is "not positive".
+> 3. **`c011fd80 || STW B1,*B4[9]` with B1 = -1:** `c011fd40` also sets field [9] = -1.
+>    Its parallel `SUB` at `c011fd78` changes B4 only after the packet. Consequently:
+>    - the `c011fd40` reset branch (field [2] != 0) leaves field [9] = -1, so the late store is skipped;
+>    - the `c011fd98` branch runs only when field [2] == 0, and the store also requires field [2] != 0.
+>
+>    **The late completion therefore cannot store through the cleared field-[7] pointer.**
+>
+> **Corrected verdict for obligation 4:**
+> - **Buffer reuse:** no premature reuse through the public enqueue (`c0120f64`) or the
+>   abort's own `c0120550` path. Each one gates on the outstanding count, which the
+>   still-DMA-owned descriptor keeps non-zero.
+> - **Unresolved submitters:** `c0120c00` and `c01219d0` call `c0120250` without that gate.
+>   Their triggers were not traced, so they remain unresolved.
+> - **New liveness risk:** if a descriptor left outstanding by an expired abort never returns
+>   on queue 24, field [5] stays non-zero. Neither `c0121224` (`c011fd40`/`fd98`) nor resume
+>   `c0120dd0` clears it, so every later enqueue on that slot defers indefinitely: TX on that
+>   endpoint stalls. Its symptom would be "MIDI IN to the host stops after a reconnect".
+
 Static analysis of the pinned `build/fw/map/main.dis`. No device or executable
 was accessed, no firmware was changed, and nothing was pushed.
 
