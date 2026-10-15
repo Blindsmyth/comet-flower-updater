@@ -102,7 +102,7 @@ superseded by this continuation.
   ([SOL_EXPIRY_RECOVERY_REPORT.md](docs/helpers/SOL_EXPIRY_RECOVERY_REPORT.md)).
   No premature buffer reuse via the enqueue (it defers while field [5] != 0).
   Liveness risk: a never-returned descriptor stalls that slot's TX permanently.
-  Direct submitters `c0120c00`/`c01219d0` are untraced. Suite: **177 passed, 579 subtests**.
+  Direct submitters `c0120c00`/`c01219d0` are untraced. Suite: **178 passed, 579 subtests**.
 
 Details and next instruction-level work:
 [STACK_CONTINUATION_2026-10-14.md](docs/helpers/STACK_CONTINUATION_2026-10-14.md),

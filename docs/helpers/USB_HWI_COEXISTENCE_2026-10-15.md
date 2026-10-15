@@ -19,10 +19,10 @@ obligation 2. It does not touch the endpoint-association part (obligation 3).
 
 - **Pop** `c011fa20(q)`: `LDW` from `0x01e00000 + 16q + 4·0x1803` =
   `0x01e0600c + 16q` (`c011fa20..fa2c`), which is QMGR queue *q* register D. The
-  result is masked with `CLR 0,4` and converted to `(ptr - 0xc87a9000) >> 5`.
+  result is masked with `CLR 0,4` and converted to `(ptr - 0xc87b9000) >> 5`.
   Pointers below the pool return −1 (`c011fa34..fa50`). Empty queues read 0,
   which also returns −1.
-- **Push** `c011fa70(q, index)`: `STW` of `(0xc87a9000 + 32·index) | 2` to
+- **Push** `c011fa70(q, index)`: `STW` of `(0xc87b9000 + 32·index) | 2` to
   `0x01e0600c + 16q` (`c011fa74..fa96`).
 - **Type** `c011fa54(index)`: `(word0 >> 27) == 16` (`c011fa64..fa6c`), i.e.
   host packet. The type for TI CPPI 4.1 teardown descriptors is 19, so they

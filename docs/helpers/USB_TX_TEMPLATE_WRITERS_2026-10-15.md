@@ -34,7 +34,7 @@ and `c015e7cc` (a multiplier).
 
 `c0120250` copies its A4 to A7 at `c0120258`. It reads only `*A7[1]`
 (`c01202c6`) and `*A7[0]` (`c0120320`). All of its stores go through B4, the
-descriptor at `0xc87a9000 + 32*index` (`c0120274..0282`). No instruction
+descriptor at `0xc87b9000 + 32*index` (`c0120274..0282`). No instruction
 writes the table through any of the six formed addresses.
 
 **Bounded finding:** no instruction-level writer to the TX template table
