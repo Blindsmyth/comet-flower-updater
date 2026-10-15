@@ -276,7 +276,17 @@ Confidence: **confirmed**.
 
 ## 4. Endpoint/direction
 
-**Finding 4 (confirmed direction/range and ZLP capability; likely MIDI semantic label).** Both sites are generic **TX/device-to-host data** paths for software slots 1..4, not EP0 and not RX refill paths. `c0120b2c` derives the `0xc011297c + 0x2a8*N` TX record from slot `N`; `c0121960` names that base directly. Both sites index the TX template array at `0xc01805c4 + 12*N` and call the common descriptor builder. Their callers exclude slot zero (`c0120c50` on the kick route; `c0121a84..90` on the event route). Thus slot 4 is included but not special: its template at `c01805f4` submits to queue 22 and returns normally to queue 24. Per the established endpoint map supplied with this investigation, slot 4 is MIDI IN, so these sites can transmit MIDI IN data but also serve TX slots 1..3.
+**Finding 4 (confirmed direction/range and ZLP capability; likely MIDI semantic label).** Both sites are generic **TX/device-to-host data** paths over the valid non-EP0 software-slot domain 1..4, not RX refill paths. `c0120b2c` derives the `0xc011297c + 0x2a8*N` TX record from slot `N`; `c0121960` names that base directly. Both sites index the TX template array at `0xc01805c4 + 12*N` and call the common descriptor builder. The event route explicitly enforces slot 1..4 at `c0121a84..90`; the untraced kick rejects slot zero at `c0120c50` but has no visible upper-bound check, so it relies on its caller to honor the 1..4 table domain. Slot 4 is included but not special: its template at `c01805f4` submits to queue 22 and returns normally to queue 24. Per the established endpoint map supplied with this investigation, slot 4 is MIDI IN, so these sites can transmit MIDI IN data but also serve TX slots 1..3.
+
+```text
+c0120c4c   0001ef58           AND.L1        15,A0,A0
+c0120c50   d020a120    [!A0]  BNOP.S1       0xc0120c80,5
+c0121a84       1507           MV.L2X        A10,B0
+c0121a86       1027           CMPLT.L2      0,B0,B0
+c0121a88   3063a120    [!B0]  BNOP.S1       0xc0121b46,5
+c0121a8c   00289ada           CMPLT.L2X     4,A10,B0
+c0121a90   2063a120    [ B0]  BNOP.S1       0xc0121b46,5
+```
 
 ```text
 c0120b30       0c32           MVK.S1        168,A0
