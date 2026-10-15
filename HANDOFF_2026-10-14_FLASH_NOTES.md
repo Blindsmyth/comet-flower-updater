@@ -40,3 +40,7 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
 ### 2026-10-14 later (Claude)
 - Committed as 9a76baa (HEAD). Step 1 done. Step 2 is NOT started: the teardown doc itself says patch feasibility review must come first. Do that review before writing code: pick hook sites in the stock abort routine (c0120744..0750 recycles the entry; poll at c011faa0; Hwi consumer c011fcb8..fcc2) and confirm each patch site has room for a CALLP (4 bytes, parallel bits preserved, see HOOKS in tools/make_controller_fw.py). Write findings to docs/helpers/ before coding. Trace buffer must live in the controller image (16 KiB at c01a0000, currently 2880 bytes used) or .ctl_state.
 
+
+- Step 2 prerequisite review was handed to Argon via bridge/to_argon.md (clipboard). When bridge/from_argon/ has a response, ingest per .agents/rules/argon-bridge.md: execute its FLASH_3.8_ACTION_PLAN, spot-check its Evidence addresses against build/fw/map/main.dis, then run tests.
+
+- tools/argon_bridge.py automates the Argon round trip (Playwright over CDP to a logged-in Chrome). First: --launch, log in, pick Argon; then run without args; --dry-run to test. Untested against the live Gemini UI: if it fails, fix SELECTORS in the script, don't redesign. Response lands in bridge/from_argon/response.md; then ingest per the Argon rule.
