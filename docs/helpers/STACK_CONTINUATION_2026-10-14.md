@@ -74,8 +74,10 @@ paths. Its JSON contains per-function SP-decrement inventories, edges, explicit
 site assumptions, unresolved entries/transfers, live-helper findings, cycles,
 and SHA-256 hashes for the analyzer and input files. Callback observations are
 in `stack_callbacks.json`; the CLI rejects them for a different disassembly
-hash. The observed ELF hash is recorded as provenance, not independently
-revalidated by the inventory CLI.
+hash. The observed ELF hash is recorded as provenance. Passing `--elf FILE`
+also requires that the callback, extent and transfer records match that
+file's SHA-256; it does not prove the disassembly was derived from it or
+that runtime writers are exhaustive.
 
 Every report has `status=NOT_A_STACK_PROOF` and `stack_bound_bytes=null`.
 `accounted_frame_bytes` is only a graph subtotal for a graph without blockers
@@ -104,6 +106,73 @@ improve graph accuracy; they do not establish a runtime stack bound.
 | `c016a9c0` | 6 | 6 | 0 | 0 |
 
 ## Next evidence
+
+### Lead integration and commit review
+
+Reviewed commits `7e5cd86` and `3a16797`, then integrated the previously
+untracked [kernel extents](KERNEL_EXTENTS_2026-10-14.md),
+[execution-context evidence](STACK_CONTEXT_2026-10-14.md), their JSON inputs,
+and the [USB lifecycle continuation](USB_LIFECYCLE_CONTINUATION_2026-10-14.md).
+All quoted extent/transfer anchors match the pinned disassembly. The ELF
+and catalog identities were checked separately. The notes' semantic
+interpretations remain explicit review assumptions.
+
+Commit review found that explicit B15 writes, including the task stack load
+at `c016aecc`, could previously leave a finite graph subtotal if other blockers
+were removed. The analyzer now emits `UNMODELED_SP_WRITE` for stack-pointer
+loads, register moves, alignment and unrecognized arithmetic. Constant ADD
+decrements are also counted. This is not general SP dataflow: memory updates,
+loop counts, predicates and delay packets still need semantic analysis.
+
+The physical command-switch owner `c01520f4..c0152240` now spans its internal
+catalog fragments. This removes the fake `c0152154` callee and includes calls
+to the USB command handlers. The switch dispatch remains unresolved and the
+scan includes all physical case bodies without caller-specific pruning.
+Consequently more downstream blockers appear; the earlier six-entry USB-send
+inventory was incomplete. A separate return-stub extent resolves `c016e940`.
+
+```powershell
+.venv/Scripts/python.exe tools/stack_depth.py --resolve --elf build/fw/map/main.elf --extents docs/helpers/stack_extents.json --transfers docs/helpers/stack_context_sites.json --report build/controller/stack_review_2026-10-14.json c014a0cc c014a094 c014a1c8 c016a9c0
+```
+
+| Root | Functions | Blocker records | DFS cycle records | Assumptions |
+|---|---:|---:|---:|---:|
+| `c014a0cc` | 69 | 15 | 0 | 42 |
+| `c014a094` | 66 | 11 | 0 | 38 |
+| `c014a1c8` | 39 | 7 | 0 | 27 |
+| `c016a9c0` | 130 | 58 | 0 | 48 |
+
+All four still have null graph subtotals and null stack bounds. Counts include
+overlapping findings, such as the stack load and its later context transfer.
+The earlier cycle involving `c0150b20`, `c0164380`, and `c0161200` was
+another catalog merge: the `c01644f0` call belongs to the independent routine
+starting at `c01644c0`. Reviewed physical ranges remove this cycle and the
+unrelated callback-wrapper edge in `c0166780`. Zero cycles in this incomplete
+graph does not prove recursion or reentrant scheduling absent. The physical
+extent of `c015dc20` is now known; its callbacks are still unresolved when
+that wrapper is analyzed independently. The scaled `SUBAW` adjustment at
+`c01387f4` remains an explicit SP-modeling blocker.
+
+Seventeen regressions added since the pickup cover explicit SP writes,
+constant adjustments, scanning a switch owner across catalog fragments,
+anchored extent boundaries, unresolved-record anchors and optional ELF
+identity rejection. Full suite: **148 tests and two subtests pass**.
+The exact seven-hook candidate verifier and all six updater
+stage operations also pass; candidate hashes remain those in the lifecycle
+build record. No firmware or device state changed. DO_NOT_FLASH remains.
+
+Evidence validation now checks every declared `unresolved` record as well as
+extent/transfer records. Every reviewed extent must quote its own entry and
+decoded exclusive-end boundary; a plausible numeric end alone is rejected.
+This catches truncated or unanchored ranges but cannot validate the reviewer's
+control-flow interpretation.
+
+The USB follow-up identifies the exact poll/queue/recycling behavior in
+[USB_ABORT_OWNERSHIP_2026-10-14.md](USB_ABORT_OWNERSHIP_2026-10-14.md).
+Successful queue-pending observation still needs association with the
+requested endpoint; expiry, Hwi coexistence and reset completion remain open.
+
+### Remaining instruction work
 
 First establish instruction-backed extents for the reachable library entries
 and continuation helpers. Then model live save-helper frames and distinguish

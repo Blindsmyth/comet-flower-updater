@@ -1,0 +1,1227 @@
+{
+  "schema_version": 1,
+  "status": "EXTENT_OBSERVATIONS_NOT_STACK_PROOF",
+  "disassembly_sha256": "e824b1e0effdaaca35cf87bd3a0bcc9b6242291e4def5e471120b28a762c82d1",
+  "observed_elf_sha256": "b0625c7a055020ddcbc61bb6966311891ead03bb6dae865b6f3f72ed45fb3946",
+  "catalog_sha256": "abc2e8a8c407b306088ef5e39853ca5529acf65faa1735e024c0cef3de622d0c",
+  "extent_convention": "Exact entry address and exclusive physical scan end. Zero padding and compact headers may be included up to the instruction-backed next routine or data boundary. These are not a control-flow or stack proof.",
+  "extents": {
+    "0xc0166780": {
+      "end": "0xc0166880",
+      "kind": "function",
+      "evidence": "Four eight-byte save slots at 6780..6786 are restored by the conditional/common epilogues at 6818/686c..6874, followed by B3 return 6876. The independent four-slot prologue 6880 begins another wrapper. Its call to dc20 at 6904 is outside this entry; no such call belongs to 6780.",
+      "anchors": [
+        {"address": "0xc0166780", "instruction": "STW.D2T1 A11,*B15--[2]"},
+        {"address": "0xc0166786", "instruction": "STW.D2T2 B3,*B15--[2]"},
+        {"address": "0xc0166818", "instruction": "|| [ A0] LDW.D2T2 *++B15[2],B3"},
+        {"address": "0xc016686c", "instruction": "LDW.D2T2 *++B15[2],B3"},
+        {"address": "0xc0166874", "instruction": "LDW.D2T1 *++B15[2],A11"},
+        {"address": "0xc0166876", "instruction": "BNOP.S2 B3,5"},
+        {"address": "0xc0166880", "instruction": "STW.D2T2 B10,*B15--[2]"},
+        {"address": "0xc0166904", "instruction": "B.S1 0xc015dc20"}
+      ]
+    },
+    "0xc0166880": {
+      "end": "0xc0166980",
+      "kind": "function",
+      "evidence": "Independent four-slot prologue 6880..6886; local iteration calls dc20 at 6904 with continuation 6914. All physical paths precede B3 pop 6958, three slot restores 6960..6968 and B3 return 696c. 6980 is a separate three-save/local-allocation entry.",
+      "anchors": [
+        {"address": "0xc0166880", "instruction": "STW.D2T2 B10,*B15--[2]"},
+        {"address": "0xc0166886", "instruction": "STW.D2T2 B3,*B15--[2]"},
+        {"address": "0xc0166904", "instruction": "B.S1 0xc015dc20"},
+        {"address": "0xc0166908", "instruction": "ADDKPC.S2 0xc0166914,B3,2"},
+        {"address": "0xc0166958", "instruction": "LDW.D2T2 *++B15[2],B3"},
+        {"address": "0xc0166968", "instruction": "LDW.D2T2 *++B15[2],B10"},
+        {"address": "0xc016696c", "instruction": "BNOP.S2 B3,5"},
+        {"address": "0xc0166980", "instruction": "STW.D2T2 B10,*B15--[2]"}
+      ]
+    },
+    "0xc0164380": {
+      "end": "0xc01644c0",
+      "kind": "function",
+      "evidence": "Four eight-byte save slots at 4380..4386 are restored at 44a4..44b0, then B3 return at 44b8. 44c0 starts a separate five-slot prologue. The call to 1200 at 44f0 belongs to that next routine, not this entry; old catalog extent manufactured a cycle.",
+      "anchors": [
+        {"address": "0xc0164380", "instruction": "STW.D2T2 B12,*B15--[2]"},
+        {"address": "0xc0164386", "instruction": "STW.D2T2 B3,*B15--[2]"},
+        {"address": "0xc01644a4", "instruction": "LDW.D2T2 *++B15[2],B3"},
+        {"address": "0xc01644b0", "instruction": "LDW.D2T2 *++B15[2],B12"},
+        {"address": "0xc01644b8", "instruction": "BNOP.S2 B3,5"},
+        {"address": "0xc01644c0", "instruction": "STW.D2T2 B10,*B15--[2]"},
+        {"address": "0xc01644f0", "instruction": "[ B0] B.S1 0xc0161200"}
+      ]
+    },
+    "0xc0161200": {
+      "end": "0xc01613a0",
+      "kind": "function",
+      "evidence": "Three eight-byte save slots at 1200..1204; B3 pop paths merge at 1390, followed by A11:A10 and A12 restoration, then B3 return 1398. 13a0 starts an independent three-slot routine; the old catalog charged both frames and both sets of outgoing calls to 1200.",
+      "anchors": [
+        {"address": "0xc0161200", "instruction": "STW.D2T1 A12,*B15--[2]"},
+        {"address": "0xc0161204", "instruction": "STW.D2T2 B3,*B15--[2]"},
+        {"address": "0xc0161358", "instruction": "[!A0] B.S1 0xc0150b20"},
+        {"address": "0xc0161390", "instruction": "LDDW.D2T1 *++B15[1],A11:A10"},
+        {"address": "0xc0161394", "instruction": "LDW.D2T1 *++B15[2],A12"},
+        {"address": "0xc0161398", "instruction": "BNOP.S2 B3,5"},
+        {"address": "0xc01613a0", "instruction": "STW.D2T1 A10,*B15--[2]"}
+      ]
+    },
+    "0xc015dc20": {
+      "end": "0xc015de40",
+      "kind": "callback_wrapper",
+      "evidence": "Six eight-byte save slots at dc20..dc2a are restored at de2c..de36 before B3 return de38. de40 starts an independently called scheduler prologue. Wrapper invokes record fields [2]/[3]/[4] and diagnostic slots; those targets remain unresolved.",
+      "anchors": [
+        {"address": "0xc015dc20", "instruction": "STW.D2T1 A14,*B15--[2]"},
+        {"address": "0xc015dc2a", "instruction": "STW.D2T2 B3,*B15--[2]"},
+        {"address": "0xc015dd3c", "instruction": "[!A0] B.S2 B6"},
+        {"address": "0xc015dd60", "instruction": "B.S2 B6"},
+        {"address": "0xc015de2c", "instruction": "LDW.D2T2 *++B15[2],B3"},
+        {"address": "0xc015de36", "instruction": "LDW.D2T1 *++B15[2],A14"},
+        {"address": "0xc015de38", "instruction": "BNOP.S2 B3,5"},
+        {"address": "0xc015de40", "instruction": "STW.D2T2 B12,*B15--[2]"}
+      ]
+    },
+    "0xc01520f4": {
+      "end": "0xc0152240",
+      "kind": "helper_backed_switch_owner",
+      "evidence": "Save-helper entry and local eight-byte reservation own the command switch, including default block 2154 and catalogued case fragments. All physical case bodies and result merges precede local SP restoration at 2228 and terminal restore-helper call 222c. The jump-table dispatch at 2124 remains unresolved; this extent does not resolve its dynamic targets or live helper pairing.",
+      "anchors": [
+        {"address": "0xc01520f4", "instruction": "CALLP.S1 0xc016e020,A3"},
+        {"address": "0xc01520f8", "instruction": "SUB.L2 B15,0x8,B15"},
+        {"address": "0xc015210c", "instruction": "[ B0] BNOP.S1 0xc0152154,4"},
+        {"address": "0xc0152124", "instruction": "BNOP.S2 B0,5"},
+        {"address": "0xc0152154", "instruction": "MVK.S1 0xffff8ad0,A1"},
+        {"address": "0xc0152158", "instruction": "BNOP.S1 0xc01521b8,5"},
+        {"address": "0xc01521b8", "instruction": "MV.L2X A12,B0"},
+        {"address": "0xc0152228", "instruction": "|| ADD.L2 8,B15,B15"},
+        {"address": "0xc015222c", "instruction": "CALLP.S1 0xc016e000,A3"},
+        {"address": "0xc0152240", "instruction": "CALLP.S1 0xc016e020,A3"}
+      ]
+    },
+    "0xc016e940": {
+      "end": "0xc016e960",
+      "kind": "return_stub",
+      "evidence": "Independent B3 return with five encoded delay cycles, followed by zero padding.  e960 constructs a global slot and starts a separate setter. No stack adjustment or nested call is present in the return stub.",
+      "anchors": [
+        {"address": "0xc016e940", "instruction": "BNOP.S2 B3,5"},
+        {"address": "0xc016e95c", "instruction": "NOP"},
+        {"address": "0xc016e960", "instruction": "MVK.S1 0x2130,A3"}
+      ]
+    },
+    "0xc0165b60": {
+      "end": "0xc0165c80",
+      "kind": "function",
+      "evidence": "Independent register-save prologue; both normal epilogue and diagnostic call paths converge before B3 return at 5c72. Next entry 5c80 is separately called.",
+      "anchors": [
+        {
+          "address": "0xc0165b60",
+          "instruction": "STW.D2T2      B10,*B15--[2]"
+        },
+        {
+          "address": "0xc0165c72",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc0165c80",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        }
+      ]
+    },
+    "0xc0166d80": {
+      "end": "0xc0166e80",
+      "kind": "function",
+      "evidence": "Independent three-word-save prologue; callback loops converge on 6e70 register restoration and B3 return at 6e78.",
+      "anchors": [
+        {
+          "address": "0xc0166d80",
+          "instruction": "STW.D2T1      A11,*B15--[2]"
+        },
+        {
+          "address": "0xc0166e78",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc0166e80",
+          "instruction": "STW.D2T2      B10,*B15--[8]"
+        }
+      ]
+    },
+    "0xc0167be0": {
+      "end": "0xc0167cc0",
+      "kind": "function",
+      "evidence": "Independent save prologue; restores B3/A10/B10 at 7ca8..7cb4 and returns at 7cb8. 7cc0 starts a different five-save prologue; old 7da0 extent merged it.",
+      "anchors": [
+        {
+          "address": "0xc0167be0",
+          "instruction": "STW.D2T2      B10,*B15--[2]"
+        },
+        {
+          "address": "0xc0167cb8",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc0167cc0",
+          "instruction": "STW.D2T2      B10,*B15--[2]"
+        }
+      ]
+    },
+    "0xc0168340": {
+      "end": "0xc0168400",
+      "kind": "function",
+      "evidence": "Independent save prologue; saved B11 holds original B3, copied back at 83e2; return 83ea finishes delay sequence at 83f2. 8400 is an independent B3-save entry.",
+      "anchors": [
+        {
+          "address": "0xc0168340",
+          "instruction": "STW.D2T1      A11,*B15--[2]"
+        },
+        {
+          "address": "0xc01683ea",
+          "instruction": "||        BNOP.S2       B3,0"
+        },
+        {
+          "address": "0xc0168400",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        }
+      ]
+    },
+    "0xc0169240": {
+      "end": "0xc0169300",
+      "kind": "function",
+      "evidence": "Entry packet saves A11/B11:B10/A13:A12/A10. Two epilogues return at 92e2 and 92f6; delay instructions end at 92fa. 9300 is a new independent save prologue.",
+      "anchors": [
+        {
+          "address": "0xc0169240",
+          "instruction": "MVK.S2        20,B5"
+        },
+        {
+          "address": "0xc01692f6",
+          "instruction": "||        BNOP.S2       B3,0"
+        },
+        {
+          "address": "0xc0169300",
+          "instruction": "STW.D2T1      A11,*B15--[2]"
+        }
+      ]
+    },
+    "0xc01693c0": {
+      "end": "0xc0169480",
+      "kind": "function",
+      "evidence": "B3-save entry; conversion loop calls 9980/8580 with continuation; restores B3 at 9464 and returns at 9470.",
+      "anchors": [
+        {
+          "address": "0xc01693c0",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        },
+        {
+          "address": "0xc0169470",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc0169480",
+          "instruction": "MVK.S1        0x7b9c,A4"
+        }
+      ]
+    },
+    "0xc016a420": {
+      "end": "0xc016a4c0",
+      "kind": "function",
+      "evidence": "Four-save entry, scheduler/diagnostic calls use ADDKPC continuations, balanced restoration a4a8..a4b0 and B3 return a4b2.",
+      "anchors": [
+        {
+          "address": "0xc016a420",
+          "instruction": "STW.D2T2      B10,*B15--[2]"
+        },
+        {
+          "address": "0xc016a4b2",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016a4c0",
+          "instruction": "STW.D2T2      B10,*B15--[2]"
+        }
+      ]
+    },
+    "0xc016a6a0": {
+      "end": "0xc016a740",
+      "kind": "function",
+      "evidence": "Three-save entry, bounded physical body with branches to a718 restoration; final B3 return a720 precedes new save prologue a740.",
+      "anchors": [
+        {
+          "address": "0xc016a6a0",
+          "instruction": "STW.D2T1      A12,*B15--[2]"
+        },
+        {
+          "address": "0xc016a720",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016a740",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        }
+      ]
+    },
+    "0xc016b2c0": {
+      "end": "0xc016b340",
+      "kind": "function",
+      "evidence": "No-frame entry validates IRQ range, disables interrupts, updates interrupt registers and restores CSR; both paths converge at B3 return b338.",
+      "anchors": [
+        {
+          "address": "0xc016b2c0",
+          "instruction": "MVK.S1        0x0010,A3"
+        },
+        {
+          "address": "0xc016b338",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016b340",
+          "instruction": "MV.L1X        B4,A6"
+        }
+      ]
+    },
+    "0xc016ba40": {
+      "end": "0xc016bac0",
+      "kind": "function",
+      "evidence": "Five-save entry; two calls to 9fc0; full restoration bab0..bab8 then B3 return baba. bac0 starts a no-frame predicate routine.",
+      "anchors": [
+        {
+          "address": "0xc016ba40",
+          "instruction": "STW.D2T1      A12,*B15--[2]"
+        },
+        {
+          "address": "0xc016baba",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016bac0",
+          "instruction": "MVK.S1        0x21d8,A5"
+        }
+      ]
+    },
+    "0xc016bac0": {
+      "end": "0xc016bb40",
+      "kind": "function",
+      "evidence": "No-frame predicate routine with local branches to bb28 B3 return. bb40 begins an independent saved-register entry.",
+      "anchors": [
+        {
+          "address": "0xc016bac0",
+          "instruction": "MVK.S1        0x21d8,A5"
+        },
+        {
+          "address": "0xc016bb28",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016bb40",
+          "instruction": "MV.L1X        B4,A0"
+        }
+      ]
+    },
+    "0xc016dd00": {
+      "end": "0xc016dd40",
+      "kind": "function",
+      "evidence": "No-frame linked-list search loops locally dd10..dd2c and returns through B3 at dd38. dd40 begins A10/B3 save entry.",
+      "anchors": [
+        {
+          "address": "0xc016dd00",
+          "instruction": "MV.L1         A4,A3"
+        },
+        {
+          "address": "0xc016dd38",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016dd40",
+          "instruction": "STW.D2T1      A10,*B15--[2]"
+        }
+      ]
+    },
+    "0xc016dd40": {
+      "end": "0xc016dd80",
+      "kind": "function",
+      "evidence": "A10/B3-save entry calls e980/a560/e120 and restores original registers before B3 return at dd64. dd80 has independent SP snapshot prologue.",
+      "anchors": [
+        {
+          "address": "0xc016dd40",
+          "instruction": "STW.D2T1      A10,*B15--[2]"
+        },
+        {
+          "address": "0xc016dd64",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016dd80",
+          "instruction": "MV.L1X        B15,A15"
+        }
+      ]
+    },
+    "0xc016de00": {
+      "end": "0xc016de40",
+      "kind": "function",
+      "evidence": "No-frame lookup routine returns at de20 with BNOP 5; de24..de3c is zero padding. de40 begins static table data; never scan this routine to df00.",
+      "anchors": [
+        {
+          "address": "0xc016de00",
+          "instruction": "MV.L1         A4,A3"
+        },
+        {
+          "address": "0xc016de20",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016de40",
+          "instruction": "NOP"
+        }
+      ]
+    },
+    "0xc016e0a0": {
+      "end": "0xc016e0c0",
+      "kind": "function",
+      "evidence": "B3-return instruction at e0a0 with three delay instructions storing A4 to c0183ae8; subsequent words are zero padding.",
+      "anchors": [
+        {
+          "address": "0xc016e0a0",
+          "instruction": "BNOP.S2       B3,2"
+        },
+        {
+          "address": "0xc016e0ac",
+          "instruction": "STW.D1T1      A4,*+A3[0]"
+        },
+        {
+          "address": "0xc016e0c0",
+          "instruction": "BNOP.S2       B3,2"
+        }
+      ]
+    },
+    "0xc016e300": {
+      "end": "0xc016e320",
+      "kind": "function",
+      "evidence": "No-frame byte comparator, B3 return e310; e320 begins an independent global-word accessor.",
+      "anchors": [
+        {
+          "address": "0xc016e300",
+          "instruction": "LDB.D1T1      *+A4[0],A3"
+        },
+        {
+          "address": "0xc016e310",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016e320",
+          "instruction": "MVK.S1        0xffffa2a4,A3"
+        }
+      ]
+    },
+    "0xc016e3c0": {
+      "end": "0xc016e3e0",
+      "kind": "function",
+      "evidence": "No-frame interrupt clear routine, B3 return e3d4; e3e0 separately reads/modifies CSR.",
+      "anchors": [
+        {
+          "address": "0xc016e3c0",
+          "instruction": "MVK.L1        1,A3"
+        },
+        {
+          "address": "0xc016e3d4",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016e3e0",
+          "instruction": "MVC.S2        CSR,B4"
+        }
+      ]
+    },
+    "0xc016e480": {
+      "end": "0xc016e4a0",
+      "kind": "function",
+      "evidence": "No-frame TSCL/TSCH read under DINT/CSR restore, return e49a. e49c is compact-instruction header; e4a0 is independent return stub.",
+      "anchors": [
+        {
+          "address": "0xc016e480",
+          "instruction": "MVC.S2        CSR,B5"
+        },
+        {
+          "address": "0xc016e49a",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016e4a0",
+          "instruction": "BNOP.S2       B3,5"
+        }
+      ]
+    },
+    "0xc016e5e0": {
+      "end": "0xc016e600",
+      "kind": "tail_wrapper",
+      "evidence": "Direct tail branch e5e0 to b840, five delay cycles in NOP e5e4; padding follows, independent tail branch begins e600.",
+      "anchors": [
+        {
+          "address": "0xc016e5e0",
+          "instruction": "B.S1          0xc016b840"
+        },
+        {
+          "address": "0xc016e5e4",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016e600",
+          "instruction": "B.S1          0xc016b8c0"
+        }
+      ]
+    },
+    "0xc016e620": {
+      "end": "0xc016e640",
+      "kind": "tail_wrapper",
+      "evidence": "Direct tail branch e620 to e940 with NOP 5; independent tail branch begins e640.",
+      "anchors": [
+        {
+          "address": "0xc016e620",
+          "instruction": "B.S1          0xc016e940"
+        },
+        {
+          "address": "0xc016e624",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016e640",
+          "instruction": "B.S1          0xc0161200"
+        }
+      ]
+    },
+    "0xc016e6c0": {
+      "end": "0xc016e6e0",
+      "kind": "tail_wrapper",
+      "evidence": "Tail branch to ba40 with argument/default-pointer preparation in delay packets e6c4..e6d4; new independently parameterized wrapper begins e6e0.",
+      "anchors": [
+        {
+          "address": "0xc016e6c0",
+          "instruction": "B.S1          0xc016ba40"
+        },
+        {
+          "address": "0xc016e6d4",
+          "instruction": "NOP"
+        },
+        {
+          "address": "0xc016e6e0",
+          "instruction": "B.S1          0xc016ba40"
+        }
+      ]
+    },
+    "0xc016e760": {
+      "end": "0xc016e780",
+      "kind": "function",
+      "evidence": "No-frame self-linked list initialization; B3 return e768 precedes independent tail wrapper e780.",
+      "anchors": [
+        {
+          "address": "0xc016e760",
+          "instruction": "STW.D1T1      A4,*+A4[1]"
+        },
+        {
+          "address": "0xc016e768",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016e780",
+          "instruction": "B.S1          0xc0166a80"
+        }
+      ]
+    },
+    "0xc016e9c0": {
+      "end": "0xc016e9e0",
+      "kind": "computed_tail_wrapper",
+      "evidence": "Loads vtable field [2] and branches through A3 at e9d0, NOP 5 at e9d4; next independent field-[3] wrapper begins e9e0. Target remains unresolved.",
+      "anchors": [
+        {
+          "address": "0xc016e9c0",
+          "instruction": "LDW.D1T1      *+A4[0],A3"
+        },
+        {
+          "address": "0xc016e9d4",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016e9e0",
+          "instruction": "LDW.D1T1      *+A4[0],A3"
+        }
+      ]
+    },
+    "0xc016e9e0": {
+      "end": "0xc016ea00",
+      "kind": "computed_tail_wrapper",
+      "evidence": "Loads vtable field [3] and branches through A3 at e9f0, NOP 5 at e9f4; next direct wrapper begins ea00. Target remains unresolved.",
+      "anchors": [
+        {
+          "address": "0xc016e9e0",
+          "instruction": "LDW.D1T1      *+A4[0],A3"
+        },
+        {
+          "address": "0xc016e9f4",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016ea00",
+          "instruction": "B.S1          0xc016e4c0"
+        }
+      ]
+    },
+    "0xc016ea00": {
+      "end": "0xc016ea20",
+      "kind": "tail_wrapper",
+      "evidence": "Direct tail branch to e4c0 at ea00 with NOP 5; independent counterpart wrapper begins ea20.",
+      "anchors": [
+        {
+          "address": "0xc016ea00",
+          "instruction": "B.S1          0xc016e4c0"
+        },
+        {
+          "address": "0xc016ea04",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016ea20",
+          "instruction": "B.S1          0xc016e4e0"
+        }
+      ]
+    },
+    "0xc016f5c0": {
+      "end": "0xc016f5d0",
+      "kind": "constant_trampoline",
+      "evidence": "MVK/MVKH construct 11805eb4 in B31; B31 branch f5c8 and NOP 5 f5cc exhaust a 16-byte veneer. Next veneer starts f5d0.",
+      "anchors": [
+        {
+          "address": "0xc016f5c0",
+          "instruction": "MVK.S2        0x5eb4,B31"
+        },
+        {
+          "address": "0xc016f5cc",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016f5d0",
+          "instruction": "MVK.S2        0xfffface8,B31"
+        },
+        {
+          "address": "0xc016f5c4",
+          "instruction": "MVKH.S2       0x11800000,B31"
+        },
+        {
+          "address": "0xc016f5c8",
+          "instruction": "B.S2          B31"
+        }
+      ],
+      "observed_tail_target": "0x11805eb4"
+    },
+    "0xc016f6c0": {
+      "end": "0xc016f6d0",
+      "kind": "constant_trampoline",
+      "evidence": "MVK/MVKH construct 1180af50 in B31; B31 branch f6c8 and NOP 5 f6cc exhaust a 16-byte veneer. Next veneer starts f6d0.",
+      "anchors": [
+        {
+          "address": "0xc016f6c0",
+          "instruction": "MVK.S2        0xffffaf50,B31"
+        },
+        {
+          "address": "0xc016f6cc",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016f6d0",
+          "instruction": "MVK.S2        0x5ec4,B31"
+        },
+        {
+          "address": "0xc016f6c4",
+          "instruction": "MVKH.S2       0x11800000,B31"
+        },
+        {
+          "address": "0xc016f6c8",
+          "instruction": "B.S2          B31"
+        }
+      ],
+      "observed_tail_target": "0x1180af50"
+    },
+    "0xc016f6e0": {
+      "end": "0xc016f6f0",
+      "kind": "constant_trampoline",
+      "evidence": "MVK/MVKH construct 1180add8 in B31; B31 branch f6e8 and NOP 5 f6ec exhaust a 16-byte veneer. Next veneer starts f6f0.",
+      "anchors": [
+        {
+          "address": "0xc016f6e0",
+          "instruction": "MVK.S2        0xffffadd8,B31"
+        },
+        {
+          "address": "0xc016f6ec",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016f6f0",
+          "instruction": "MVK.S2        0x2b50,B31"
+        },
+        {
+          "address": "0xc016f6e4",
+          "instruction": "MVKH.S2       0x11800000,B31"
+        },
+        {
+          "address": "0xc016f6e8",
+          "instruction": "B.S2          B31"
+        }
+      ],
+      "observed_tail_target": "0x1180add8"
+    },
+    "0xc016e000": {
+      "end": "0xc016e020",
+      "kind": "restore_helper",
+      "evidence": "Pops six 8-byte pairs plus 8-byte B14 slot = 56 bytes; B3 return at e00a completes after B14 restore e00e and NOP 4 e010. New save helper begins e020.",
+      "anchors": [
+        {
+          "address": "0xc016e000",
+          "instruction": "LDDW.D2T2     *++B15[1],B3:B2"
+        },
+        {
+          "address": "0xc016e010",
+          "instruction": "NOP           4"
+        },
+        {
+          "address": "0xc016e020",
+          "instruction": "STW.D2T2      B14,*B15--[2]"
+        },
+        {
+          "address": "0xc016e00a",
+          "instruction": "BNOP.S2       B3,0"
+        },
+        {
+          "address": "0xc016e00e",
+          "instruction": "LDW.D2T2      *++B15[2],B14"
+        }
+      ]
+    },
+    "0xc016e020": {
+      "end": "0xc016e040",
+      "kind": "save_helper",
+      "evidence": "Pushes 8-byte B14 slot plus six 8-byte register pairs = 56 bytes; branches through incoming A3 at e024 while pushes e028..e032 execute in delay packets. Frame remains live in caller. e040 is independent return stub.",
+      "anchors": [
+        {
+          "address": "0xc016e020",
+          "instruction": "STW.D2T2      B14,*B15--[2]"
+        },
+        {
+          "address": "0xc016e032",
+          "instruction": "STDW.D2T2     B3:B2,*B15--[1]"
+        },
+        {
+          "address": "0xc016e040",
+          "instruction": "MVK.L1        -1,A4"
+        },
+        {
+          "address": "0xc016e024",
+          "instruction": "B.S2X         A3"
+        },
+        {
+          "address": "0xc016e028",
+          "instruction": "||        STDW.D2T1     A15:A14,*B15--[1]"
+        },
+        {
+          "address": "0xc016e030",
+          "instruction": "STDW.D2T1     A11:A10,*B15--[1]"
+        }
+      ]
+    },
+    "0xc016e3a0": {
+      "end": "0xc016e3c0",
+      "kind": "tail_wrapper",
+      "evidence": "Tail branch e3a0 to ba40; its delay packets end e3b4. e3c0 begins interrupt-clear routine; old catalog extent merged it.",
+      "anchors": [
+        {
+          "address": "0xc016e3a0",
+          "instruction": "B.S1          0xc016ba40"
+        },
+        {
+          "address": "0xc016e3b4",
+          "instruction": "NOP"
+        },
+        {
+          "address": "0xc016e3c0",
+          "instruction": "MVK.L1        1,A3"
+        }
+      ]
+    },
+    "0xc016e460": {
+      "end": "0xc016e480",
+      "kind": "function",
+      "evidence": "No-frame TSCL accessor returns at e46c. e480 begins independent critical-section dual-clock accessor.",
+      "anchors": [
+        {
+          "address": "0xc016e460",
+          "instruction": "MVC.S2        TSCL,B4"
+        },
+        {
+          "address": "0xc016e46c",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016e480",
+          "instruction": "MVC.S2        CSR,B5"
+        }
+      ]
+    },
+    "0xc016e5c0": {
+      "end": "0xc016e5e0",
+      "kind": "function",
+      "evidence": "Copies B3 to A2, calls db00 and returns through A2 at e5c8 with BNOP 5. Return-alias validity across db00 remains separate stack-analysis blocker.",
+      "anchors": [
+        {
+          "address": "0xc016e5c0",
+          "instruction": "MV.L1X        B3,A2"
+        },
+        {
+          "address": "0xc016e5c8",
+          "instruction": "BNOP.S2X      A2,5"
+        },
+        {
+          "address": "0xc016e5e0",
+          "instruction": "B.S1          0xc016b840"
+        }
+      ]
+    },
+    "0xc016e6a0": {
+      "end": "0xc016e6c0",
+      "kind": "function",
+      "evidence": "Independent B3-save entry; call e540, restore B3 e6ac, B3 return e6b4; e6c0 starts tail wrapper.",
+      "anchors": [
+        {
+          "address": "0xc016e6a0",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        },
+        {
+          "address": "0xc016e6b4",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016e6c0",
+          "instruction": "B.S1          0xc016ba40"
+        }
+      ]
+    },
+    "0xc016e9a0": {
+      "end": "0xc016e9c0",
+      "kind": "function",
+      "evidence": "Independent B3-save entry calls eb80; restores B3 e9b6, waits, returns e9ba. e9c0 starts field-[2] computed tail wrapper.",
+      "anchors": [
+        {
+          "address": "0xc016e9a0",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        },
+        {
+          "address": "0xc016e9ba",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016e9c0",
+          "instruction": "LDW.D1T1      *+A4[0],A3"
+        }
+      ]
+    },
+    "0xc016a9c0": {
+      "end": "0xc016a9f0",
+      "kind": "function",
+      "evidence": "Independent 16-byte B3-save wrapper calls 152240 then restores SP/B3 at a9e4 and returns a9ec. a9f0 is another 16-byte save wrapper, so it is excluded.",
+      "anchors": [
+        {
+          "address": "0xc016a9c0",
+          "instruction": "STW.D2T2      B3,*B15--[4]"
+        },
+        {
+          "address": "0xc016a9ec",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016a9f0",
+          "instruction": "STW.D2T2      B3,*B15--[4]"
+        }
+      ]
+    },
+    "0xc016dd80": {
+      "end": "0xc016ddc0",
+      "kind": "function",
+      "evidence": "Captures SP in A15, saves prior A15/B13 and B3 in B13, calls cf60 then restores SP/A15/B13 in return delay packets dda4..ddb0. ddc0 is independent analogous wrapper.",
+      "anchors": [
+        {
+          "address": "0xc016dd80",
+          "instruction": "MV.L1X        B15,A15"
+        },
+        {
+          "address": "0xc016ddb0",
+          "instruction": "NOP           4"
+        },
+        {
+          "address": "0xc016ddc0",
+          "instruction": "MV.L1X        B15,A15"
+        }
+      ]
+    },
+    "0x11805eb4": {
+      "end": "0x11805ec4",
+      "kind": "function",
+      "evidence": "No-frame accessor constructs 11812f88, loads word and returns B3 at 5ec2 with BNOP 5. 5ec4 begins separate accessor.",
+      "anchors": [
+        {
+          "address": "0x11805eb4",
+          "instruction": "MVK.S1        0x2f88,A4"
+        },
+        {
+          "address": "0x11805ec2",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0x11805ec4",
+          "instruction": "MVK.S1        0x2f80,A4"
+        }
+      ]
+    },
+    "0x1180af50": {
+      "end": "0x1180af60",
+      "kind": "function",
+      "evidence": "Independent B3-save entry calls af34 with A4=1; balanced pop af56 and B3 return af5a. af60 starts save-helper call entry.",
+      "anchors": [
+        {
+          "address": "0x1180af50",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        },
+        {
+          "address": "0x1180af5a",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0x1180af60",
+          "instruction": "CALLP.S1      0x1180bd10,A3"
+        }
+      ]
+    },
+    "0x1180af34": {
+      "end": "0x1180af50",
+      "kind": "function",
+      "evidence": "Independent B3-save entry; conditional call b8e0 converges at af48 pop and af4c B3 return. af50 starts next independent save entry.",
+      "anchors": [
+        {
+          "address": "0x1180af34",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        },
+        {
+          "address": "0x1180af4c",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0x1180af50",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        }
+      ]
+    },
+    "0x1180add8": {
+      "end": "0x1180ae18",
+      "kind": "function",
+      "evidence": "Save-helper call entry through bd10 veneer -> e020; calls 5f08/adc0/b0b0 then final restore-helper call ae14 through bcc0 veneer -> e000. ae18 begins independent B3-save entry. Live 56-byte frame must be modeled separately.",
+      "anchors": [
+        {
+          "address": "0x1180add8",
+          "instruction": "CALLP.S1      0x1180bd10,A3"
+        },
+        {
+          "address": "0x1180ae14",
+          "instruction": "CALLP.S1      0x1180bcc0,A3"
+        },
+        {
+          "address": "0x1180ae18",
+          "instruction": "STW.D2T2      B3,*B15--[2]"
+        }
+      ]
+    },
+    "0x1180bd10": {
+      "end": "0x1180bd20",
+      "kind": "constant_trampoline",
+      "evidence": "Four-instruction 16-byte veneer loads c016e020 in B31 and branches bd18, NOP 5 bd1c; preserves A3 continuation passed by caller.",
+      "anchors": [
+        {
+          "address": "0x1180bd10",
+          "instruction": "MVK.S2        0xffffe020,B31"
+        },
+        {
+          "address": "0x1180bd1c",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0x1180bd20",
+          "instruction": "MVK.S2        0x4dc8,B31"
+        },
+        {
+          "address": "0x1180bd14",
+          "instruction": "MVKH.S2       0xc0160000,B31"
+        },
+        {
+          "address": "0x1180bd18",
+          "instruction": "B.S2          B31"
+        }
+      ],
+      "observed_tail_target": "0xc016e020"
+    },
+    "0x1180bcc0": {
+      "end": "0x1180bcd0",
+      "kind": "constant_trampoline",
+      "evidence": "Four-instruction 16-byte veneer loads c016e000 in B31 and branches bcc8, NOP 5 bccc.",
+      "anchors": [
+        {
+          "address": "0x1180bcc0",
+          "instruction": "MVK.S2        0xffffe000,B31"
+        },
+        {
+          "address": "0x1180bccc",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0x1180bcd0",
+          "instruction": "MVK.S2        0x28e0,B31"
+        },
+        {
+          "address": "0x1180bcc4",
+          "instruction": "MVKH.S2       0xc0160000,B31"
+        },
+        {
+          "address": "0x1180bcc8",
+          "instruction": "B.S2          B31"
+        }
+      ],
+      "observed_tail_target": "0xc016e000"
+    },
+    "0xc0168c40": {
+      "end": "0xc0168d00",
+      "kind": "function",
+      "evidence": "Independent saved-register entry; callback at 8cd0 returns to 8cd8, restore packets end 8ce4 then B3 return 8ce8. Zero padding ends at independent save prologue 8d00. Scheduler calls later in catalog extent are excluded.",
+      "anchors": [
+        {
+          "address": "0xc0168c40",
+          "instruction": "STW.D2T2      B10,*B15--[2]"
+        },
+        {
+          "address": "0xc0168ce8",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc0168d00",
+          "instruction": "STW.D2T1      A14,*B15--[2]"
+        }
+      ]
+    },
+    "0xc016cc00": {
+      "end": "0xc016cc60",
+      "kind": "function",
+      "evidence": "Idle loop restores CSR state and SP by cc48, returns B3 cc4c. cc60 starts distinct saved-register conditional scheduler wrapper.",
+      "anchors": [
+        {
+          "address": "0xc016cc00",
+          "instruction": "SUB.L2        B15,0x8,B15"
+        },
+        {
+          "address": "0xc016cc4c",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016cc60",
+          "instruction": "STW.D2T1      A10,*B15--[2]"
+        }
+      ]
+    },
+    "0xc016cc60": {
+      "end": "0xc016ccc0",
+      "kind": "function",
+      "evidence": "Independent A10/B3-save wrapper, conditional scheduler call cc74 with continuation cc84. Pops registers and returns B3 cca8; padding then independent entry ccc0.",
+      "anchors": [
+        {
+          "address": "0xc016cc60",
+          "instruction": "STW.D2T1      A10,*B15--[2]"
+        },
+        {
+          "address": "0xc016cca8",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016ccc0",
+          "instruction": "MV.L1         A4,A3"
+        }
+      ]
+    },
+    "0xc016e0c0": {
+      "end": "0xc016e0e0",
+      "kind": "function",
+      "evidence": "Returns B3 at e0c0 with delay packets e0c4/e0c8/e0cc storing registration A4 to c0183aec. e0e0 is independent task bootstrap consuming task startup stack.",
+      "anchors": [
+        {
+          "address": "0xc016e0c0",
+          "instruction": "BNOP.S2       B3,2"
+        },
+        {
+          "address": "0xc016e0cc",
+          "instruction": "STW.D1T1      A4,*+A3[0]"
+        },
+        {
+          "address": "0xc016e0e0",
+          "instruction": "LDW.D2T2      *+B15[3],B2"
+        }
+      ]
+    },
+    "0xc016e0e0": {
+      "end": "0xc016e100",
+      "kind": "context_transfer",
+      "evidence": "Task bootstrap loads B2/A4/B4/B3 from stack, advances SP 16 bytes, branches B2 at e0f4 with NOP 5 e0f8; independent no-frame entry e100 follows. Treat B2 as context entry transfer, not a return alias.",
+      "anchors": [
+        {
+          "address": "0xc016e0e0",
+          "instruction": "LDW.D2T2      *+B15[3],B2"
+        },
+        {
+          "address": "0xc016e0f8",
+          "instruction": "NOP           5"
+        },
+        {
+          "address": "0xc016e100",
+          "instruction": "MV.D2X        A4,B0"
+        }
+      ]
+    },
+    "0xc015f08c": {
+      "end": "0xc015f0d8",
+      "kind": "function",
+      "evidence": "Helper-backed callback wrapper begins CALLP e020 at f08c, callback sites f0a8/f0c0, calls 12f840 then restore-helper call e000 at f0d4 terminates routine. f0d8 begins independent no-frame state setter; 56-byte helper frame remains live.",
+      "anchors": [
+        {
+          "address": "0xc015f08c",
+          "instruction": "CALLP.S1      0xc016e020,A3"
+        },
+        {
+          "address": "0xc015f0d4",
+          "instruction": "CALLP.S1      0xc016e000,A3"
+        },
+        {
+          "address": "0xc015f0d8",
+          "instruction": "MVK.S2        0x3318,B4"
+        }
+      ]
+    },
+    "0xc016bb40": {
+      "end": "0xc016bbc0",
+      "kind": "function",
+      "evidence": "Independent save entry. Copies saved A11 back to B3 bba8 then returns bbac with pop delay packets bbb0/bbb4 and NOP 4 bbb8. bbc0 starts independent save prologue.",
+      "anchors": [
+        {
+          "address": "0xc016bb40",
+          "instruction": "MV.L1X        B4,A0"
+        },
+        {
+          "address": "0xc016bbb8",
+          "instruction": "NOP           4"
+        },
+        {
+          "address": "0xc016bbc0",
+          "instruction": "STW.D2T1      A11,*B15--[2]"
+        }
+      ]
+    },
+    "0xc016b7c0": {
+      "end": "0xc016b840",
+      "kind": "function",
+      "evidence": "Independent A10/B3-save wrapper restores registers b81c/b824, returns B3 b828. b840 is no-frame accessor; exclude subsequent entries.",
+      "anchors": [
+        {
+          "address": "0xc016b7c0",
+          "instruction": "STW.D2T1      A10,*B15--[2]"
+        },
+        {
+          "address": "0xc016b828",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016b840",
+          "instruction": "MVK.S1        0x2118,A3"
+        }
+      ]
+    },
+    "0xc016b840": {
+      "end": "0xc016b8c0",
+      "kind": "function",
+      "evidence": "No-frame accessor returns B3 b8b4. Independent analogous accessor begins b8c0.",
+      "anchors": [
+        {
+          "address": "0xc016b840",
+          "instruction": "MVK.S1        0x2118,A3"
+        },
+        {
+          "address": "0xc016b8b4",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016b8c0",
+          "instruction": "MVK.S1        0x2118,A3"
+        }
+      ]
+    },
+    "0xc016b8c0": {
+      "end": "0xc016b940",
+      "kind": "function",
+      "evidence": "No-frame accessor returns B3 b934. b940 begins independent saved-register wrapper.",
+      "anchors": [
+        {
+          "address": "0xc016b8c0",
+          "instruction": "MVK.S1        0x2118,A3"
+        },
+        {
+          "address": "0xc016b934",
+          "instruction": "BNOP.S2       B3,5"
+        },
+        {
+          "address": "0xc016b940",
+          "instruction": "MVK.S1        0x3ae8,A3"
+        }
+      ]
+    }
+  },
+  "unresolved": {
+    "0xc0152154": {
+      "kind": "INTERNAL_CONTROL_FLOW_FRAGMENT",
+      "owner_entry": "0xc01520f4",
+      "owner_candidate_end": "0xc0152240",
+      "evidence": "Branch at c015210c targets c0152154 inside switch dispatch owner. Catalog entries c0152126/215a/216a/2176/2198/21a8 split internal case/merge blocks. Owner must be modeled as a CFG with live e020 frame; do not treat 2154 as a separate normal function.",
+      "anchors": [
+        {
+          "address": "0xc01520f4",
+          "instruction": "CALLP.S1      0xc016e020,A3"
+        },
+        {
+          "address": "0xc015210c",
+          "instruction": "[ B0]  BNOP.S1       0xc0152154,4"
+        },
+        {
+          "address": "0xc0152154",
+          "instruction": "MVK.S1        0xffff8ad0,A1"
+        },
+        {
+          "address": "0xc0152158",
+          "instruction": "BNOP.S1       0xc01521b8,5"
+        },
+        {
+          "address": "0xc015215a",
+          "instruction": "MV.L1         A11,A4"
+        },
+        {
+          "address": "0xc015222c",
+          "instruction": "CALLP.S1      0xc016e000,A3"
+        },
+        {
+          "address": "0xc0152240",
+          "instruction": "CALLP.S1      0xc016e020,A3"
+        }
+      ]
+    }
+  },
+  "excluded_data_ranges": [
+    {
+      "start": "0xc016de40",
+      "end": "0xc016def0",
+      "evidence": "Repeated binary64 constants and table words between de00 return/padding and def0 veneer; decoded conditional SP accesses are data."
+    }
+  ]
+}

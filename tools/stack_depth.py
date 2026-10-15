@@ -36,7 +36,28 @@ def parse_disassembly(text):
     return sorted(instructions)
 
 
-def load_evidence(path, instructions, disassembly_hash):
+def explicit_sp_adjustment(line):
+    """Return a constant SP delta, or None for an unmodeled explicit SP write.
+
+    Instructions without an explicit B15 destination return zero. Memory
+    pre/postincrements are inventoried separately; this is not SP dataflow.
+    """
+    if not re.search(r',B15\s*$', line):
+        return 0
+    immediate = r'(-?(?:0x[0-9a-f]+|\d+))'
+    match = re.search(r'\bADDK\.\S+\s+' + immediate + r',B15\s*$', line)
+    if match:
+        return int(match[1], 0)
+    match = re.search(r'\b(ADD|SUB)\.\S+\s+B15,' + immediate + r',B15\s*$', line)
+    if match:
+        return int(match[2], 0) * (-1 if match[1] == 'SUB' else 1)
+    match = re.search(r'\bADD\.\S+\s+' + immediate + r',B15,B15\s*$', line)
+    if match:
+        return int(match[1], 0)
+    return None
+
+
+def load_evidence(path, instructions, disassembly_hash, elf_hash=None):
     """Check image identity and every quoted instruction before using evidence.
 
     This verifies transcription/provenance, not the reviewer's interpretation.
@@ -45,8 +66,10 @@ def load_evidence(path, instructions, disassembly_hash):
     data = json.loads(Path(path).read_text())
     if data.get('disassembly_sha256') != disassembly_hash:
         raise ValueError('evidence does not match this disassembly SHA-256')
+    if elf_hash is not None and data.get('observed_elf_sha256') != elf_hash:
+        raise ValueError('evidence does not match this ELF SHA-256')
     by_address = dict(instructions)
-    for section in ('extents', 'sites'):
+    for section in ('extents', 'sites', 'unresolved'):
         for entry, record in data.get(section, {}).items():
             if not record.get('evidence') or not record.get('anchors'):
                 raise ValueError(f'{section} {entry} lacks evidence or instruction anchors')
@@ -59,17 +82,20 @@ def load_evidence(path, instructions, disassembly_hash):
             start = int(entry, 16)
             if start not in by_address:
                 raise ValueError(f'{section} {entry} has no instruction at its entry/site')
+            anchored = {int(anchor['address'], 16) for anchor in record['anchors']}
+            if start not in anchored:
+                raise ValueError(f'{section} {entry} lacks its own entry/site anchor')
             if section == 'extents':
                 end = int(record['end'], 16)
                 if end <= start or end > max(by_address) + 4:
                     raise ValueError(f'extent {entry} has invalid exclusive end {end:#x}')
-            else:
+                if end not in by_address or end not in anchored:
+                    raise ValueError(f'extent {entry} lacks an instruction-backed end anchor')
+            elif section == 'sites':
                 if record.get('kind') not in ('return', 'continuation', 'stack_switch'):
                     raise ValueError(f'site {entry} has unsupported transfer kind')
                 if not re.search(r'\b(?:BNOP|B)\.\S+\s+[AB]\d+\b', by_address[start]):
                     raise ValueError(f'site {entry} is not a register branch')
-                if not any(int(anchor['address'], 16) == start for anchor in record['anchors']):
-                    raise ValueError(f'site {entry} lacks its own branch anchor')
     return data
 
 
@@ -107,12 +133,12 @@ class StackInventory:
             match = re.search(r'\b(STW|STDW|STH|STB)\.\S+\s+\S+,\*B15--\[(\d+)\]', line)
             if match:
                 frame += SIZE[match[1]] * int(match[2])
-            match = re.search(r'ADDK\.\S+\s+-(0x[0-9a-f]+|\d+),B15', line)
-            if match:
-                frame += int(match[1], 0)
-            match = re.search(r'SUB\.\S+\s+B15,(0x[0-9a-f]+|\d+),B15', line)
-            if match:
-                frame += int(match[1], 0)
+            delta = explicit_sp_adjustment(line)
+            if delta is None:
+                issues.append({'kind': 'UNMODELED_SP_WRITE', 'site': hex(address),
+                               'instruction': line.strip()})
+            elif delta < 0:
+                frame -= delta
             match = re.search(r'\b(CALLP|BNOP|B)\.\S+\s+(0x[0-9a-f]{8}|[AB]\d+)\b', line)
             if not match:
                 continue
@@ -178,6 +204,7 @@ def main(argv=None):
     parser.add_argument('roots', nargs='+', type=lambda value: int(value, 16))
     parser.add_argument('--dis', type=Path, default=Path('build/fw/map/main.dis'))
     parser.add_argument('--catalog', type=Path, default=Path('build/fw/map/subsystems.tsv'))
+    parser.add_argument('--elf', type=Path, help='also verify the ELF identity recorded by evidence inputs')
     parser.add_argument('--resolve', action='store_true', help='use site-specific image observations')
     parser.add_argument('--callbacks', type=Path, default=Path('docs/helpers/stack_callbacks.json'))
     parser.add_argument('--extents', type=Path, help='reviewed, image-pinned function extents')
@@ -189,6 +216,10 @@ def main(argv=None):
     disassembly = args.dis.read_text()
     instructions = parse_disassembly(disassembly)
     disassembly_hash = hashlib.sha256(args.dis.read_bytes()).hexdigest()
+    elf_hash = None
+    if args.elf:
+        inputs['elf'] = args.elf
+        elf_hash = hashlib.sha256(args.elf.read_bytes()).hexdigest()
     callbacks = {}
     if args.resolve:
         inputs['callbacks'] = args.callbacks
@@ -196,6 +227,8 @@ def main(argv=None):
         expected = data.get('disassembly_sha256')
         if not expected or disassembly_hash != expected:
             parser.error('callback observations do not match this disassembly SHA-256')
+        if elf_hash is not None and data.get('observed_elf_sha256') != elf_hash:
+            parser.error('callback observations do not match this ELF SHA-256')
         callbacks = {int(site, 16): record for site, record in data['sites'].items()}
     overrides = {}
     for name in ('extents', 'transfers'):
@@ -203,7 +236,7 @@ def main(argv=None):
         if path:
             inputs[name] = path
             try:
-                data = load_evidence(path, instructions, disassembly_hash)
+                data = load_evidence(path, instructions, disassembly_hash, elf_hash)
                 section = 'extents' if name == 'extents' else 'sites'
                 if not isinstance(data.get(section), dict):
                     raise ValueError(f'{name} evidence lacks a {section} object')

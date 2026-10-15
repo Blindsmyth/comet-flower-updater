@@ -1,0 +1,178 @@
+{
+  "disassembly_sha256": "e824b1e0effdaaca35cf87bd3a0bcc9b6242291e4def5e471120b28a762c82d1",
+  "observed_elf_sha256": "b0625c7a055020ddcbc61bb6966311891ead03bb6dae865b6f3f72ed45fb3946",
+  "evidence_document": "STACK_CONTEXT_2026-10-14.md",
+  "limitations": [
+    "No stack bound; save/restore pairing is caller-sensitive.",
+    "Continuation annotations do not remove persistent-helper blockers.",
+    "stack_switch must remain an explicit context-modeling blocker, not an ordinary return."
+  ],
+  "sites": {
+    "c016e024": {
+      "kind": "continuation",
+      "evidence": "Save-helper continuation through incoming A3 under CALLP/A3 entry convention. It leaves 56 bytes live; it is not a pop or an ordinary caller return.",
+      "anchors": [
+        {
+          "address": "c014a0cc",
+          "instruction": "CALLP.S1      0xc016e020,A3"
+        },
+        {
+          "address": "c016e020",
+          "instruction": "STW.D2T2      B14,*B15--[2]"
+        },
+        {
+          "address": "c016e024",
+          "instruction": "B.S2X         A3"
+        },
+        {
+          "address": "c016e028",
+          "instruction": "||        STDW.D2T1     A15:A14,*B15--[1]"
+        },
+        {
+          "address": "c016e02a",
+          "instruction": "STDW.D2T2     B13:B12,*B15--[1]"
+        },
+        {
+          "address": "c016e02c",
+          "instruction": "STDW.D2T1     A13:A12,*B15--[1]"
+        },
+        {
+          "address": "c016e02e",
+          "instruction": "STDW.D2T2     B11:B10,*B15--[1]"
+        },
+        {
+          "address": "c016e030",
+          "instruction": "STDW.D2T1     A11:A10,*B15--[1]"
+        },
+        {
+          "address": "c016e032",
+          "instruction": "STDW.D2T2     B3:B2,*B15--[1]"
+        }
+      ]
+    },
+    "c016e00a": {
+      "kind": "return",
+      "evidence": "Paired save-frame epilogue returns via restored B3, ignoring apparent CALLP A3 continuation. Six LDDW pops plus final LDW postincrement restore 56 bytes including return delay sequence.",
+      "anchors": [
+        {
+          "address": "c014a114",
+          "instruction": "CALLP.S1      0xc016e000,A3"
+        },
+        {
+          "address": "c016e000",
+          "instruction": "LDDW.D2T2     *++B15[1],B3:B2"
+        },
+        {
+          "address": "c016e002",
+          "instruction": "LDDW.D2T1     *++B15[1],A11:A10"
+        },
+        {
+          "address": "c016e004",
+          "instruction": "LDDW.D2T2     *++B15[1],B11:B10"
+        },
+        {
+          "address": "c016e006",
+          "instruction": "LDDW.D2T1     *++B15[1],A13:A12"
+        },
+        {
+          "address": "c016e008",
+          "instruction": "LDDW.D2T2     *++B15[1],B13:B12"
+        },
+        {
+          "address": "c016e00a",
+          "instruction": "BNOP.S2       B3,0"
+        },
+        {
+          "address": "c016e00c",
+          "instruction": "||        LDDW.D2T1     *++B15[1],A15:A14"
+        },
+        {
+          "address": "c016e00e",
+          "instruction": "LDW.D2T2      *++B15[2],B14"
+        },
+        {
+          "address": "c016e010",
+          "instruction": "NOP           4"
+        }
+      ]
+    },
+    "c016af28": {
+      "kind": "stack_switch",
+      "evidence": "Outgoing context decrements B15 by 48, publishes saved SP through A4, then loads selected incoming SP through B4. Incoming word1 supplies branch B4; final incoming frame pop executes in branch delay sequence. Keep explicit STACK_SWITCH blocker.",
+      "anchors": [
+        {
+          "address": "c015e008",
+          "instruction": "B.S1          0xc016aec0"
+        },
+        {
+          "address": "c015e00c",
+          "instruction": "ADDKPC.S2     0xc015e018,B3,3"
+        },
+        {
+          "address": "c015e010",
+          "instruction": "ADD.D1        A11,0x10,A4"
+        },
+        {
+          "address": "c015e014",
+          "instruction": "||        ADD.D2        B10,0x10,B4"
+        },
+        {
+          "address": "c016aec0",
+          "instruction": "STW.D2T2      B3,*B15--[12]"
+        },
+        {
+          "address": "c016aec4",
+          "instruction": "MV.D2         B15,B0"
+        },
+        {
+          "address": "c016aec6",
+          "instruction": "||        MV.S1X        B15,A0"
+        },
+        {
+          "address": "c016aec8",
+          "instruction": "||        STW.D1T2      B15,*+A4[0]"
+        },
+        {
+          "address": "c016aecc",
+          "instruction": "LDW.D2T2      *+B4[0],B15"
+        },
+        {
+          "address": "c016aed0",
+          "instruction": "||        STW.D1T1      A11,*+A0[3]"
+        },
+        {
+          "address": "c016aefc",
+          "instruction": "||        STW.D2T2      B3,*+B0[1]"
+        },
+        {
+          "address": "c016af00",
+          "instruction": "LDW.D2T2      *B15[1],B4"
+        },
+        {
+          "address": "c016af02",
+          "instruction": "||        MV.D1X        B15,A0"
+        },
+        {
+          "address": "c016af28",
+          "instruction": "B.S2          B4"
+        },
+        {
+          "address": "c016af2c",
+          "instruction": "||        LDW.D2T1      *+B15[10],A14"
+        },
+        {
+          "address": "c016af30",
+          "instruction": "LDW.D1T1      *+A0[11],A15"
+        },
+        {
+          "address": "c016af34",
+          "instruction": "||        LDW.D2T2      *++B15[12],B3"
+        },
+        {
+          "address": "c016af38",
+          "instruction": "NOP           4"
+        }
+      ]
+    }
+  }
+}
