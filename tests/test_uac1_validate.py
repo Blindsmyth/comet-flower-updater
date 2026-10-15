@@ -129,6 +129,16 @@ class TestUac1Validator(unittest.TestCase):
         violations = validate(data)
         self.assertEqual(violations, [], f"Prototype bytes produced violations: {violations}")
 
+    def test_windows_groups_midi_and_audio_as_two_functions(self):
+        """Windows legacy audio grouping (no IAD): {IF0 AC, IF1 MS} and {IF2 AC, IF3 AS}."""
+        from tools.uac1_validate import windows_legacy_audio_collections as group
+        self.assertEqual(group(self.get_good_bytes()), [[0, 1], [2, 3]])
+        # Same-subclass neighbour starts a new collection; an IAD disables grouping.
+        ac = bytes.fromhex("090400000001010000")
+        ac1 = bytes.fromhex("090401000001010000")
+        self.assertEqual(group(ac + ac1), [[0], [1]])
+        self.assertEqual(group(bytes.fromhex("080b000201010000") + ac), [])
+
     def test_known_good_reference_validates_cleanly(self):
         """Hand-crafted minimal UAC1 stereo 16-bit 44.1 kHz IN-only configuration validates cleanly."""
         ref = build_reference_uac1()

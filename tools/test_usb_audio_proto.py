@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,14 @@ OUT = ROOT / "build" / "usb_audio_proto_host"
 
 def build_host_library():
     OUT.mkdir(parents=True, exist_ok=True)
+    # A loaded DLL is locked on Windows and two test modules may load it in one
+    # process, so every build gets its own name; stale unlocked copies are removed.
+    for old in OUT.glob("usb_audio_HOST_TEST_ONLY*"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    stem = "usb_audio_HOST_TEST_ONLY_%d_%d" % (os.getpid(), time.monotonic_ns())
     env = os.environ.copy()
     if os.name == "nt":
         cl = shutil.which("cl")
@@ -35,7 +44,7 @@ def build_host_library():
         if cl is None:
             raise RuntimeError("A local MSVC x64 C compiler is required for host tests")
         env["PATH"] = str(Path(cl).parent) + os.pathsep + env.get("PATH", "")
-        library = OUT / "usb_audio_HOST_TEST_ONLY.dll"
+        library = OUT / (stem + ".dll")
         command = [cl, "/nologo", "/TC", "/LD", "/Od", "/Oi-", "/GS-", "/Zl",
                    "/wd4068", "/Fo" + str(OUT / "host_harness.obj"),
                    "/Fe" + str(library), str(SRC / "host_harness.c"),
@@ -44,7 +53,7 @@ def build_host_library():
         cc = shutil.which("cc")
         if cc is None:
             raise RuntimeError("A local host C compiler is required for host tests")
-        library = OUT / "usb_audio_HOST_TEST_ONLY.so"
+        library = OUT / (stem + ".so")
         command = [cc, "-std=c99", "-shared", "-fPIC", "-O0",
                    "-Wno-unknown-pragmas", str(SRC / "host_harness.c"),
                    "-o", str(library)]

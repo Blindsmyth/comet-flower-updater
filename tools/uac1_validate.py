@@ -882,6 +882,36 @@ def validate(data: bytes) -> List[Tuple[str, str]]:
     return violations
 
 
+def windows_legacy_audio_collections(data: bytes) -> List[List[int]]:
+    """How Windows usbccgp groups audio-class interfaces when there is no IAD.
+
+    Microsoft Learn, "Overview of Enumeration of Interface Collections on USB
+    Composite Devices", section "Enumeration of interface collections on audio
+    devices without IADs": a collection is a run of consecutive interfaces of
+    class 0x01, each with a subclass different from the collection's first
+    interface. Any IAD disables this grouping (returned as []). Non-audio
+    interfaces become single-interface functions. Alternate settings > 0 are
+    ignored. Returns the interface numbers of each function, in order.
+    """
+    pos, firsts = 0, []
+    while pos + 2 <= len(data) and data[pos] >= 2:
+        n, typ = data[pos], data[pos + 1]
+        if typ == 0x0B:                      # INTERFACE_ASSOCIATION
+            return []
+        if typ == 0x04 and n >= 9 and data[pos + 3] == 0:
+            firsts.append((data[pos + 2], data[pos + 5], data[pos + 6]))
+        pos += n
+    groups: List[List[int]] = []
+    head = None
+    for number, cls, sub in firsts:
+        if cls == 0x01 and groups and head is not None and sub != head[1]:
+            groups[-1].append(number)
+            continue
+        groups.append([number])
+        head = (cls, sub) if cls == 0x01 else None
+    return groups
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate UAC1/MIDI configuration descriptors")
     parser.add_argument("file", nargs="?", help="Binary descriptor file or '-' for stdin")
