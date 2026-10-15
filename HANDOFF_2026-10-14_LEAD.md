@@ -137,9 +137,12 @@ OWNER_DIAG_TEST_PREP_2026-10-15 can produce data.
 1. Stack gate, unchanged: continue from the 60 reviewed physical extents.
    Resolve the indirect targets, then model the save-helper frames and context
    transitions. A graph without cycles is not a bound.
-2. USB: review `SOL_TX_MODE_REPORT.md` (in progress; which slots use ring mode,
-   the kick caller, ring setup) and `GEMINI_OP8_REPORT.md` (in progress; op-8
-   producer). Both feed the USB-audio design.
+2. USB audio: an offline silence-stream candidate builds
+   (docs/USB_AUDIO_SILENCE_CANDIDATE_2026-10-15.md). Pending: the Sonnet review
+   (docs/helpers/REVIEW_USB_AUDIO_CANDIDATE.md) and Gemini's UAC1 validator
+   (tools/uac1_validate.py). Slot mapping: endpoint N = slot N (recon/23). PIO is the
+   first design. Ring mode is dormant in stock (SOL_TX_MODE_REPORT review), an
+   option for later. Op 8 = host CLEAR_FEATURE(HALT) on EP 0x84 (GEMINI_OP8_REPORT).
 3. Decide whether the counted-mode liveness risk needs a fix candidate, or
    first an owner diag run to see whether it happens (recommended: run the
    diag first).
