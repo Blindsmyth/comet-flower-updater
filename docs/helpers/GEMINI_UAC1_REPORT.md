@@ -1,5 +1,14 @@
 # Gemini UAC1 Descriptor Validator Report
 
+> **Claude review (2026-10-15): accepted.**
+> - **Extra mutations.** I tried six beyond the suite: bInterval 4, an alt-setting gap, a dangling
+>   bTerminalLink, a duplicate terminal ID, an ISO endpoint turned OUT, and an AC header naming itself.
+>   Each fired the expected check, so the validator is not a rubber stamp.
+> - **Prototype bytes.** The 192-byte prototype configuration validates clean.
+> - **Limit.** This proves conformance to the specs. It does not prove that a particular OS driver
+>   binds the device (Windows grouping of two audio functions without an IAD, for example). Only an
+>   owner host test can show that.
+
 Offline validation report for combined USB-MIDI + USB-Audio-Class-1 (UAC1) configuration descriptors.
 
 ## 1. Goal and Specification References
