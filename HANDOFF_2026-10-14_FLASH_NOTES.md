@@ -36,3 +36,7 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
    candidate; do not claim it fixes ownership.
 3. Update `HANDOFF_2026-10-14_LEAD.md` "Continue from this point" and add a line here.
 4. Owner-run MIDI test prep only after offline gates close. Flashing is the owner's decision.
+
+### 2026-10-14 later (Claude)
+- Committed as 9a76baa (HEAD). Step 1 done. Step 2 is NOT started: the teardown doc itself says patch feasibility review must come first. Do that review before writing code: pick hook sites in the stock abort routine (c0120744..0750 recycles the entry; poll at c011faa0; Hwi consumer c011fcb8..fcc2) and confirm each patch site has room for a CALLP (4 bytes, parallel bits preserved, see HOOKS in tools/make_controller_fw.py). Write findings to docs/helpers/ before coding. Trace buffer must live in the controller image (16 KiB at c01a0000, currently 2880 bytes used) or .ctl_state.
+
