@@ -29,7 +29,7 @@ class CFLoaderApp(tk.Tk):
         super().__init__()
         self.title("CF Loader - G1X Four Effects Loader")
         self.minsize(960, 640)
-        self.geometry("1024, 700")
+        self.geometry("1024x700")
 
         # Application state
         self.config_data = core.load_config()
@@ -355,6 +355,7 @@ class CFLoaderApp(tk.Tk):
             final_frame,
             text="Authorize 'OK to Save Patches'",
             command=self._mark_ok_save,
+            state=tk.DISABLED,
         )
         self.btn_mark_ok.pack(side=tk.LEFT, padx=6)
         self.test_warning_lbl = ttk.Label(
@@ -775,33 +776,6 @@ class CFLoaderApp(tk.Tk):
         self._on_test_effect_selected(None)
         self.rescan_library()
         messagebox.showinfo("Audio Pass", f"Recorded 'audio-pass' for {eff_name}.")
-
-    def _record_cost_test(self):
-        eff_name = self.test_effect_combo.get()
-        if not eff_name:
-            messagebox.showwarning("Test", "Select an effect under test first.")
-            return
-
-        try:
-            val = float(self.freeze_load_var.get().strip())
-            cost_cycles = core.calculate_probe10_cost(val)
-        except ValueError:
-            messagebox.showerror("Invalid Input", "Enter a finite freeze load reading between 0 and 60.")
-            return
-
-        core.update_effect_stage(
-            eff_name,
-            "cost-measured",
-            notes=f"Freeze load {val} -> {cost_cycles} cycles",
-            measured_cost=cost_cycles,
-        )
-        self.status_data = core.load_status()
-        self._on_test_effect_selected(None)
-        self.rescan_library()
-        messagebox.showinfo(
-            "Cost Recorded",
-            f"Recorded for {eff_name}:\nFreeze Load: {val}\nMeasured Cost: {cost_cycles:,} cycles.",
-        )
 
     def _mark_ok_save(self):
         eff_name = self.test_effect_combo.get()
