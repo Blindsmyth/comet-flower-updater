@@ -19,7 +19,7 @@ SRC = ROOT / "firmware" / "usb_audio_proto"
 OUT = ROOT / "build" / "usb_audio_proto_host"
 
 
-def build_host_library(source="host_harness.c", prefix="usb_audio_HOST_TEST_ONLY"):
+def build_host_library(source="host_harness.c", prefix="usb_audio_HOST_TEST_ONLY", src_dir=None):
     OUT.mkdir(parents=True, exist_ok=True)
     # A loaded DLL is locked on Windows and two test modules may load it in one
     # process, so every build gets its own name; stale unlocked copies are removed.
@@ -47,7 +47,7 @@ def build_host_library(source="host_harness.c", prefix="usb_audio_HOST_TEST_ONLY
         library = OUT / (stem + ".dll")
         command = [cl, "/nologo", "/TC", "/LD", "/Od", "/Oi-", "/GS-", "/Zl",
                    "/wd4068", "/Fo" + str(OUT / (stem + ".obj")),
-                   "/Fe" + str(library), str(SRC / source),
+                   "/Fe" + str(library), str((src_dir or SRC) / source),
                    "/link", "/NODEFAULTLIB", "/NOENTRY"]
     else:
         cc = shutil.which("cc")
@@ -55,7 +55,7 @@ def build_host_library(source="host_harness.c", prefix="usb_audio_HOST_TEST_ONLY
             raise RuntimeError("A local host C compiler is required for host tests")
         library = OUT / (stem + ".so")
         command = [cc, "-std=c99", "-shared", "-fPIC", "-O0",
-                   "-Wno-unknown-pragmas", str(SRC / source),
+                   "-Wno-unknown-pragmas", str((src_dir or SRC) / source),
                    "-o", str(library)]
     result = subprocess.run(command, cwd=OUT, env=env, capture_output=True, text=True)
     if result.returncode:

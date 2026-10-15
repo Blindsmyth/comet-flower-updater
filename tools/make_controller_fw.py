@@ -63,6 +63,12 @@ DIAG_HOOKS = [
     (0xc0121a18, 0x15994, 0x1ffc0a92, 0xc011fa54, "controller_diag_consumer_hook"),
 ]
 
+# OFFLINE on-pedal status screen (--ui). Stock word 100fc413 at c013c76c is
+# UpdateUI's CALLP c0144580 (Event_pend, timeout -1); never in HOOKS.
+UI_HOOKS = [
+    (0xc013c76c, 0x306e8, 0x100fc413, 0xc0144580, "controller_ui_pend"),
+]
+
 
 def callp_target(addr, word):
     cst = (word >> 7) & 0x1fffff
@@ -113,10 +119,11 @@ def run(*cmd):
     return r.stdout
 
 
-def build_payload(diag=False):
-    """diag=True builds the OFFLINE teardown-diagnostic candidate into its own
-    directory (build/controller/diag) so the lifecycle outputs are untouched."""
-    out = OUT / "diag" if diag else OUT
+def build_payload(diag=False, ui=False):
+    """diag=True builds the OFFLINE teardown-diagnostic candidate, ui=True the
+    OFFLINE on-pedal status screen; each variant gets its own directory under
+    build/controller so the lifecycle outputs are untouched."""
+    out = OUT / ("diag" if diag else "") / ("ui" if ui else "") if (diag or ui) else OUT
     out.mkdir(parents=True, exist_ok=True)
     stem = "controller_diag" if diag else "controller"
     srcs = [SRC / "controller.c", SRC / "controller_hooks.asm"]
@@ -124,11 +131,15 @@ def build_payload(diag=False):
     if diag:
         srcs += [SRC / "controller_diag.c", SRC / "controller_diag_hooks.asm"]
         objs += [out / "controller_diag.obj", out / "controller_diag_hooks.obj"]
+    if ui:
+        srcs += [SRC / "controller_ui.c"]
+        objs += [out / "controller_ui.obj"]
     cmd_file = SRC / ("controller_diag.cmd" if diag else "controller.cmd")
     run(CGT / "bin/cl6x", "--silicon_version=6740", "--abi=eabi", "--c99",
         "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
         "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
-        "--compile_only", *(["--define=CTL_DIAG"] if diag else []), *srcs)
+        "--compile_only", *(["--define=CTL_DIAG"] if diag else []),
+        *(["--define=CTL_UI"] if ui else []), *srcs)
     elf = out / (stem + ".elf")
     run(CGT / "bin/lnk6x", "--ram_model", "--map_file=%s" % (out / (stem + ".map")),
         "--output_file=%s" % elf, *objs, cmd_file)
@@ -186,14 +197,14 @@ def base_kind(base, stock):
                      "or stock with const-data edits only")
 
 
-def build(base_path, out_path, stock_path, diag=False):
+def build(base_path, out_path, stock_path, diag=False, ui=False):
     base = Path(base_path).read_bytes()
     try:
         kind = base_kind(base, Path(stock_path).read_bytes())
     except ValueError as exc:
         sys.exit(str(exc))
-    lo, img, syms = elf_image(build_payload(diag))
-    hooks = HOOKS + (DIAG_HOOKS if diag else [])
+    lo, img, syms = elf_image(build_payload(diag, ui))
+    hooks = HOOKS + (DIAG_HOOKS if diag else []) + (UI_HOOKS if ui else [])
     if lo != CTL_BASE or len(img) > CTL_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (FREE_SDRAM[0] <= lo and lo + len(img) <= FREE_SDRAM[1]):
@@ -259,5 +270,8 @@ if __name__ == "__main__":
     ap.add_argument("--diag-teardown", action="store_true",
                     help="OFFLINE diagnostic candidate (adds the c0120744 trace hook); "
                          "output is not accepted by the updater packager")
+    ap.add_argument("--ui", action="store_true",
+                    help="OFFLINE on-pedal status screen (adds the UpdateUI c013c76c pend hook); "
+                         "with --diag-teardown the screen shows the diag readout")
     a = ap.parse_args()
-    build(a.base, a.out, a.stock, a.diag_teardown)
+    build(a.base, a.out, a.stock, a.diag_teardown, a.ui)

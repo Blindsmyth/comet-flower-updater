@@ -12,7 +12,7 @@ list) and [ROADMAP.md](ROADMAP.md).
 
 - Python: `.venv/Scripts/python.exe`. Run the tests with
   `.venv/Scripts/python.exe -m pytest tests tools/test_usb_audio_proto.py -q`.
-  **233 passed, 615 subtests.** Never leave the suite red.
+  **241 passed, 615 subtests.** Never leave the suite red.
 - Lifecycle controller candidate SHA-256: `3e7f5236…28b9`. It must stay
   byte-identical; `tests/test_diag_readback.py` rebuilds it and checks the hash.
 - Commit small and often, on `master`. Do not push unless the owner asks.
@@ -110,8 +110,11 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
   indicator and workflow items are listed there.
 - **On-device UI:** the owner meant the pedal's own screen for MIDI/USB audio (item 6c),
   not CF Loader. Design, mock-ups and the Sol recon (Claude-reviewed) are done. No LEDs: the LCD only.
-  Next gate: trace `c013c4e4`'s screen switch for the 32-bit hook at `c013c4e8`, then build the diag screen.
-- Tests: **233 passed**.
+  **Built (offline):** `make_controller_fw.py --ui` (controller screen) and `--ui --diag-teardown`
+  (diag screen) hook UpdateUI's pend `c013c76c` and draw in UpdateUI's own task. Host-tested, with
+  renders from the real C. The packager refuses them. Gates: UpdateUI stack, tick period.
+  For the first pedal run, the diag-UI image shows the stack peak and the tick counter on the LCD.
+- Tests: **241 passed**.
 
 ## Offline work queue (in order)
 

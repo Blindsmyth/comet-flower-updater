@@ -63,6 +63,10 @@ void controller_diag_commit(void);
 void controller_diag_worker(u32 task);
 #endif
 
+#ifdef CTL_UI
+void controller_ui_sent(u32 control, u32 value);
+#endif
+
 #define BTN_QLEN 16u
 #pragma DATA_SECTION(tx, ".ctl_state")
 struct {
@@ -144,6 +148,10 @@ static int append_cc(u32 control, u32 value)
         else
             RING[1] = original; /* no consumer can observe a partial CC */
     }
+#ifdef CTL_UI
+    if (ok)
+        controller_ui_sent(control, value);
+#endif
     return ok;
 }
 

@@ -55,8 +55,35 @@ Rules:
 - **No firmware-driven LEDs (likely).** The LCD is the only indicator.
 - Design: producers (MainApp, AD, the MIDI worker, the USB lifecycle, the SOF counter) only store
   packed words. One UpdateUI-side wrapper draws and flushes when they change. Hook site:
-  `c013c4e8 CALLP c0156e80` (32-bit). Sol's `c013c74e` is a compact CALLP and cannot be
-  retargeted. Gate before building: trace the screen switch at `c013c4ec..`.
+  first `c013c4e8` (Sol's `c013c74e` is a compact CALLP and cannot be retargeted). The build instead
+  uses the UpdateUI pend at `c013c76c`; see "Built" below.
+
+## Built: on-pedal screen candidates (OFFLINE, DO_NOT_FLASH)
+
+`firmware/controller/controller_ui.c`; build with `tools/make_controller_fw.py --ui`
+(controller screen) or `--ui --diag-teardown` (diag screen).
+
+- **Hook:** UpdateUI's `c013c76c CALLP c0144580` (Event_pend, timeout −1, a 32-bit CALLP, p-bit
+  kept). An infinite wait becomes 50-tick slices that return only on a real event, so the caller
+  sees the same contract. In controller mode each slice is a UI tick inside UpdateUI's own task.
+  This replaces the `c013c4e8` plan: UpdateUI pends forever, so a draw-path hook alone would
+  never run without a posted event.
+- **Drawing,** with every ABI fact pinned to stock instructions by `tests/test_controller_ui.py`:
+  clear `c011f8d8(0,1)`; 5x7 glyphs `c011d2d4(ctx, ch, page, x)` (the recon had page/x swapped);
+  8x13 `c011ec48(ctx, s, x, y)`; flush exactly like UpdateUI's own render: gate `c0161200(B14[149])`
+  → `c016df00(0)` → `c016d880`. The recon's `c011e000` has no caller and is not used.
+- **Producers:** one store in `append_cc` (`controller_ui_sent`). USB comes from the worker's `PORT_STATE`
+  test; TX4 outstanding comes from the TX record. Stall = outstanding for 20 consecutive ticks while ready.
+  The panel is repainted only when something changed or a stock event ran.
+- **Diag screen:** the worker instance, the **tick counter** (`c0182054`; time it against a stopwatch
+  to measure the unproven tick period), the stack peak, USB/TX4, faults, teardowns and the last CC.
+- **Verified offline:** the real C compiles on the host with recording stubs; the draw calls,
+  rendered with the firmware fonts, give
+  ![rendered](design/ondevice_ui_fw_render_2026-10-15.png)
+  The lifecycle image is still byte-identical. The packager refuses both UI images (an extra hook).
+- **Open gates before the first pedal run:** UpdateUI stack depth (our frame plus stock draw
+  routines, which UpdateUI already calls), the tick period, and stock screens flashing briefly
+  between our repaints after stock events.
 
 ## Original open questions (recon brief `docs/helpers/ONDEVICE_UI_RECON_BRIEF.md`)
 
@@ -69,7 +96,7 @@ Rules:
 
 ## Order
 
-1. Recon: done (see above). Next, trace the `c013c4ec..` screen switch, then build.
+1. Recon: done. The controller and diag screens are built (above).
 2. Diag build first: the `diag_readout` screen. It adds value immediately for the first
    hardware run, because it reports even when MIDI TX is stalled.
 3. Controller screens, then audio screens, each as a separately hash-pinned candidate.

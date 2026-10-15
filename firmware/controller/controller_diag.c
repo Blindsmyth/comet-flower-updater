@@ -176,6 +176,19 @@ static void diag_stack(u32 *size, u32 *base, u32 *unused)
     *unused = n;
 }
 
+#ifdef CTL_UI
+/* For the on-pedal diag screen (UpdateUI task; reads only). */
+void controller_diag_ui(u32 *peak, u32 *creates, u32 *fault, u32 *teardown)
+{
+    u32 size, base, unused;
+    diag_stack(&size, &base, &unused);
+    *peak = unused == 0xffffffffu ? unused : size - unused;
+    *creates = diag_dump.creates;
+    *fault = ctl_diag.fault;
+    *teardown = ctl_diag.teardown_seen;
+}
+#endif
+
 void controller_diag_request(void)
 {
     diag_dump.req++;
