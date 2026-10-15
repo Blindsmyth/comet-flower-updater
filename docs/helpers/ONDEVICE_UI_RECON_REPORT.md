@@ -204,4 +204,31 @@ user-visible boot result.
 
 ## 5. LEDs
 
+**Finding (likely: no user/effect LEDs).**  No firmware-driven footswitch or
+effect-on LED path was found for the G1X Four.  The common GPIO output routine
+is `118093c0(pin /* A4 */, value /* B4 */)`: for value zero it writes the GPIO
+clear register at `11809418`, and for nonzero it writes the set register at
+`118093f8`.  Every direct call in this image is through a small fixed-pin
+wrapper:
+
+* GPIO92: `11809420`, repeatedly used by LCD byte transfer `11805420`.
+* GPIO64: `1180942c`, used in display/hardware initialization at `1180ab78`.
+* GPIO91: conditional wrapper `11809438`, used alongside GPIO92 in the LCD
+  command/data transfer at `11805434..118054d0`.
+* GPIO56: `1180944c`, used by the serial peripheral sequence around
+  `11809b8c..11809bc8`.
+* GPIO20/21: selector wrapper `11809458`, used by that same peripheral
+  sequence.
+* GPIO90: `11809474`, the already identified AD-converter chip select toggled
+  at `1180abd4`/`1180abf4`.
+
+There is no `LED`/backlight user-control string, no output wrapper for the
+known footswitch GPIO3/GPIO5 inputs, and no event-handler call that toggles an
+otherwise unidentified GPIO as an effect indicator.  The scoped static
+evidence therefore supports **no fitted, firmware-controllable footswitch or
+effect-on LEDs**; controller feedback must use the LCD.  Confidence:
+**likely**, not absolute, because an entirely inlined MMIO LED write or
+unmapped board signal cannot be excluded without a schematic/board test, and
+the brief forbids touching the pedal.
+
 ## 6. Hook proposal
