@@ -342,3 +342,41 @@ c01202b8   001002f6           STW.D2T2      B0,*+B4[0]
 Confidence: **confirmed** for TX table, slot range, queue values and lack of a length gate; **likely** for the higher-level MIDI IN label inherited from the endpoint map.
 
 ## 5. Verdict
+
+**Finding 5 (confirmed mechanics; verdict unknown for both sites).**
+
+- **`c0120c14`: unknown.** Its visible `c01219f4 -> c0121960 -> c0120b2c` route is completion-driven: queue 34 is popped before the routine runs, so the descriptor that triggered that route is no longer DMA-owned. However, the other immediate caller is the hidden-start kick `c0120c44`, for which no direct caller or code-address/table reference was found. That kick overwrites field [5] and submits when field [9] is `-1`; `c011fd40` can set field [9] to `-1` without touching field [5], exactly the state left by the corrected expiry scenario while a descriptor may remain owned. If this untraced kick is invoked in that state, it can submit concurrently; the static call/reference evidence does not establish whether it is invoked. Therefore neither “yes, reachable” nor “no, impossible” is proved.
+- **`c01219d0`: unknown.** Its sole caller is reached from the queue-34 consumer (`c01221a0` calls `c01219f4` with `A4=1`), so the particular descriptor that caused the event has returned from DMA. This proves it does not overlap that descriptor. But the site ignores field [5], and no checked predicate proves that a *second* descriptor for the same slot cannot remain DMA-owned. The public enqueue's one-at-a-time invariant is insufficient once `c0120c14` can create an uncounted descriptor. No concrete fully referenced trigger proves such a two-descriptor state, so “yes” is also not established.
+
+Evidence that the TX event body is invoked on queue 34 with nonzero `A4` (becoming `A15`):
+
+```text
+c012219a       4233           MVK.S2        34,B4
+c01221a0   1fff0a93           CALLP.S2      0xc01219f4,B3
+c01221a4       2626 ||        MVK.L1        1,A4
+c01221a6       c68e ||        MV.S1         A13,A6
+c01221a8       d607 ||        MV.L2X        A12,B6
+```
+
+Evidence that the consumer pops/tests the already-returned queue entry before dispatch:
+
+```text
+c01219fa       e646           MV.L1         A4,A15
+c0121a02       9256 ||        MV.D1X        B4,A4
+c0121a04   1ffc0412           CALLP.S2      0xc011fa20,B3
+c0121a18   1ffc0a92           CALLP.S2      0xc011fa54,B3
+c0121a22       a32a    [ A0]  BNOP.S1       0xc0121a38,5
+```
+
+Evidence that the reset writes fields [6], [7], [8] and [9], but not outstanding field [5]:
+
+```text
+c011fd60       0426 ||        MVK.L1        0,A0
+c011fd62       c005           STW.D2T1      A0,*B4[6]
+c011fd64       e005           STW.D2T1      A0,*B4[7]
+c011fd68       1825           STW.D2T2      B2,*B4[8]
+c011fd74       fca7 ||        MVK.L2        -1,B1
+c011fd80       3815 ||        STW.D2T2      B1,*B4[9]
+```
+
+Confidence: **confirmed** for the queue-before-dispatch ordering, reset stores, and absence of a local field-[5] gate; **unknown** for actual concurrent ownership because the kick trigger and global uniqueness invariant are not recoverable from the visible references.
