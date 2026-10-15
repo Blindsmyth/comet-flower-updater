@@ -141,7 +141,92 @@ the thunk re-doing the `[!A0]` test itself. Sound as implemented.
 
 ## 3. IF3 SETUP callback (`usb_audio.c` / `ua_glue.c`)
 
-(pending)
+**OK overall**, one minor unresolved RISK noted at the end (array-capacity
+gap, not a conflict found).
+
+**SETUP field offsets — OK.** `ua_if3_request(u32 type, const u8 *setup)`
+reads `setup[1]` (bRequest) and `setup[2]/setup[3]` (wValue lo/hi). Traced
+the dispatcher that builds `setup`: `c0135a68 ADD.L2 12,B15,B4 ; B4=&setup`
+feeds the raw 8-byte SETUP packet directly (confirmed in review 1 and
+re-checked here). Standard SETUP layout is
+`{bmRequestType,bRequest,wValue_lo,wValue_hi,wIndex_lo,wIndex_hi,
+wLength_lo,wLength_hi}`, so `setup[1]`=bRequest and `setup[2..3]`=wValue
+(the alternate-setting field for SET_INTERFACE) are the textbook-correct
+offsets.
+
+**Alt storage — OK.** `alt = setup[2] | (setup[3]<<8)` uses the *full*
+16-bit wValue, and `usb_audio_set_alt()` checks `alt > 1u` (reject) before
+any narrowing — so `wValue=0x0100` is correctly rejected, not aliased to
+alt 0 by a premature `(u8)` cast (the exact bug class the source comment
+calls out). Only on success (`usb_audio_set_alt` returns 0) does
+`ALT_ARRAY[3] = (u8)alt` run, writing `0xc011a1b0+3 = 0xc011a1b3` (computed,
+matches the compiled `MVKL 0xffffa1b3,A3` review 1 found). GET_INTERFACE
+(`c0134e68`) reads the identical base+index via `LDB *A4[A5]` with
+A4=wIndex, A5=0xc011a1b0 — same array, same addressing.
+
+**Every other request — OK, confirmed stock-or-STALL, no hang.**
+- `type != 0` (Class/Vendor/Reserved) → `NOT_HANDLED` → dispatcher's
+  `c0135a80..a86` test → STALL path `c0135ab4..c4` (`CALLP c0120ef8`,
+  `A4=0x80,B4=1`). Confirmed by direct trace.
+- `type == 0, bRequest != 11` → `NOT_HANDLED` → falls to the **unmodified**
+  stock standard-request table `c0180210+bRequest*4` (`c0135a90..aaa`).
+  This table and its handlers are untouched by the candidate (no patch in
+  `make_usb_audio_fw.py`'s PATCHES list touches `0xc0180210`..`0xc0180240`
+  or any handler body). Specifically checked two handlers for the new
+  possibility of an interface-number-indexed OOB access now that interface
+  count grew from 2 to 4:
+  - **GET_STATUS(interface)**, `c01354f8`→`c01355f0`: sets `A1=0` and falls
+    straight to the generic 2-byte canned-zero-status send
+    (`CALLP c015af48` with fixed args) — it never reads wIndex or indexes
+    any array by interface number at all. Safe regardless of interface
+    count.
+  - **SET_FEATURE(interface)**, `c01353f0`: recipient==1 (interface) always
+    ends in STALL (`c0135410 CALLP c0120ef8,B3` when the feature selector
+    is 0, or falls through to the shared `c0135430` STALL-adjacent path
+    otherwise) — wIndex is passed through only as an argument to the stall
+    call, never used as an array index.
+  Neither handler bounds-checks or array-indexes by interface number, so
+  neither is exposed to a new failure mode by IF3 existing. (CLEAR_FEATURE,
+  `c0135474`, not traced to the same depth — adjacent table entry, same
+  STALL-for-undefined-interface-feature shape expected by pattern; not
+  independently confirmed.)
+  - GET_INTERFACE/SET_INTERFACE (bRequest 10/11, reached when IF3's own
+    callback returns NOT_HANDLED for bRequest!=11, i.e. never in practice
+    since 11 is always intercepted — this table path for 10/11 is in fact
+    only reachable for OTHER interfaces, not IF3) were already covered by
+    review 1.
+
+**`c015af48` ACK argument convention — confirmed fits IF3, traced to the
+callee's actual use of the arguments, not just register-matching.** Both
+the MIDI callback (`c0151f5a..74`: `A4=128,B4=0,A6=0,B6=0,A8=-2,A10=0,
+B8=0`) and `ua_ep0_ack` pass identical values. Traced what `c015af48` does
+with them: it renames A6(in)->A1, B6(in)->B2, A8(in)->A3, B8(in)->B1,
+A10(in)->A5, and **A4(in)=128 -> new B4**, then branches on `A1==0` (true
+for both callers, since both pass A6=0) straight past the A4-rewrite block
+to `c015af78`, and ultimately calls `c01387f0` with `B4` still carrying the
+128 plus a freshly computed `A6=B15+4` and `A4=4`. None of the 7 arguments
+or anything derived from them references an interface number, endpoint
+number, or any MIDI-specific data — the whole call is a generic "complete
+this control transfer's status stage" primitive (zero-length ACK),
+identical for any standard request with no data stage. Since SET_INTERFACE
+never has a data stage regardless of which interface is targeted, this
+convention is interface-agnostic by construction, not coincidentally
+borrowed from MIDI. Confidence: confirmed.
+
+**Minor RISK, unresolved (array capacity):** `ALT_ARRAY`/`0xc011a1b0` is a
+byte array indexed directly by interface number with **no bounds check in
+either GET_INTERFACE or SET_INTERFACE** (`c0134e8c`/`c013596e`, both plain
+`LDB/STB *A4[A5]` with no range test against a stock "interface count").
+This is a pre-existing stock property, not introduced by the candidate —
+stock already lets any wIndex value index this array unchecked. Grepped all
+of `main.dis` for other references near this base: nothing else reads or
+writes offset+2 or +3 (`0xc011a1b2`/`a1b3`) for an unrelated purpose, but a
+different structure at offset+8 (`0xc011a1b8`, used at `c016176c`/
+`c0161840`/`11818d08`) is confirmed live. The actual capacity of the
+alt-array between offset 2 and offset 8 was not independently proven (no
+stock code was found that reads/writes offsets 4-7 either). No conflict
+found by the grep I could run, but "no conflict found" is weaker than
+"proven safe". Confidence: likely OK, not confirmed.
 
 ## 4. Anything else found
 
