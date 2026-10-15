@@ -43,4 +43,5 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
 
 - Step 2 prerequisite review was handed to Argon via bridge/to_argon.md (clipboard). When bridge/from_argon/ has a response, ingest per .agents/rules/argon-bridge.md: execute its FLASH_3.8_ACTION_PLAN, spot-check its Evidence addresses against build/fw/map/main.dis, then run tests.
 
-- tools/argon_bridge.py automates the Argon round trip (Playwright over CDP to a logged-in Chrome). First: --launch, log in, pick Argon; then run without args; --dry-run to test. Untested against the live Gemini UI: if it fails, fix SELECTORS in the script, don't redesign. Response lands in bridge/from_argon/response.md; then ingest per the Argon rule.
+
+- Browser automation of Gemini was REMOVED on purpose (ToS/account risk). Do NOT recreate it. Argon round trips are manual: clipboard out (bridge/to_argon.md), user saves reply to bridge/from_argon/response.md.
