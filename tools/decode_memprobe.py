@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decode the CF diagnostics' tone code (CF MEMPRB, CF RATT, CF 808T) from a recording.
+"""Decode the CF diagnostics' tone code (CF MEMPRB, CF RATT, CF 808T, CF ClkT) from a recording.
 
   python tools/decode_memprobe.py <recording.wav> [channel]
 
@@ -41,6 +41,49 @@ def show_timing(w):
         print("  mean TSCL delta between calls: %.0f counts (not yet a proven full-block budget)" % period)
         print("  -> equivalent %.1f MHz if TSCL runs continuously between 16-frame calls; kernel cold / delta = %.1f%%"
               % (period * 44100 / 16 / 1e6, 100.0 * cold / period))
+
+
+FRAME_BLOCKS = 21582          # one tone-code frame = 345312 samples = 21582 blocks
+OSC_HZ, BLOCK_S = 19.2e6, 16 / 44100.0
+
+
+def clock_report(w):
+    """CF ClkT frame (effects/clkt/clkt.c) -> dict of derived numbers."""
+    n = max(w[2], 1)
+    tscl, tim = w[3] / n, w[4] / n
+    div = lambda b: (b & 0x1f) + 1 if b & 0x80 else 1
+    prediv, postdiv, plldiv1 = div(w[6] & 0xff), div(w[6] >> 8 & 0xff), div(w[6] >> 16 & 0xff)
+    pllctl = w[6] >> 24
+    pll_on = bool(pllctl & 1)
+    sysclk1 = OSC_HZ * ((w[5] & 0x1f) + 1) / prediv / postdiv / plldiv1 if pll_on else OSC_HZ / plldiv1
+    budget = sysclk1 * BLOCK_S
+    load = w[8] / FRAME_BLOCKS
+    return {
+        "deltas": w[2], "tscl_per_block": tscl, "tim_per_block": tim,
+        "tim_expected": OSC_HZ * BLOCK_S, "tscl_hz_vs_osc": tscl / tim * OSC_HZ if tim else 0.0,
+        "pllm": w[5], "pll_enabled": pll_on, "sysclk1_hz": sysclk1, "budget_cycles": budget,
+        "pdccmd": w[7], "gempd": bool(w[7] >> 16 & 1), "load_iters": w[10],
+        "load_cycles": load, "load_cycles_per_iter": load / w[10] if w[10] else 0.0,
+        "tim_wrap": w[9], "busy_fraction": tscl / budget if budget else 0.0,
+    }
+
+
+def show_clock(w):
+    r = clock_report(w)
+    print("  clock diagnostic 'CLKT': %d block deltas in this frame" % r["deltas"])
+    print("  TIM12 (19.2 MHz osc) per block: %.1f (expected %.1f)" % (r["tim_per_block"], r["tim_expected"]))
+    print("  TSCL per block: %.0f  -> %.1f MHz of TSCL per oscillator second"
+          % (r["tscl_per_block"], r["tscl_hz_vs_osc"] / 1e6))
+    print("  PLLC0: PLLM %d, PLL %s -> SYSCLK1 %.1f MHz, %.0f cycles per block"
+          % (r["pllm"], "on" if r["pll_enabled"] else "BYPASSED", r["sysclk1_hz"] / 1e6, r["budget_cycles"]))
+    print("  PDCCMD 0x%08x (GEMPD %d)  TIM12 wrap %s" % (r["pdccmd"], r["gempd"],
+                                                        r["tim_wrap"] or "2^32"))
+    if r["load_iters"]:
+        print("  load: %d iterations, %.0f TSCL cycles (%.2f per iteration)"
+              % (r["load_iters"], r["load_cycles"], r["load_cycles_per_iter"]))
+    print("  TSCL per block / SYSCLK1 budget = %.1f%%. Compare two Load settings: if TSCL per"
+          % (100 * r["busy_fraction"]))
+    print("  block rises by the load cycles, TSCL stops in IDLE and this is the busy share.")
 
 
 def read_wav(path):
@@ -185,6 +228,9 @@ def main(a):
     for t, w, ok in frames:
         print("\nframe at %.2f s: %s" % (t, "OK" if ok else "BAD (magic/check mismatch)"))
         if not ok:
+            continue
+        if w[0] == 0xCF0071ED and w[1] == 0x434c4b54:
+            show_clock(w)
             continue
         if w[0] == 0xCF0071ED:
             show_timing(w)

@@ -1,0 +1,21 @@
+{
+  "name": "CF ClkT",
+  "filename": "CLKT",
+  "id": "07000f88",
+  "version": "1.00",
+  "display": "CF ClkT",
+  "badge": "CF",
+  "description": "Clock and block-budget diagnostic: per block it reads TSCL and the TIMER64P0 counter (19.2 MHz oscillator), times a knob-set busy loop, and once per frame reads PLLC0 and PDCCMD. Reports by tone code (tools/decode_memprobe.py). Mutes the guitar. Never save it in a patch.",
+  "dspload": 10,
+  "allow_any_id": true,
+  "kernel": "clkt.c",
+  "kernel_section": "text",
+  "state_bytes": 128,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Load", "max": 100, "default": 0,
+      "explanation": "Busy loop: knob x 200 dependent multiply-adds per block, timed by TSCL." },
+    { "name": "Level", "max": 100, "default": 50,
+      "explanation": "Tone level (0..0.5 of full scale)." }
+  ]
+}
