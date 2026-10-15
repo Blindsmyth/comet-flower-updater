@@ -100,3 +100,36 @@ Resolved "Unproved" 1, 2, 3, 4 from section 5 (decode from `main.dis`; still no 
 - Limits: this site only sees entries the abort loop pops. A teardown moved to queue 32 by the Hwi (item 3) is *not*
   observed here — a second observer in the Hwi consumer or at the queue-32 consumer (`c0121a18..24`) would be needed.
   Stack gate still open: thunk adds 80 B + the C callee frame to the abort path.
+
+## 8. Second observer: queue 32..35 consumer (third pass, same day)
+
+Evidence is `build/fw/map/main.dis`; no hardware run. **DO_NOT_FLASH.** Observer only, still not packageable.
+
+- **Hwi hook sites are not hookable.** `c011fb74` and `c011fb7a` (the Hwi consumer's pushes to queues 32/34 via `c011fa70`) are
+  16-bit compact CALLPs (`f11b`, 10-bit displacement); a retarget to the controller image at `c01a0000` cannot reach, and widening
+  to 32 bits would change the fetch-packet header layout. Same for `c011fcb8`/`c011fcc0` (callers of `c011faa0`). Rejected.
+- **Consumer function `c01219f4`** (prologue `CALLP c016e020,A3` at `c01219f4`) takes `B4` = queue, `A4` = flag (saved in A15,
+  later `A6` for the recycle), `A6`/`B6` = other args (saved in A12/A11). Callers set `B4` with MVK:
+  `c0121e82` -> 33 (call `c0121e84`), `c0121e94` -> 32 (`c0121e96`), `c012218c` -> 35 (`c012218e`), `c012219a` -> 34 (`c01221a0`).
+- **Pop and test.** `c0121a04` `CALLP c011fa20` with `A4 = B4` (queue pop, `MV.D1X B4,A4` at `c0121a02`); `c0121a0a` skips to
+  `c0121a18` when not empty; `c0121a0c` `MV A4,A2` (idx).
+- **Hook row.** `c0121a18` = `CALLP c011fa54` (type==16 test), 32-bit word `1ffc0a92` at file offset `0x15994` (AIS section lookup),
+  parallel bit clear. At that point `A4 = A2 = idx`, `B4` = queue (untouched by `c011fa20`, which writes A0/A1/A2/A4/A5/B0).
+- **What stock does next.** `c0121a20 MV A4,A0; c0121a22 [A0] BNOP c0121a38`: type==16 continues at `c0121a38`; otherwise falls
+  through to `c0121a24 CALLP c0120550` (recycle, `B4=0`, `A6=A15`, `B6=0`, `A4=A2`). So **every popped entry with type != 16, incl.
+  a type-19 teardown moved to queue 32 by the Hwi (section 6 item 3), is recycled here with no teardown association check.**
+  This is the consumer-side half of the ownership gap; whether it executes on hardware is unmeasured.
+- **Implementation.** `controller_diag_consumer_hook` (`controller_diag_hooks.asm`, own section `.text:diag_consumer`, retained and
+  placed in `controller_diag.cmd`) saves the same registers as site 1 plus A4, calls `controller_diag_consumer(idx, queue)`, restores,
+  then tail-calls `c011fa54`. Stock `c011fa54` clobbers only A0, A1, A4, B0 (decoded at `c011fa54..fa6c`).
+  A16-A31/B16-B31 are save-on-call in the TI ABI, so the C callee clobbering them is ABI-legal across a call site.
+- **Ring semantics changed.** One shared ring (24 entries), now 6-word header (+counters `consumer_pops`, `consumer_other`):
+  424 B in `.ctl_state`. Only type != 16 pops are logged at site 2 (type-16 pops are counted), so normal traffic does not flood
+  the ring. Tag aux byte = slot (site 1) or queue (site 2). New sticky bit `0x8` = type-19 popped by the consumer.
+  Because the consumer's context (task vs Hwi) is **unproved**, every update runs between `DINT` and `MVC B9,CSR`
+  (compiled form verified in `build/controller/diag/controller_diag.dis`: no `__c6xabi_*` calls).
+- **Build.** `--diag-teardown` payload 4000 B (vs 2880 B lifecycle); lifecycle build still SHA `3e7f5236...28b9`.
+  Tests: `tests/test_diag_teardown_hook.py` (stock disassembly pin for both sites, row distinctness, full diag build reaches both
+  thunks, host ring model). Full suite 167 passed, 471 subtests.
+- **Still open.** Stack gate (thunk adds 80 B + C frame in whichever context runs the consumer); the Hwi push to queue 32/34 itself
+  is not observed (only its consumer side); entry-to-endpoint association (`word0[5:0]` mapping verified for slot 4 only).

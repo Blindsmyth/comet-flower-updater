@@ -59,6 +59,8 @@ HOOKS = [
 # c0120744 is CALLP c011fa54 (type==16 test) inside the abort drain loop.
 DIAG_HOOKS = [
     (0xc0120744, 0x146c0, 0x1ffe6292, 0xc011fa54, "controller_diag_teardown_hook"),
+    # Site 2: CALLP c011fa54 (type==16 test) in the queue 32..35 consumer c01219f4.
+    (0xc0121a18, 0x15994, 0x1ffc0a92, 0xc011fa54, "controller_diag_consumer_hook"),
 ]
 
 

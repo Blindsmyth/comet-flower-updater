@@ -63,13 +63,26 @@ superseded by this continuation.
   Added input-hashed JSON reports and disassembly-pinned callback observations.
 - Traced the `c0150bf8` and formatter callback slots, three registration
   arguments for `c0183aec`, and the separate ready/switch hook fields.
-- Added 14 regressions for the analysis failure modes and report interface.
-  Full suite: **123 tests and 2 subtests passed**.
+- Verified worker wait tail-call thunk (`c0149d4c` CALLP `c014a0cc`), preserving
+  worker SP across `EVENT_WAIT` and tail-calling `controller_worker_pump`.
+- Decoded USB abort drain loop (`c0120734..0762`, queue 25) and deferred queue
+  32..35 consumer (`c01219f4` / `c0121a04..1a38`); detailed in
+  `docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md`.
+- Implemented offline USB teardown diagnostic candidate (`--diag-teardown`), adding
+  dual observer hooks at `c0120744` (site 1, abort drain) and `c0121a18` (site 2,
+  queue 32..35 consumer), recording pops, recycles, timestamps, and sticky fault
+  flags into a 24-entry ring (`ctl_diag`, 408 B in `.ctl_state`) guarded by `DINT`/`RINT`.
+  Lifecycle candidate remains byte-identical (`3e7f5236...28b9`).
+- Created offline host decoder `tools/decode_ctl_diag.py` to inspect memory dumps
+  containing `ctl_diag` (JSON and formatted table modes).
+- Full suite: **168 passed, 471 subtests passed**.
 
 Details and next instruction-level work:
-[STACK_CONTINUATION_2026-10-14.md](docs/helpers/STACK_CONTINUATION_2026-10-14.md).
+[STACK_CONTINUATION_2026-10-14.md](docs/helpers/STACK_CONTINUATION_2026-10-14.md),
+[USB_TEARDOWN_DECISION_2026-10-14.md](docs/helpers/USB_TEARDOWN_DECISION_2026-10-14.md),
+[USB_TEARDOWN_PATCH_SITES_2026-10-14.md](docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md).
 The former **1,784-byte ceiling is withdrawn**; there is no verified worker
-stack margin. No firmware source, candidate artifact or device was changed.
+stack margin. No firmware was flashed or updater executed.
 The original untracked `.agents/` and `bridge/` directories were preserved.
 
 ## Continue from this point
@@ -81,11 +94,16 @@ The original untracked `.agents/` and `bridge/` directories were preserved.
    lifecycle review using the current lifecycle candidate. Poll/lock timing
    remains unmeasured. Prioritize teardown descriptor association, Hwi exclusion
    or safe coexistence, and poll-expiry ownership using the abort follow-up.
-3. If firmware changes become necessary, rebuild and package a new named
+3. For hardware runtime diagnosis, prepare a bounded owner-run procedure using
+   the diagnostic candidate (`--diag-teardown`) and `tools/decode_ctl_diag.py`
+   to capture `ctl_diag` state upon disconnect/reconnect events. Keep the
+   distinction between this observer-only diagnostic and an ownership fix explicit.
+4. If firmware changes become necessary, rebuild and package a new named
    candidate, then verify its exact identity and updater stages.
-4. Prepare a bounded owner-run MIDI test after the offline gates close;
+5. Prepare a bounded owner-run MIDI test after the offline gates close;
    flashing remains a separate owner decision. Then proceed to USB audio.
 
 Current candidate identity and complete verifier commands:
 [CONTROLLER_LIFECYCLE_CANDIDATE_2026-10-13.md](docs/CONTROLLER_LIFECYCLE_CANDIDATE_2026-10-13.md).
 **DO_NOT_FLASH remains in effect.**
+

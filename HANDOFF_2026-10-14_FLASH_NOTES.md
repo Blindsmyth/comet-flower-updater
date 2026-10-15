@@ -52,3 +52,10 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
 - See sections 6-7 of docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md. Build: tools/make_controller_fw.py --diag-teardown. Offline only, observer only, NOT packageable.
 - Tests: tests/test_diag_teardown_hook.py. Baseline now 160 + 3.
 - Remaining ideas in order: (a) second observer at the Hwi consumer move-to-queue-32 (c011fb74/c011fb7a, both 16-bit-compact CALLP? check width first) or queue-32 consumer c0121a18..24; (b) host-side model test of ring semantics; (c) update HANDOFF_2026-10-14_LEAD.md Continue list; (d) owner-run test prep (flash decision is the owner's).
+
+### Later 2026-10-14 (Claude): second observer done (idea (a))
+- Hwi push sites c011fb74/fb7a are 16-bit compact CALLPs: not hookable. Used queue 32..35 consumer site c0121a18 (32-bit CALLP c011fa54, file offset 0x15994) instead. See section 8 of docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md. Ring updates now run with interrupts disabled (consumer context unproved). Lifecycle build unchanged (3e7f5236...28b9). Baseline now 167 passed, 471 subtests.
+- Added tools/decode_ctl_diag.py host decoder (text table + JSON) and tests/test_diag_teardown_hook.py test. Baseline: 168 passed, 471 subtests.
+- Updated HANDOFF_2026-10-14_LEAD.md "Work completed" and "Continue from this point".
+- Remaining: (d) owner-run test prep (document procedure for acquiring/decoding ctl_diag; flash decision is owner's).
+

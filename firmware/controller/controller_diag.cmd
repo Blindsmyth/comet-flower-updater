@@ -5,6 +5,7 @@
 --retain="*(.text:dispatch)"
 --retain="*(.text:worker_wait)"
 --retain="*(.text:diag_teardown)"
+--retain="*(.text:diag_consumer)"
 --retain="*(.ctl_state)"
 MEMORY {
     CTL: o = 0xc01a0000, l = 0x4000
@@ -15,6 +16,7 @@ SECTIONS {
     .text:dispatch > CTL
     .text:worker_wait > CTL
     .text:diag_teardown > CTL
+    .text:diag_consumer > CTL
     .const     > CTL
     .fardata   > CTL
     .far       > CTL
