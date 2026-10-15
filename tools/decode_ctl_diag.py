@@ -147,7 +147,7 @@ def decode_cc_stream(pairs):
     words = words_from_cc(pairs)
     if len(words) < 2 or words[0] != DUMP_MAGIC:
         raise ValueError("readback frame does not start with DMP1 magic")
-    if words[1] != len(words) - 2 or words[1] != DUMP_DIAG_WORDS + 4 * len(DUMP_TX_FIELDS) + 3:
+    if words[1] != len(words) - 2 or words[1] != DUMP_DIAG_WORDS + 4 * len(DUMP_TX_FIELDS) + 4:
         raise ValueError(f"readback word count {words[1]} does not match frame ({len(words) - 2})")
     body = words[2:]
     report = decode_diag(struct.pack(f"<{DUMP_DIAG_WORDS}I", *body[:DUMP_DIAG_WORDS]), 0)
@@ -158,9 +158,9 @@ def decode_cc_stream(pairs):
         tx[slot] = {"field2_enabled": f[2], "field3_state": f[3],
                     "field5_outstanding": f[5], "field9": f[9] - (1 << 32) if f[9] >> 31 else f[9]}
     report["tx_records"] = tx
-    size, base, unused = body[k:k + 3]
+    size, base, unused, creates = body[k:k + 4]
     report["worker_stack"] = {
-        "size": size, "base": hex(base),
+        "size": size, "base": hex(base), "worker_creations": creates,
         "unused_fill_bytes": None if unused == 0xFFFFFFFF else unused,
         "peak_used_bytes": None if unused == 0xFFFFFFFF else size - unused,
     }
@@ -195,6 +195,8 @@ def format_diag_text(diag):
         else:
             lines.append(f"Worker stack:    peak {w['peak_used_bytes']} of {w['size']} bytes used "
                          f"({w['unused_fill_bytes']} untouched 0xbe bytes above base {w['base']})")
+        lines.append(f"                 worker instance #{w['worker_creations']} this boot; the mark "
+                     f"resets when a new transport creates a new worker")
     lines.append("")
     if diag["entries"]:
         header = f"{'Seq':>5} {'Site':<35} {'Aux':>5} {'Idx':>5} {'Word0':>10} {'Type':>5} {'Ch':>4} {'TSCL':>10}"

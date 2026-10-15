@@ -122,9 +122,13 @@ void controller_diag_consumer(u32 idx, u32 queue)
      CC119=1                          end
    Words: DUMP_MAGIC, word count, Diag (102 words), then for TX slots 1..4 the
    record (0xc011297c + 0x2a8*N) fields [2],[3],[5],[9], then the MIDI worker
-   stack: size (task word 7), base (task word 8), and the count of untouched
+   stack: size (task word 7), base (task word 8), the count of untouched
    0xbe fill bytes up from the base (high-water mark; c016e300 is the stock
-   check of the base byte against 0xbe; c0152878..2910 stores size/base). The
+   check of the base byte against 0xbe; c0152878..2910 stores size/base), and
+   the number of workers created this boot. Every Task_create fills the whole
+   new stack with 0xbe (c015f820 -> c016b140, gated by the halfword at
+   c0181ac4), and each new transport creates a new worker, so the mark covers
+   only the current worker instance, not earlier connections. The
    scan runs only if size == 0x800 (the worker descriptor's request) and the
    base lies in DDR; otherwise the count is 0xffffffff. Field [5] stuck
    nonzero after a reconnect is the liveness signature from
@@ -134,7 +138,7 @@ void controller_diag_consumer(u32 idx, u32 queue)
 #define DUMP_MAGIC 0x31504d44u                 /* 'DMP1' */
 #define DIAG_WORDS (sizeof(Diag) / 4u)
 #define TXREC(n) ((volatile u32 *)(0xc011297cu + 0x2a8u * (n)))
-#define DUMP_WORDS (2u + DIAG_WORDS + 16u + 3u)
+#define DUMP_WORDS (2u + DIAG_WORDS + 16u + 4u)
 #define DUMP_CCS (5u * DUMP_WORDS + 2u)
 
 #pragma DATA_SECTION(diag_dump, ".ctl_state")
@@ -143,12 +147,14 @@ struct {
     u32 seen;           /* worker: last req snapshotted */
     u32 pos;            /* next CC index; DUMP_CCS when idle */
     u32 worker;         /* task handle returned by the worker create */
+    u32 creates;        /* worker creations this boot (the mark resets on each) */
     u32 w[DUMP_WORDS];
-} diag_dump = { 0, 0, DUMP_CCS, 0 };
+} diag_dump = { 0, 0, DUMP_CCS, 0, 0 };
 
 void controller_diag_worker(u32 task)
 {
     diag_dump.worker = task;
+    diag_dump.creates++;
 }
 
 static void diag_stack(u32 *size, u32 *base, u32 *unused)
@@ -191,6 +197,7 @@ static void diag_snapshot(void)
     }
     _restore_interrupts(csr);
     diag_stack(&diag_dump.w[k], &diag_dump.w[k + 1], &diag_dump.w[k + 2]);
+    diag_dump.w[k + 3] = diag_dump.creates;
 }
 
 /* Next CC to send, if any. A new request restarts from a fresh snapshot. */

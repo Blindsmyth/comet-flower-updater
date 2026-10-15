@@ -30,7 +30,7 @@ def fw_stream(words):
     return out
 
 
-def snapshot(diag_words, tx, stack=(0x800, 0xc0300000, 0x500)):
+def snapshot(diag_words, tx, stack=(0x800, 0xc0300000, 0x500, 2)):
     body = list(diag_words)
     for slot in range(1, 5):
         body += tx[slot]
@@ -82,10 +82,12 @@ class DiagReadback(unittest.TestCase):
         self.assertIn("outstanding[5]=1", dcd.format_diag_text(rep))
         self.assertEqual(rep["worker_stack"]["peak_used_bytes"], 0x800 - 0x500)
         self.assertIn("peak 768 of 2048", dcd.format_diag_text(rep))
+        self.assertEqual(rep["worker_stack"]["worker_creations"], 2)
+        self.assertIn("worker instance #2", dcd.format_diag_text(rep))
 
     def test_stack_guard_failure_reported(self):
         words = snapshot([dcd.MAGIC] + [0] * 101, {s: [0] * 4 for s in range(1, 5)},
-                         stack=(0, 0, 0xFFFFFFFF))
+                         stack=(0, 0, 0xFFFFFFFF, 1))
         rep = dcd.decode_cc_stream(fw_stream(words))
         self.assertIsNone(rep["worker_stack"]["peak_used_bytes"])
         self.assertIn("not measured", dcd.format_diag_text(rep))
@@ -101,6 +103,25 @@ class DiagReadback(unittest.TestCase):
             self.assertRegex(text, r"(?m)^c016e300\s+\S+\s+LDB\.D1T1\s+\*\+A4\[0\],A3")
             self.assertRegex(text, r"(?m)^c016e304\s+\S+\s+MVK\.S1\s+0xffffffbe,A4")
             self.assertRegex(text, r"(?m)^c0160680\s+\S+\s+\|\|\s+\[ A0\]\s+LDW\.D1T1\s+\*\+A10\[8\],A4")
+
+    def test_every_task_stack_is_filled_at_create(self):
+        # Task instance init c015f800 calls c016b140, which (flag c0181ac4 set)
+        # stores 0xbe over task[7] bytes from task[8]. So each re-created worker
+        # starts from a fresh fill: the readback carries a creation count.
+        self.assertIn("diag_dump.creates++;", DIAG_C)
+        self.assertIn("diag_dump.w[k + 3] = diag_dump.creates;", DIAG_C)
+        dis = ROOT / "build" / "fw" / "map" / "main.dis"
+        if not dis.exists():
+            self.skipTest("main.dis not available")
+        text = dis.read_text(errors="replace")
+        for pat in (r"^c015298c\s+\S+\s+CALLP\.S2\s+0xc015f800,B3",
+                    r"^c015f820\s+\S+\s+CALLP\.S2\s+0xc016b140,B3",
+                    r"^c016b144\s+\S+\s+MVK\.S1\s+0x1ac4,A3",
+                    r"^c016b158\s+\S+\s+\|\|\s+\[ A0\]\s+LDW\.D1T1\s+\*\+A5\[7\],A0",
+                    r"^c016b160\s+\S+\s+\[ A1\]\s+MVK\.S1\s+0xffffffbe,A3",
+                    r"^c016b164\s+\S+\s+\[ A1\]\s+LDW\.D1T1\s+\*\+A5\[8\],A4",
+                    r"^c016b178\s+\S+\s+STB\.D1T1\s+A3,\*A4\+\+\[1\]"):
+            self.assertRegex(text, "(?m)" + pat)
 
     def test_rejects_truncated_frame(self):
         words = snapshot([dcd.MAGIC] + [0] * 101, {s: [0] * 4 for s in range(1, 5)})
