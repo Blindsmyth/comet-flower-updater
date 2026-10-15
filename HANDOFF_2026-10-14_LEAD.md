@@ -115,25 +115,31 @@ The original untracked `.agents/` and `bridge/` directories were preserved.
 
 ## Continue from this point
 
-1. Continue from the 60 reviewed physical extents. Resolve remaining indirect
-   targets and model live save-helper frames and context transitions. No cycles
-   in an incomplete ordinary-call graph does not establish a worker-stack bound.
-2. Complete USB downstream ownership, readiness aliases and lock/handle
-   lifecycle review using the current lifecycle candidate. Poll/lock timing
-   remains unmeasured. Prioritize teardown descriptor association, Hwi exclusion
-   or safe coexistence, and poll-expiry ownership using the abort follow-up.
-   *Update 2026-10-15:* descriptor ownership under coexistence and q25
-   expiry are resolved. Endpoint association has been narrowed: it needs a prior
-   expiry. Next: obligation 4 (post-expiry recovery / reuse) and the op-8
-   producer.
-3. For hardware runtime diagnosis, prepare a bounded owner-run procedure using
-   the diagnostic candidate (`--diag-teardown`) and `tools/decode_ctl_diag.py`
-   to capture `ctl_diag` state upon disconnect/reconnect events. Keep the
-   distinction between this observer-only diagnostic and an ownership fix explicit.
-4. If firmware changes become necessary, rebuild and package a new named
-   candidate, then verify its exact identity and updater stages.
-5. Prepare a bounded owner-run MIDI test after the offline gates close;
-   flashing remains a separate owner decision. Then proceed to USB audio.
+**State at 2026-10-15 (Claude, with Sol and Gemini helpers).** The four USB abort
+obligations in `docs/helpers/USB_ABORT_OWNERSHIP_2026-10-14.md`:
+
+| # | Status | Doc |
+|---|---|---|
+| 1 template writers | narrowed: no instruction writer | USB_TX_TEMPLATE_WRITERS_2026-10-15 |
+| 2 Hwi coexistence | ownership resolved (single owner); entry state likely GIE=1 | USB_HWI_COEXISTENCE / USB_ABORT_ENTRY_IRQ |
+| 3 q25 association | narrowed: needs a prior expired poll; diag detects it (0x2) | USB_Q25_ASSOCIATION |
+| 4 expiry recovery | counted mode: no premature reuse; **liveness risk**: stuck [5] stalls the slot | SOL_EXPIRY_RECOVERY_REPORT (Claude review) |
+
+Ring mode (TX field [2] != 0) has a separate double-chain risk; see
+SOL_DIRECT_SUBMITTERS_REPORT (Claude review). The diag build now has a MIDI
+readback (both footswitches), so the owner test in
+OWNER_DIAG_TEST_PREP_2026-10-15 can produce data.
+
+1. Stack gate, unchanged: continue from the 60 reviewed physical extents.
+   Resolve the indirect targets, then model the save-helper frames and context
+   transitions. A graph without cycles is not a bound.
+2. USB: review `SOL_TX_MODE_REPORT.md` (in progress; which slots use ring mode,
+   the kick caller, ring setup) and `GEMINI_OP8_REPORT.md` (in progress; op-8
+   producer). Both feed the USB-audio design.
+3. Decide whether the counted-mode liveness risk needs a fix candidate, or
+   first an owner diag run to see whether it happens (recommended: run the
+   diag first).
+4. Then: the owner-run MIDI test (owner's decision), then USB audio.
 
 Current candidate identity and complete verifier commands:
 [CONTROLLER_LIFECYCLE_CANDIDATE_2026-10-13.md](docs/CONTROLLER_LIFECYCLE_CANDIDATE_2026-10-13.md).
