@@ -183,3 +183,33 @@ endpoint/class roles was found in this pass) — **unknown**.
 
 
 ## 5. Verdict for USB audio
+
+**Verdict (confidence: likely, synthesized from §1-§4).** A complete stock ring-mode TX chain exists
+in the code and is reachable — the mode branch, the kick, and the completion-driven resubmit are all
+real, live instructions, not stubs — but **no slot currently runs in ring mode**, because nothing in
+this firmware image ever stores a nonzero value into any slot's field [2] (§1). So an ISO IN stream
+cannot simply "turn on" ring mode on an existing slot; it would need to be switched on by a patch.
+
+What reusing it would require, concretely:
+1. **Pick a slot in {1,2,3,4}** (0 is excluded from all mode logic, §4). Slot identity-to-USB-role
+   (which one is audio, which is MIDI) is **unknown** from this pass — not established in
+   `recon/map/chunk_*.md` and not inferable from the instructions traced here.
+2. **Set that slot's field [2] nonzero**, once, after any call to `usb_ep_tables_clear_all` (`c011fe70`,
+   §1) — that function will zero it again on every controller (re)init, so the write must happen
+   after init, or that clear path must be special-cased for the chosen slot.
+3. **Populate the ring array** at `record_base(N)+0x168` with buffer-pointer entries (content/layout of
+   an entry beyond "a value copied through field [7]" was not determined — §3, Finding 3a).
+4. **Set field [8]** to the ring length (entry count) and **field [9] to -1** (idle) so the first call
+   to the kick `c0120c44` performs the initial `usb_tx_desc_prepare` (§2, Finding 2b); each subsequent
+   queue-34 completion then advances the index and resubmits via the `c011faa0` logic (§3).
+5. **Set field [7]** to point at wherever the fetched ring entry should land for the next submit step
+   — this pass did not trace what consumes that location downstream.
+6. Resolve the open item from Finding 3a: confirm where (if anywhere) the advanced ring index actually
+   gets written back to field [9], since the window traced here computes it but does not visibly store
+   it — needed before relying on this path for real traffic.
+
+Everything needed to **drive** a ring chain (kick, advance, completion routing) is present and
+reachable; what's missing/unverified is (a) a working field [9]-write to commit the index advance,
+(b) the ring entry's actual field layout, and (c) which physical slot corresponds to the USB-audio ISO
+IN endpoint. None of (a)-(c) were resolved in this pass.
+
