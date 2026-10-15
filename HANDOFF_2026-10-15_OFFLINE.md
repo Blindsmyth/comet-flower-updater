@@ -12,7 +12,7 @@ list) and [ROADMAP.md](ROADMAP.md).
 
 - Python: `.venv/Scripts/python.exe`. Run the tests with
   `.venv/Scripts/python.exe -m pytest tests tools/test_usb_audio_proto.py -q`.
-  **206 passed, 615 subtests.** Never leave the suite red.
+  **226 passed, 615 subtests.** Never leave the suite red.
 - Lifecycle controller candidate SHA-256: `3e7f5236…28b9`. It must stay
   byte-identical; `tests/test_diag_readback.py` rebuilds it and checks the hash.
 - Commit small and often, on `master`. Do not push unless the owner asks.
@@ -23,7 +23,7 @@ list) and [ROADMAP.md](ROADMAP.md).
 |---|---|---|
 | USB MIDI controller (B1) | The 7-hook lifecycle build is verified. The USB abort review is complete (below). | Run the diag build first, then the MIDI test. |
 | USB audio (C) | Silence candidate: two reviews; the STRING bug was fixed and review 2 found no bug. Real-audio tap candidate built (`--tap`, 17 tests). | Enumeration test after B1 passes, then the tap test. |
-| Effects, 5 slots (B2/D) | CF 808/RAT/Muff/TS exist. DR103 needs a redesign. Budget very likely 132.4k cycles per block; 50.6k is busy cycles (TSCL stops in IDLE). CF ClkT is built to confirm. | Run CF ClkT (`docs/CYCLE_BUDGET_2026-10-15.md`), then a full patch. |
+| Effects, 5 slots (B2/D) | CF 808/RAT/Muff/TS exist. DR103 redesigned: it fits, ~36k static. Budget very likely 132.4k cycles per block; 50.6k is busy cycles (TSCL stops in IDLE). CF ClkT is built to confirm. | Run CF ClkT (`docs/CYCLE_BUDGET_2026-10-15.md`), then a full patch. |
 | Slot-0 residency (B4) | The patch is ready and hash-pinned. | Heavy-effect test. |
 | Patch tool (E) | Not started. | — |
 
@@ -80,6 +80,22 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
   and Load 50 against the 19.2 MHz TIMER64P0.
 - Tests: **226 passed**.
 
+## Session 3 (2026-10-15 evening): queue item 6, DR103 redesign done offline
+
+`docs/DR103_REDESIGN_2026-10-15.md`.
+
+- **Memory: it fits.** 34,640 of 40,960 slot bytes; it was 51,464.
+  - The networks are derived per block by generated straight-line code
+    (`tools/gen_hw_nets.py`), so the knob tables are gone.
+  - `.text` 28,320 of 30,720 B; frame 1,404 B.
+- **Cost: ~36k cycles per block static.** The first build measured ~224k.
+  The NFB loop (~16.7k) is now most of it.
+- **Sound: the 16x bench is equal or better.** Worst case 16.30 dB / -46.0 dB.
+  The bench now has `rates` / `masks` variants.
+- **Build:** `ZD2_TEXT_EXTRA=12288 bash tools/build_g1.sh hiwatt "CF DR103" "HIWATT/DR103"`.
+- **Pedal step (owner, after CF ClkT):** DR103D cost run, then CF DR103 alone.
+- Tests: 226 pytest pass. Host checks pass: netgen, kernel, ADAA, nets, accuracy.
+
 ## Offline work queue (in order)
 
 1. **Second independent review of the USB audio candidate** (Codex Sol, medium).
@@ -105,10 +121,18 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
    (`docs/helpers/STACK_CONTINUATION_2026-10-14.md`). The diag watermark will
    give a measured value. Static work remains useful, but a measured number is
    the faster route.
-6. **DR103 redesign** within the memory and time limits (`docs/DSP_RULES.md`).
-   Needs the cycle budget (item 3).
+6. ~~**DR103 redesign**~~ done offline (session 3). Pedal measurement pending.
+   Option if cycles are short: return to the straight-line tail
+   (-2.6k cycles), once ~2 KB of code is freed.
 7. **Patch tool (Phase E)** groundwork: it converts the owner's own v2.00
    updater and redistributes no Zoom binaries.
+8. **NAM feasibility (owner question, 2026-10-15).**
+   - Standard WaveNet NAM does not fit: compute and state are far over the limits.
+   - Small LSTM captures (hidden size ~12-16) look plausible: an estimated
+     15-30k cycles per block, ~128 B of state, a few KB of weights.
+   - First step: a host LSTM kernel and its bench, then a static cycle count.
+   - "Loading" means converting a `.nam` file into the const blob of an
+     update-mode image. Never install over MIDI.
 
 Open owner decisions: which JUCE effects should fill the 5 slots, and the
 amp model (Tweed 5E3 is undecided).
