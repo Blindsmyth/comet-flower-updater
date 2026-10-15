@@ -80,7 +80,8 @@ superseded by this continuation.
 Details and next instruction-level work:
 [STACK_CONTINUATION_2026-10-14.md](docs/helpers/STACK_CONTINUATION_2026-10-14.md),
 [USB_TEARDOWN_DECISION_2026-10-14.md](docs/helpers/USB_TEARDOWN_DECISION_2026-10-14.md),
-[USB_TEARDOWN_PATCH_SITES_2026-10-14.md](docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md).
+[USB_TEARDOWN_PATCH_SITES_2026-10-14.md](docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md),
+[OWNER_DIAG_TEST_PREP_2026-10-15.md](docs/helpers/OWNER_DIAG_TEST_PREP_2026-10-15.md).
 The former **1,784-byte ceiling is withdrawn**; there is no verified worker
 stack margin. No firmware was flashed or updater executed.
 The original untracked `.agents/` and `bridge/` directories were preserved.

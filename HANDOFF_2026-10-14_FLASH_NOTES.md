@@ -57,5 +57,5 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
 - Hwi push sites c011fb74/fb7a are 16-bit compact CALLPs: not hookable. Used queue 32..35 consumer site c0121a18 (32-bit CALLP c011fa54, file offset 0x15994) instead. See section 8 of docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md. Ring updates now run with interrupts disabled (consumer context unproved). Lifecycle build unchanged (3e7f5236...28b9). Baseline now 167 passed, 471 subtests.
 - Added tools/decode_ctl_diag.py host decoder (text table + JSON) and tests/test_diag_teardown_hook.py test. Baseline: 168 passed, 471 subtests.
 - Updated HANDOFF_2026-10-14_LEAD.md "Work completed" and "Continue from this point".
-- Remaining: (d) owner-run test prep (document procedure for acquiring/decoding ctl_diag; flash decision is owner's).
+- (d) owner-run test prep completed: created docs/helpers/OWNER_DIAG_TEST_PREP_2026-10-15.md (test scenarios, memory structure layout at 0xc01a0b00, decoding procedures, fault bit interpretation). DO_NOT_FLASH remains in effect.
 
