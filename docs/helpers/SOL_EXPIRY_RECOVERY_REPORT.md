@@ -125,6 +125,84 @@ store; **likely** for the store's higher-level completion/result meaning.
 
 ## 3. Per-slot state left by the abort
 
+**Finding 3 (confirmed).** The expiry path does not have a distinct software
+state cleanup.  At entry, the abort saves TX-record field [3].  If it was
+zero, it writes 1 and calls `c01200f4`; at the common tail it writes 0 and
+calls `c01200f4` only when the saved value was zero.  If the original value
+was nonzero, both writes/calls are skipped.  Thus the abort's own temporary
+busy/pending marker is restored on both observed-pending and expired paths.
+`c01200f4` scans the fixed per-slot pending table and rewrites its aggregate
+MMIO bitmap (`c0120124..01ac`), so the 0->1 and 1->0 transitions are reflected
+in that projection.
+
+Evidence (save and conditional 0->1 transition):
+
+```text
+c01206c2       00c1           ADD.L2        B0,B1,B4
+c01206c4   027ec052           ADDK.S2       -640,B4
+c01206c8       102d           LDW.D2T2      *B4[0],B2
+c01206ca       b546           MV.L1X        B2,A13
+c01206d8       7446           MV.L1X        B0,A11
+c01206da       700d ||        LDW.D2T2      *B4[3],B0
+c01206e0   2006a120    [ B0]  BNOP.S1       0xc01206ec,5
+c01206e8       7005           STW.D2T2      B0,*B4[3]
+```
+
+Evidence (common conditional restoration, reached from `c0120732` expiry):
+
+```text
+c0120732       a8ba    [!A0]  BNOP.S1       0xc0120764,5
+c0120764       0686           MV.L1         A13,A0
+c0120766       a22a    [ A0]  BNOP.S1       0xc0120770,5
+c0120768       9587           MV.L2X        A11,B4
+c012076a       0013 ||        MVK.S2        0,B0
+c012076c       7005           STW.D2T2      B0,*B4[3]
+c012076e       995b           CALLP.S2      0xc01200f4,B3
+c0120770       0786           MV.L1         A15,A0
+```
+
+The outstanding count field [5] is decremented only for descriptors popped
+from the submit queue.  A DMA-owned host descriptor is absent, so after an
+expired abort its count remains represented (for the simple one-in-flight
+case, field [5] remains 1).  That is internally consistent, not a false
+free/count decrement.  Field [3] may also undergo the normal `c0120550`
+state transitions described in Finding 1 while queued entries are drained;
+there is no expiry-only variant.
+
+Crucially, the subsequent descriptor submitters do not use field [3], the
+pending projection, or DMA ownership as a gate:
+
+- `c0120484 -> c0120250` clamps the requested length against field [0], then
+  submits; on success `c01204aa..04ae` increments field [5].
+- `c0120c00 -> c0120250` loads field [6] and field [10] and submits directly.
+- `c01219a4 -> c01219d0 -> c0120250` computes a buffer address/length and
+  submits directly.
+- `c0120250` itself only requires a descriptor from free queue 28
+  (`c012025a..0270`).
+
+The public TX-buffer enqueue does check field [2] (enabled/configured), but
+after storing the caller's pointer and length in fields [6]/[7], a **nonzero**
+outstanding count causes it to call `c01204b4`; it does not wait for the old
+DMA owner to return:
+
+```text
+c0120f84       500d           LDW.D2T2      *B4[2],B0
+c0120f88   300aa120    [!B0]  BNOP.S1       0xc0120f94,5
+c0120f94       d015           STW.D2T2      B1,*B4[6]
+c0120f96       e015           STW.D2T1      A1,*B4[7]
+c0120f98       b00d           LDW.D2T2      *B4[5],B0
+c0120fa0   2004a120    [ B0]  BNOP.S1       0xc0120fa8,5
+c0120fa4   1ffea292           CALLP.S2      0xc01204b4,B3
+c0120fa8       0626           MVK.L1        0,A4
+```
+
+So no reviewed software field is demonstrably arithmetically inconsistent
+solely because the poll expired.  What remains inconsistent with the abort's
+completed/re-enabled external state is the still-live DMA ownership that the
+count records but the submission gates do not honor.
+
+Confidence: **confirmed**.
+
 ## 4. Later re-initialization
 
 ## 5. Verdict
