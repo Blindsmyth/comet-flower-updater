@@ -109,7 +109,8 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
   launch** (invalid geometry string). That is fixed, with a window smoke test. The open
   indicator and workflow items are listed there.
 - **On-device UI:** the owner meant the pedal's own screen for MIDI/USB audio (item 6c),
-  not CF Loader. Design and mock-ups are done; the Sol recon is running.
+  not CF Loader. Design, mock-ups and the Sol recon (Claude-reviewed) are done. No LEDs: the LCD only.
+  Next gate: trace `c013c4e4`'s screen switch for the 32-bit hook at `c013c4e8`, then build the diag screen.
 - Tests: **233 passed**.
 
 ## Offline work queue (in order)

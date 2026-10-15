@@ -302,3 +302,24 @@ contexts of MainApp/AD/MIDI, drawing ABI, flush wrapper, and the separation
 between MIDI-ready and audio-stream state.  Patch placement, ABI-preserving
 trampolines, the exact UpdateUI wake primitive, and the future USB-audio
 lifecycle remain implementation proof gates.  No image was built.
+
+## Claude review (2026-10-15)
+
+Checked against `build/fw/map/main.dis`:
+
+- **Confirmed:** `c0127fe0` = `LDW *+B14[27],A4` + return (the PC/editor flag
+  getter); `c0134df0` calls it and skips the stock dispatch `c0134acc` when it is
+  nonzero. (The brief called `c0127fe0` "the MainApp dispatch target"; the hook at
+  `c0134df0` actually replaces this flag test, which is how the controller gate works.)
+  `c014db8c` takes `B14[149]` via `c0161200`, flushes with `c016f420`, and releases it via `c016d880`.
+  `c011c508` forms the buffer as `ctx << 9` (`c011c522 SHL 9`). The shape of the `c011e000` string
+  routine matches (loads chars until NUL, special-cases 9).
+- **Correction to section 6:** the proposed site `c013c74e CALLP c013c4e4` is a **16-bit compact
+  CALLP** (`da5b`), so it cannot be retargeted (handoff pitfall). `c013c4e4` also has two
+  other callers (`c013c5a8` 32-bit, `c013c902` compact). Use the 32-bit `c013c4e8 CALLP c0156e80`
+  inside the callee instead (its first call, p-bit 0). It covers all three
+  callers. The wrapper must return `c0156e80`'s A4 unchanged in normal mode. In controller mode
+  it must also either keep `c013c4e4`'s own screen drawing from overwriting ours, or draw after
+  it. Which one needs the switch at `c013c4ec..` traced (what `c0156e80` returns, the
+  screen id) before a build. Open gate; nothing built.
+- Section 5 (no LEDs) is accepted as **likely**: the LCD is the only feedback channel.

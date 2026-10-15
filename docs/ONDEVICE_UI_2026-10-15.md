@@ -43,7 +43,22 @@ Rules:
 - No drawing from Hwi or Swi context (the SOF tick, the tap) or under MIDI_LOCK. Those
   contexts only publish counters, and a drawing context renders them.
 
-## Open design questions (recon brief `docs/helpers/ONDEVICE_UI_RECON_BRIEF.md`)
+## Recon results (Sol report + Claude review, `docs/helpers/ONDEVICE_UI_RECON_REPORT.md`)
+
+- PC MODE means the editor session flag `B14[27]`, not USB enumeration. It cannot serve as a
+  USB indicator.
+- UpdateUI owns drawing. Buffers are `11800000 + ctx*0x200` with dirty-page bits at `11813250+ctx`.
+  The flush is `c014db8c` (the `B14[149]` lock, then `c016f420`). The glyph and bitmap primitives
+  are **not** self-locking.
+- Text: `c011e000(ctx, str, x, y)` draws 5x7 text; `c011ec48`/`c011ebc8` draw 8x13 text
+  (left-aligned / centred); `c016c360` is sprintf-like.
+- **No firmware-driven LEDs (likely).** The LCD is the only indicator.
+- Design: producers (MainApp, AD, the MIDI worker, the USB lifecycle, the SOF counter) only store
+  packed words. One UpdateUI-side wrapper draws and flushes when they change. Hook site:
+  `c013c4e8 CALLP c0156e80` (32-bit). Sol's `c013c74e` is a compact CALLP and cannot be
+  retargeted. Gate before building: trace the screen switch at `c013c4ec..`.
+
+## Original open questions (recon brief `docs/helpers/ONDEVICE_UI_RECON_BRIEF.md`)
 
 1. Which task owns the framebuffer and the flush, and whether other tasks may draw.
 2. The cheapest hook: reuse the stock PC MODE screen path with a custom renderer,
@@ -54,7 +69,7 @@ Rules:
 
 ## Order
 
-1. Recon (Codex Sol, running) → this doc's design is fixed against its findings.
+1. Recon: done (see above). Next, trace the `c013c4ec..` screen switch, then build.
 2. Diag build first: the `diag_readout` screen. It adds value immediately for the first
    hardware run, because it reports even when MIDI TX is stalled.
 3. Controller screens, then audio screens, each as a separately hash-pinned candidate.
