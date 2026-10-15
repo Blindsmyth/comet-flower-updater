@@ -96,6 +96,43 @@ c0120b64       db7a    [!A0]  BNOP.S1       0xc0120c3a,5
 
 Confidence: **confirmed**.
 
+**Finding 2c (confirmed).** `c01219d0` shares the upstream queue-event requirements in Finding 2b through the case-D call at `c0121b38`: valid popped type-16 descriptor, slot 1..4, `A15 == 0`, and TX field [2] != 0. Within `c0121960`, it reaches the submit exactly when TX field [9] is nonnegative. Field [8] controls only whether the incremented ring index wraps to zero. There is no field-[5] or field-[3] predicate, and the earlier `c0120550` call cannot change field [5] on this route because field [2] is nonzero. Queue 28 availability is tested only inside `c0120250` (`c0120260..0270`), after this call site has been reached.
+
+| Case-D state | Result |
+|---|---|
+| field [9] < 0 | branch to reset path at `c01219d8`; no `c01219d0` submit |
+| field [9] >= 0, incremented index < field [8] | store incremented index; reach `c01219d0` |
+| field [9] >= 0, incremented index >= field [8] | wrap field [9] to zero; reach `c01219d0` |
+| any field [5] or field [3] value on either nonnegative row | unchanged gate result |
+
+```text
+c0121978       389d           LDW.D2T2      *B5[9],B1
+c012197a       50a7           CMPGT.L2      0,B1,B0
+c0121980   202ca120    [ B0]  BNOP.S1       0xc01219d8,5
+c0121984       18ad           LDW.D2T2      *B5[8],B2
+c0121986       2481           ADD.L2        B1,1,B0
+c0121988       3885           STW.D2T2      B0,*B5[9]
+```
+
+```text
+c012198c   00080afa           CMPLT.L2      B0,B2,B0
+c0121990   200ca120    [ B0]  BNOP.S1       0xc0121998,5
+c0121994       0427           MVK.L2        0,B0
+c0121996       3885           STW.D2T2      B0,*B5[9]
+c0121998       388d           LDW.D2T2      *B5[9],B0
+```
+
+```text
+c01219c4       586d           LDW.D2T2      *B4[10],B6
+c01219c6       0081           ADD.L2        B0,B1,B0
+c01219c8       9487           MV.L2X        A9,B4
+c01219ca       2040           ADD.L1        A1,A0,A4
+c01219d0   1ffd1213 ||        CALLP.S2      0xc0120250,B3
+c01219d4       d056 ||        MV.D1X        B0,A6
+```
+
+Confidence: **confirmed**.
+
 **Finding 2b (confirmed).** The other route to `c0120c14` begins in `c01219f4` and is queue-driven. It requires a nonempty input queue (`c011fa20` returns an index >= 0), a type-16 descriptor (`c011fa54` true), extracted slot 1..4, incoming dispatch flag `A15 == 0`, and TX field [2] != 0. The dispatcher calls `c0120550` first, but that routine skips all field-[5] accounting when field [2] != 0. In `c0121960`, entry field [9] < 0 skips `c01219d0`, runs `c01207c8` (which resets I/O field [9] to `-1` and clears TX field [3]), then calls `c0120b2c`; its final gate is again only field [5] != 0. Field [3] is written, not tested. Therefore this route reaches `c0120c14` for any positive/nonzero field [5], even though that same value can denote an outstanding count.
 
 | Queue-event predicates after a valid type-16 pop | Result |
