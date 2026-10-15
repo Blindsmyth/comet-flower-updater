@@ -68,6 +68,61 @@ Confidence: **confirmed**.
 
 ## 2. In-flight descriptors after expiry
 
+**Finding 2 (confirmed, with one likely semantic label).** A host packet
+descriptor already owned by TX DMA returns to **queue 24**, not queue 25.
+`c0120250` copies template word [1] into descriptor word 2's low 12-bit return
+queue field; for N=1..4 that template word is 24.  Queue 25 is selected later
+in TXGCR for the separate teardown descriptor.  Therefore the Hwi's
+`c011faa0(24)` call consumes the late host descriptor, while the type-16 path
+at `c011fab8..fb6e` handles it.  It is not handled by the abort's queue-25
+drain.
+
+Evidence (return queue placed in descriptor word 2):
+
+```text
+c01202c6       218c           LDW.D1T1      *A7[1],A0
+c01202c8       0b27           CMPEQ.L2      0,B6,B1
+c01202cc       7483           SHL.S2        B1,0x13,B1
+c01202d0   00029408           EXTU.S1       A0,20,20,A0
+c01202d4       14a8           OR.L1X        A0,B1,A0
+c01202d6       5d02 ||        SHL.S1        A2,0x1a,A2
+c01202d8       4428           OR.L1         A2,A0,A0
+c01202da       4005           STW.D2T1      A0,*B4[2]
+```
+
+The type-16 consumer extracts a slot number 1..4, locates the TX record at
+`0xc011297c + 0x2a8*N`, and gates its data write on field [2] being nonzero
+and field [9] not being positive (`c011fb20..fb38`).  It then uses field [9]
+and field [8] to choose (with wrap to zero) one word from the per-slot array
+at record+360, loads the destination pointer from field [7], and stores that
+word through the pointer.  Calling this a completion/result write is
+**likely**; the load/store and addresses are confirmed.
+
+Evidence (the actual state/buffer write):
+
+```text
+c011fb4a       390d           LDW.D2T2      *B6[9],B0
+c011fb4c       191d           LDW.D2T2      *B6[8],B1
+c011fb50       2431           ADD.L2        B0,1,B3
+c011fb52       6c89           CMPLT.L2      B3,B1,B0
+c011fb54   2010a120    [ B0]  BNOP.S1       0xc011fb60,5
+c011fb60   03147c42           ADDAW.D2      B5,B3,B6
+c011fb68       f0dd ||        LDW.D2T2      *B5[7],B5
+c011fb6e       1085           STW.D2T2      B0,*B5[0]
+```
+
+This consumer never calls `c0120550` and never stores field [5], so it cannot
+double-decrement the abort's outstanding count.  Conversely, the abort only
+runs `c0120550` on descriptors it actually pops from the submit queue; the
+already-DMA-owned descriptor is absent from that queue.  The late queue-24
+consumer therefore does not touch a buffer that the abort accounted as freed
+through `c0120550`.  It **can** touch whatever pointer is in field [7] when
+the late completion is consumed; whether that pointer can already name a new
+buffer is answered by the next-submit analysis below.
+
+Confidence: **confirmed** for queue routing, counter non-interaction and the
+store; **likely** for the store's higher-level completion/result meaning.
+
 ## 3. Per-slot state left by the abort
 
 ## 4. Later re-initialization
