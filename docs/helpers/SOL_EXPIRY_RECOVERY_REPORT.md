@@ -205,4 +205,71 @@ Confidence: **confirmed**.
 
 ## 4. Later re-initialization
 
+**Finding 4 (confirmed).** `c0121224` is direction-selective, not a complete
+zeroing of all five helper-owned tables.  For a nonzero TX endpoint it first
+calls `c0120650`, then reads TX field [2].  If field [2] is zero it calls
+`c011fd98`; otherwise it calls `c011fd40`.  Neither helper clears TX field
+[2], field [3], or outstanding field [5]:
+
+- `c011fd98` clears TX fields [6] through [11].
+- `c011fd40` clears TX fields [6] through [8], writes/clears additional
+  per-slot scratch/ring storage starting at TX-record offsets 0x28 and 0x168,
+  and does not store fields [2], [3], or [5].
+- On the RX branch, `c011fe20` clears RX fields [6] through [11] when RX
+  field [2] is zero; `c011fdc8` is the RX analogue of `c011fd40` otherwise.
+- The RX branch then always calls `c011fe4c`, which clears fields [1] through
+  [4] of the separate 17-word-stride table at `0xc0114150`.
+
+Evidence (TX selection occurs only after the same possibly-expiring abort):
+
+```text
+c0121280   1ffe7a13           CALLP.S2      0xc0120650,B3
+c0121284       8506 ||        MV.L1         A10,A4
+c0121290   0014c22a           MVK.S2        0x2984,B0
+c012129a       1341           ADD.L2X       B0,A6,B4
+c01212a0       100d           LDW.D2T2      *B4[0],B0
+c01212a4   2008a120    [ B0]  BNOP.S1       0xc01212b0,5
+c01212a8   1ffd5f13           CALLP.S2      0xc011fd98,B3
+c01212b0   1ffd5413           CALLP.S2      0xc011fd40,B3
+```
+
+Evidence (`c011fd98`'s complete TX-record store set):
+
+```text
+c011fdb0       1341           ADD.L2X       B0,A6,B4
+c011fdb2       d015           STW.D2T2      B1,*B4[6]
+c011fdb6       f005           STW.D2T2      B0,*B4[7]
+c011fdb8       1815           STW.D2T2      B1,*B4[8]
+c011fdba       3805           STW.D2T2      B0,*B4[9]
+c011fdc0       5805           STW.D2T2      B0,*B4[10]
+c011fdc2       7805           STW.D2T2      B0,*B4[11]
+c011fdc4   008ca362           BNOP.S2       B3,5
+```
+
+`c0120dd0` (resume) resets even less software state: it writes the interrupt
+enable register, calls an outside helper, loops over channels 1..4 calling
+the RX/TX channel-config builders with no teardown request, and sets POWER
+bit 6.  It contains no per-slot SRAM store at all.  In particular it clears
+none of fields [2], [3], [5], [6], or [7].
+
+Evidence (the resume loop's only relevant calls):
+
+```text
+c0120dec       0726           MVK.L1        0,A6
+c0120df0   1fff5513           CALLP.S2      0xc0120888,B3
+c0120df4       2627 ||        MVK.L2        1,B4
+c0120df6       24c0 ||        ADD.L1        A1,1,A4
+c0120e00   1ffe7c13           CALLP.S2      0xc01201e0,B3
+c0120e04       83c6 ||        MV.L1         A7,A4
+c0120e06       2627 ||        MVK.L2        1,B4
+c0120e0c       9e2a    [ A0]  BNOP.S1       0xc0120df0,4
+```
+
+Accordingly, neither later full endpoint reset nor resume proves that a TX
+descriptor left in flight by an expired abort has returned.  Full reset
+clears the saved buffer fields while retaining the outstanding count;
+resume leaves all of them as-is.
+
+Confidence: **confirmed**.
+
 ## 5. Verdict
