@@ -20,6 +20,8 @@ from typing import Dict, List, Optional, Set
 from tools.cf_loader import core
 
 REPO_ROOT = core.REPO_ROOT
+TIGHT_SLOT_FREE = 2048          # amber row: less slot heap left than this
+TESTED_STAGES = ("audio-pass", "cost-measured", "ok-save")
 
 
 class CFLoaderApp(tk.Tk):
@@ -38,6 +40,7 @@ class CFLoaderApp(tk.Tk):
         self.selected_filenames: Set[str] = set()
         self.active_worker: Optional[threading.Thread] = None
         self.worker_cancel_requested = False
+        self.busy = False
         self.log_queue: queue.Queue = queue.Queue()
 
         # Options state
@@ -65,6 +68,10 @@ class CFLoaderApp(tk.Tk):
             style.theme_use("clam")
         except Exception:
             pass
+        style.configure("Accent.TButton", font=("Segoe UI", 9, "bold"), foreground="#ffffff", background="#2a6fb0")
+        style.map("Accent.TButton",
+                  background=[("disabled", "#b8c4d0"), ("active", "#1f5a92")],
+                  foreground=[("disabled", "#eeeeee")])
 
         # Top banner / title
         header_frame = ttk.Frame(self, padding=(10, 8))
@@ -151,6 +158,21 @@ class CFLoaderApp(tk.Tk):
         self.lib_tree.bind("<Double-1>", self._on_tree_double_click)
         self.lib_tree.bind("<space>", self._on_tree_space_toggle)
         self.lib_tree.bind("<<TreeviewSelect>>", self._on_tree_select_changed)
+        self.lib_tree.tag_configure("rejected", foreground="#b00000", background="#fbe9e9")
+        self.lib_tree.tag_configure("tight", background="#fff4d6")
+        self.lib_tree.tag_configure("tested", foreground="#006400")
+        self.lib_tree.tag_configure("selected_row", font=("Segoe UI", 9, "bold"))
+
+        ttk.Label(
+            self.tab_library,
+            text="Double-click or press Space to select.   Red = cannot be selected   "
+            f"Amber = under {TIGHT_SLOT_FREE // 1024} KiB slot heap left   Green = audio-pass or later   "
+            "Bold = selected",
+            font=("Segoe UI", 8),
+            foreground="#555555",
+        ).pack(anchor=tk.W, pady=(4, 0))
+        self.lib_summary_var = tk.StringVar(value="")
+        ttk.Label(self.tab_library, textvariable=self.lib_summary_var, font=("Segoe UI", 9)).pack(anchor=tk.W)
 
         # Status & Safety banner
         self.stage_info_var = tk.StringVar(
@@ -248,6 +270,9 @@ class CFLoaderApp(tk.Tk):
         f3.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
         self.preflight_text = tk.Text(f3, height=8, wrap=tk.WORD, font=("Consolas", 9), relief=tk.FLAT)
+        pf_scroll = ttk.Scrollbar(f3, orient=tk.VERTICAL, command=self.preflight_text.yview)
+        self.preflight_text.configure(yscrollcommand=pf_scroll.set)
+        pf_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.preflight_text.pack(fill=tk.BOTH, expand=True)
         self.preflight_text.tag_config("pass", foreground="#007700")
         self.preflight_text.tag_config("fail", foreground="#cc0000", font=("Consolas", 9, "bold"))
@@ -264,7 +289,10 @@ class CFLoaderApp(tk.Tk):
         )
         self.btn_build.pack(side=tk.LEFT, padx=4)
 
-        ttk.Button(act_frame, text="Cancel Build", command=self._cancel_build).pack(side=tk.LEFT, padx=4)
+        self.btn_cancel_build = ttk.Button(act_frame, text="Cancel Build", command=self._cancel_build, state=tk.DISABLED)
+        self.btn_cancel_build.pack(side=tk.LEFT, padx=4)
+        self.build_progress = ttk.Progressbar(act_frame, mode="indeterminate", length=120)
+        self.build_progress.pack(side=tk.LEFT, padx=6)
 
         self.build_status_var = tk.StringVar(value="Ready")
         ttk.Label(act_frame, textvariable=self.build_status_var, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=10)
@@ -294,48 +322,37 @@ class CFLoaderApp(tk.Tk):
         wiz_frame = ttk.LabelFrame(self.tab_test, text="Test Checklist & Safety Protocol", padding=10)
         wiz_frame.pack(fill=tk.BOTH, expand=True, pady=4)
 
-        self.chk_autosave_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            wiz_frame,
-            text="1. Pedal AUTO SAVE is turned OFF (Global settings -> AUTO SAVE -> OFF)",
-            variable=self.chk_autosave_var,
-        ).pack(anchor=tk.W, pady=3)
-
-        self.chk_updatemode_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            wiz_frame,
-            text="2. Entered update mode: hold both footswitches while connecting USB ('FIRMWARE UPDATE' screen)",
-            variable=self.chk_updatemode_var,
-        ).pack(anchor=tk.W, pady=3)
-
-        self.chk_flashed_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            wiz_frame,
-            text="3. Flashed patched updater by hand: MIDI IN/OUT = 'ZOOM G Series' -> wait for 'Version update completed'",
-            variable=self.chk_flashed_var,
-        ).pack(anchor=tk.W, pady=3)
-
-        self.chk_powercycled_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            wiz_frame,
-            text="4. Power cycle the pedal (unplug USB, plug back in). Boots to clean/normal screen",
-            variable=self.chk_powercycled_var,
-        ).pack(anchor=tk.W, pady=3)
-
-        self.chk_alone_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            wiz_frame,
-            text="5. Placed effect alone in an empty patch (no other effects in chain)",
-            variable=self.chk_alone_var,
-        ).pack(anchor=tk.W, pady=3)
+        # Steps unlock in order; Record Audio Pass needs all five and an effect
+        # that has been packaged into an image (stage past 'built').
+        steps = (
+            "1. Pedal AUTO SAVE is turned OFF (Global settings -> AUTO SAVE -> OFF)",
+            "2. Entered update mode: hold both footswitches while connecting USB ('FIRMWARE UPDATE' screen)",
+            "3. Flashed patched updater by hand: MIDI IN/OUT = 'ZOOM G Series' -> wait for 'Version update completed'",
+            "4. Power cycle the pedal (unplug USB, plug back in). Boots to clean/normal screen",
+            "5. Placed effect alone in an empty patch (no other effects in chain)",
+        )
+        self.wizard_vars = []
+        self.wizard_checks = []
+        for text in steps:
+            var = tk.BooleanVar(value=False)
+            cb = ttk.Checkbutton(wiz_frame, text=text, variable=var, command=self._refresh_wizard)
+            cb.pack(anchor=tk.W, pady=3)
+            self.wizard_vars.append(var)
+            self.wizard_checks.append(cb)
+        (self.chk_autosave_var, self.chk_updatemode_var, self.chk_flashed_var,
+         self.chk_powercycled_var, self.chk_alone_var) = self.wizard_vars
 
         # Audio pass section
         audio_frame = ttk.LabelFrame(wiz_frame, text="6. Audio Pass Check", padding=6)
         audio_frame.pack(fill=tk.X, pady=6)
         ttk.Label(audio_frame, text="Audio passes cleanly with no stutter, glitch, or DC offset:").pack(side=tk.LEFT, padx=4)
-        ttk.Button(audio_frame, text="Record Audio Pass", command=self._record_audio_pass).pack(side=tk.LEFT, padx=8)
+        self.btn_audio_pass = ttk.Button(audio_frame, text="Record Audio Pass", command=self._record_audio_pass,
+                                         state=tk.DISABLED)
+        self.btn_audio_pass.pack(side=tk.LEFT, padx=8)
         self.audio_status_lbl = ttk.Label(audio_frame, text="Not passed", foreground="#888888")
         self.audio_status_lbl.pack(side=tk.LEFT, padx=4)
+        self.wizard_hint_var = tk.StringVar(value="")
+        ttk.Label(wiz_frame, textvariable=self.wizard_hint_var, foreground="#555555").pack(anchor=tk.W)
 
         # Cost test section
         cost_frame = ttk.LabelFrame(wiz_frame, text="7. CPU measurement pending", padding=6)
@@ -381,14 +398,18 @@ class CFLoaderApp(tk.Tk):
 
         rec_btn_frame = ttk.Frame(self.tab_recovery)
         rec_btn_frame.pack(fill=tk.X, pady=(0, 10))
-        ttk.Button(
+        self.btn_restore = ttk.Button(
             rec_btn_frame,
             text="Build Factory Restore Updater",
             command=self._start_build_restore,
             style="Accent.TButton",
-        ).pack(side=tk.LEFT, padx=4)
+        )
+        self.btn_restore.pack(side=tk.LEFT, padx=4)
 
-        ttk.Button(rec_btn_frame, text="Cancel Build", command=self._cancel_build).pack(side=tk.LEFT, padx=4)
+        self.btn_cancel_restore = ttk.Button(rec_btn_frame, text="Cancel Build", command=self._cancel_build, state=tk.DISABLED)
+        self.btn_cancel_restore.pack(side=tk.LEFT, padx=4)
+        self.restore_progress = ttk.Progressbar(rec_btn_frame, mode="indeterminate", length=120)
+        self.restore_progress.pack(side=tk.LEFT, padx=6)
         self.rec_status_var = tk.StringVar(value="")
         ttk.Label(rec_btn_frame, textvariable=self.rec_status_var, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=10)
 
@@ -506,7 +527,10 @@ class CFLoaderApp(tk.Tk):
                 tk.END,
                 iid=iid,
                 values=(sel_mark, eff.filename, eff.name, eff.id_hex, size_str, text_str, state_str, slot_str, stage),
+                tags=self._row_tags(eff, stage, is_sel),
             )
+
+        self._update_lib_summary()
 
         # Update test combo box
         eff_names = [e.filename for e in self.scanned_effects]
@@ -516,6 +540,27 @@ class CFLoaderApp(tk.Tk):
             self._on_test_effect_selected(None)
 
         self.refresh_preflight()
+
+    @staticmethod
+    def _row_tags(eff, stage, is_sel):
+        tags = []
+        if not eff.valid_for_selection:
+            tags.append("rejected")
+        elif eff.slot_free < TIGHT_SLOT_FREE:
+            tags.append("tight")
+        if stage in TESTED_STAGES:
+            tags.append("tested")
+        if is_sel:
+            tags.append("selected_row")
+        return tuple(tags)
+
+    def _update_lib_summary(self):
+        sel = [e for e in self.scanned_effects if e.filename in self.selected_filenames]
+        bad = sum(1 for e in self.scanned_effects if not e.valid_for_selection)
+        self.lib_summary_var.set(
+            f"{len(self.scanned_effects)} effects, {len(sel)} selected, {bad} rejected"
+            + (f"; tightest selected slot: {min(e.slot_free for e in sel):,} B free" if sel else "")
+        )
 
     def _on_tree_double_click(self, event):
         self._toggle_selected_row()
@@ -548,7 +593,9 @@ class CFLoaderApp(tk.Tk):
         is_sel = filename in self.selected_filenames
         vals = list(self.lib_tree.item(filename, "values"))
         vals[0] = "[x]" if is_sel else "[ ]"
-        self.lib_tree.item(filename, values=vals)
+        stage = self.status_data.get(filename, {}).get("stage", "built")
+        self.lib_tree.item(filename, values=vals, tags=self._row_tags(eff, stage, is_sel))
+        self._update_lib_summary()
 
         self.refresh_preflight()
 
@@ -663,7 +710,9 @@ class CFLoaderApp(tk.Tk):
         self.preflight_text.configure(state=tk.DISABLED)
 
         # Enable/disable Build button
-        if all_ok:
+        if self.busy:
+            self.btn_build.configure(state=tk.DISABLED)
+        elif all_ok:
             self.btn_build.configure(state=tk.NORMAL)
             self.build_status_var.set("All pre-flight checks green. Ready to build.")
         else:
@@ -672,6 +721,22 @@ class CFLoaderApp(tk.Tk):
 
     def _cancel_build(self):
         self.worker_cancel_requested = True
+        self.build_status_var.set("Cancelling...")
+        self.rec_status_var.set("Cancelling...")
+
+    def _set_busy(self, busy: bool):
+        """One worker at a time: lock the start buttons, unlock Cancel, animate."""
+        self.busy = busy
+        self.btn_restore.configure(state=tk.DISABLED if busy else tk.NORMAL)
+        if busy:
+            self.btn_build.configure(state=tk.DISABLED)
+        for b in (self.btn_cancel_build, self.btn_cancel_restore):
+            b.configure(state=tk.NORMAL if busy else tk.DISABLED)
+        for pb in (self.build_progress, self.restore_progress):
+            if busy:
+                pb.start(12)
+            else:
+                pb.stop()
 
     def _start_build_image(self):
         """Start building image in worker thread."""
@@ -689,7 +754,7 @@ class CFLoaderApp(tk.Tk):
         splash = self.splash_path_var.get().strip() or None
 
         self.worker_cancel_requested = False
-        self.btn_build.configure(state=tk.DISABLED)
+        self._set_busy(True)
         self.build_status_var.set("Building image and patched updater...")
 
         def worker():
@@ -715,8 +780,9 @@ class CFLoaderApp(tk.Tk):
         self.active_worker.start()
 
     def _on_build_completed(self, out_dir: Path):
-        self.build_status_var.set(f"Built successfully: {out_dir.name}")
+        self._set_busy(False)
         self.rescan_library()
+        self.build_status_var.set(f"Built successfully: {out_dir.name}")
         messagebox.showinfo(
             "Build Complete",
             f"Patched updater built successfully in:\n{out_dir}\n\n"
@@ -730,18 +796,44 @@ class CFLoaderApp(tk.Tk):
             pass
 
     def _on_build_failed(self, err_msg: str):
-        self.build_status_var.set("Build failed.")
+        self._set_busy(False)
         self.refresh_preflight()
+        self.build_status_var.set("Build failed.")
         messagebox.showerror("Build Error", f"Failed to build image:\n{err_msg}")
 
     # -----------------------------------------------------------------------
     # Test Tab Operations
     # -----------------------------------------------------------------------
 
+    def _refresh_wizard(self):
+        """Enable each checklist step only after the previous one is ticked."""
+        prev_done = True
+        for var, cb in zip(self.wizard_vars, self.wizard_checks):
+            if not prev_done:
+                var.set(False)
+            cb.configure(state=tk.NORMAL if prev_done else tk.DISABLED)
+            prev_done = prev_done and var.get()
+        eff_name = self.test_effect_combo.get()
+        stage = self.status_data.get(eff_name, {}).get("stage", "built") if eff_name else "built"
+        if not eff_name:
+            hint, ok = "Select an effect under test.", False
+        elif stage == "built":
+            hint, ok = f"{eff_name} has not been packaged into an image yet (stage: built).", False
+        elif not prev_done:
+            hint, ok = "Complete steps 1-5 in order to unlock the audio check.", False
+        else:
+            hint, ok = "Steps 1-5 complete: listen, then record the audio pass.", True
+        self.wizard_hint_var.set(hint)
+        self.btn_audio_pass.configure(state=tk.NORMAL if ok else tk.DISABLED)
+
     def _on_test_effect_selected(self, event):
         eff_name = self.test_effect_combo.get()
         if not eff_name:
+            self._refresh_wizard()
             return
+        if event is not None:                     # a different effect: start the checklist over
+            for var in self.wizard_vars:
+                var.set(False)
         status_entry = self.status_data.get(eff_name, {})
         stage = status_entry.get("stage", "built")
 
@@ -764,6 +856,7 @@ class CFLoaderApp(tk.Tk):
             text="[!] Save approval pending calibrated CPU and exact-artifact checks.",
             foreground="#cc0000",
         )
+        self._refresh_wizard()
 
     def _record_audio_pass(self):
         eff_name = self.test_effect_combo.get()
@@ -808,6 +901,7 @@ class CFLoaderApp(tk.Tk):
             messagebox.showerror("Recovery", "Select the official Zoom updater in the 'Build image' tab first.")
             return
 
+        self._set_busy(True)
         self.rec_status_var.set("Building factory restore updater...")
 
         def worker():
@@ -827,6 +921,8 @@ class CFLoaderApp(tk.Tk):
         self.active_worker.start()
 
     def _on_restore_completed(self, out_dir: Path):
+        self._set_busy(False)
+        self.refresh_preflight()
         self.rec_status_var.set("Restore updater ready.")
         messagebox.showinfo(
             "Restore Updater Ready",
@@ -839,6 +935,8 @@ class CFLoaderApp(tk.Tk):
             pass
 
     def _on_restore_failed(self, err_msg: str):
+        self._set_busy(False)
+        self.refresh_preflight()
         self.rec_status_var.set("Restore build failed.")
         messagebox.showerror("Recovery Error", f"Failed to build restore updater:\n{err_msg}")
 

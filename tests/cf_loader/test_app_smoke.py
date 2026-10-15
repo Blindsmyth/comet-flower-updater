@@ -35,6 +35,56 @@ class AppSmoke(unittest.TestCase):
         finally:
             a.destroy()
 
+    def test_wizard_steps_unlock_in_order(self):
+        from tools.cf_loader import app
+        a = app.CFLoaderApp()
+        try:
+            a.withdraw()
+            a.status_data = {"X.ZD2": {"stage": "in image"}}
+            a.test_effect_combo["values"] = ["X.ZD2"]
+            a.test_effect_combo.set("X.ZD2")
+            a._on_test_effect_selected(object())          # fresh effect: checklist reset
+            st = lambda w: str(w.cget("state"))
+            self.assertEqual(st(a.wizard_checks[0]), "normal")
+            self.assertEqual(st(a.wizard_checks[1]), "disabled")
+            self.assertEqual(st(a.btn_audio_pass), "disabled")
+            for i, var in enumerate(a.wizard_vars):
+                var.set(True)
+                a._refresh_wizard()
+                if i + 1 < len(a.wizard_checks):
+                    self.assertEqual(st(a.wizard_checks[i + 1]), "normal")
+            self.assertEqual(st(a.btn_audio_pass), "normal")
+            a.wizard_vars[1].set(False)                   # un-ticking re-locks later steps
+            a._refresh_wizard()
+            self.assertFalse(a.wizard_vars[4].get())
+            self.assertEqual(st(a.btn_audio_pass), "disabled")
+            # never packaged: audio pass stays locked even with every step done
+            a.status_data = {"X.ZD2": {"stage": "built"}}
+            for var in a.wizard_vars:
+                var.set(True)
+            a._refresh_wizard()
+            self.assertEqual(st(a.btn_audio_pass), "disabled")
+        finally:
+            a.destroy()
+
+    def test_busy_locks_actions(self):
+        from tools.cf_loader import app
+        a = app.CFLoaderApp()
+        try:
+            a.withdraw()
+            st = lambda w: str(w.cget("state"))
+            self.assertEqual(st(a.btn_cancel_build), "disabled")
+            a._set_busy(True)
+            a.refresh_preflight()                         # must not re-enable Build while busy
+            self.assertEqual(st(a.btn_build), "disabled")
+            self.assertEqual(st(a.btn_restore), "disabled")
+            self.assertEqual(st(a.btn_cancel_build), "normal")
+            a._set_busy(False)
+            self.assertEqual(st(a.btn_restore), "normal")
+            self.assertEqual(st(a.btn_cancel_restore), "disabled")
+        finally:
+            a.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

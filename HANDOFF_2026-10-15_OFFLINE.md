@@ -12,7 +12,7 @@ list) and [ROADMAP.md](ROADMAP.md).
 
 - Python: `.venv/Scripts/python.exe`. Run the tests with
   `.venv/Scripts/python.exe -m pytest tests tools/test_usb_audio_proto.py -q`.
-  **228 passed, 615 subtests.** Never leave the suite red.
+  **230 passed, 615 subtests.** Never leave the suite red.
 - Lifecycle controller candidate SHA-256: `3e7f5236…28b9`. It must stay
   byte-identical; `tests/test_diag_readback.py` rebuilds it and checks the hash.
 - Commit small and often, on `master`. Do not push unless the owner asks.
@@ -108,7 +108,7 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
 - **GUI (owner request):** `docs/helpers/GUI_REVIEW_2026-10-15.md`. **CF Loader crashed on
   launch** (invalid geometry string). That is fixed, with a window smoke test. The open
   indicator and workflow items are listed there.
-- Tests: **228 passed**.
+- Tests: **230 passed**.
 
 ## Offline work queue (in order)
 
@@ -138,8 +138,9 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
 6. ~~**DR103 redesign**~~ done offline (session 3). Pedal measurement pending.
    Option if cycles are short: return to the straight-line tail
    (-2.6k cycles), once ~2 KB of code is freed.
-6b. **CF Loader GUI fixes** (`docs/helpers/GUI_REVIEW_2026-10-15.md`): do V4, V5, V1
-   and W1 offline. W3 and W4 wait for the CF ClkT run; W5 and W6 wait for the hardware gates.
+6b. **CF Loader GUI** (`docs/helpers/GUI_REVIEW_2026-10-15.md`): V1, V4, V5, V6 and W1 are done.
+   Still open offline: V2, V3, V7, W2, W7. W3 and W4 wait for the CF ClkT run; W5 and W6
+   wait for the hardware gates.
 7. **Patch tool (Phase E)** groundwork: it converts the owner's own v2.00
    updater and redistributes no Zoom binaries.
 8. **NAM feasibility (owner question, 2026-10-15). LAST on the list: only after everything else.** The target is **NAM A2**,

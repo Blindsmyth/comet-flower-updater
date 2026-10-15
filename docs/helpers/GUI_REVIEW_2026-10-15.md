@@ -16,6 +16,15 @@ every tab, and checks against the current project state (handoff 2026-10-15).
 | F2 | "Authorize OK to Save" was enabled at construction. It was disabled only after an effect was selected in the Test tab, so with an empty library it started enabled. The core still refused the save. | The button is created disabled. The smoke test asserts it. |
 | F3 | Dead `_record_cost_test` read a removed `freeze_load_var`. | Removed. The core still rejects the Probe 10 inference. |
 
+## Done in the follow-up commit
+
+V1 (row colours, legend and selection summary), V4 (pre-flight scrollbar), V5 (progress
+bars; Build, Restore and Cancel locked or unlocked by a busy flag, which the pre-flight
+refresh respects), V6 (accent style) and W1 (the wizard steps unlock in order, an
+un-tick re-locks the later steps, the checklist resets for a new effect, and audio pass
+needs every step plus stage > `built`). They are covered by `tests/cf_loader/test_app_smoke.py`
+(4 tests).
+
 ## Open: visual indicators
 
 | # | Where | Finding | Proposed |
