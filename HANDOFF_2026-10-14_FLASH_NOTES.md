@@ -59,3 +59,6 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
 - Updated HANDOFF_2026-10-14_LEAD.md "Work completed" and "Continue from this point".
 - (d) owner-run test prep completed: created docs/helpers/OWNER_DIAG_TEST_PREP_2026-10-15.md (test scenarios, memory structure layout at 0xc01a0b00, decoding procedures, fault bit interpretation). DO_NOT_FLASH remains in effect.
 
+
+### 2026-10-15 (Claude): abort obligation 1 narrowed
+- docs/helpers/USB_TX_TEMPLATE_WRITERS_2026-10-15.md. The TX template table (c01805c4) has no instruction-level writer; bulk/external writes to its writable section remain unexcluded. Corrected the abort doc: the tail drain at c0120778 is the slot's submit queue (word [0]), not runtime state. Baseline: 171 passed, 471 subtests. Next: obligation 2 (Hwi c011fc8c->c011faa0 coexistence with the c0120650 poll; entry interrupt state).

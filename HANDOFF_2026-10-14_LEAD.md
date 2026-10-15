@@ -76,6 +76,12 @@ superseded by this continuation.
 - Created offline host decoder `tools/decode_ctl_diag.py` to inspect memory dumps
   containing `ctl_diag` (JSON and formatted table modes).
 - Full suite: **168 passed, 471 subtests passed**.
+- 2026-10-15: TX template writer review
+  ([USB_TX_TEMPLATE_WRITERS_2026-10-15.md](docs/helpers/USB_TX_TEMPLATE_WRITERS_2026-10-15.md)).
+  The table at `c01805c4` has six references, all reads, and no instruction-level
+  writer. The abort tail at `c0120778` drains template word [0], the submit
+  queue (22 for MIDI IN), not runtime state. Pinned by
+  `tests/test_tx_template_writers.py`. Suite: **171 passed, 471 subtests**.
 
 Details and next instruction-level work:
 [STACK_CONTINUATION_2026-10-14.md](docs/helpers/STACK_CONTINUATION_2026-10-14.md),

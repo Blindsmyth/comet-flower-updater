@@ -86,9 +86,11 @@ aborts and the Hwi consumer. This is not a demonstrated unsafe interleaving.
 
 The existing expiry finding still stands: reaching 128 iterations skips the
 queue-25 drain at `c0120732` and reaches `c0120764`. Both observed-pending
-and expired paths later drain the queue selected from the per-channel state
-at `c0120778..07aa`. Its numeric queue value is runtime state; this review
-does not infer that it is queue 24 merely from the static template.
+and expired paths later drain a queue at `c0120778..07aa`.
+*Corrected 2026-10-15:* that queue is template word [0] (the slot's submit
+queue, 22 for MIDI IN), loaded via `*-A4[3]` from `c01805d0 + 12N`. It is
+neither runtime state nor queue 24. See
+[USB_TX_TEMPLATE_WRITERS_2026-10-15.md](USB_TX_TEMPLATE_WRITERS_2026-10-15.md).
 
 `c0120628` forms `0x01e00502 + 16*N`, reads a halfword, computes
 `((old | 8) & 0xff98)`, and writes that result twice at `c0120648/064a`.
