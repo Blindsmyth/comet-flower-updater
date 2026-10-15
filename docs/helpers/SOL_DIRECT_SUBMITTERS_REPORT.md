@@ -60,6 +60,42 @@ Confidence: **confirmed** for the boundary, sole direct caller, and rejection of
 
 ## 2. Gate
 
+**Finding 2a (confirmed).** On the `c0120c44` caller route, `c0120c14` is reached exactly when the masked slot is nonzero, TX field [2] is nonzero, the pre-call TX field [9] is exactly `-1`, and the caller-supplied `B4` value (stored into field [5] at `c0120c88`) is nonzero. Thus this route does depend on fields [9] and [5], but field [5] is a positive trigger, not a `field[5] == 0` ownership gate. It has no field-[3] or queue-state predicate before the call.
+
+| Predicate | Result |
+|---|---|
+| slot = 0 or field [2] = 0 | error return; no submit |
+| field [9] >= 0 | error return; no field-[5] store; no submit |
+| field [9] < 0 but field [9] != -1 | store caller `B4` to field [5], return without submit |
+| field [9] = -1, caller `B4` = 0 | call `c0120b2c`, whose field-[5] test returns without submit |
+| field [9] = -1, caller `B4` != 0 | reach `c0120c14` |
+
+```text
+c0120c6c   001042e6           LDW.D2T2      *+B4[2],B0
+c0120c70   3010a120    [!B0]  BNOP.S1       0xc0120c80,5
+c0120c74       380d           LDW.D2T2      *B4[9],B0
+c0120c76       5027           CMPGT.L2      0,B0,B0
+c0120c78   2014a120    [ B0]  BNOP.S1       0xc0120c88,5
+```
+
+Here `CMPGT 0,field[9]` means `field[9] < 0`; the `[B0]` branch enters the negative-state path.
+
+```text
+c0120c88       b015           STW.D2T2      B1,*B4[5]
+c0120c8a       380d           LDW.D2T2      *B4[9],B0
+c0120c8c   0003ea5a           CMPEQ.L2      -1,B0,B0
+c0120c90   300ca120    [!B0]  BNOP.S1       0xc0120c98,5
+c0120c94       eadb           CALLP.S2      0xc0120b2c,B3
+```
+
+```text
+c0120b5a       9487           MV.L2X        A9,B4
+c0120b60       a00d           LDW.D2T1      *B4[5],A0
+c0120b64       db7a    [!A0]  BNOP.S1       0xc0120c3a,5
+```
+
+Confidence: **confirmed**.
+
 ## 3. Does it update field [5]?
 
 ## 4. Endpoint/direction
