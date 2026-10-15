@@ -45,3 +45,5 @@ Read first: `HANDOFF_2026-10-14_LEAD.md` (real project state), then this file.
 
 
 - Browser automation of Gemini was REMOVED on purpose (ToS/account risk). Do NOT recreate it. Argon round trips are manual: clipboard out (bridge/to_argon.md), user saves reply to bridge/from_argon/response.md.
+
+- Argon NOT used. Claude did the patch-site feasibility pass: docs/helpers/USB_TEARDOWN_PATCH_SITES_2026-10-14.md. Best hook site c0120744 (32-bit CALLP to c011fa54). Next: resolve its 'Unproved' list items 1,2,4 (decode c0120658..0674 and c011faa0), then add a HOOKS row + ring trace in controller.c as a SEPARATE named candidate, add test, rebuild, run pytest. Never claim it fixes ownership.
