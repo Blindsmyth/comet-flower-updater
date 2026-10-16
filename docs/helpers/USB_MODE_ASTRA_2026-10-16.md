@@ -201,3 +201,79 @@ of an already in-flight descriptor. **Likely safety requirement:** account
 for matching teardown completion and all retained descriptors before reuse;
 on timeout/ambiguous ownership stay disconnected and do not recycle buffers.
 Neither a full stock reopen nor a bare pull-up toggle closes this proof gap.
+### Finding 7 — proposed mode-switch transaction (U2/U3)
+**Confidence: likely design; not a proved safe implementation.** The smallest
+change in software is not necessarily the smallest safe hardware transition.
+The evidence supports two possible transactions:
+
+1. **Minimal registry-only variant, conditional on proven quiescence:** stop
+   producers and finish/cancel transfers; disconnect and stop the worker via
+   c015af0c (Finding 1); reset configuration/alt state with c01359b8 (Finding 5)
+   and custom audio/EP0 pending state; change the mode flag while detached;
+   c015afa0(6,0), then re-register stock c018137c and, for USB, IF2 and IF3
+   in order (Finding 4); recreate the worker/connect through c015af18.
+   This avoids reopening MIDI, but the MIDI transport state left behind by
+   c011ff28 has not been shown reusable. It is a candidate optimization,
+   NOT the recommended currently justified minimum.
+2. **Conservative stock-lifecycle variant:** serialize requests in a dedicated
+   lifecycle task (MainApp posts a request); stop new MIDI/audio submissions,
+   complete the ownership/quiescence handshake, then invoke c016ab58 for
+   full worker + MIDI + controller close (Finding 6). Verify close completion
+   and Hwi removal; wait a host-visible detached interval without holding
+   locks (exact interval not established offline). Clear configuration/alt
+   and custom pending state, publish the new mode flag, then invoke the
+   c016ab8c initialization/open sequence (Findings 3/5). Full init clears the
+   registry; successful c0145158 open then installs MIDI and the mode-aware
+   hook installs IF2/IF3 only for USB. All records/maps must be ready before
+   c016ab80 connects. Do not resume producers until the host configures the
+   new device; audio remains inactive until its alternate setting is selected.
+
+The transaction must cover both the descriptor builder and registration
+reader with one stable flag. FX and MIDI may share descriptors/registry;
+only crossing the USB boundary inherently requires this topology rebuild.
+This is a **likely design inference**, not a finding about an implemented
+MODE menu. On registration/init failure keep SOFTCONN clear; stock wrappers
+such as c016ab8c do not test intermediate A4 results (`c016ab94 CALLP
+c015b114` immediately followed by `c016ab98 CALLP c016ab70`), so a safe
+implementation needs checked substeps, not blind calls to the whole wrapper.
+
+For review, the full-lifecycle call inventory is:
+
+| Stock entry | Observed caller/context | Relevant operation / evidence |
+|---|---|---|
+| c016ab58 | GPIO78 transition in SwitchNrmlSpdRead, priority 9 | Full stop; c016ab5a CALLP c016ab40, c016ab64 CALLP c015af00 |
+| c015af0c / c013826c | Initiating task; also error cleanup | Disconnect, stop worker/mailbox; c0138274 CALLP c011ff28 |
+| c0159620 / c0144ed0 | Initiating task after worker stop | MIDI close and task deletion; c0159624 CALLP c0144ed0; may sleep |
+| c015af00 / c0138300 / c01200c0 | Initiating task / error cleanup | Controller/Hwi close; c0138304 CALLP c01200c0 |
+| c01359b8 | Reset path, callable only with lifecycle exclusion for this proposal | Config + alt clear; c015ea00 CALLP c01359b8 |
+| c015b114 / c0138a78 | MainApp initially, switch task on transition | Endpoint/core init and registry clear; c0138b0c CALLP c0122260; c0138b20 CALLP c015c814 |
+| c0159758 / c0145124 / c0152410 | Same initiating task, before USB worker start | MIDI init/open; c01597b0 CALLP c0145124; c0145158 CALLP c0152410 |
+| c015afa0 / c015c6b4 | Synchronous caller; no lock in these wrappers | Registry mutation/replay; c0138a70 CALLP c015c6b4 |
+| c015af18 / c0138720 / c0120dd0 | Same initiating task | Start priority-30 worker, then SOFTCONN; c01387e8 CALLP c0120dd0 |
+| c0138310 | USB worker, priority 30 | Mailbox dispatch; c0138318 CALLP c014a214; do not ask it to delete itself |
+
+Table confidence: **confirmed** call sites and observed contexts; any new
+lifecycle-task integration is **likely design**. c015e9d0 is a larger reset
+orchestrator, not interchangeable with c01359b8: it calls abort/endpoint
+operations before that state clear (`c015e9d8 CALLP c01229e8;
+c015e9e4 CALLP c0122ad0; c015e9ec CALLP c015b128;
+c015e9f4 CALLP c0138660`). Do not invoke it while deleting its worker
+without resolving its callback/transport dependencies.
+
+## Remaining unproved points
+- Complete CPPI teardown receipt, queue drainage, buffer ownership, and safe
+  reuse across live mode changes (Finding 6); no safe hot-switch certification.
+- Host-required disconnect timing and enumeration behavior; no device or host
+  experiments were performed.
+- Complete indirect-writer exclusion for startup task priorities and GPIO78
+  physical meaning; normal boot ordering above is the traced stock graph.
+- Exact custom audio/EP0 cancellation handshake and rollback after partial
+  IF2/IF3 registration; only stock disassembly and existing reports assessed.
+- New lifecycle serialization against switch-task cable changes, USB Hwi/Swi,
+  MIDI producers, and settings-page requests; the stock lock stub is insufficient.
+- Worker stop/delete failure propagation and whether MIDI close's bounded
+  retry really establishes quiescence; its elapsed sleep is not DMA proof.
+
+Offline scope: no pedal, MIDI transport, network, updater execution, or firmware
+edits. Only this report and build/scratch/astra_usb were written. Existing
+unrelated working-tree modifications were left untouched.
