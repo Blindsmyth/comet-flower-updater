@@ -169,8 +169,10 @@ def analyse_pattern(data):
 DIAG_NAMES = ["packets loaded", "SOFs skipped (TxPktRdy still set)", "TXCSR UnderRun seen",
               "USB frames with no tick", "ring fill", "ticks in an unchanged frame",
               "tap overruns/underruns", "TXCSR"]
-VARIANTS = ["double buffer, ISOUpdate on", "single buffer, ISOUpdate on",
-            "double buffer, ISOUpdate off", "single buffer, ISOUpdate off"]
+# Variants build after run 9 (variants build 74f779cb used: 0 double+on, 1 single+on,
+# 2 double+off, 3 single+off).
+VARIANTS = ["double buffer, ISOUpdate off", "single buffer, ISOUpdate off",
+            "double buffer, ISOUpdate on", "single buffer, ISOUpdate on"]
 
 
 def diag_report(data, mismatch):

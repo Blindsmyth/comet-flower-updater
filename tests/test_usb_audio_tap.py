@@ -83,6 +83,13 @@ class UsbAudioTapTests(unittest.TestCase):
         self.assertEqual(self.lib.host_pack_count(), 2)
         self.assertEqual((self.state(0), self.state(3)), (16, 1))
 
+    def test_alt1_clears_isoupdate_and_keeps_other_power_bits(self):
+        # POWER (byte 0x01e00401) = ISOUpdate | SoftConn | HS enable; alt 1 must clear only
+        # ISOUpdate: with it on, packets reached the host empty or cut short (hardware run 9).
+        self.lib.host_set_register(0x01e00400, 0x0000 | (0x80 | 0x40 | 0x20) << 8)
+        self.lib.usb_audio_set_alt(1)
+        self.assertEqual(self.lib.host_get_register(0x01e00400) >> 8, 0x60)
+
     def test_inactive_sof_writes_nothing(self):
         self.assertEqual(self.sof(), [])
         self.assertEqual(self.lib.host_get_register(TXCSR), 0)

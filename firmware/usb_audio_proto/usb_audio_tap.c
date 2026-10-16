@@ -52,7 +52,8 @@
  *   7 TXCSR as read at this SOF (low 13 bits)
  * Variants (endpoint-1 FIFO set-up, cycled every UA_VARIANT_TICKS ticks so one
  * capture compares them): bit 0 = single-buffered FIFO (else double),
- * bit 1 = POWER.ISOUpdate off (else on). Variant 0 is the normal tap set-up.
+ * bit 1 = POWER.ISOUpdate on (else off). Variant 0 is the normal tap set-up
+ * (double-buffered, ISOUpdate off; run 9 showed ISOUpdate on loses packets).
  * The left counter is untouched, so frame continuity is still checked, and
  * the diag frames mark where each packet starts.
  */
@@ -205,9 +206,9 @@ static u32 ua_pattern_variant_tick(void)
     USB_TXFIFOSZ = (want & 1u) ? 0x05u : 0x15u;      /* 256 B single : 2 x 256 B */
     USB_INDEX = idx;
     if (want & 2u)
-        USB_POWER &= ~POWER_ISOUPDATE;
-    else
         USB_POWER |= POWER_ISOUPDATE;
+    else
+        USB_POWER &= ~POWER_ISOUPDATE;
     USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
     USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
     ua_pattern_diag.variant = want;

@@ -70,8 +70,8 @@ class AnalyserTests(unittest.TestCase):
             if p % 8:                                    # (never a tag-0 packet)
                 keep[p * 44:(p + 1) * 44] = False
         text = "\n".join(ua_capture.analyse_pattern(data[keep])[0])
-        self.assertRegex(text, r"0 double buffer, ISOUpdate on +\d+ / +\d+ / +0\.0 %")
-        self.assertRegex(text, r"1 single buffer, ISOUpdate on +\d+ / +\d+ / +[1-9]")
+        self.assertRegex(text, r"0 double buffer, ISOUpdate off +\d+ / +\d+ / +0\.0 %")
+        self.assertRegex(text, r"1 single buffer, ISOUpdate off +\d+ / +\d+ / +[1-9]")
 
     def test_gap_repeat_padding_corrupt(self):
         a = pattern(0, 500)

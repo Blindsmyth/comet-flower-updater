@@ -176,9 +176,11 @@ class UsbAudioPrototypeTests(unittest.TestCase):
         self.assertEqual(self.trace(), [])
 
     def test_setup_preserves_power_bits_and_uses_byte_index(self):
-        self.lib.host_set_register(0x01e00400, 0x4100)
+        # POWER keeps SOFTCONN (0x40) and loses ISOUPDATE (0x80): with ISOUPDATE on,
+        # packets reached the host empty or cut short (hardware run 9, 2026-10-16).
+        self.lib.host_set_register(0x01e00400, 0xc100)
         self.assertEqual(self.lib.usb_audio_set_alt(1), 0)
-        self.assertEqual(self.lib.host_get_register(0x01e00400), 0xc100)
+        self.assertEqual(self.lib.host_get_register(0x01e00400), 0x4100)
         self.assertIn((0x01e0040e, 1), self.trace())
         self.assertEqual(self.lib.host_get_register(0x01e00410), 180)
         self.assertEqual(self.lib.host_get_register(0x01e00464), 0x28)

@@ -77,7 +77,10 @@ typedef unsigned int   u32;
 /* CONFIRMED: POWER, byte register. Stock read-modify-writes it (SOFTCONN,
    bit 6: set at c0120e1a..20, cleared at c011ff4a..4c). Bit 7 is ISOUPDATE
    (SPRUFM9H 2.7.1.4.1.2): an ISO packet loaded into the FIFO waits for the
-   next SOF, so the first packet after alt 1 is never sent early. */
+   next SOF. It must be OFF for this endpoint: with it on (and the FIFO double-
+   buffered, packets loaded at SOF) 8-63 % of packets reached the host empty or
+   cut to 1-2 frames; with it off, 0 lost (hardware runs 6-9, 2026-10-16,
+   variants build, docs/CF_USB_MODE_2026-10-16.md). */
 #define USB_POWER        USB_AUDIO_REG8(0x01e00401u)
 #define POWER_ISOUPDATE  0x80u
 
@@ -219,7 +222,7 @@ int usb_audio_set_alt(u32 alt)
 
     if (alt == 1) {
         usb_audio_setup_ep1();
-        USB_POWER |= POWER_ISOUPDATE;
+        USB_POWER &= ~POWER_ISOUPDATE;
         /* MUSB rule: clear DMAEN before (or with) DMAMODE, never DMAMODE
            first. Two writes: drop DMAEN, then DMAMODE plus toggle reset and
            flush. */

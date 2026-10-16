@@ -4,8 +4,8 @@ Folder: `build/cf_usb_mode_2026-10-16/` (owner use only: it contains Zoom's firm
 
 | File | SHA-256 (start) | Contents |
 |---|---|---|
-| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `6d8c936aae847aaa` | Menu candidate + USB-audio silence layer |
-| `res1_cf_usb_mode.bin` | `97c3a6d87b939941` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
+| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `54e157b264584eee` | Menu candidate + USB-audio silence layer |
+| `res1_cf_usb_mode.bin` | `a79a305ced6c1cac` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
 
 Packaged with `--test-controller-fw` (the strict release path refuses the audio layer). Presets and
 effects as in the release. **Not flashed. First hardware run of any USB-audio code.**
@@ -197,3 +197,26 @@ through 0 double+ISOUpdate (as now), 1 single+ISOUpdate, 2 double without ISOUpd
 inside the USB interrupt (INDEX saved/restored, FIFO flushed twice). Diag tags changed: 3 = variant << 11 | frame
 skips, 5 = ticks in an unchanged frame, 6 = overruns << 7 | underruns (older takes decode wrongly with the new
 analyser on those tags). `ua_capture.py` prints loaded / received / lost per variant. Record >= 32 s.
+
+## Ninth run (variants build 74f779cb, through the hub), take `take_20261016_163531.wav`
+
+(First try on motherboard root port 13: Windows Code 10, 0xC0000001, HOST 34, after two power cycles. Back on the
+hub it enumerated (HOST 22). Port 13 left as an open puzzle.) 40 s, delivered audio per FIFO set-up:
+
+| Variant (as numbered in 74f779cb) | Delivered | Lost |
+|---|---|---|
+| 0 double buffer, ISOUpdate on (all builds so far) | 81.1 % | 18.8 % as USB packets |
+| 1 single buffer, ISOUpdate on | 50.5 % | 49.5 % pedal overrun (TxPktRdy busy at SOF) |
+| **2 double buffer, ISOUpdate off** | **99.9 %** | 0.1 % (the set-up switches) |
+| 3 single buffer, ISOUpdate off | 50.5 % | 49.5 % pedal overrun |
+
+**Fix:** `usb_audio_set_alt(1)` now clears POWER.ISOUpdate (was: set). All three TEST builds rebuilt:
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| USB mode (silence) `build/cf_usb_mode_2026-10-16/` | `54e157b2` | `a79a305c` |
+| **USB audio tap (guitar)** `build/cf_usb_audio_tap_2026-10-16/` | `de0925d4` | `32afe08d` |
+| Variants diag `build/cf_usb_audio_variants_2026-10-16/` | `7e2a9961` | `3294331f` |
+
+The variants build now numbers 0 = double + ISOUpdate off (the new default), bit 1 = ISOUpdate on. Next: tap build
+with guitar, `ua_capture.py` audio take (expect no clicks), then a pattern check on the hub and a direct port.
