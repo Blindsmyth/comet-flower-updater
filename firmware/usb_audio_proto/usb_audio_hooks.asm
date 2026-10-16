@@ -22,8 +22,17 @@
     .ref usb_audio_build_descriptors
     .ref desc_ptrs
     .ref stock_descriptor_builder   ; = 0xc0160ec0, defined by the linker command file
+    .ref ua_mode                    ; ua_glue.c: 0 = USB-audio mode off -> all stock
 
 usb_audio_descriptor_veneer:
+    ; USB-audio mode off: the stock builder for every type (A0 is scratch,
+    ; see below; A4, B4, A6 and the caller's B3 are untouched).
+    MVKL  .S1   ua_mode,A0
+    MVKH  .S1   ua_mode,A0
+    LDW   .D1T1 *A0[0],A0
+    NOP   4
+ [!A0] B     .S1   stock_descriptor_builder
+    NOP   5
     ; Only A4 = 1 (DEVICE) or 2 (CONFIGURATION) build the fragment-pointer
     ; array in stock (c0160ee2..ee6: A4-1 <= 1). A4 = 3 (STRING) builds a
     ; different 8-byte-record table (c0160eea -> c0161008) read as

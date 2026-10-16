@@ -78,20 +78,44 @@ class UsbAudioCandidateBuild(unittest.TestCase):
         self.assertIn("STW.D1T2      B0,*+A5[A4]", body)
         self.assertIn("STW.D1T1      A4,*+A5[17]", body)            # aa4c + 68 = EP 0x84
         regs = set(re.findall(r"\b([AB]\d+)\b", re.sub(r"0x[0-9a-f]+", "", body)))
-        self.assertTrue(regs <= {"A0", "A4", "A5", "B0", "B3"}, regs)
+        # A1 only for the mode test (caller-saved; the sole caller is compiled code)
+        self.assertTrue(regs <= {"A0", "A1", "A4", "A5", "B0", "B3"}, regs)
+        # USB-audio mode off: back into the untouched stock routine, B3 restored first
+        off = dis[dis.index("ua_map_thunk:"):dis.index("ua_map_on:")]
+        self.assertRegex(off, r"MVK\.S1\s+0xffff8000,A1")
+        self.assertRegex(off, r"MVKH\.S1\s+0xc01a0000,A1")
+        self.assertRegex(off, r"LDW\.D1T1\s+\*\+A1\[0\],A1")
+        self.assertRegex(off, r"\[ A1\]\s+B\.S1\s+ua_map_on")
+        self.assertRegex(off, r"\[!A0\]\s+B\.S1\s+stock_map_reject .*= 0xc015c6ac\)")
+        self.assertRegex(off, r"\n\S+\s+\S+\s+B\.S1\s+stock_map_continue .*= 0xc015c678\)")
+        self.assertRegex(off, r"\.fphead\s+p,")                      # protected load
+        self.assertLess(off.index("0xffffc768,B3"), off.index("stock_map_"))
 
     def test_descriptor_veneer_delegates_non_fragment_types(self):
         # Regression for the STRING-descriptor bug (REVIEW_USB_AUDIO_CANDIDATE.md):
         # the veneer may only replace A4 = 1/2; all else goes to stock c0160ec0
         # before anything (B3, A6, B4, stack) is touched.
+        # USB-audio mode off (ua_mode at c01a8000 == 0): stock for every type,
+        # also before anything is touched. The load sits in a protected-mode
+        # fetch packet (header "p"), so its delay slots need no explicit NOP.
         dis = (ua.OUT / "usb_audio.dis").read_text(errors="replace")
-        body = dis[dis.index("usb_audio_descriptor_veneer:"):].splitlines()[1:5]
+        lines = dis[dis.index("usb_audio_descriptor_veneer:"):].splitlines()[1:12]
+        body = [ln for ln in lines if ".fphead" not in ln][:9]
         text = "\n".join(body)
-        self.assertRegex(body[0], r"ADD\.L1\s+A4,-1,A0")
-        self.assertRegex(body[1], r"CMPLTU\.L1\s+1,A0,A0")
-        self.assertRegex(body[2], r"\[ A0\]\s+B\.S1\s+stock_descriptor_builder .*= 0xc0160ec0\)")
-        self.assertRegex(body[3], r"NOP\s+5")
+        self.assertRegex(body[0], r"MVK\.S1\s+0xffff8000,A0")
+        self.assertRegex(body[1], r"MVKH\.S1\s+0xc01a0000,A0")
+        self.assertRegex(body[2], r"LDW\.D1T1\s+\*\+A0\[0\],A0")
+        self.assertRegex(body[3], r"\[!A0\]\s+B\.S1\s+stock_descriptor_builder .*= 0xc0160ec0\)")
+        self.assertRegex(body[4], r"NOP\s+5")
+        self.assertRegex(body[5], r"ADD\.L1\s+A4,-1,A0")
+        self.assertRegex(body[6], r"CMPLTU\.L1\s+(0x)?1,A0,A0")
+        self.assertRegex(body[7], r"\[ A0\]\s+B\.S1\s+stock_descriptor_builder .*= 0xc0160ec0\)")
+        self.assertRegex(body[8], r"NOP\s+5")
         self.assertNotIn("B15", text)
+        heads = [ln for ln in lines if ".fphead" in ln]
+        self.assertTrue(heads and re.search(r"\.fphead\s+p,", heads[0]), heads)   # protected loads
+        self.assertRegex((ua.OUT / "usb_audio.map").read_text(),
+                         r"c01a8000\s+00000004\s+ua_glue\.obj \(\.ua_mode\)")
 
     def test_layers_onto_controller_lifecycle_candidate(self):
         with tempfile.TemporaryDirectory() as d:

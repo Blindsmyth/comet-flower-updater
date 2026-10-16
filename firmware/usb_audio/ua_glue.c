@@ -66,6 +66,15 @@ const ua_fn ua_if2_record[5] = { ua_ret0, ua_ret0, ua_ret0, (ua_fn)ua_if2_reques
 #pragma DATA_SECTION(ua_if3_record, ".ua_state")
 const ua_fn ua_if3_record[5] = { ua_ret0, ua_ret0, ua_ret0, (ua_fn)ua_if3_request, ua_ret0 };
 
+/* USB-audio mode flag, at the fixed address c01a8000 (ua.cmd) so the
+   controller payload can set it: 0 = off (the image's value), 1 = on. While
+   it is 0 every patch behaves as stock: the descriptor veneer tail-branches
+   to the stock builder for every type, IF2/IF3 are never registered (so the
+   map writer only ever sees slot 0, the stock MIDI mapping, and no alternate
+   is ever set, which keeps the SOF tick and the tap idle). */
+#pragma DATA_SECTION(ua_mode, ".ua_mode")
+volatile u32 ua_mode = 0u;
+
 #pragma DATA_SECTION(ua_reg_result, ".ua_state")
 volatile u32 ua_reg_result[2] = { 0xffffffffu, 0xffffffffu };
 
@@ -76,7 +85,7 @@ volatile u32 ua_reg_result[2] = { 0xffffffffu, 0xffffffffu };
 int ua_usbmidi_open(u32 callback)
 {
     int r = STOCK_USBMIDI_OPEN(callback);
-    if (r == 0) {
+    if (r == 0 && ua_mode) {
         ua_reg_result[0] = (u32)STOCK_REGISTER(6u, ua_if2_record);
         if (ua_reg_result[0] == 0u)
             ua_reg_result[1] = (u32)STOCK_REGISTER(6u, ua_if3_record);

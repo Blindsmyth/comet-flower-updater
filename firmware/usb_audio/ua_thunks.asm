@@ -7,16 +7,36 @@
 ; c015c66c..c015c672 has run:  A0 = (selector == 6), A4 = slot, B0 = record.
 ; Our CALLP overwrote B3, so return to the only caller's continuation:
 ; c015c760 (16-bit CALLP c015c66c, sole reference) returns to c015c768.
-; Clobbers only A0, A4, A5 (+B3 = c015c768), within the stock routine's own
-; clobber set {A0, A4, A5, B0, B4}. Mapping (recon/24 5.1):
+; Clobbers A0, A4, A5 (+B3 = c015c768), within the stock routine's own
+; clobber set {A0, A4, A5, B0, B4}, plus A1 for the mode test (see below). Mapping (recon/24 5.1):
 ;   all:    record_vector[slot] (c011aa18) = record
 ;   slot 0: IF0, IF1, EP3 (c011aa4c), EP 0x84 (c011aa90) = 0   (stock MIDI)
 ;   slot 1: IF2 = 1;   slot 2: IF3 = 2
+; USB-audio mode off (ua_mode == 0): run the untouched stock code instead,
+; with B3 restored to c015c768 (the value the stock routine returns through):
+; selector == 6 -> c015c678, the instruction after the overwritten gate;
+; otherwise -> c015c6ac, the stock reject path. Uses only A1 before that:
+; caller-saved under EABI, and the only caller (c015c760) is compiled code,
+; so it cannot rely on A1 across the call.
     .sect ".text:ua_map"
     .global ua_map_thunk
+    .ref ua_mode
+    .ref stock_map_continue
+    .ref stock_map_reject
 ua_map_thunk:
         MVKL    .S2     0xc015c768,B3
         MVKH    .S2     0xc015c768,B3
+        MVKL    .S1     ua_mode,A1
+        MVKH    .S1     ua_mode,A1
+        LDW     .D1T1   *A1[0],A1
+        NOP     4
+ [A1]   B       .S1     ua_map_on
+        NOP     5
+ [!A0]  B       .S1     stock_map_reject
+        NOP     5
+        B       .S1     stock_map_continue
+        NOP     5
+ua_map_on:
  [!A0]  B       .S1     ua_map_reject
         NOP     5
         MVKL    .S1     0xc011aa18,A5
