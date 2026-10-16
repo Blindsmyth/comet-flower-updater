@@ -70,6 +70,44 @@ def logo_lines(text="COMET FLOWER"):
     return rows
 
 
+class Player:
+    """Loop a WAV like a media app: Windows MCI (its own Volume Mixer entry, the
+    default playback device). winsound.PlaySound is only a fallback: Windows
+    files it under "System Sounds", which is often muted."""
+
+    def __init__(self):
+        self.mode = None
+
+    def start(self, wav):
+        try:
+            import ctypes
+            mci = ctypes.windll.winmm.mciSendStringW
+            mci("close cfintro", None, 0, 0)
+            if (mci('open "%s" type mpegvideo alias cfintro' % wav, None, 0, 0) == 0
+                    and mci("play cfintro repeat", None, 0, 0) == 0):
+                self.mode = "mci"
+                return True
+        except (AttributeError, OSError):
+            pass
+        try:
+            import winsound
+            winsound.PlaySound(str(wav), winsound.SND_FILENAME | winsound.SND_ASYNC
+                               | winsound.SND_LOOP)
+            self.mode = "winsound"
+            return True
+        except (ImportError, RuntimeError):
+            return False
+
+    def stop(self):
+        if self.mode == "mci":
+            import ctypes
+            ctypes.windll.winmm.mciSendStringW("close cfintro", None, 0, 0)
+        elif self.mode == "winsound":
+            import winsound
+            winsound.PlaySound(None, 0)
+        self.mode = None
+
+
 def copper(t, row):
     """Classic copper-bar colour cycling: hue rolls down the logo rows."""
     h = (t * 0.6 + row * 0.11) % 1.0
@@ -91,6 +129,7 @@ class Intro(tk.Tk):
         self.updater = Path(updater) if updater else None
         self.music_on = False
         self.wav = None
+        self.player = Player()
         self.t = 0.0
         self.cv = tk.Canvas(self, width=W, height=H, bg=BG, highlightthickness=0)
         self.cv.pack()
@@ -160,20 +199,16 @@ class Intro(tk.Tk):
 
     # -- actions -------------------------------------------------------------
     def toggle_music(self):
-        try:
-            import winsound
-        except ImportError:
-            return
         if self.music_on:
-            winsound.PlaySound(None, 0)
+            self.player.stop()
             self.music_on = False
-            return
-        if self.wav is None:
-            from tools.cf_intro import music
-            self.wav = music.ensure(ROOT / "build" / "cf_intro" / "cf_tune.wav")
-        winsound.PlaySound(str(self.wav), winsound.SND_FILENAME | winsound.SND_ASYNC
-                           | winsound.SND_LOOP)
-        self.music_on = True
+        else:
+            if self.wav is None:
+                from tools.cf_intro import music
+                self.wav = music.ensure(ROOT / "build" / "cf_intro" / "cf_tune.wav")
+            self.music_on = self.player.start(self.wav)
+        self.cv.itemconfig(self.buttons[1][1],
+                           text="[ MUSIC %s ]" % ("ON" if self.music_on else "OFF"))
 
     def find_updater(self):
         if self.updater and self.updater.exists():
@@ -205,12 +240,7 @@ class Intro(tk.Tk):
                             "Greetings to Razor 1911. Thanks, Claude.")
 
     def quit_app(self):
-        if self.music_on:
-            try:
-                import winsound
-                winsound.PlaySound(None, 0)
-            except ImportError:
-                pass
+        self.player.stop()
         self.destroy()
 
 
