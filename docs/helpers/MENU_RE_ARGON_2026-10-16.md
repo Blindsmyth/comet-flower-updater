@@ -1,7 +1,11 @@
 # Zoom G1X Four Settings-Menu RE — Argon Report (2026-10-16)
 
 ## Summary
-*(Pending final synthesis — <= 15 lines)*
+1. **Menu tables live in `.cinit`-decompressed RAM (`0xc0181b28..0xc0183b71`)**, decompressed at boot from `sc0185260` (`0xc0185260..0xc01868f2`) via TI RLE24 (`c0161e60`). Because they sit in writable RAM, item/page descriptors can be modified in place at runtime without flash code patches.
+2. **Four 4-item tables (`0x2c` = 44 B / 11 words per item)** sit contiguously at `0xc0182b00..0xc0182dc0`: `OUTPUT` (`c0182b00`, dormant), `SETUP` (`c0182bb0`), `PWR/LCD` (`c0182c60`), and `TUNER` (`c0182d10`). Each item word-tuple holds `{id, 0xfff, 0xfff, str1, str2, min, max, val_to_str, get_val, set_val, on_change}`.
+3. **Fifteen 9-word (`0x24` B) screen descriptors** are returned by `c01495c0(0..14)` and stored in `*+B14[120]`. Top-level `SETTING` (`id=0`, `c01833dc`) renders 5 icons from `0xc0181350 = {4:CHAIN, 6:PATCH, 7:SAVE, 10:SETUP, 11:PWR/LCD}` corresponding to the 5 physical effect-slot buttons (`x = 2, 27, 53, 77, 102`).
+4. **Drawing & Input**: `UpdateUI` (`c013c754`) -> `c013c6f8` -> `c013c0c8` -> `c013c060` (`ui_mode` 4 or 7) -> `c013bfe0` -> `c0149a68` calls `(*+B14[120])->w6` (`draw`), which calls `c0154564` -> `c0154338` (draws 4 columns: 3x5 labels via `c011e700` at `y=9/13/15`, 5x7 values via `c011d4d8` at `y=24`) + `c013a7b4` (inverted title bar). Knobs (`0x19..0x1c`) call `c0149948` (`w8` get -> clamp `[w5,w6]` -> `w9` set -> `w10` hook).
+5. **Values & Free Room**: All 16 items live in the 30-word struct `0x11812f74..0x11812fe8` (first 27 words = 108 B persisted, validated by 26-entry schema `0xc01823f8`, shadowed at `0x11812f08`). **Two persisted words at `0x11812fd8..0x11812fdc` (`+0x64..+0x68`, Schema Rec 25 `0xc0182588`) are completely unused.** Best UI options: repurpose `BANK HOLD` (`0xc0182c34` in `SETUP`) or `BATTERY` (`0xc0182c60` in `PWR/LCD`) in RAM (`w10=0`), or expose dormant `OUTPUT` (`0xc0182b00`, `id=5`).
 
 ## A1. Menu Data: Item Table(s), Page List, and Table Word Dump
 
@@ -225,4 +229,51 @@ UpdateUI task loop (c013c754)
 
 ## A4. Free / Unused Room and Repurposing Candidates
 
+### 1. Why Adding a 5th Column or 2nd Row to `SETUP` / `PWR/LCD` Is Ruled Out (Confirmed)
+- **Horizontal / Input limit (4 columns = 4 physical knobs)**:
+  - Each page's knob handler (`c01671ac` for `SETUP`, `c0163268` for `PWR/LCD`, `c01591e8` for `TUNER`) filters event IDs by `SUB.D1 A0,0x19,A0; CMPLTU.L1 0x3,A0,A0` (`0x19..0x1c` = Knobs 1..4) and passes `A4 = 4` to `c0149948`.
+  - The 128-pixel LCD width is divided into 4 columns centered at `x = {17, 48, 79, 110}` (`0xc0181558`) or `{18, 50, 79, 110}` (`0xc0181568`), ~32 px per item.
+- **Vertical limit (32 px height)**:
+  - `y = 0..6`: inverted page title banner (`c013a7b4` -> `c011cb64(0,0,0,127,6)`).
+  - `y = 9..20`: 1-line (`y=13`) or 2-line (`y=9`, `y=15`) 3x5 item labels (`c0154360..c0154430`).
+  - `y = 24..30`: 5x7 item value string (`c015452a MVK.S2 24,B6`).
+- **Adjacent RAM after `0xc0182dc0` is occupied (Confirmed)**:
+  - Immediately following item 15 (`TUNER:FLAT` at `0xc0182d94..0xc0182dbf`), `0xc0182dc0..0xc0182e6f` holds initialized SYS/BIOS HeapMem/Queue structures (`c0182dd8`, `c0182de0`, `c0182df8`, `c0182e10`, referenced by `c016d9d4`).
+  - The zero-initialized block at `0xc0183424..0xc018346f` is referenced by `c015f4b8` (`refs.txt`: `c015f4b8 B4 c0183424`).
+
+### 2. Unused / Dormant Room & Best Repurposing Candidates (Confirmed)
+
+#### Candidate 1 (Smallest & Safest): In-RAM Overwrite of One Existing Item in `SETUP` or `PWR/LCD` (Confirmed)
+- Because `0xc0182b00..0xc0182dc0` lives in `.cinit`-initialized **writable RAM**, our C init code in `controller.c` can overwrite any 11-word (`0x2c`-byte) item struct in place after boot:
+  - **Best slot in `PWR/LCD`**: **Col 0 `BATTERY` (`0xc0182c60..0xc0182c8b`)**.
+    - Has `w10 = 0x00000000` (no hardware apply callback on change; only writes `0..1` to `0x11812fb0`), and battery chemistry (`ALKALI`/`Ni-MH`) is unused whenever the pedal is on USB bus power (which is mandatory for USB MIDI controller and USB audio modes).
+  - **Best slot in `SETUP`**: **Col 3 `BANK HOLD` (`0xc0182c34..0xc0182c5f`)**.
+    - Also has `w10 = 0x00000000` (no immediate callback; only writes `0..1` to `0x11812fd0`).
+- **How to repurpose either slot in C (zero code hooks needed for draw or knob handling)**:
+  - Write the 11 words at `0xc0182c60` (or `0xc0182c34`):
+    - `w3 = "MODE"` (or `"USB"`), `w4 = NULL` (or `"MODE"`), `w5 = 0` (`min`), `w6 = 2` (`max`, for `0=FX, 1=MIDI, 2=USB`), `w7 = mode_val_to_str`, `w8 = mode_get_val`, `w9 = mode_set_val`, `w10 = mode_on_change`.
+  - Stock `c0154338` automatically draws `"MODE"` and `"FX" / "MIDI" / "USB"`, and stock `c0149948` automatically handles Knob 1 (or Knob 4) rotation, clamping to `0..2`, and invoking `mode_set_val` + `mode_on_change`.
+
+#### Candidate 2 (Full 4-Item Page): Repurpose Dormant `OUTPUT` Page (`Screen ID 5` at `0xc0183740`, Table `0xc0182b00..0xc0182baf`) or Dormant `SETTING` Page List B (`Screen ID 1` at `0xc0183400`) (Confirmed)
+- On the G1X Four, entering `SETTING` (`ui_mode = 4`, `c0156de0 -> c01496d0`) unconditionally calls `c0149664(0)` (`c01496d8 CALLP.S2 0xc0149664,B3; c01496da MVK.L1 0,A4`), selecting **Screen ID `0`** (`0xc01833dc`, Page List A `0xc0181350 = {4:CHAIN, 6:PATCH, 7:SAVE, 10:SETUP, 11:PWR/LCD}`).
+- **Screen ID `1`** (`0xc0183400`, Page List B `0xc0181368 = {5:OUTPUT, 9:TUNER, 3:ChainB, 8:SWAP, 12:VERSION}`) and **Screen ID `5` (`0xc0183740`, `OUTPUT` EQ with 4-item table `0xc0182b00..0xc0182baf`: `Lo`, `MID`, `Hi`, `MVOL`)** have **no entry path** from the stock `SETTING` menu.
+- Thus, the entire 4-item table at **`0xc0182b00..0xc0182baf`** (`176` bytes in RAM) and Screen Descriptor `5` at **`0xc0183740`** (`36` bytes in RAM, `w8 = c016a95a` replaceable in RAM with `c01671ac`-style `c0149948` wrapper) are free to repurpose as a 4-column custom menu page (or reachable by toggling Screen ID `0 <-> 1`).
+
+#### Candidate 3 (Persisted Storage): Two Unused Words in System Settings (`0x11812fd8` and `0x11812fdc`, Confirmed)
+- Inside the 108-byte persisted System Settings block (`0x11812f74..0x11812fdc`), **Schema Record 25 at `0xc0182588`** (`cinit` `0xc018580d`: `min=0, max=0, def=0, count=2`) reserves two 32-bit words at **`0x11812fd8` (`+0x64`)** and **`0x11812fdc` (`+0x68`)** with **zero references** anywhere in the firmware.
+- Because `0xc0182588` is also in `.cinit`-decompressed RAM, setting `*(uint32_t *)0xc018258c = 2` (`max = 2`) at boot lets stock validation (`c0154960`), dirty-checking (`118060e8` vs shadow `0x11812f08`), and flash persistence (`c0156d28 -> c01548d8`) preserve `0x11812fd8` automatically across reboots.
+
 ## Cross-Findings (B1-B4 Notes Discovered Along the Way)
+- **B1/B2 (Menu Entry, Navigation & Exit, Confirmed)**:
+  - Top-level UI mode lives at `*0xc010ad8c` (read by `c0156e80`, set by `c0156d68` via `.switch` `0xc018435c`).
+  - Entering `SETTING` (`ui_mode = 4`) calls `c0156de0 -> c01496d0`, which sets active screen descriptor `*+B14[120]` to Screen ID `0` (`0xc01833dc`) via `c0149664(0)`.
+  - In `MainApp`, `c0134b44 CALLP.S2 0xc0149840,B3` dispatches input events when `c0156e80() == 7` (or `4`):
+    - Effect-slot button presses (event IDs `11, 13, 15, 17, 19`) set `*0xc01152e0[slot] = 1` (`c01498a2`); button releases (`12, 14, 16, 18, 20`) check `*0xc01152e0[slot]` (`c0149888`) and call `(*+B14[120])->w8(ev)` (`c0149910`).
+    - On the `SETTING` top screen (`id=0`, `w8 = c0157bac`), button releases `12,14,16,18,20` call `c0157ae8` (`c0157be0`), which animates the icon (`c0157a38`) and calls `c0149664(0xc0181350[slot])` (`c0157b24`) to enter `CHAIN(4)`, `PATCH(6)`, `SAVE(7)`, `SETUP(10)`, or `PWR/LCD(11)`.
+    - Pressing `SETTINGS` again (event `6` in `c0149840` at `c01498cc`, or in `c0157bac` at `c0157be8 -> c0157b6c`) calls `c0156e8c()` to restore the previous UI mode (`*0xc010ad94`) or return to `SETTING` top screen (`id=0`).
+- **B3 (Persistence, Confirmed)**:
+  - When exiting settings/menu (`c0156ce0..c0156d30`), if `118060e8()` (`memcmp` of `108` bytes at `0x11812f74` vs shadow `0x11812f08`) returns non-zero, `c0156d28 CALLP.S2 0xc01548d8,B3` writes the `0x11812f74` system settings block to flash.
+- **B4 (Candidate Hook / Table-Reuse Sites, Confirmed)**:
+  - **Table-only reuse (no additional `CALLP` hook needed if initialized from existing controller init)**: modify `0xc0182c60` (`BATTERY`) or `0xc0182c34` (`BANK HOLD`) in RAM, plus `0xc018258c` (`max` of Schema Rec 25 for `0x11812fd8`).
+  - **If hooking a `CALLP` site**: `c0167210 CALLP.S2 0xc0154564,B3` (`SETUP` draw), `c01632cc CALLP.S2 0xc0154564,B3` (`PWR/LCD` draw), `c01671c8 CALLP.S2 0xc0149948,B3` (`SETUP` knob handler), or `c0163284 CALLP.S2 0xc0149948,B3` (`PWR/LCD` knob handler) are all 32-bit `CALLP.S2` instructions.
+
