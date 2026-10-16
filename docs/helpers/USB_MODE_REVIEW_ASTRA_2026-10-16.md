@@ -110,7 +110,72 @@ where the host could query descriptors inside that narrow skip-MIDI window.
 
 ## R3. Software replug
 
-Pending.
+**Verdict: bug (confirmed call-graph fact; likely in practice — priority
+direction and reachability reasoned, not hardware-tested).**
+
+`usb_set` (firmware/controller/controller_menu.c:112-120) reads
+`USB_READY`/`USB_STATE` once, then — still inside the same MainApp
+event-dispatch call, holding no lock — runs `USB_CLOSE()` (c016ab58),
+`SLEEP_MS(500)`, `USB_OPEN()` (c016ab8c): the exact same two global,
+non-reentrant stock entry points the cable handler calls on a physical
+detach/attach (confirmed: `1180a824 CALLP 0x1180b180`→c016ab58 and
+`1180a874 CALLP 0x1180b150`→c016ab8c, traced directly in main.dis). Neither
+c016ab58 nor c016ab8c take or check any mutex: the background report already
+established "No locking is present in these small wrappers" for the registry
+mutator, and that the one thing that looks like a lock (B14[96]) is a stub
+(`c014a4d0 MVK 1,A4; c014a4d2 BNOP B3,5`). I re-read c0122260 (Hwi create,
+inside the open chain) directly and confirmed it is explicitly **not**
+idempotent/reentrant: it tests a single shared handle at B14[131] with a
+plain load-test-store, no interrupt disable or semaphore around the
+check-then-act.
+
+The cable handler that can call these same two entry points lives in
+`SwitchNrmlSpdRead`, a separate task the background report places at
+priority 9, versus MainApp (which runs `usb_set`) at priority 3. TI
+SYS/BIOS-family schedulers use higher-number-equals-higher-priority with
+preemption, so (likely, not textually confirmed in this codebase) the switch
+task can preempt MainApp at any instruction boundary, including mid-way
+through `usb_set`'s close/sleep/open sequence or during the 500 ms
+`Task_sleep` itself (which exists precisely to let other tasks run).
+
+Concrete failure scenario: a user opens the COMET FLOWER page and turns the
+USB knob while the cable is unplugged or replugged at nearly the same
+moment (or the cable glitches during the 500 ms detached window `usb_set`
+itself creates). MainApp is inside `usb_set`'s close/sleep/open when the
+switch task's cable handler independently calls c016ab58 or c016ab8c for the
+same physical event. Two tasks then race on the same unlocked shared state —
+the worker/MIDI/controller handles at B14[94..96], the Hwi handle at
+B14[131], the registry at c011aa28, the MIDI ring c0117b28 — with no mutual
+exclusion. c0122260's own refusal path (confirmed above, R2) shows the stock
+code is written assuming single-threaded, serialized calls: a second
+concurrent open/close is not rejected safely, it silently takes a different,
+partially-skipped path (same mechanism as the R2 skip branch). Worst case is
+a corrupted worker/Hwi/registry state requiring a power cycle — a materially
+worse outcome than the existing stock cable-detach race, since this is a new,
+self-inflicted 500+ ms window of exposure that stock code never created.
+
+This matches a risk the background report already flagged in general terms
+("new lifecycle serialization against switch-task cable changes ... the
+stock lock stub is insufficient") but `usb_set` as shipped does not implement
+any such serialization — it only checks `USB_READY`/`USB_STATE` once,
+unguarded, before starting the sequence. No offline test can catch this: it
+depends on real cable-event timing.
+
+Suggested fix: do not call c016ab58/c016ab8c from `usb_set` without first
+taking a lock the cable handler also respects (e.g. a flag the switch task's
+dispatch checks before acting, or disabling/deferring that task's cable
+notifications for the duration), not just the stub B14[96]; at minimum,
+re-check `USB_STATE` immediately before `USB_OPEN()` too, and abort the
+software-replug sequence (leaving the device however the cable handler left
+it) if state changed underneath it.
+
+Secondary, unresolved sub-point (explicitly unproved): the cable handler also
+calls `1180b160`→c0155290 and `1180b170`→c01295ec and reads `11805eb4` on a
+physical transition; `usb_set`'s software replug calls neither. c0155290 is
+also called from the boot path (`c016c148 CALLP 0xc0155290`), so it is not
+obviously MIDI/audio-critical, but I did not trace its body or c01295ec's
+within this review's budget, so whether skipping them matters is left
+unproved rather than asserted either way.
 
 ## R4. Malformed-image rejection
 
