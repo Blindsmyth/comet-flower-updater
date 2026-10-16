@@ -41,6 +41,8 @@ def record(seconds, device=None, exclusive=True):
         else:
             sys.exit("no WASAPI input named 'Comet Flower' (try --list)")
     extra = sd.WasapiSettings(exclusive=True) if exclusive else None
+    import time
+    t0 = time.monotonic()
     try:
         data = sd.rec(int(seconds * FS), samplerate=FS, channels=2, dtype="int16",
                       device=device, extra_settings=extra, blocking=True)
@@ -52,6 +54,8 @@ def record(seconds, device=None, exclusive=True):
         data = sd.rec(int(seconds * FS), samplerate=FS, channels=2, dtype="int16",
                       device=device, blocking=True)
         mode = "shared"
+    wall = time.monotonic() - t0
+    print("%d frames took %.1f s of wall time (%.0f frames/s arrived)" % (len(data), wall, len(data) / wall))
     return data, mode
 
 
@@ -153,8 +157,8 @@ def analyse_pattern(data):
         # Counter span over the take (unwrapped from the in-order steps).
         steps = (np.diff(l[valid]) % 65536)
         sent = int(np.sum(np.where(steps > 32768, 0, steps)))
-        lines.append("sample rate from the counter: %.1f Hz-equivalent (frames sent / frames received %.5f)"
-                     % (FS * (sent + 1) / (valid[-1] - valid[0] + 1), (sent + 1) / (valid[-1] - valid[0] + 1)))
+        lines.append("frames the pedal generated / frames received: %.5f (1.0 = nothing lost)"
+                     % ((sent + 1) / (valid[-1] - valid[0] + 1)))
     first = sorted(events + [(z[0], "padding", z[1]) for z in zruns] +
                    [(c[0], "corrupt", c[1]) for c in cruns])[:15]
     if first:
@@ -174,8 +178,9 @@ def diag_report(data, mismatch):
         return []
     r = data[idx, 1].astype(np.uint16).astype(np.int64)
     tag, val = r >> 13, r & 0x1fff
-    # Real diag frames come one per packet with tags cycling 0..7.
-    if np.mean((np.diff(tag) % 8) == 1) < 0.5:
+    # Real diag frames start each received packet: 44 or 45 frames apart within a run
+    # of received packets (lost packets only lengthen some spacings).
+    if np.mean(np.isin(np.diff(idx), (44, 45))) < 0.3:
         return []
     out = ["pedal diag: %d packet-start frames received; packet length (frames between): %s" % (
         len(idx), dict(sorted(collections.Counter(np.diff(idx).tolist()).most_common(6))))]

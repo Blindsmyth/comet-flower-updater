@@ -166,3 +166,15 @@ with TxPktRdy set, TXCSR UnderRun seen, USB frames with no tick (FRAME register)
 raw TXCSR. `ua_capture.py` decodes them ("pedal diag" lines) and compares packets loaded vs received.
 Analyser fixes in this pass: the sine phase follows the full frame count (65536 % 44 = 20), so the analyser
 unwraps the counter and searches the 11 possible starting wrap offsets.
+
+## Seventh run (pattern diag build e3cdc633), take `build/ua_takes/take_20261016_145225.wav`
+
+Owner: tone comes "in and out". 882,000 frames took ~58 s of wall time. Pedal-side counters (in-band):
+**57,848 packets loaded, 21,398 received: 63 % lost after loading.** During the take: 0 SOFs skipped, 0 TXCSR
+UnderRun, 0 USB frames without a tick, 0 overruns, 0 underruns; ring fill 68..84; TXCSR = 0x0002 at every SOF
+(FIFONotEmpty, TxPktRdy clear: one bank queued, one free). The pedal side is clean; the loss is on the bus or host.
+Received packets come in a 4 ms rhythm (here mostly 1 of 4; run 6 mostly 3 of 4).
+
+**Host path:** the pedal is behind a Genesys GL850G hub (`USB\VID_05E3&PID_0608`, single TT) on the USB 3.0 root,
+sharing it with a TP-Link Wi-Fi adapter, a Bluetooth adapter and a Logitech receiver. Full-speed isochronous through
+a busy single-TT hub is the prime suspect. Next: pedal directly on a PC port, same build, same capture.
