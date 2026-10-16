@@ -64,7 +64,13 @@ void controller_ui_mode(hu32 mode)
         host_ui_modes[host_ui_nmodes++] = mode;
 }
 
+EXPORT hu32 host_menu_installs;
+hu32 controller_menu_install(void) { host_menu_installs++; return 1u; }
+
 #include "controller.c"
+
+EXPORT void host_set_mode_from_menu(hu32 mode) { controller_set_mode(mode); }
+EXPORT hu32 host_get_mode_for_menu(void) { return controller_get_mode(); }
 
 EXPORT hu32 host_mode(void) { return ctl_state.mode; }
 EXPORT hu32 host_knob_record(hu32 i) { return tx.knob_record[i]; }

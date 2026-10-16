@@ -125,6 +125,23 @@ class ModeToggle(unittest.TestCase):
         self.assertEqual(self.lib.host_mode(), 1)
         self.assertEqual(self.edges(), [])
 
+    def test_start_installs_the_settings_page_once(self):
+        self.lib.host_start()
+        self.assertEqual(self.u("host_menu_installs").value, 1)
+        self.assertEqual(self.lib.host_mode(), 0)                  # boots in FX (owner)
+
+    def test_menu_mode_item_enters_midi_mode(self):
+        L = self.lib
+        L.host_get_mode_for_menu.restype = ctypes.c_uint
+        self.assertEqual(L.host_get_mode_for_menu(), 0)
+        L.host_set_mode_from_menu(1)
+        self.assertEqual((L.host_mode(), self.ui_modes()), (1, [1]))
+        L.host_set_mode_from_menu(1)                               # unchanged: no second entry
+        self.assertEqual(self.ui_modes(), [1])
+        self.assertEqual(self.send(25, 0, 3, 0)[0], MIDI)          # knobs now send CCs
+        L.host_set_mode_from_menu(0)
+        self.assertEqual((L.host_mode(), self.ui_modes()), (0, [1, 0]))
+
     def test_release_without_press_is_stock(self):
         self.assertEqual(self.send(RELEASE), (STOCK, [RELEASE, 0, 0, 0]))
         self.assertEqual(self.u("host_posts").value, 0)

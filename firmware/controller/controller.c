@@ -81,6 +81,7 @@ void controller_diag_worker(u32 task);
 #ifdef CTL_UI
 void controller_ui_sent(u32 control, u32 value);
 void controller_ui_mode(u32 mode);
+u32 controller_menu_install(void);
 #endif
 
 /* Run-time mode toggle. Only MainApp touches this record. */
@@ -316,6 +317,24 @@ static void leave_midi(void)
 #endif
 }
 
+#ifdef CTL_UI
+/* The MODE item on our settings page (controller_menu.c). It runs in
+   MainApp's event dispatch, like controller_gate. MIDI mode consumes every
+   event, so only FX -> MIDI is reachable from the menu. */
+u32 controller_get_mode(void)
+{
+    return ctl_state.mode;
+}
+
+void controller_set_mode(u32 mode)
+{
+    if (mode && !ctl_state.mode)
+        enter_midi();
+    else if (!mode && ctl_state.mode)
+        leave_midi();
+}
+#endif
+
 /* Effects mode, called by the dispatch hook for every normalized event
    before the stock dispatchers; nonzero consumes the event. The mode-button
    press is held back. A release after 2 s enters MIDI mode; an earlier one
@@ -364,6 +383,9 @@ void controller_start(void)
 {
     u32 a = ~0u, b = ~0u, i;
     STOCK_STARTUP();
+#ifdef CTL_UI
+    controller_menu_install();   /* our settings page; stock if the tables differ */
+#endif
     READ_SWITCHES(&a);
     READ_SWITCHES(&b);
     /* GPIO0 (bit 9) low on two reads; not a timed debounce. */

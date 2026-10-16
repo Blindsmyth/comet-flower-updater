@@ -132,8 +132,8 @@ def build_payload(diag=False, ui=False):
         srcs += [SRC / "controller_diag.c", SRC / "controller_diag_hooks.asm"]
         objs += [out / "controller_diag.obj", out / "controller_diag_hooks.obj"]
     if ui:
-        srcs += [SRC / "controller_ui.c"]
-        objs += [out / "controller_ui.obj"]
+        srcs += [SRC / "controller_ui.c", SRC / "controller_menu.c"]
+        objs += [out / "controller_ui.obj", out / "controller_menu.obj"]
     cmd_file = SRC / ("controller_diag.cmd" if diag else "controller.cmd")
     run(CGT / "bin/cl6x", "--silicon_version=6740", "--abi=eabi", "--c99",
         "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
