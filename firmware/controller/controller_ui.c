@@ -137,6 +137,7 @@ static char *source(char *p, u32 control)
 
 #ifdef CTL_DIAG
 void controller_diag_ui(u32 *peak, u32 *creates, u32 *fault, u32 *teardown);
+u32 controller_diag_beacons(void);
 #endif
 
 static void paint(u32 usb, u32 q, u32 last)
@@ -178,13 +179,16 @@ static void paint(u32 usb, u32 q, u32 last)
         TEXT8(CTX, usb ? "READY" : "CONNECT USB", 0u, 10u);
     }
 #endif
-    p = dec(put(b, "sent "), ui.sent, 0);
-    p = dec(put(p, "  q "), q, 0);
 #ifdef CTL_DIAG
+    p = dec(put(b, "b"), controller_diag_beacons(), 0);
+    p = dec(put(p, " s"), ui.sent, 0);
     if (last >> 31) {
         p = dec(put(p, " CC"), (last >> 8) & 0x7fu, 0);
         p = dec(put(p, "="), last & 0x7fu, 0);
     }
+#else
+    p = dec(put(b, "sent "), ui.sent, 0);
+    p = dec(put(p, "  q "), q, 0);
 #endif
     *p = 0;
     line5(3u, b);

@@ -190,7 +190,7 @@ class DiagUi(unittest.TestCase):
         self.assertEqual(text[0], "CLAUDE W#2 t123456")
         self.assertEqual(text[1], "STACK 768/2048")
         self.assertEqual(text[2], "USB OK q0 F0x0 TD1")
-        self.assertEqual(text[3], "sent 1  q 0 CC40=64")
+        self.assertEqual(text[3], "b7 s1 CC40=64")
         self.assertEqual(big, [])
         lib.host_reset()
         lib.host_tick()                                 # diag repaints every tick (live counter)

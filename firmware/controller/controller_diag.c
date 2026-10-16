@@ -213,18 +213,73 @@ static void diag_snapshot(void)
     diag_dump.w[k + 3] = diag_dump.creates;
 }
 
-/* Next CC to send, if any. A new request restarts from a fresh snapshot. */
+/* ---- Timing beacon (diag build only) --------------------------------------
+   Every BEACON_TICKS SYS/BIOS ticks the worker sends a 7-CC frame carrying
+   the tick counter: CC118=127, CC112..116 = 7-bit slices of the word,
+   CC118=1. The host timestamps each frame with its own clock and fits ticks
+   against time (tools/cf_tick_test.py): the tick period is measured without
+   anyone timing anything. Separate CC numbers from the readback, so the two
+   streams may interleave. The tick value is re-sampled until the begin CC is
+   accepted, so a frame held back by a busy or absent port is not stale. */
+#define TICKS (*(volatile u32 *)0xc0182054u)   /* SYS/BIOS tick counter */
+#define BEACON_TICKS 1000u
+#define BEACON_CCS 7u
+
+#pragma DATA_SECTION(beacon, ".ctl_state")
+struct {
+    u32 last;           /* tick count at the last beacon start */
+    u32 word;           /* tick count being sent */
+    u32 pos;            /* next CC; BEACON_CCS when idle */
+    u32 count;          /* beacons started */
+    u32 src;            /* 1 = the last peek returned a beacon CC */
+} beacon = { 0, 0, BEACON_CCS, 0, 0 };
+
+u32 controller_diag_beacons(void)
+{
+    return beacon.count;
+}
+
+static int beacon_peek(u32 *control, u32 *value)
+{
+    u32 p;
+    if (beacon.pos >= BEACON_CCS) {
+        u32 now = TICKS;
+        if (now - beacon.last < BEACON_TICKS)
+            return 0;
+        beacon.last = now;
+        beacon.word = now;
+        beacon.pos = 0;
+        beacon.count++;
+    }
+    p = beacon.pos;
+    if (p == 0)
+        beacon.word = TICKS;        /* fresh until the begin CC is accepted */
+    if (p == 0 || p == BEACON_CCS - 1u) {
+        *control = 118u;
+        *value = p == 0 ? 127u : 1u;
+    } else {
+        *control = 112u + (p - 1u);
+        *value = (beacon.word >> (7u * (p - 1u))) & 0x7fu;
+    }
+    return 1;
+}
+
+/* Next CC to send, if any. A new request restarts from a fresh snapshot.
+   A readback in progress goes first; otherwise a due beacon. */
 int controller_diag_peek(u32 *control, u32 *value)
 {
     u32 p, part;
+    beacon.src = 0;
     if (diag_dump.req != diag_dump.seen) {
         diag_dump.seen = diag_dump.req;
         diag_snapshot();
         diag_dump.pos = 0;
     }
     p = diag_dump.pos;
-    if (p >= DUMP_CCS)
-        return 0;
+    if (p >= DUMP_CCS) {
+        beacon.src = beacon_peek(control, value);
+        return (int)beacon.src;
+    }
     if (p == 0 || p == DUMP_CCS - 1u) {
         *control = 119u;
         *value = p == 0 ? 127u : 1u;
@@ -238,6 +293,10 @@ int controller_diag_peek(u32 *control, u32 *value)
 
 void controller_diag_commit(void)
 {
-    if (diag_dump.pos < DUMP_CCS)
+    if (beacon.src) {
+        if (beacon.pos < BEACON_CCS)
+            beacon.pos++;
+    } else if (diag_dump.pos < DUMP_CCS) {
         diag_dump.pos++;
+    }
 }

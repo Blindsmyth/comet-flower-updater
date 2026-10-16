@@ -29,9 +29,16 @@ uninstall the device in Device Manager (View → Show hidden devices) and re-plu
 
 ## Unified updater (2026-10-15, later)
 
-`build/cf_unified_2026-10-15/Comet Flower G1X4 Updater (TEST build).exe` (`2268ca95c907b852`): one
+`build/cf_unified_2026-10-15/Comet Flower G1X4 Updater (TEST build).exe` (`056738e5cde6bcc5`, with timing beacons): one
 updater with all of the above plus controller mode and the on-pedal screen. Normal mode shows
 "COMET FLOWER …"; the diagnostics page is headed "CLAUDE W#…" (the owner's nod). It is still a
 TEST build: the diag hooks stay in until the stack and liveness gates are measured. Its
 `RESTORE_stock_fw_factory_fs.exe` is in the same folder. The boot program still says "ZOOM G Series"
 in update mode (owner decision pending; see the risk note in the session record).
+
+### Tick test without a stopwatch
+
+The diag build sends a timing beacon (CC118/112..116, 7 CCs) every 1000 ticks. Run
+`.venv/Scripts/python.exe tools/cf_tick_test.py`: it guides you, timestamps beacons with the PC clock, fits
+ticks against time (outlier-robust) and prints the tick period with its uncertainty. The pedal's
+CLAUDE page shows the beacon count (`b<n>`) on the bottom line.

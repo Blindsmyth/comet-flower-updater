@@ -71,6 +71,11 @@ void controller_diag_ui(hu32 *peak, hu32 *creates, hu32 *fault, hu32 *teardown)
 }
 #endif
 
+#ifdef CTL_DIAG
+EXPORT hu32 host_beacons = 7;
+hu32 controller_diag_beacons(void) { return host_beacons; }
+#endif
+
 #include "controller_ui.c"
 
 State ctl_state;
