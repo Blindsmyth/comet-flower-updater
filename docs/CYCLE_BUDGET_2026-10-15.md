@@ -88,3 +88,34 @@ the one unambiguous number.
 From the Load 0 take: busy baseline = TSCL/block − CF ClkT's own cost (a few hundred cycles).
 Five-slot budget = SYSCLK1 / 2756.25 − baseline − UI reserve. The UI reserve is
 then found by stepping Load up towards the old freeze point in a later run.
+
+## Result on hardware (2026-10-16, owner run, CF ClkT alone in slot 0)
+
+Takes in `C:\Users\z\Documents\VPBE_Takes\` (`load 50.wav` is the **Load 0** take; `25.wav`, `50.wav`),
+decoded with `tools/decode_memprobe.py`; 12 of 13 frames decode, frames within a take agree to ~1%.
+
+| Load | load loop (TSCL, own pair) | TSCL per block | other busy work (TSCL − loop) |
+|---|---|---|---|
+| 0 | 0 | 64.4–65.5k | ~65k |
+| 25 | 40.3k (5000 it, 8.06 cyc/it) | 104.2–105.3k | ~65k |
+| 50 | 80.6k (10000 it) | 103.5k | ~23k |
+
+- **Clock confirmed:** PLLM 18 (×19), PLL on → SYSCLK1 **364.8 MHz**, **132,354 cycles per block**;
+  TIM12 = 6966.0 per block exactly; PDCCMD 0x00015555 (GEMPD 1).
+- **H1 confirmed:** from Load 0 to 25, TSCL per block rose by the load cycles (+39.9k vs 40.3k), so
+  TSCL stops in IDLE and TSCL per block is busy time.
+- **New: ~42k of the Load-0 busy time is elastic.** At Load 50 the non-load work shrank from ~65k to
+  ~23k (the fixed baseline, matching the MuffT-derived 23k). Some lower-priority work (most likely the
+  UI/background tasks polling) fills free time and gives it up under load. This explains the CF Muff
+  anomaly (adding 14k did not move the freeze point) and why the old freeze was a UI hang.
+- **Busy time plateaus at ~104–105k per block (≈79% of 132k)** at Load 25 and 50; the reason for the
+  ~28k that never shows as busy is open (time the core waits on audio DMA/IRQ with TSCL stopped is the
+  likely candidate).
+
+### Budget for effects
+
+- **Proven safe:** 80.6k cycles of slot work per block (Load 50, audio clean, UI alive).
+- **Ceiling:** below 96.7k (Load 60 froze the UI before). Fixed baseline ~23k.
+- **Design budget for a 5-slot patch: ~80k cycles per block total (~16k per slot average)**, keeping
+  the measured-safe point as the limit. CF Muff 14.1k, CF RAT 13.9–17.2k, CF 808 13.0–17.4k fit this.
+- Optional follow-up: Load 55 (88.6k) to narrow the ceiling; DR103 (redesign) cost with a timing build.
