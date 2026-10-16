@@ -92,6 +92,7 @@ EXPORT void host_reset(void)
         host_dirty[i] = 0;
     for (i = 0; i < 512u; i++)
         host_lcd[i] = 0;
+    ui.anim_req = ui.anim_dir = ui.anim_frame = 0u;
 }
 EXPORT void host_knob(hu32 i, hu32 v) { ctl_state.knob[i] = (unsigned char)v; }
 EXPORT void host_set_mode(hu32 m) { ctl_state.mode = (unsigned char)m; }
@@ -100,3 +101,15 @@ EXPORT hu32 host_pend(int timeout) { return controller_ui_pend(1, 0, 255, timeou
 EXPORT void host_sent(hu32 c, hu32 v) { controller_ui_sent(c, v); }
 EXPORT hu32 host_repaint(void) { return ui.repaint; }
 EXPORT void host_ui_mode(hu32 m) { controller_ui_mode(m); }
+EXPORT hu32 host_anim_dir(void) { return ui.anim_dir; }
+EXPORT hu32 host_anim_req(void) { return ui.anim_req; }
+/* Geometry check: old frame = column number, new frame = 0x80 | column. */
+EXPORT void host_slide_frame(hu32 dir, hu32 n)
+{
+    hu32 i;
+    for (i = 0; i < 512u; i++) {
+        anim_old[i] = (unsigned char)(i & 127u);
+        anim_new[i] = (unsigned char)(0x80u | (i & 127u));
+    }
+    slide_frame(dir, n);
+}

@@ -57,6 +57,9 @@ u32 controller_hold_ticks(void);   /* controller.c: mode button held, 0 if not *
 #define UI_TICKS 50           /* Clock ticks per UI tick (period unproven; see TICKS) */
 #define STALL_TICKS 20u       /* consecutive UI ticks with TX4 outstanding */
 #define HOLD_TICKS 2000u      /* matches controller.c MODE_HOLD_TICKS */
+#define ANIM_TICKS 30         /* Clock ticks (1 ms each) per slide frame */
+#define ANIM_ENTER 1u         /* MIDI page pushes in from the right */
+#define ANIM_LEAVE 2u         /* stock screen pushes back in from the left */
 
 #pragma DATA_SECTION(ui, ".ctl_state")
 struct {
@@ -66,7 +69,18 @@ struct {
     u32 repaint;              /* a stock event ran: paint even if unchanged */
     u32 shown[6];             /* model last painted */
     volatile u32 stock_redraw; /* MIDI mode was left: stock repaints its screen */
-} ui = { 0, 0, 0, 1, { 0, 0, 0, 0, 0, 0 }, 0 };
+    volatile u32 anim_req;    /* ANIM_ENTER, or ANIM_LEAVE once the MIDI page is saved */
+    u32 anim_dir;             /* slide running: ANIM_ENTER/ANIM_LEAVE, else 0 */
+    u32 anim_frame;           /* next index into slide[] */
+} ui = { 0, 0, 0, 1, { 0, 0, 0, 0, 0, 0 }, 0, 0, 0, 0 };
+
+/* Mode-change slide, like the stock screen changes (owner request
+   2026-10-16): the old frame is pushed out sideways by the new one. Both
+   frames are copies of the 512-byte page buffer; slide[] is the number of
+   new-frame columns visible per frame (ease-out, ~200 ms). */
+static u8 anim_old[512], anim_new[512];
+static const u8 slide[] = { 22, 50, 78, 100, 116, 125, 128 };
+#define SLIDE_FRAMES 7u
 
 void controller_ui_sent(u32 control, u32 value)
 {
@@ -79,10 +93,12 @@ void controller_ui_sent(u32 control, u32 value)
    clears the page (c011f8d8) and redraws the current screen (c013c0c8). */
 void controller_ui_mode(u32 mode)
 {
-    if (mode)
+    if (mode) {
+        ui.anim_req = ANIM_ENTER;   /* tick() paints whenever this is set */
         ui.repaint = 1u;
-    else
+    } else {
         ui.stock_redraw = 1u;
+    }
 }
 
 /* ---- text helpers ------------------------------------------------------ */
@@ -170,7 +186,14 @@ void controller_diag_ui(u32 *peak, u32 *creates, u32 *fault, u32 *teardown);
 u32 controller_diag_beacons(void);
 #endif
 
-static void paint(u32 usb, u32 q, u32 last, u32 hold)
+static void flush(void)
+{
+    u32 key = GATE_ENTER(LCD_GATE);
+    LCD_FLUSH(CTX);
+    GATE_LEAVE(LCD_GATE, key);
+}
+
+static void compose(u32 usb, u32 q, u32 last, u32 hold)
 {
     char b[48], *p;
     LCD_CLEAR(CTX, 1u);
@@ -241,11 +264,54 @@ static void paint(u32 usb, u32 q, u32 last, u32 hold)
     *p = 0;
     line5(3u, b);
 #endif
-    {
-        u32 key = GATE_ENTER(LCD_GATE);
-        LCD_FLUSH(CTX);
-        GATE_LEAVE(LCD_GATE, key);
+}
+
+/* ---- slide ------------------------------------------------------------- */
+
+static void copy_frame(u8 *dst, volatile const u8 *src)
+{
+    u32 i;
+    for (i = 0; i < 512u; i++)
+        dst[i] = src[i];
+}
+
+/* One frame: n columns of the new frame are visible. ENTER: new enters at
+   the right, old leaves to the left; LEAVE mirrors it. */
+static void slide_frame(u32 dir, u32 n)
+{
+    volatile u8 *lcd = LCD_COLS + (CTX << 9);
+    u32 page, x;
+    for (page = 0; page < 512u; page += 128u)
+        for (x = 0; x < 128u; x++) {
+            u32 i = page + x;
+            if (dir == ANIM_ENTER)
+                lcd[i] = x + n < 128u ? anim_old[i + n] : anim_new[i + n - 128u];
+            else
+                lcd[i] = x < n ? anim_new[i + 128u - n] : anim_old[i - n];
+        }
+    LCD_DIRTY[CTX] |= 0x0fu;
+    flush();
+}
+
+/* Starts a slide from anim_old to the frame now in the page buffer. */
+static void slide_start(u32 dir)
+{
+    copy_frame(anim_new, LCD_COLS + (CTX << 9));
+    ui.anim_dir = dir;
+    ui.anim_frame = 0u;
+}
+
+/* Draws the next frame; 0 once the last one has been shown. */
+static u32 slide_step(void)
+{
+    if (!ui.anim_dir)
+        return 0u;
+    slide_frame(ui.anim_dir, slide[ui.anim_frame]);
+    if (++ui.anim_frame >= SLIDE_FRAMES) {
+        ui.anim_dir = 0u;
+        ui.repaint = 1u;    /* repaint the live page over the last frame */
     }
+    return 1u;
 }
 
 static void tick(void)
@@ -260,7 +326,7 @@ static void tick(void)
     knobs = (u32)ctl_state.knob[0] | (u32)ctl_state.knob[1] << 8 |
             (u32)ctl_state.knob[2] << 16 | (u32)ctl_state.knob[3] << 24;
     hold = controller_hold_ticks() >= HOLD_TICKS;
-    if (!ui.repaint && ui.shown[0] == usb && ui.shown[1] == q && ui.shown[2] == last
+    if (!ui.repaint && ui.anim_req != ANIM_ENTER && ui.shown[0] == usb && ui.shown[1] == q && ui.shown[2] == last
             && ui.shown[3] == ui.sent && ui.shown[4] == knobs && ui.shown[5] == hold)
         return;
     ui.shown[0] = usb;
@@ -270,7 +336,17 @@ static void tick(void)
     ui.shown[4] = knobs;
     ui.shown[5] = hold;
     ui.repaint = 0u;
-    paint(usb, q, last, hold);
+    if (ui.anim_req == ANIM_ENTER) {
+        /* The buffer still holds the stock screen: it is the old frame. */
+        ui.anim_req = 0u;
+        copy_frame(anim_old, LCD_COLS + (CTX << 9));
+        compose(usb, q, last, hold);
+        slide_start(ANIM_ENTER);
+        slide_step();
+        return;
+    }
+    compose(usb, q, last, hold);
+    flush();
 }
 
 /* An infinite wait is replaced by finite waits that return only on a real
@@ -281,16 +357,27 @@ u32 controller_ui_pend(u32 event, u32 and_mask, u32 or_mask, int timeout)
     u32 r;
     if (timeout != -1)
         return STOCK_PEND(event, and_mask, or_mask, timeout);
+    if (ui.anim_req == ANIM_LEAVE && !ctl_state.mode) {
+        /* Stock has just redrawn its screen (event bit 0 below): slide it in
+           over the saved MIDI page before the first wait. */
+        ui.anim_req = 0u;
+        slide_start(ANIM_LEAVE);
+        slide_step();
+    }
     for (;;) {
-        r = STOCK_PEND(event, and_mask, or_mask, UI_TICKS);
+        r = STOCK_PEND(event, and_mask, or_mask, ui.anim_dir ? ANIM_TICKS : UI_TICKS);
         if (r) {
             ui.repaint = 1u;
             return r;
         }
+        if (slide_step())
+            continue;
         if (ctl_state.mode) {
             tick();
         } else if (ui.stock_redraw) {
             ui.stock_redraw = 0u;
+            ui.anim_req = ANIM_LEAVE;
+            copy_frame(anim_old, LCD_COLS + (CTX << 9));   /* the MIDI page */
             return 1u;
         }
     }

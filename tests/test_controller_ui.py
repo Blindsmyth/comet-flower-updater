@@ -221,6 +221,62 @@ class ControllerUi(unittest.TestCase):
         L.host_ui_mode(1)                               # entering MIDI mode
         self.assertEqual(L.host_repaint(), 1)
 
+    def test_slide_geometry(self):
+        """ENTER: the new frame enters at the right edge and pushes the old one
+        left; LEAVE mirrors it. Every page row moves together."""
+        L = self.lib
+        for n in (0, 22, 100, 128):
+            L.host_slide_frame(1, n)                    # ANIM_ENTER
+            lcd = self.lcd()
+            for page in range(4):
+                row = lcd[page * 128:(page + 1) * 128]
+                want = [x + n if x + n < 128 else 0x80 | (x + n - 128) for x in range(128)]
+                self.assertEqual(list(row), want, (n, page))
+            L.host_slide_frame(2, n)                    # ANIM_LEAVE
+            row = self.lcd()[:128]
+            want = [0x80 | (x + 128 - n) if x < n else x - n for x in range(128)]
+            self.assertEqual(list(row), want, n)
+        self.assertEqual(arr(L, "host_dirty", ctypes.c_ubyte, 4)[0], 0x0f)
+
+    def test_entering_midi_mode_slides_then_repaints(self):
+        L = self.lib
+        res = arr(L, "host_pend_results", ctypes.c_uint, 8)
+        stock = bytes((7 * i) & 0xff for i in range(512))
+        arr(L, "host_lcd", ctypes.c_ubyte, 512)[:] = list(stock)
+        L.host_set_mode(1)
+        L.host_ui_mode(1)
+        L.host_tick()                                   # compose + slide frame 0
+        self.assertEqual(L.host_anim_dir(), 1)
+        self.assertEqual(ctypes.c_uint.in_dll(L, "host_flushes").value, 1)
+        self.assertEqual(self.lcd()[:128 - 22], stock[22:128])   # stock pushed left
+        L.host_reset()
+        L.host_ui_mode(1)                               # reset cleared it; re-arm
+        L.host_tick()
+        for k in range(6):
+            res[k] = 0                                  # timeouts drive the frames
+        res[6] = 0x24
+        self.assertEqual(L.host_pend(-1), 0x24)
+        self.assertEqual(L.host_anim_dir(), 0)          # 6 more frames: done
+        self.assertEqual(ctypes.c_uint.in_dll(L, "host_flushes").value, 1 + 6)
+        self.assertEqual(L.host_repaint(), 1)           # live page painted next
+
+    def test_leaving_midi_mode_slides_stock_screen_in(self):
+        L = self.lib
+        res = arr(L, "host_pend_results", ctypes.c_uint, 8)
+        L.host_set_mode(0)
+        L.host_ui_mode(0)
+        res[0] = 0
+        self.assertEqual(L.host_pend(-1), 0x01)         # stock redraws first
+        self.assertEqual(L.host_anim_req(), 2)          # MIDI page saved
+        ctypes.c_uint.in_dll(L, "host_pend_count").value = 0
+        ctypes.c_uint.in_dll(L, "host_flushes").value = 0
+        for k in range(6):
+            res[k] = 0
+        res[6] = 0x24
+        self.assertEqual(L.host_pend(-1), 0x24)         # 7 frames, then the event
+        self.assertEqual(ctypes.c_uint.in_dll(L, "host_flushes").value, 7)
+        self.assertEqual(L.host_anim_dir(), 0)
+
     def test_text_fits_the_panel(self):
         L = self.lib
         L.host_set_mode(1)
