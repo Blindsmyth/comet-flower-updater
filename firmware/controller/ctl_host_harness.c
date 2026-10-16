@@ -11,6 +11,7 @@
 
 typedef unsigned int hu32;
 
+EXPORT hu32 host_ua_request;
 EXPORT hu32 host_ticks, host_mbx = 0x1234u, host_last_raw, host_switches = ~0u;
 EXPORT hu32 host_posts, host_post_msg[4], host_post_ok = 1, host_post_handle;
 EXPORT hu32 host_ui_modes[8], host_ui_nmodes, host_port[16], host_lock;
@@ -52,6 +53,7 @@ static int h_mbx_post(hu32 handle, void *msg, int timeout)
 #define MIDI_LOCK host_lock
 #define PORT_STATE host_port
 #define TICKS host_ticks
+#define UA_REQUEST host_ua_request
 #define MAINAPP_MBX host_mbx
 #define MBX_POST h_mbx_post
 #define LAST_RAW_ID host_last_raw

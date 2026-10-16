@@ -50,6 +50,7 @@ State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
 #define MIDI_LOCK (*(volatile u32 *)0xc0184f64u)  /* B14[89] */
 #define PORT_STATE ((volatile u32 *)0xc01152b8u)
 #define TICKS (*(volatile u32 *)0xc0182054u)        /* 1 tick = 1 ms (recon/04) */
+#define UA_REQUEST (*(volatile u32 *)0xc01a8004u)  /* firmware/usb_audio/ua_glue.c ua_mode.request */
 /* MainApp's raw event mailbox B14[162] and its post c0166780(handle, msg,
    timeout); c01534c4 pends on it and c015350c normalizes the raw ID. The
    last fetched raw ID is kept in B14[106] (copied into record word 1). */
@@ -388,6 +389,18 @@ void controller_start(void)
 #endif
     READ_SWITCHES(&a);
     READ_SWITCHES(&b);
+#ifdef CTL_UI
+    /* USB-audio mode (owner: a start-up button that is not GPIO0): switch
+       bit 2 (GPIO 6, events 9/10, "B3" on the MIDI screen) low on both
+       reads. It is in none of the stock power-up masks (c0140c8c, table
+       c0180570: aff, d7f, ff7, ffb, 3ff, fdf; bit 2 there is A7 bit 4), so
+       holding it alone has no stock meaning. Only the request is written;
+       the USB-audio layer latches it at the USB open, which runs after this
+       (docs/helpers/USB_MODE_ASTRA_2026-10-16.md finding 3). Without that
+       layer the word is unused free SDRAM. */
+    if (((a | b) & 4u) == 0)
+        UA_REQUEST = 1u;
+#endif
     /* GPIO0 (bit 9) low on two reads; not a timed debounce. */
     if (((a | b) & 512u) == 0) {
         for (i = 0; i < 4u; i++)

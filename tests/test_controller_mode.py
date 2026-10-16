@@ -130,6 +130,16 @@ class ModeToggle(unittest.TestCase):
         self.assertEqual(self.u("host_menu_installs").value, 1)
         self.assertEqual(self.lib.host_mode(), 0)                  # boots in FX (owner)
 
+    def test_usb_audio_start_up_button(self):
+        self.u("host_switches").value = ~(1 << 2) & 0xFFFFFFFF          # B3 held
+        self.lib.host_start()
+        self.assertEqual((self.u("host_ua_request").value, self.lib.host_mode()), (1, 0))
+
+    def test_no_usb_audio_without_its_button(self):
+        self.u("host_switches").value = ~(1 << 9) & 0xFFFFFFFF          # Rhythm: MIDI only
+        self.lib.host_start()
+        self.assertEqual((self.u("host_ua_request").value, self.lib.host_mode()), (0, 1))
+
     def test_menu_mode_item_enters_midi_mode(self):
         L = self.lib
         L.host_get_mode_for_menu.restype = ctypes.c_uint
