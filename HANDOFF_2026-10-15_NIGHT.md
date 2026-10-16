@@ -67,7 +67,9 @@ The lifecycle controller image must stay byte-identical (`tests/test_diag_readba
 2. **EDTB slot format** (recon/08) → `g1presets.py` can write patches holding CF effects → a CF starter bank.
 3. **USB-audio status** on the screen once the audio candidate is layered with the UI (producers only store words;
    no drawing from the SOF Hwi).
-4. Intro `.exe` (PyInstaller) for sharing; optional reskin of Zoom's updater window (PE resources; separate, careful job).
+4. ~~Intro `.exe`~~ done: `build/cf_installer/Comet Flower G1X4 Installer.exe` (one file: intro + tune +
+   packed updater, hash-checked on unpack; `python -m tools.cf_intro.build_exe --updater <exe>`). Owner use only
+   (contains Zoom code); a distributable must build the updater locally (Phase E). Remaining: optional reskin of Zoom's updater window (PE resources; separate, careful job).
 5. Older queue items: the patch tool (Phase E), NAM A2 last.
 
 ## Owner decisions open

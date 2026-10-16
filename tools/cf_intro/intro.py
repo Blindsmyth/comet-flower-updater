@@ -20,6 +20,32 @@ from pathlib import Path
 from tkinter import messagebox
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def bundled(name):
+    """A file packed into the single-file installer (build_exe.py), else None."""
+    base = getattr(sys, "_MEIPASS", None)
+    p = Path(base) / "payload" / name if base else None
+    return p if p is not None and p.exists() else None
+
+
+def extract_updater():
+    """Copy the packed updater out of the bundle (Windows cannot launch it from
+    inside) and check it against the SHA-256 recorded at build time."""
+    import hashlib
+    import json
+    import shutil
+    import tempfile
+    info = json.loads(bundled("payload.json").read_text())
+    dst_dir = Path(tempfile.gettempdir()) / "CometFlowerInstaller"
+    dst_dir.mkdir(exist_ok=True)
+    dst = dst_dir / info["updater"]
+    shutil.copyfile(bundled(info["updater"]), dst)
+    if hashlib.sha256(dst.read_bytes()).hexdigest() != info["sha256"]:
+        raise RuntimeError("the unpacked updater does not match its recorded SHA-256")
+    return dst
+
+
 W, H = 720, 460
 BG = "#000000"
 
@@ -204,6 +230,8 @@ class Intro(tk.Tk):
             self.music_on = False
         else:
             if self.wav is None:
+                self.wav = bundled("cf_tune.wav")
+            if self.wav is None:
                 from tools.cf_intro import music
                 self.wav = music.ensure(ROOT / "build" / "cf_intro" / "cf_tune.wav")
             self.music_on = self.player.start(self.wav)
@@ -211,8 +239,11 @@ class Intro(tk.Tk):
                            text="[ MUSIC %s ]" % ("ON" if self.music_on else "OFF"))
 
     def find_updater(self):
+        """A path, "bundled" (packed inside this installer), or None."""
         if self.updater and self.updater.exists():
             return self.updater
+        if bundled("payload.json"):
+            return "bundled"
         here = sorted(Path.cwd().glob("Comet Flower G1X4 Updater*.exe"))
         return here[0] if here else None
 
@@ -228,9 +259,17 @@ class Intro(tk.Tk):
                  "3. Press OK: the updater opens. Select MIDI IN/OUT = 'ZOOM G Series'\n"
                  "   (update mode keeps that name), press Execute.\n"
                  "4. Wait for 'Version update completed'. Never unplug mid-write.\n\n"
-                 "Open the updater now?\n\n%s" % exe.name)
-        if messagebox.askokcancel("Comet Flower :: install", steps):
-            os.startfile(str(exe))
+                 "Open the updater now?\n\n%s"
+                 % ("(built into this installer)" if exe == "bundled" else exe.name))
+        if not messagebox.askokcancel("Comet Flower :: install", steps):
+            return
+        if exe == "bundled":
+            try:
+                exe = extract_updater()
+            except (OSError, RuntimeError, KeyError, ValueError) as err:
+                messagebox.showerror("Comet Flower", "Could not unpack the updater:\n%s" % err)
+                return
+        os.startfile(str(exe))
 
     def about(self):
         messagebox.showinfo("Comet Flower", "Comet Flower G1X4 -- custom firmware for the Zoom G1X FOUR.\n"
