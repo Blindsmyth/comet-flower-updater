@@ -382,3 +382,24 @@ class UiHook(unittest.TestCase):
     def test_test_package_needs_test_in_name(self):
         with self.assertRaises(SystemExit):
             packager.main("in.exe", "out.exe", test_controller_fw="x.bin")
+
+
+class UsbProduct(unittest.TestCase):
+    @unittest.skipUnless(RES1.exists() and ctl.CGT.exists(), "stock res1 or TI CGT not available")
+    def test_long_usb_product_name_lives_in_the_controller_section(self):
+        import tempfile
+        name = "Comet Flower ZG1X4 MIDI"
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "ui.bin"
+            ctl.build(str(RES1), str(out), str(RES1), ui=True, usb_product=name)
+            data = out.read_bytes()
+            rec = ctl.CONST_DATA[0] + ctl.USB_PRODUCT_RECORD - 0xc016f780
+            hdr, ptr = struct.unpack_from("<II", data, rec)
+            self.assertEqual(hdr, (3 << 8) | (2 + 2 * len(name)))    # bLength 48
+            load_off, _, (lo, size) = list(ctl.ais_commands(data))[-2]
+            self.assertTrue(lo <= ptr < lo + size)
+            text = data[load_off + 12 + ptr - lo:][:len(name) + 1]
+            self.assertEqual(text, name.encode() + b"\0")
+            packager.validate_controller_fw(RES1.read_bytes(), data)   # const edit is allowed
+            with self.assertRaises(SystemExit):                          # 32 > 31 characters
+                ctl.build(str(RES1), str(out), str(RES1), ui=True, usb_product="x" * 32)

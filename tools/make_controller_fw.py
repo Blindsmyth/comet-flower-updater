@@ -197,13 +197,40 @@ def base_kind(base, stock):
                      "or stock with const-data edits only")
 
 
-def build(base_path, out_path, stock_path, diag=False, ui=False):
+# USB product string (string 2): the stock record holds (bLength | 3 << 8, pointer)
+# and the builder c01352a4 copies (bLength - 2) / 2 ASCII bytes into its
+# static descriptor buffer c0109fb0 (passed on with size 128 at c013533a). The
+# stock text slot c0181638 holds only 13 characters (tools/cf_usb_name.py), so a
+# longer name is appended to the payload and the record points there.
+USB_PRODUCT_RECORD, USB_PRODUCT_STOCK_PTR = 0xc017f42c, 0xc0181638
+USB_PRODUCT_MAX = 31            # Windows MIDI port names are at most 31 characters
+
+
+def usb_product_patch(data, name, addr):
+    """Point string 2 at addr; returns the bytes to place at addr."""
+    text = name.encode("ascii")
+    if not 1 <= len(text) <= USB_PRODUCT_MAX or any(not 32 <= c <= 126 for c in text):
+        sys.exit("--usb-product: 1..%d printable ASCII characters" % USB_PRODUCT_MAX)
+    off = CONST_DATA[0] + USB_PRODUCT_RECORD - 0xc016f780
+    hdr, ptr = struct.unpack_from("<II", data, off)
+    if hdr >> 8 != 3 or ptr != USB_PRODUCT_STOCK_PTR:
+        sys.exit("USB product record %#x is not the stock string record" % USB_PRODUCT_RECORD)
+    struct.pack_into("<II", data, off, (3 << 8) | (2 + 2 * len(text)), addr)
+    return text + b"\0"
+
+
+def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=None):
     base = Path(base_path).read_bytes()
     try:
         kind = base_kind(base, Path(stock_path).read_bytes())
     except ValueError as exc:
         sys.exit(str(exc))
     lo, img, syms = elf_image(build_payload(diag, ui))
+    product_addr = None
+    if usb_product is not None:
+        img += b"\0" * (-len(img) % 4)
+        product_addr = lo + len(img)
+        img += usb_product.encode("ascii") + b"\0"
     hooks = HOOKS + (DIAG_HOOKS if diag else []) + (UI_HOOKS if ui else [])
     if lo != CTL_BASE or len(img) > CTL_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
@@ -226,6 +253,10 @@ def build(base_path, out_path, stock_path, diag=False, ui=False):
         if word != stock or callp_target(vma, word) != target:
             sys.exit("hook site %#x does not hold the stock CALLP" % vma)
         struct.pack_into("<I", data, off, callp_retarget(vma, word, syms[sym]))
+    product_off = None
+    if product_addr is not None:
+        usb_product_patch(data, usb_product, product_addr)
+        product_off = CONST_DATA[0] + USB_PRODUCT_RECORD - 0xc016f780
     padded = img + b"\0" * (-len(img) % 4)
     data += struct.pack("<III", AIS_SECTION_LOAD, lo, len(img)) + padded
     data += base[close_off:]
@@ -233,6 +264,8 @@ def build(base_path, out_path, stock_path, diag=False, ui=False):
     # Verify: stock bytes unchanged except the hooks; walk the new AIS.
     changed = [i for i in range(close_off) if data[i] != base[i]]
     allowed = {off + k for _, off, _, _, _ in hooks for k in range(4)}
+    if product_off is not None:
+        allowed |= set(range(product_off, product_off + 8))
     if not set(changed) <= allowed:
         sys.exit("unexpected byte changes at %s" % [hex(i) for i in changed if i not in allowed])
     if data[-8:] != base[-8:]:
@@ -255,6 +288,8 @@ def build(base_path, out_path, stock_path, diag=False, ui=False):
     for vma, off, stock, _, sym in hooks:
         print("hook %#x: %08x -> %08x CALLP %s (%#x)" % (
             vma, stock, struct.unpack_from("<I", data, off)[0], sym, syms[sym]))
+    if product_addr is not None:
+        print("USB product string %r at %#x" % (usb_product, product_addr))
     print("wrote %s (%d bytes, base %s, SHA-256 %s)" % (
         out_path, len(data), kind,
         hashlib.sha256(data).hexdigest()))
@@ -273,5 +308,8 @@ if __name__ == "__main__":
     ap.add_argument("--ui", action="store_true",
                     help="OFFLINE on-pedal status screen (adds the UpdateUI c013c76c pend hook); "
                          "with --diag-teardown the screen shows the diag readout")
+    ap.add_argument("--usb-product",
+                    help="USB product name (Windows MIDI port name), up to 31 characters; "
+                         "stored in the controller section")
     a = ap.parse_args()
-    build(a.base, a.out, a.stock, a.diag_teardown, a.ui)
+    build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product)
