@@ -127,3 +127,26 @@ engine on a zero signal, so the stream reads as silence, as designed. The pedal 
 the SOF packets were sent (the `set_alts` counter is not on the page), so "silence from our packets" and
 "Windows fills a stream that gets no packets" cannot be told apart here. Next: the tap build, where real
 audio settles it.
+
+## Fifth run (tap build c270cb83): real audio arrives, "static or garbled"
+
+Owner: the pedal's sound comes through, static or garbled. Two takes on the owner's PC:
+- ffmpeg/dshow (shared mode), 6 s: 60 Hz hum, about -55 dBFS, steady (probably not playing).
+- `tools/ua_capture.py` (WASAPI exclusive, no Windows processing), 10 s, `build/ua_takes/take_20261016_140553.wav`:
+  rms -54 dBFS, peak 263 of 32767, L == R, 120 Hz strongest, smooth waveform; 252 clicks (2nd-difference
+  outliers), spacing 44..18567 frames. Whether the owner was playing is not confirmed.
+
+If that take had playing in it, the level is about 2^8 too low, i.e. the planar words at 11f038b0/f0 are not
+full-scale int32 as assumed, and the 16-bit high half keeps only ~9 bits (heavy quantisation would sound
+"garbled"). To be confirmed with a take recorded while playing.
+
+## Diagnostic pattern build (owner request: exact breakup analysis)
+
+`build/cf_usb_audio_pattern_2026-10-16/Comet Flower G1X4 Updater (USB audio pattern TEST build).exe`
+(`0581631d…`, firmware `526a3a0b…`): `make_usb_audio_fw.py --tap-pattern`. Same patches as the tap build; the
+Swi stores a known signal instead of the audio: left = frame counter, right = 1002 Hz sine indexed by the counter
+(never 0, so all-zero frames are padding). A block dropped on overrun still advances the counter. PC side:
+`tools/ua_capture.py` records in WASAPI exclusive mode and lists every gap (frames lost), repeat, inserted padding
+and corrupt frame with spacing, and the effective rate. The normal tap build is unchanged (`74de4495…`).
+Tests: `tests/test_usb_audio_pattern.py` (analyser on synthetic faults; the pattern C on the host, steady stream clean,
+overrun = 16-frame gaps; same patch sites as the tap).

@@ -32,6 +32,14 @@
  * above UA_TAP_TARGET, else 44. 44..45 frames/ms spans 44.0..45.0 kHz, far
  * wider than any crystal drift. Underrun: pad with zeros, count, re-prime.
  * Overrun (ring full): drop the whole block, count.
+ *
+ * UA_TAP_PATTERN (diagnostic build, make_usb_audio_fw.py --tap-pattern): the
+ * Swi stores a known signal instead of the pedal audio, so a PC capture
+ * (tools/ua_capture.py) can find every lost, repeated or damaged frame. Left
+ * = a frame counter (+1 per frame, mod 2^16); right = a 1002 Hz sine,
+ * ua_pattern_sine[counter mod 44], which is never 0, so an all-zero frame is
+ * always padding. A block dropped on overrun still advances the counter, so
+ * the drop shows as a 16-frame jump.
  */
 #include "usb_audio.c"
 
@@ -90,6 +98,30 @@ usb_audio_tap_t usb_audio_tap = { 0, 0, 0, 0, 0, 0, 0 };
 #pragma DATA_SECTION(usb_audio_ring, ".ua_state")
 volatile u32 usb_audio_ring[UA_TAP_FRAMES];
 
+#ifdef UA_TAP_PATTERN
+#pragma DATA_SECTION(ua_pattern_frame, ".ua_state")
+volatile u32 ua_pattern_frame;     /* Swi only: frames generated */
+#pragma DATA_SECTION(ua_pattern_phase, ".ua_state")
+volatile u32 ua_pattern_phase;     /* Swi only: ua_pattern_frame % 44, kept without a divide */
+
+static const short ua_pattern_sine[44] = {    /* 16384 sin(2 pi (i + 0.5) / 44) */
+    1169, 3483, 5726, 7852, 9819, 11585, 13116, 14380, 15351, 16010, 16342,
+    16342, 16010, 15351, 14380, 13116, 11585, 9819, 7852, 5726, 3483, 1169,
+    -1169, -3483, -5726, -7852, -9819, -11585, -13116, -14380, -15351, -16010, -16342,
+    -16342, -16010, -15351, -14380, -13116, -11585, -9819, -7852, -5726, -3483, -1169
+};
+
+static inline void ua_pattern_advance(u32 n)
+{
+    u32 p = ua_pattern_phase + n;
+
+    while (p >= 44u)
+        p -= 44u;
+    ua_pattern_phase = p;
+    ua_pattern_frame += n;
+}
+#endif
+
 static inline u32 ua_tap_sample(int x)
 {
     return ((u32)UA_SSHL(UA_SMPY32(x, UA_TAP_GAIN), 2) >> 16) & 0xffffu;
@@ -105,11 +137,23 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
     w = usb_audio_tap.ring_wr;
     if (w - usb_audio_tap.ring_rd > UA_TAP_FRAMES - UA_TAP_BLOCK) {
         usb_audio_tap.overruns++;
+#ifdef UA_TAP_PATTERN
+        ua_pattern_advance(UA_TAP_BLOCK);
+#endif
         return;
     }
+#ifdef UA_TAP_PATTERN
+    (void)l; (void)r;
+    for (i = 0; i < UA_TAP_BLOCK; i++) {
+        usb_audio_ring[(w + i) & UA_TAP_MASK] = (ua_pattern_frame & 0xffffu) |
+            ((u32)(unsigned short)ua_pattern_sine[ua_pattern_phase] << 16);
+        ua_pattern_advance(1u);
+    }
+#else
     for (i = 0; i < UA_TAP_BLOCK; i++)
         usb_audio_ring[(w + i) & UA_TAP_MASK] =
             ua_tap_sample(l[i]) | (ua_tap_sample(r[i]) << 16);
+#endif
     usb_audio_tap.ring_wr = w + UA_TAP_BLOCK;     /* publish last */
     usb_audio_tap.blocks++;
 }
