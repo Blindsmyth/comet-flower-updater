@@ -66,3 +66,35 @@
 | Button bit 9 (B10) | SW bit 9 (`0x200`) | `c016f1a0(6)` -> `118094c4` | **GPIO 0** | `GP0[0]` | **23** | **24** | `1` (press) / `0` (rel) |
 
 ## A1. Stock Main-Screen Button Event Actions (Events 0..28) & Power-Up Combo Safety
+
+### 1. Power-Up Button Combination Checks (`res5` `0xc020a4d0` & Main Firmware `0xc0140c8c`) — **Confirmed**
+- **Bootloader / `res5` (`0xc020a4d0`, `recon/25_boot_safety.md`)**:
+  - Enters USB Firmware Update Mode (`0xc0201404`) **only** when both footswitches (GPIO 5 and GPIO 3) read low (`0`, pressed) **and** all 10 buttons (GPIOs `{0, 27, 24, 26, 37, 38, 86, 2, 4, 6}`) read high (`1`, released). Holding any single panel button at power-up (with footswitches released) goes straight to normal boot (`0xc020a568 -> 0xc022ba40`).
+- **Main Firmware Startup Check (`0xc0140c8c`, called at `0xc013420c` inside `MainApp` init `0xc01341e4` *before* `0xc0134e14`)**:
+  - `0xc0140c8c` assembles a **12-bit** active-low bitmap `A7` (`0x0fff` when all 12 controls are released; note that its bit order differs from `READ_SWITCHES` at bits 5..11 because `c016f1a0(6)` is placed at bit 5 before `c016f1a0(0..5)` at bits 6..11):
+    - `A7` bit 0 (`0x001`): FS 0 (`c016f340(0)`, GPIO 3)
+    - `A7` bit 1 (`0x002`): FS 1 (`c016f340(1)`, GPIO 5)
+    - `A7` bit 2 (`0x004`): SW bit 0 (`c016f1d0`, GPIO 4, events 5/6)
+    - `A7` bit 3 (`0x008`): SW bit 1 (`c016f1c0`, GPIO 2, events 7/8)
+    - `A7` bit 4 (`0x010`): SW bit 2 (`c016f1b0`, GPIO 6, events 9/10)
+    - `A7` bit 5 (`0x020`): SW bit 9 (`c016f1a0(6)`, GPIO 0 = Rhythm, events 23/24)
+    - `A7` bit 6..10 (`0x040..0x400`): SW bits 3..7 (`c016f1a0(0..4)`, GPIOs 27, 24, 26, 37, 38 = Effect Slots 1..5, events 11..20)
+    - `A7` bit 11 (`0x800`): SW bit 8 (`c016f1a0(5)`, GPIO 86, events 21/22)
+  - `0xc0140dc0..0xc0140e10` searches the 6-entry `{handler, mask}` table at `0xc0180570..0xc018059c` for an exact `A7 == mask` match:
+    ```text
+    c0180570   c01406a0  00000aff   ; ~0x500 (A7 bits 8,10 = SW bits 5+7, Slots 3+5) -> "Off Mode entrance"
+    c0180578   c0140740  00000d7f   ; ~0x280 (A7 bits 7,9  = SW bits 4+6, Slots 2+4) -> "Switch to OFF mode."
+    c0180580   c0140a30  00000ff7   ; ~0x008 (A7 bit 3     = SW bit 1, GPIO 2 ALONE) -> "ALL INITIALIZE" (Factory Reset!)
+    c0180588   c014cef4  00000ffb   ; ~0x004 (A7 bit 2     = SW bit 0, GPIO 4 ALONE) -> factory/test task c014d138 (if *0x1181348c != 0)
+    c0180590   c01408cc  000003ff   ; ~0xc00 (A7 bits 10,11= SW bits 7+8, Slot 5 + bit 8) -> "CheckSum" screen
+    c0180598   c01407b0  00000fdf   ; ~0x020 (A7 bit 5     = SW bit 9, GPIO 0 Rhythm ALONE) -> "VERSION" screen (waits for FSW)
+    ```
+  - **Power-up safety consequences**:
+    - **SW bit 1 (GPIO 2, events 7/8) is UNSAFE**: holding it alone at power-up (`0x0ff7`) triggers `0xc0140a30` (`"ALL INITIALIZE / Are you sure? / FSW:ENTER"`), blocking normal boot in the factory reset prompt.
+    - **SW bit 0 (GPIO 4, events 5/6) has a stock entry (`0x0ffb -> 0xc014cef4`)**: gated on `0xc016f730()` (`*(u32 *)0x1181348c != 0`); best avoided if completely clean buttons exist.
+    - **SW bit 9 (GPIO 0, Rhythm, events 23/24) is already used by MIDI mode AND triggers `0xc01407b0` (`"VERSION"` screen)** at `0xc013420c` (requiring a footswitch press before `MainApp` reaches `0xc0134e14`).
+    - **Completely free of any single-button power-up action in both `res5` and `0xc0140c8c`**:
+      - **SW bit 2 (GPIO 6, events 9/10)**: not in `0xc0180570` at all (neither single nor combo).
+      - **SW bits 3..7 (GPIOs 27, 24, 26, 37, 38, events 11..20, Effect Slot 1..5 buttons)**: only appear in 2-button combos in `0xc0180570`, never as a single button.
+      - **SW bit 8 (GPIO 86, events 21/22)**: only appears in the 2-button combo `SW bit 7 + SW bit 8` (`0x03ff`), never as a single button.
+
