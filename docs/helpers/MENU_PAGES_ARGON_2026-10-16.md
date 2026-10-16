@@ -1,7 +1,11 @@
 # Zoom G1X Four Extra Settings Pages RE — Argon Report (2026-10-16)
 
 ## Summary
-*(Work in progress — offline analysis only.)*
+- **P1 (Alternate Chooser `ID 1` & `OUTPUT` `ID 5`)**: `c0149664` has 10 call sites; none ever pass `A4 = 1`. Screen ID `1` (`0xc0183400`, List B `{5,9,3,8,12}`) and Screen ID `5` (`0xc0183740`, `OUTPUT`) are completely dormant in stock firmware. Both `c0157c0c` (draw) and `c0157ae8` (slot release) select List B iff `c01497f4() == 1`.
+- **P2 (Unused Chooser Inputs)**: `c0157bac` ignores all events outside `6..20` (`c0157bb4 CMPLTU 0xe,A0,A0`). **`<`/`>` Arrow buttons (`21..24`)**, **Knobs `1..4` (`25..28`)**, and **Footswitches (`0..4`)** return `0` with zero side effects in `ui_mode == 4` (avoid Event `9`, caught by `c0134ba8`).
+- **P3 (Page Stepper `c0149a90`)**: Called only once (`c0164870`, Knob 1 on legacy `TEMPO` `ID 2`); clamps `screen_id +/- 1` to `[2, 12]`. Do not use for chooser flipping; call `c0149664(target_id)` directly.
+- **P4 (`ID >= 15` & `.cinit` RAM Shortcuts)**: `c01495c0` bounds-checks `A4 > 14` against `.switch` table `0xc018413c`; its calls inside `c0149664` (`f61b`) and `c0149ad4` (`b01b`) are 16-bit compact. However, descriptors `0` (`0xc01833dc`), `1` (`0xc0183400`), and `5` (`0xc0183740`) live in **writable `.fardata` RAM**, and the chooser's icon/transition calls (`c0157a00: 1fe41a93`, `c0157b24: 1fe36893`) are 32-bit `CALLP`s!
+- **P5 (`OUTPUT` `0xc0183740` & `c0154564`)**: `w4, w5, w7` can be `0`; `w6` calls `c0154564(4, recs, 0xc0181548, title, label_font, val_font)`. Catch: `OUTPUT`'s stock `w8` (`c016a95a`) hardcodes EQ (`c012f900`), so point `0xc0183740->w8` (`0xc0183760`) to `c0149948(4, ev, 0xc0182b00)`. `w7` strings `<= 5` chars (`"FX"`, `"MIDI"`, `"USB"`) fit `y=24` cleanly.
 
 ## P1. Entry to the Alternate Chooser (Screen ID 1 vs ID 0)
 
@@ -247,4 +251,112 @@ c01495e6       a1ef           BNOP.S2       B3,5
 
 ## P5. Our Own 4-Item Page (Constructor `c0154564`, Descriptor, Formatter `w7`, OUTPUT Example)
 
+### 1. Screen Descriptor Layout (`w0..w8`, 36 Bytes) — Worked Example: `OUTPUT` (`0xc0183740`) (Confirmed)
+`c016a9ac` returns `0xc0183740` (initialized from `.cinit` `0xc01865eb` into writable `.fardata` RAM):
+
+| Word / Offset | Value in `OUTPUT` (`0xc0183740`) | Can Be `0` (`NULL`)? | Verification & Role |
+|---|---|---|---|
+| `w0` (`+0x00`) | `0x00000005` (`5`) | Any int (`!= 0, 1, 9` for subpage) | `screen_id`. For any value not in `{0, 1, 9}`, `c0149820()` returns `1` so `SETTINGS` (`6`) and `Memory` (`7`) automatically exit the page (`c01498f8 -> c0149924`). |
+| `w1` (`+0x04`) | `0xc017ea88` | Non-NULL if shown in chooser | 24x30 icon bitmap type `0` (normal), returned by `c0149ad4(id, 0)` (`c0149af0`). |
+| `w2` (`+0x08`) | `0xc017e788` | Non-NULL if shown in chooser | 24x30 icon bitmap type `1` (inverted/pressed), returned by `c0149ad4(id, 1)` (`c0149afc`). |
+| `w3` (`+0x0c`) | `0xc017e488` | Non-NULL if shown in chooser | 24x30 icon bitmap type `2` (frame), returned by `c0149ad4(id, 2)` (`c0149b08`). |
+| `w4` (`+0x10`) | `0xc016a978` (`a1ef BNOP.S2 B3,5`) | **Yes (`0` allowed, confirmed)** | `on_enter()` callback. `c01496a4: 204c LDW.D1T1 *A4[4],A0; c01496aa: a2ba [!A0] BNOP.S1 0xc01496b0,5` skips call if `0` (already `0` in descriptors `0, 1, 2`). |
+| `w5` (`+0x14`) | `0x00000000` | **Yes (`0` allowed, confirmed)** | `on_exit()` callback. `c0149686: a004 LDW.D2T2 *B4[5],B0; c014968c: a33b [!B0] BNOP.S1 0xc0149694,5` skips call if `0` (`0` in `OUTPUT`, `SETUP`, `PWR/LCD`). |
+| `w6` (`+0x18`) | `0xc016a97a` | **No (must be non-NULL)** | `draw(int flag)` callback (`A4=1`), called unconditionally by `c0149a68` (`c0149a7a: c084 LDW.D2T2 *B4[6],B0; c0149a80: B.S2 B0`). |
+| `w7` (`+0x1c`) | `0xc016a940` (`CALLP 0xc0160e74`, no-op) | **Yes (`0` allowed, confirmed)** | `on_poll()` callback. `c0149732: e004 LDW.D2T2 *B4[7],B0; c0149738: c011a120 [!B0] BNOP.S1 0xc014974c,5` skips call if `0` (already `0` in descriptor `2`). |
+| `w8` (`+0x20`) | `0xc016a95a` | **Yes (`0` allowed, non-NULL for knobs)** | `on_event(event_t *ev)` callback (`c0149904: 0004 LDW.D2T2 *B4[8],B0; [!B0] skip`). **Crucial catch on `OUTPUT`'s stock `w8` (`c016a95a`)**: see Section 2 below! |
+
+### 2. Crucial Catch on `OUTPUT` (`0xc0183740`) `w8` vs. `SETUP`/`PWR/LCD` `w8` (Confirmed)
+- In **`SETUP`** (`0xc0183764`, `w8 = c01671ac`) and **`PWR/LCD`** (`0xc018368c`, `w8 = c0163268`), `w8` delegates directly to the generic table-driven 4-knob event handler **`c0149948(int count /*A4*/, event_t *ev /*B4*/, const item_rec_t *records /*A6*/)`**:
+  ```
+  c01671ac   01bc54f6           STW.D2T2      B3,*B15--[2]
+  c01671b0   03152a28           MVK.S1        0x2a54,A6
+  c01671b4   03600c68           MVKH.S1       0xc0180000,A6      ; A6 = 0xc0182a54 (SETUP 4-item records)
+  c01671b8   1fc4f293           CALLP.S2      0xc0149948,B3      ; generic 4-knob editor!
+  c01671bc       8347 ||        MV.L2X        A4,B4              ; B4 = ev
+  c01671be       8626 ||        MVK.L1        4,A4               ; A4 = 4 items
+  ```
+- By contrast, **`OUTPUT`'s stock `w8` (`c016a95a`) does NOT call `c0149948`!** Instead, `c016a95a` checks `25 <= ev->w0 <= 28` and calls `c016a94c(ev->w0 - 25, ev->w2) -> c012fb00 -> c012f900` (which hardcodes `Lo/MID/Hi/MVOL` via jump table `0xc0184504`), ignoring `0xc0182b00[i].w9` (`setter`) and `w8` (`getter`) on knob turns!
+- **Fix**: When repurposing `OUTPUT` (`0xc0183740`) or creating any custom 4-item page, set `desc->w8` (`*(uint32_t *)0xc0183760`) to a 3-line C wrapper that calls **`c0149948(4, ev, records_ptr)`**. Then `c0149948` automatically:
+  1. Checks `25 <= ev->w0 < 25 + count` (`col = ev->w0 - 25`).
+  2. Checks `records[col].w0 == 1` (`enabled`) and `records[col].w9 != NULL` (`setter`) and `records[col].w8 != NULL` (`getter`).
+  3. Computes `new_val = records[col].w8() + ev->w2`, clamps `new_val` to `[records[col].w1, records[col].w2]`, calls `records[col].w9(new_val)`, and calls `c0139fd8(1)` to redraw if changed!
+
+### 3. Constructor `c0154564` Signature & Exact Arguments (`OUTPUT` `c016a97a` vs `SETUP` `c01671cc`) (Confirmed)
+```
+; OUTPUT draw callback w6 = c016a97a:
+c016a97a       31f7           STW.D2T2      B3,*B15--[2]
+c016a97c   0c6e               NOP           1
+c016a980   030871aa           MVK.S2        0x10e3,B6
+c016a984   0215802a ||        MVK.S2        0x2b00,B4
+c016a988   0400005b ||        MVK.L2        1,B8
+c016a98c   03600c6a           MVKH.S2       0xc0180000,B6        ; B6 = 0xc01810e3 ("OUTPUT")
+c016a990   030aa429 ||        MVK.S1        0x1548,A6
+c016a994   02600c6a ||        MVKH.S2       0xc0180000,B4        ; B4 = 0xc0182b00 (4 item records)
+c016a998   1fd37c93           CALLP.S2      0xc0154564,B3        ; 32-bit CALLP, parallel bit = 1
+c016a99c   042001f0 ||        MV.D1X        B8,A8                ; A8 = 1 (5x7 label font)
+c016a9a0   03600c68 ||        MVKH.S1       0xc0180000,A6        ; A6 = 0xc0181548 (col center X[4])
+c016a9a4       8626 ||        MVK.L1        4,A4                 ; A4 = 4 (item count)
+```
+- **Exact C Prototype of `c0154564`**:
+  ```c
+  void page_draw_4items(
+      int              count,          // A4: number of columns (4)
+      const item_rec_t *records,       // B4: array of `count` 44-byte (0x2c) item_rec_t structs
+      const int32_t    *col_center_x,  // A6: 0xc0181548 -> {17, 48, 79, 110} (0x11, 0x30, 0x4f, 0x6e)
+      const char       *title,         // B6: inverted top-bar title string (e.g. 0xc01810e3 "OUTPUT")
+      int              label_font_sel, // A8: 0 = 3x5 font c011e700 (4 px pitch, supports 2-line w3+w4),
+                                       //     1 = 5x7 font c011d4d8 (6 px pitch, single-line w3 at y=13)
+      int              val_font_sel    // B8: 1 = 5x7 font c011d4d8 at y=24, 0 = 3x5 font c011e700 at y=24
+  );
+  ```
+- **44-Byte (`0x2c`, 11-word) `item_rec_t` Layout (verified across `0xc0182b00..0xc0182bab` for `OUTPUT`, `0xc0182a54` for `SETUP`, `0xc018287c` for `PWR/LCD`)**:
+  - `w0` (`+0x00`): `1` = enabled (active), `0` = blank/disabled column (`c015436e`, `c0149982`).
+  - `w1` (`+0x04`): `int32_t min_val` (for `OUTPUT`: `0`; for enum `0..2`: `0`).
+  - `w2` (`+0x08`): `int32_t max_val` (for `OUTPUT` `Lo/MID/Hi`: `0x1e` = `30`; `MVOL`: `0x64` = `100`; for 3-way enum: `2`).
+  - `w3` (`+0x0c`): `const char *label_line1` (drawn at `y=13` if single-line, or `y=9` if `w4 != NULL` and `A8 == 0`).
+  - `w4` (`+0x10`): `const char *label_line2` (`NULL` for single-line; drawn at `y=15` in 3x5 font when `A8 == 0`).
+  - `w5` (`+0x14`): `0` (special flag: `1` only for Contrast icon `c01828b4`).
+  - `w6` (`+0x18`): `0` (special flag: `1` only for Contrast/Eco `c01828d0/fc`).
+  - `w7` (`+0x1c`): `const char *(*val_to_str)(int val)` (value string formatter).
+  - `w8` (`+0x20`): `int (*getter)(void)` (returns current integer parameter value in `A4`).
+  - `w9` (`+0x24`): `void (*setter)(int new_val)` (applies new clamped integer value in `A4`).
+  - `w10` (`+0x28`): `const char *unit_suffix` (`NULL` for none; `"Hz"` on `TUNER` `0xc0181be4`).
+
+### 4. Formatter `w7` Contract & Maximum String Length at `y = 24` (Confirmed)
+- **How `c0154338` (`c0154474..c0154530`) calls `w7` and renders the value**:
+  1. Calls `val = rec->w8()` (`c01544cc: 1094 LDW.D1T2 *A2[8],B0; c01544d4: CALLP B0,B3`).
+  2. Calls `str = rec->w7(val)` (`c01544dc: f094 LDW.D1T2 *A2[7],B0; c01544fc: 01800062 ADDKPC.S2 0xc0154500,B3,0; B.S2 B0`).
+  3. Checks `if (str != NULL)` (`c0154500: 2146 MV.L1 A4,A0; [!A0] skip`).
+  4. Copies `str` into a **20-byte stack buffer at `B15 + 16`** via `c016a100(B15 + 16, 20, "%s", str)` (`c015450c: 1fd6fb93 CALLP.S2 0xc016a100,B3`, `B4 = 0x14 = 20`).
+  5. Computes centered X coordinate via `c01542f0(B15 + 16, 5, col_center_x[i])` (`c0154518: 1ffff612 CALLP.S2 0xc01542f0,B3`):
+     - `c01542f0` measures `len = strlen(buf)` (`c016be60`), computes `pixel_width = len * (5 + 1) - 1 = 6 * len - 1`, and returns `x = col_center_x[i] - (pixel_width >> 1)`.
+  6. Draws `B15 + 16` at `(x, y = 24)` (`c0154524: 03000c2b MVK.S2 24,B6`) using 5x7 font `c011d4d8` (`c015452c: 1f924292 CALLP.S2 0xc011d4d8,B3`).
+- **Return buffer requirement for our `w7`**:
+  - Because `c015450c` immediately copies the returned `const char *` into its own stack buffer `B15 + 16`, our `w7(int val)` can return either a pointer to a static string literal (`"FX"`, `"MIDI"`, `"USB"`, `"OFF"`, `"ON"`) or a tiny static `char buf[8]` formatted by `c016a100` (`snprintf`, the same helper used by `OUTPUT`'s formatter `c015425c` with `0xc0183670`).
+- **Maximum characters that fit cleanly at `y = 24`**:
+  - Column centers are at `x = {17, 48, 79, 110}` (31 px center-to-center spacing; inner column frame is ~30 px wide).
+  - With the 5x7 font (`c011d4d8`, 5 px glyph + 1 px spacing = 6 px/char):
+    - **1..4 chars** (`5..23` px wide, e.g. `"FX"` = 11 px, `"USB"` = 17 px, `"MIDI"` = 23 px): **fits with 4..10 px margin per side**.
+    - **5 chars** (`29` px wide): **maximum clean width** without touching column borders.
+    - **6 chars** (`35` px wide, e.g. `"ALKALI"` in `SETUP` col 0 at `x=18`): slightly overhangs a 31 px cell by 2 px per side.
+  - And for labels (`w3` at `y = 13`): if `A8 = 1` (5x7 font, like `OUTPUT`), keep `w3` `<= 5` chars; if `A8 = 0` (3x5 font `c011e700`, 4 px pitch, like `SETUP`), `w3` (and optional second line `w4`) can be up to **7 chars** (`7 * 4 - 1 = 27` px) per line!
+
+
 ## Recommended Design (Entry Control + Hook List)
+
+### 1. Recommended Physical Control to Flip Chooser Pages
+- **Primary recommendation**: **Left / Right Arrow buttons (`<` = `ev->w0 == 21`, `>` = `ev->w0 == 23`)** AND/OR **any Knob 1..4 turn (`ev->w0 == 25..28`, `ev->w2 < 0` vs `ev->w2 > 0`)** while on the `SETTING` chooser (`Screen ID 0` or `Screen ID 1`).
+  - Both `<` / `>` (`21, 23`) and Knobs `1..4` (`25..28`) are **100% ignored** in `c0157bac` (`(ev->w0 - 6) > 14 -> return 0` at `c0157bb8`) and have zero side effects in `MainApp` when `ui_mode == 4`.
+  - Supporting both `<` / `>` button presses and Knob 1..4 rotation in our chooser event wrapper takes 6 lines of C and feels completely natural on hardware (press `SETTINGS`, then press `>` or turn a knob to flip to the second chooser page, or press Slot 1..5 to open a page).
+
+### 2. Minimal-Footprint Architecture: Reuse Dormant `.cinit` Descriptors (`ID 1` & `ID 5`) + Single 32-Bit `CALLP` Hook
+Because the 36-byte Screen Descriptors for **Screen ID `0` (`0xc01833dc`)**, **Screen ID `1` (`0xc0183400`, Chooser List B)**, and **Screen ID `5` (`0xc0183740`, `OUTPUT` 4-item page)** (as well as `0xc0182b00`, `OUTPUT`'s 4x44-byte item record array) all reside in **writable `.fardata` RAM**, we do **not** need to patch any 16-bit instructions or relocate `.switch` tables:
+
+| Component | Exact Address / Word in `main.dis` | Parallel Bit | Action in Our Patch |
+|---|---|---|---|
+| **Option A Hook (Menu Entry)** | `c0156de0: 1fe51e12 CALLP.S2 0xc01496d0,B3` | `0` (standalone) | Replace with `CALLP.S2 our_menu_enter_hook, B3`. Inside `our_menu_enter_hook()`: patch writable RAM tables (`0xc01833dc->w8`, `0xc0183400->w8`, `0xc0183740->w6/w8`, `0xc0182b00`) idempotently, then call stock `0xc01496d0()`. *(Alternatively, hook `c0134b44: 1029a013 CALLP.S2 0xc0149840,B3`, parallel bit `1`, or `c016a998: 1fd37c93 CALLP.S2 0xc0154564,B3`, parallel bit `1`.)* |
+| **Chooser List A & B Event Pointer (`w8`)** | `*(uint32_t *)0xc01833fc` (`ID 0` `w8`) and `*(uint32_t *)0xc0183420` (`ID 1` `w8`) | Writable RAM | Point both to `our_chooser_on_event(event_t *ev)`: if `ev->w0 == 23` (`>`) or (`25..28` with `ev->w2 > 0`), call `c0149664(1)`; if `ev->w0 == 21` (`<`) or (`25..28` with `ev->w2 < 0`), call `c0149664(0)`; otherwise tail-call stock `c0157bac(ev)`. |
+| **Custom 4-Item Page (`ID 5`, Slot 0 of List B)** | `0xc0183740` (`OUTPUT` descriptor in RAM) + `0xc0182b00` (`4 x 44B` records in RAM) | Writable RAM | Overwrite `0xc0182b00[0..3]` in RAM with our 4 custom items (`min`, `max`, `label`, `w7=val_to_str`, `w8=getter`, `w9=setter`), overwrite `*(uint32_t *)0xc0183758` (`w6`) if custom title/font is desired (calling `c0154564(4, 0xc0182b00, 0xc0181548, title, 0, 1)`), and overwrite `*(uint32_t *)0xc0183760` (`w8`) with `our_page5_on_event(ev)` calling `c0149948(4, ev, 0xc0182b00)`. |
+| **Optional: Up to 5 Custom Pages on List B (or N Pages)** | `c0157a00: 1fe41a93 CALLP.S2 0xc0149ad4,B3` (p-bit `1`) & `c0157b24: 1fe36893 CALLP.S2 0xc0149664,B3` (p-bit `1`) | `1` (both) | If we ever want to customize all 5 slots of List B (or add `ID >= 15` pages), these two 32-bit `CALLP` sites are the only places where the chooser resolves a slot's `screen_id` to an icon (`c0149ad4`) or transitions to a subpage (`c0149664`). |
+
