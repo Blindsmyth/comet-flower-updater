@@ -118,6 +118,10 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
   procedure `docs/TEST_RUN_2026-10-15.md`. `make_fs_restore_updater.py --test-controller-fw`
   packages the diag/UI images; the output name must contain TEST, and `--controller-fw` stays strict.
   The UpdateUI stack gate is closed statically (8 KB task, 168 B added).
+- **FIRST HARDWARE RUN (owner, 2026-10-15 ~20:00):** the diag-UI screen works on the pedal and CCs flow.
+  Readback: **worker stack peak 924/2048 B**; TX outstanding 0. Fault 0x8 = 18 type-19 teardowns via the
+  queue 32/33 consumer in enumeration bursts (benign at setup). The abort path is not exercised yet.
+  Pending from the owner: tick period, mid-session unplug capture. Log: recon/04, 2026-10-15 row.
 - **Comet Flower stock image (owner request):** `docs/CF_STOCK_IMAGE_2026-10-15.md`. Clean CF-only
   effects, CF presets, logo and USB name "Comet Flower" (`tools/cf_usb_name.py`; update mode unchanged),
   plus a TEST variant with the controller diag-UI. Next: decode EDTB to write CF patches (a starter bank).
