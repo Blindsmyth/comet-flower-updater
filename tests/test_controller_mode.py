@@ -131,9 +131,14 @@ class ModeToggle(unittest.TestCase):
         self.assertEqual(self.lib.host_mode(), 0)                  # boots in FX (owner)
 
     def test_usb_audio_start_up_button(self):
-        self.u("host_switches").value = ~(1 << 2) & 0xFFFFFFFF          # B3 held
+        self.u("host_switches").value = ~(1 << 3) & 0xFFFFFFFF          # slot 1 (B4) held
         self.lib.host_start()
         self.assertEqual((self.u("host_ua_request").value, self.lib.host_mode()), (1, 0))
+
+    def test_unwired_bit_2_does_nothing(self):
+        self.u("host_switches").value = ~(1 << 2) & 0xFFFFFFFF
+        self.lib.host_start()
+        self.assertEqual((self.u("host_ua_request").value, self.lib.host_mode()), (0, 0))
 
     def test_no_usb_audio_without_its_button(self):
         self.u("host_switches").value = ~(1 << 9) & 0xFFFFFFFF          # Rhythm: MIDI only

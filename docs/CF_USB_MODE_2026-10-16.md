@@ -4,8 +4,8 @@ Folder: `build/cf_usb_mode_2026-10-16/` (owner use only: it contains Zoom's firm
 
 | File | SHA-256 (start) | Contents |
 |---|---|---|
-| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `1cb9b8fd6e1e1ad1` | Menu candidate + USB-audio silence layer |
-| `res1_cf_usb_mode.bin` | `6d972e803c308894` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
+| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `82737f77a618b97e` | Menu candidate + USB-audio silence layer |
+| `res1_cf_usb_mode.bin` | `a0c9b9b7561e199b` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
 
 Packaged with `--test-controller-fw` (the strict release path refuses the audio layer). Presets and
 effects as in the release. **Not flashed. First hardware run of any USB-audio code.**
@@ -27,9 +27,10 @@ So with USB mode off this build should behave exactly like the menu candidate.
 
 ## How to turn it on
 
-- **Start-up:** hold the button that shows as **B3** on the MIDI screen (switch bit 2, GPIO 6, events
-  9/10) while powering on. That button has no stock start-up meaning (stock combos checked:
-  c0140c8c, table c0180570). Never hold the 2nd button alone (bit 1: stock ALL INITIALIZE prompt).
+- **Start-up:** hold the **slot 1 button** ("B4" on the MIDI screen; switch bit 3, GPIO 27, events
+  11/12) while powering on. A single slot button has no stock start-up meaning (stock combos checked:
+  c0140c8c, table c0180570). **Never hold EDIT alone** (stock ALL INITIALIZE prompt, c0140a30) or
+  SETTINGS alone (pedal calibration) at power-up.
 - **Menu (experimental):** SETTING, turn a knob right, slot 1 (COMET FLOWER), knob 2 **USB: OFF/AUDIO**.
   The item appears only in this build. Changing it while USB is connected does a software replug
   (stock close c016ab58, 500 ms, stock open c016ab8c; the same pair the cable handler uses), with the
@@ -40,7 +41,7 @@ So with USB mode off this build should behave exactly like the menu candidate.
 
 1. Normal power-on: everything as in the menu candidate; Windows sees only "Comet Flower ZG1X4 MIDI".
    MIDI works (VPB).
-2. Power on holding B3: Windows should add an audio input device. In Sound settings > Recording, it
+2. Power on holding slot 1: Windows should add an audio input device. In Sound settings > Recording, it
    should show; recording from it gives silence. MIDI still works.
 3. Menu switch: with USB connected, set USB to AUDIO: the pedal should drop off and come back within a
    second or two with the audio device; set OFF: back to MIDI only. Note any freeze, error sound loop, or
@@ -62,3 +63,9 @@ So with USB mode off this build should behave exactly like the menu candidate.
 - R3 replug race with the cable handler: **fixed** (switch task parked during the replug).
 - R4 the packager checks the layer's structure, not its code contents: by design (same as the
   controller payload; the payload is our own build, pinned by the tests and this doc's hashes).
+
+## Owner's button map (2026-10-16, from the MIDI screen)
+
+B1 SETTINGS, B2 EDIT, B4..B8 slot buttons 1..5, B10 Rhythm, FS1/FS2 footswitches, K1..K4 knobs, EXP.
+Switch bits 2 and 8 (B3, B9) have no physical button; the pedal has no arrow buttons, so chooser
+pages flip with the knobs only.

@@ -390,15 +390,18 @@ void controller_start(void)
     READ_SWITCHES(&a);
     READ_SWITCHES(&b);
 #ifdef CTL_UI
-    /* USB-audio mode (owner: a start-up button that is not GPIO0): switch
-       bit 2 (GPIO 6, events 9/10, "B3" on the MIDI screen) low on both
-       reads. It is in none of the stock power-up masks (c0140c8c, table
-       c0180570: aff, d7f, ff7, ffb, 3ff, fdf; bit 2 there is A7 bit 4), so
-       holding it alone has no stock meaning. Only the request is written;
+    /* USB-audio mode (owner: a start-up button that is not GPIO0): the
+       slot 1 button, switch bit 3 (GPIO 27, events 11/12, "B4" on the MIDI
+       screen), low on both reads. Owner's map 2026-10-16: B1 SETTINGS,
+       B2 EDIT, B4..B8 slots 1..5, B10 Rhythm; bits 2 and 8 have no button.
+       Stock power-up masks (c0140c8c, table c0180570): aff, d7f, ff7 (EDIT
+       alone: ALL INITIALIZE, c0140a30 -> c017bb40), ffb (SETTINGS alone:
+       pedal calibration), 3ff, fdf. Slot 1 alone gives fbf, not listed, so
+       it has no stock meaning. Only the request is written;
        the USB-audio layer latches it at the USB open, which runs after this
        (docs/helpers/USB_MODE_ASTRA_2026-10-16.md finding 3). Without that
        layer the word is unused free SDRAM. */
-    if (((a | b) & 4u) == 0)
+    if (((a | b) & 8u) == 0)
         UA_REQUEST = 1u;
 #endif
     /* GPIO0 (bit 9) low on two reads; not a timed debounce. */
