@@ -113,6 +113,59 @@ Events are popped in `MainApp` (`c0134dd0: 103ce993 CALLP.S2 0xc015350c,B3`) int
 
 ## P3. Page Stepping (`c0149a90`)
 
+### 1. Complete Disassembly & Behavior of `c0149a90` (Confirmed)
+```
+c0149a90       31f7           STW.D2T2      B3,*B15--[2]
+c0149a92       2246           MV.L1         A4,A1             ; A1 = step direction arg (signed int)
+c0149a94   1fffae92           CALLP.S2      0xc01497f4,B3     ; A4 = current screen_id (or 0x0fff if NULL)
+c0149a98   0007ffa8           MVK.S1        0x0fff,A0
+c0149a9c   0c6e               NOP           1
+c0149aa0       8468           CMPEQ.L1      A4,A0,A0          ; current screen_id == 0x0fff ?
+c0149aa2       a56a    [ A0]  BNOP.S1       0xc0149aca,5      ; if no active screen, return 0
+c0149aa4       10a6           CMPLT.L1      0,A1,A0           ; A0 = (0 < A1) ? 1 : 0
+c0149aa6       632a    [!A0]  BNOP.S1       0xc0149aac,3      ; if A1 <= 0, branch to -1
+c0149aa8       2426           MVK.L1        1,A0              ; A1 > 0 -> step = +1
+c0149aaa       200b           BNOP.S1       0xc0149aae,1
+c0149aac       fc26           MVK.L1        -1,A0             ; A1 <= 0 -> step = -1
+c0149aae       0240           ADD.L1        A0,A4,A4          ; A4 = screen_id +/- 1
+c0149ab0   001048d8           CMPGT.L1      2,A4,A0           ; 2 > A4 ? (i.e. A4 < 2)
+c0149ab4       a33a    [!A0]  BNOP.S1       0xc0149ab8,5
+c0149ab6       4626           MVK.L1        2,A4              ; clamp lower bound to 2 (TEMPO)
+c0149ab8   00118ad8           CMPLT.L1      12,A4,A0          ; 12 < A4 ? (i.e. A4 > 12)
+c0149abc   0c6e               NOP           1
+c0149ac0       a0ba    [!A0]  BNOP.S1       0xc0149ac4,5
+c0149ac2       8e26           MVK.L1        12,A4             ; clamp upper bound to 12 (VERSION)
+c0149ac4       ba5b           CALLP.S2      0xc0149664,B3     ; transition to screen_id A4 (2..12)
+c0149ac6       2246           MV.L1         A4,A1
+c0149ac8       2426           MVK.L1        1,A0              ; return 1
+c0149aca       0020           MV.L1         A0,A4
+c0149acc       3177           LDW.D2T2      *++B15[2],B3
+c0149ace       6c6e           NOP           4
+c0149ad0       a1ef           BNOP.S2       B3,5
+```
+
+### 2. Every Caller of `c0149a90` (Confirmed: Exactly 1 Caller)
+- Across the entire firmware (`build/fw/map/main.dis`), `c0149a90` is called from **only one site**:
+  - **`c0164870: 1fca4613 CALLP.S2 0xc0149a90,B3`** (`c0164874: 404c || LDW.D1T1 *A4[2],A4`) inside **`c0164850`**, which is `w8` (`on_event`) of **Screen ID `2` (`TEMPO`, descriptor `0xc01836b0`)**:
+    ```
+    c0164850       31f7           STW.D2T2      B3,*B15--[2]
+    c0164852       001c           LDW.D1T1      *A4[0],A1         ; A1 = ev->w0
+    c0164854       3812           MVK.S1        25,A0             ; Event 25 = Knob 1
+    c0164856       0c6e           NOP           1
+    c0164858       2468           CMPEQ.L1      A1,A0,A0          ; ev->w0 == 25 ?
+    c016485a       a62a    [ A0]  BNOP.S1       0xc0164870,5      ; Knob 1 -> call c0149a90(ev->w2)
+    c016485c       3a12           MVK.S1        26,A0             ; Event 26 = Knob 2
+    ...
+    c0164870   1fca4613           CALLP.S2      0xc0149a90,B3
+    c0164874       404c ||        LDW.D1T1      *A4[2],A4         ; A4 = ev->w2 (Knob 1 signed delta)
+    ```
+- **Context**: Screen ID `2` (`TEMPO`) is an unreferenced debug/legacy screen (initialized at boot via `c01496b4 -> c0149664(2)`, before `ui_mode` enters Stomp/Memory, and its draw function `c01648fa` draws a `1..11` page indicator via `c0164920: 1fdbe292 CALLP.S2 0xc01542c8,B3` using `w0 - 1`). On that legacy `TEMPO` screen, turning Knob 1 stepped sequentially through Screen IDs `2..12`.
+
+### 3. Can `c0149a90` Serve Page Flipping for Us? (Confirmed: Better to Call `c0149664` Directly)
+- `c0149a90` cannot flip between Chooser List A (`0`) and List B (`1`), nor can it reach IDs `>= 15`, because it hard-clamps `A4` to `[2, 12]` (`c0149ab0..c0149ac2`). Moreover, stepping sequentially across `2..12` walks right through `SAVE` (`7`), `SWAP` (`8`), `TUNER` (`9`), and `CHAIN` (`4`).
+- Instead, our C handler should call **`c0149664(target_screen_id)`** directly (which is a single function call to `0xc0149664` and takes any arbitrary target screen ID).
+
+
 ## P4. Adding Screen IDs >= 15 (`c01495c0` and Screen-ID Assumptions)
 
 ## P5. Our Own 4-Item Page (Constructor `c0154564`, Descriptor, Formatter `w7`, OUTPUT Example)
