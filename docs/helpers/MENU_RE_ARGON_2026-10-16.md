@@ -129,6 +129,62 @@
 
 ## A2. Draw Routine(s) and Task/Caller Chain
 
+### 1. Caller Chain from `UpdateUI` (`c013c754`) to Menu Page Renderers (Confirmed)
+```
+UpdateUI task loop (c013c754)
+ ├─ Event_pend(*+B14[139], 0, 0xff, -1)             [c013c76c CALLP.S2 0xc0144580,B3]
+ └─ Bit 0 redraw / post-event handler: c013c6f8(A4) [c013c8d8 CALLP.S2 0xc013c6f8,B3]
+     ├─ Clear ctx 0 framebuffer: c011f8d8(0, 1)     [c013c714 CALLP.S2 0xc011f8d8,B3]
+     ├─ Get top-level UI mode: c0156e80() -> 7      [c013c720 CALLP.S2 0xc0156e80,B3]
+     ├─ Locked UI dispatch: c013c0c8(A11, ui_mode)  [c013c724 CALLP.S2 0xc013c0c8,B3]
+     │   ├─ Lock *+B14[155]: c0150b20               [c013c0d0 CALLP.S2 0xc0150b20,B3]
+     │   ├─ Table dispatcher: c013c060(A4, B4, 0)   [c013c0da CALLP.S2 0xc013c060,B3]
+     │   │   └─ .switch 0xc018439c[B4] (B4=4 or 7)  [c013c08c LDW *B5[B4],B0; BNOP B0,5]
+     │   │       └─ c013c090 -> c013bfe0(A10)       [c013c090 CALLP.S2 0xc013bfe0,B3]
+     │   │           └─ Active screen draw: c0149a68[c013bfe4 CALLP.S2 0xc0149a68,B3]
+     │   │               └─ desc = *+B14[120]; desc->w6(A4) [c0149a7a LDW *B4[6],B0; B.S2 B0]
+     │   └─ Unlock *+B14[155]: c01628e0             [c013c0e8 CALLP.S2 0xc01628e0,B3]
+     ├─ Status/overlay pass: c013c0f4()             [c013c72a CALLP.S2 0xc013c0f4,B3]
+     ├─ LCD SPI flush under GateMutex *+B14[149]:
+     │   ├─ GateMutex_enter: c0161200(*+B14[149])   [c013c72c CALLP.S2 0xc0161200,B3]
+     │   ├─ Flush ctx 0: c016df00(0)                [c013c740 CALLP.S2 0xc016df00,B3]
+     │   └─ GateMutex_leave: c016d880(*+B14[149])   [c013c744 CALLP.S2 0xc016d880,B3]
+     └─ Post-render poll: c013c4e4()                [c013c74e CALLP.S2 0xc013c4e4,B3]
+         └─ If c0156e80()==7: c0149724() -> desc->w7() [c013c530 CALLP.S2 0xc0149724,B3]
+```
+- **Relation to `c01595e4` (`ONDEVICE_UI_RECON_REPORT.md`)**: In `c013c060`, jump table `0xc018439c` has 8 entries (`B4 = 0..7`, `c013c074 CMPLTU.L2 0x7,B10,B0`):
+  - `B4 = 1` (`0xc01843a0 -> c013c0b2 -> c013c02c`) calls `c01595e4(0)` (the PC MODE / full-screen selector).
+  - `B4 = 4` (`0xc01843ac`, TUNER UI mode) and `B4 = 7` (`0xc01843b8`, SETTINGS/MENU UI mode) both jump to `c013c090 -> c013bfe0 -> c0149a68`, which dispatches through the active 9-word screen descriptor at `*+B14[120]`.
+- **Secondary callers of `c013c060`**:
+  - `c013c54c` (`c013c568 CALLP.S2 0xc013c0c8,B3`): full clear + draw + flush helper called on mode transitions.
+  - `c013c948` (`c013c950 CALLP.S2 0xc013c060,B3`): called during `SETTING` top-menu icon selection animation (`c0157a64 CALLP.S2 0xc013c948,B3`).
+
+### 2. Menu Page Draw Routines (`c0154564` -> `c0154338` + `c013a7b4`, Confirmed)
+- **Per-page `w6` (`draw`) wrappers** call `c0154564(A4=num_items, B4=item_table, A6=x_table, B6=title_str, A8=label_font_sel, B8=val_font_sel)`:
+  - `SETUP` (`c01671f6`): `c0154564(4, 0xc0182bb0, 0xc0181558, 0xc01806b4 /*"SETUP"*/, 0, 1)` (`c0167210 CALLP.S2 0xc0154564,B3`)
+  - `PWR/LCD` (`c01632b2`): `c0154564(4, 0xc0182c60, 0xc0181568, 0xc01806dd /*"PWR/LCD"*/, 0, 1)` (`c01632cc CALLP.S2 0xc0154564,B3`)
+  - `TUNER` (`c0159234`): `c0154564(4, 0xc0182d10, 0xc01814e8, 0xc018092b /*"TUNER"*/, 0, 1)` (`c0159254 CALLP.S2 0xc0154564,B3`), followed by tuner meter/pitch rendering (`c015926c..c0159350`).
+  - `OUTPUT` (`c016a97a`): `c0154564(4, 0xc0182b00, 0xc0181548, 0xc01810e3 /*"OUTPUT"*/, 1, 1)` (`c016a998 CALLP.S2 0xc0154564,B3`).
+- **`c0154564` (`c0154564..c0154580`)**:
+  1. Calls **`c0154338(A4=num_items, B4=item_table, A6=x_table, B6=A8, A8=B8)`** (`c0154570 CALLP.S2 0xc0154338,B3`).
+  2. Calls **`c013a7b4(A4=0, B4=title_str)`** (`c0154574 CALLP.S2 0xc013a7b4,B3`), which draws `title_str` centered at `(x=64, y=0)` via `c013a710` and inverts the top title bar `(0,0)..(127,6)` via `c011cb64(0, 0, 0, 127, 6)` (`c013a7c8`).
+- **`c0154338` (`c0154338..c0154560`, 4-Column Item Loop)**:
+  - Queries active screen ID via `c01497f4()` into `A14` (`c0154350`).
+  - Loops `A12 = num_items` times (`c0154360..c0154554`), stepping `A10 += 44` (`0x2c`, `c015453a MVK.S1 44,A0`) and `A11 += 4` (`c0154540 ADD.S1 4,A1,A0`).
+  - **Horizontal centering helper `c01542f0(A4=str, B4=pitch_minus_1, A6=center_x)`**: computes `strlen(str)` (`c0154304 SPLOOPW 6`), returns `A4 = center_x - ((len * (B4 + 1) - 1) >> 1)`.
+  - **Item label rendering (`c0154360..c0154432`)**:
+    - If `B10 == 0` (`SETUP`, `PWR/LCD`, `TUNER`): uses **3x5 font primitive `c011e700(ctx=0, B4=str, A6=x, B6=y)`** (`pitch=4`, `B4=3` to `c01542f0`):
+      - Single-line (`w4 == 0`): draws `w3` at `y = 11` if `A14 == 9` (`TUNER`, `c0154398..c01543a4 MVK.L2 11,B6`), else at `y = 13` (`c0154388..c0154390 MVK.L2 13,B6`).
+      - Two-line (`w4 != 0`): centers on `w4` (`c01543ac`), draws `w3` at `y = 9` (`c01543b8..c01543c6`) and `w4` at `y = 15` (`c01543cc..c01543d4`).
+    - If `B10 != 0` (`OUTPUT`): uses **5x7 font primitive `c011d4d8(ctx=0, B4=str, A6=x, B6=y)`** (`pitch=6`, `B4=5` to `c01542f0`), drawing single-line at `y = 12` (`c01543f4..c0154402`) or two-line at `y = 7` and `y = 15` (`c0154414..c0154430`).
+  - **Item value rendering (`c0154432..c0154534`)**:
+    - Loads `w8` (`*A10[8]`, `get_val`); if `NULL`, skips value (`c0154440` / `c01544c2`).
+    - Calls `w8()` -> `A4 = raw_val`.
+    - If `w7` (`*A10[7]`, `val_to_str`) is `NULL`: formats `c016a100(sp+16, 20, "%d" /*0xc018178c*/, raw_val)` (`c0154468` / `c01544e8`).
+    - If `w7` is non-NULL: calls `w7(raw_val)` -> `str_ptr`, formats `c016a100(sp+16, 20, "%s" /*0xc018178f*/, str_ptr)` (`c0154494` / `c0154514`).
+    - When `A15 != 0` (`B8 = 1`, true for all 4 menu pages): centers `sp+16` with `c01542f0(sp+16, 5, center_x)` (`c0154524`) and draws at **`y = 24`** with **`c011d4d8(0, sp+16, x, 24)`** (`c015452c CALLP.S2 0xc011d4d8,B3`). (If `A15 == 0`, draws at `y = 24` with 3x5 font `c011e700` at `c01544ac`.)
+
+
 ## A3. Item Current Value Storage (Global Struct / Offsets)
 
 ## A4. Free / Unused Room and Repurposing Candidates
