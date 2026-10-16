@@ -124,3 +124,31 @@ and dispatches operation 0 (`c0152438 CALLP c01520f4`, A4=0, B4=-1).
 Registration then uses `c01521b0 CALLP c015afa0`, A4=6,
 B4=c018137c. Therefore a worker reconnect does not automatically rebuild
 the audio registry, and a full MIDI reopen must not append duplicate slots.
+### Finding 5 — full layer init clears registry; alternatives do not (U2/U3)
+**Confidence: confirmed.** Full c016ab8c invokes c015b114 -> c0138a78;
+`c0138b20 CALLP c015c814`; that routine calls `c015c816 CALLP c015c620`
+and clears persistent selector/record pairs at c011aa28 (`c015c836 STW
+B0,*B4++[2]; c015c838 STW A0,*A4++[2]`). Hence a successful full
+layer-init followed by MIDI open starts with empty slots: it does not need
+an extra selector-6 removal. A worker-only reopen bypasses this clear.
+Layer init also resets endpoint software records based at c011a4e8
+(`c0138a88 MVK 0xa4e8,B4; c0138a8c MVKH 0xc0110000,B4`) and calls
+`c0138b0c CALLP c0122260`. The latter refuses if the Hwi handle B14[131]
+already exists (`c0122264 LDW *+B14[131],B0; c0122268 [!B0] BNOP
+c0122274`; otherwise ffff8acd). It is NOT an idempotent live reset.
+
+Alt-setting/configuration reset is a separate routine c01359b8:
+`c01359c0 STW B0,*+B14[10]; c01359c4 STW B0,*+B14[11]`, B0=0;
+`c01359cc MVK 0xa1b0,A4; c01359d0 MVKH 0xc0110000,A4;
+c01359d8 STB A0,*A4++[1]` clears the four alt bytes IF0..3.
+SET_CONFIGURATION also clears them (`c0135678 STB A0,*A4++[1]`).
+A bare POWER toggle itself does neither. Reset audio stream/EP1 producer
+state and pending EP0 state too; host re-enumeration is not proof that a
+concurrent producer has stopped. These additional custom-state resets are
+a **likely requirement**, not a verified stock audio capability.
+
+Synchronization correction: B14[96] looks like a lock at the call sites,
+but its implementation is a stub here: `c014a4d0 MVK 1,A4; c014a4d2 BNOP
+B3,5`, and `c014a1d8 MVK 0,A4; c014a1da BNOP B3,5`.
+Do not rely on it to serialize a mode switch. The worker mailbox does
+block: `c014a216 MVK -1,A6; c014a218 CALLP c0166680` from c0138318.
