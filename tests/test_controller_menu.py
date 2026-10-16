@@ -121,6 +121,52 @@ class Menu(unittest.TestCase):
             self.assertEqual(self.event("host_desc5", ev, 1), 0)
         self.assertEqual(self.u("host_edit_calls"), 1)
 
+    def test_usb_item_only_with_the_usb_audio_layer(self):
+        L = self.L
+        L.host_install()
+        L.host_page_draw()
+        self.assertEqual(self.u("host_draw_count"), 1)             # no layer: MODE only
+        self.assertEqual(self.event("host_desc5", 26, 1), 0)       # knob 2 does nothing
+        ua = (ctypes.c_uint * 3).in_dll(L, "host_ua")
+        ua[2] = 0x41425355                                          # "USBA"
+        L.host_page_draw()
+        self.assertEqual(self.u("host_draw_count"), 2)
+        self.assertEqual(self.event("host_desc5", 26, 1), 1)       # knob 2 edits it
+        self.assertEqual(self.u("host_edit_count"), 2)
+
+    def usb_record(self):
+        L = self.L
+        (ctypes.c_uint * 3).in_dll(L, "host_ua")[2] = 0x41425355
+        L.host_install()
+        L.host_page_draw()
+        rec = ctypes.cast(ctypes.c_void_p.in_dll(L, "host_draw_records"), ctypes.POINTER(W))
+        words = [rec[11 + i] for i in range(11)]
+        self.assertEqual(words[:3], [1, 0xfff, 0xfff])
+        self.assertEqual(ctypes.string_at(words[3]), b"USB")
+        self.assertEqual((words[5], words[6], words[10]), (0, 1, 0))
+        fmt = ctypes.CFUNCTYPE(ctypes.c_char_p, ctypes.c_int)(words[7])
+        self.assertEqual((fmt(0), fmt(1)), (b"OFF", b"AUDIO"))
+        return (ctypes.CFUNCTYPE(ctypes.c_int)(words[8]),
+                ctypes.CFUNCTYPE(None, ctypes.c_int)(words[9]))
+
+    def test_usb_item_replugs_only_while_usb_is_open(self):
+        L = self.L
+        get, put = self.usb_record()
+        ua = (ctypes.c_uint * 3).in_dll(L, "host_ua")
+        put(1)                                                      # USB not open: request only
+        self.assertEqual((ua[1], get(), self.u("host_closes")), (1, 1, 0))
+        put(0)
+        ctypes.c_ubyte.in_dll(L, "host_usb_ready").value = 1
+        ctypes.c_uint.in_dll(L, "host_usb_state").value = 0         # open
+        put(1)                                                      # differs from active: replug
+        self.assertEqual(list((ctypes.c_uint * 8).in_dll(L, "host_trace"))[:3], [1, 2, 3])
+        self.assertEqual(self.u("host_slept"), 500)
+        ua[0] = 1                                                   # the open latched it
+        put(1)                                                      # unchanged: no replug
+        self.assertEqual(self.u("host_closes"), 1)
+        put(0)                                                      # back to off: replug
+        self.assertEqual((self.u("host_closes"), self.u("host_opens"), ua[1]), (2, 2, 0))
+
 
 class Icon(unittest.TestCase):
     def test_icon_header_is_current(self):

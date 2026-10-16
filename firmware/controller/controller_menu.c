@@ -49,7 +49,19 @@ typedef u32 word;
 #define DESC5 ((volatile word *)0xc0183740u)
 #define LIST_B ((volatile word *)0xc0181368u)
 #define COL_X ((const u32 *)0xc0181548u)   /* column centres {17, 48, 79, 110} */
+/* USB-audio layer (firmware/usb_audio/ua_glue.c): {active, request, magic} */
+#define UA ((volatile u32 *)0xc01a8000u)
+/* Stock USB lifecycle, as the cable handler 1180a7ec uses it: state word 0
+   = USB open (attach writes 0 after c016ab8c, detach 1 after c016ab58);
+   118134a0 = USB layer initialised (its gate at 1180a800). */
+#define USB_STATE (*(volatile u32 *)0x1181349cu)
+#define USB_READY (*(volatile unsigned char *)0x118134a0u)
+#define USB_CLOSE ((void (*)(void))0xc016ab58u)    /* worker + MIDI + controller close */
+#define USB_OPEN ((void (*)(void))0xc016ab8cu)     /* full init + MIDI open + connect */
+#define SLEEP_MS ((void (*)(u32))0xc014a28cu)      /* c0158980 Task_sleep, 1 tick = 1 ms */
 #endif
+#define UA_MAGIC 0x41425355u                       /* "USBA" */
+#define REPLUG_MS 500u                             /* detached time the host sees */
 
 #define STOCK_CHOOSER_EVENT 0xc0157bacu
 #define STOCK_OUTPUT_DRAW 0xc016a97au
@@ -75,27 +87,66 @@ static void mode_set(int value)
     controller_set_mode(value ? 1u : 0u);
 }
 
+/* USB AUDIO: shown only when the USB-audio layer is in the image. The value
+   is the request; it takes effect at the next USB open. Changing it while
+   USB is open replugs in software with the same stock close/open the cable
+   handler runs (EXPERIMENTAL: docs/CF_USB_MODE_2026-10-16.md; Astra's
+   finding 6: in-flight transfer recovery on a live close is unproved). This
+   runs in MainApp's event dispatch, like the boot-time open (c0134354 ->
+   c016c150 -> c016ab8c), and blocks it for the close, REPLUG_MS and the open. */
+static u32 ua_present(void)
+{
+    return UA[2] == UA_MAGIC;
+}
+
+static const char *usb_text(int value)
+{
+    return value ? "AUDIO" : "OFF";
+}
+
+static int usb_get(void)
+{
+    return UA[1] ? 1 : 0;
+}
+
+static void usb_set(int value)
+{
+    UA[1] = value ? 1u : 0u;
+    if (UA[0] != UA[1] && USB_READY && USB_STATE == 0u) {
+        USB_CLOSE();
+        SLEEP_MS(REPLUG_MS);
+        USB_OPEN();
+    }
+}
+
 /* One 0x2c record per knob: {index, 0xfff, 0xfff, label, label line 2, min,
-   max, formatter, getter, setter, after-change}. MODE max becomes 2 (USB)
-   once the USB-audio mode exists. */
-#define CF_ITEMS 1u
-static const word cf_items[CF_ITEMS * 11u] = {
+   max, formatter, getter, setter, after-change}. */
+#define CF_ITEMS_MAX 2u
+static const word cf_items[CF_ITEMS_MAX * 11u] = {
     0u, 0xfffu, 0xfffu, (word)"MODE", 0u, 0u, 1u,
     (word)mode_text, (word)mode_get, (word)mode_set, 0u,
+    1u, 0xfffu, 0xfffu, (word)"USB", 0u, 0u, 1u,
+    (word)usb_text, (word)usb_get, (word)usb_set, 0u,
 };
+
+static u32 cf_count(void)
+{
+    return ua_present() ? 2u : 1u;
+}
 
 static void cf_page_draw(u32 flag)
 {
     (void)flag;
-    PAGE_DRAW(CF_ITEMS, cf_items, COL_X, "COMET FLOWER", 1u, 1u);
+    PAGE_DRAW(cf_count(), cf_items, COL_X, "COMET FLOWER", 1u, 1u);
 }
 
 static int cf_page_event(int *event)
 {
     int id = event[0];
-    if (id < 25 || id >= 25 + (int)CF_ITEMS)
+    u32 n = cf_count();
+    if (id < 25 || id >= 25 + (int)n)
         return 0;
-    return ITEM_EDIT(CF_ITEMS, event, cf_items);
+    return ITEM_EDIT(n, event, cf_items);
 }
 
 /* ---- chooser ---------------------------------------------------------- */

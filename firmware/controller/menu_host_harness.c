@@ -20,6 +20,9 @@ EXPORT hu32 host_draw_count, host_draw_font_label, host_draw_font_value;
 EXPORT const char *host_draw_title;
 EXPORT const hword *host_draw_records;
 EXPORT hu32 host_mode, host_mode_sets;
+EXPORT hu32 host_ua[3], host_usb_state, host_closes, host_opens, host_slept;
+EXPORT unsigned char host_usb_ready;
+EXPORT hu32 host_trace[8], host_ntrace;   /* 1 close, 2 sleep, 3 open */
 
 static void h_set(hu32 id) { host_set_calls++; host_set_last = id; host_screen = id; }
 static hu32 h_id(void) { return host_screen; }
@@ -42,6 +45,10 @@ static int h_edit(hu32 n, int *ev, const hword *r)
     return 1;
 }
 static int h_chooser(int *ev) { (void)ev; host_chooser_calls++; return 7; }
+static void h_trace(hu32 k) { if (host_ntrace < 8u) host_trace[host_ntrace++] = k; }
+static void h_close(void) { host_closes++; h_trace(1u); }
+static void h_open(void) { host_opens++; h_trace(3u); }
+static void h_sleep(hu32 ms) { host_slept = ms; h_trace(2u); }
 
 #define SCREEN_SET h_set
 #define SCREEN_ID h_id
@@ -53,6 +60,12 @@ static int h_chooser(int *ev) { (void)ev; host_chooser_calls++; return 7; }
 #define DESC5 host_desc5
 #define LIST_B host_list_b
 #define COL_X host_col_x
+#define UA host_ua
+#define USB_STATE host_usb_state
+#define USB_READY host_usb_ready
+#define USB_CLOSE h_close
+#define USB_OPEN h_open
+#define SLEEP_MS h_sleep
 
 hu32 controller_get_mode(void) { return host_mode; }
 void controller_set_mode(hu32 mode) { host_mode_sets++; host_mode = mode; }
@@ -78,6 +91,10 @@ EXPORT void host_reset(void)
     host_set_calls = host_set_last = host_chooser_calls = host_edit_calls = 0;
     host_edit_count = host_draw_calls = host_draw_count = 0;
     host_mode = host_mode_sets = 0;
+    host_ua[0] = host_ua[1] = host_ua[2] = 0;
+    host_usb_state = 1;
+    host_usb_ready = 0;
+    host_closes = host_opens = host_slept = host_ntrace = 0;
 }
 
 EXPORT hu32 host_install(void) { return controller_menu_install(); }

@@ -66,14 +66,22 @@ const ua_fn ua_if2_record[5] = { ua_ret0, ua_ret0, ua_ret0, (ua_fn)ua_if2_reques
 #pragma DATA_SECTION(ua_if3_record, ".ua_state")
 const ua_fn ua_if3_record[5] = { ua_ret0, ua_ret0, ua_ret0, (ua_fn)ua_if3_request, ua_ret0 };
 
-/* USB-audio mode flag, at the fixed address c01a8000 (ua.cmd) so the
-   controller payload can set it: 0 = off (the image's value), 1 = on. While
-   it is 0 every patch behaves as stock: the descriptor veneer tail-branches
-   to the stock builder for every type, IF2/IF3 are never registered (so the
-   map writer only ever sees slot 0, the stock MIDI mapping, and no alternate
-   is ever set, which keeps the SOF tick and the tap idle). */
+/* USB-audio mode, at the fixed address c01a8000 (ua.cmd) so the controller
+   payload can use it: {active, request, magic}. The controller writes only
+   `request` (start-up button, settings page). `active` is copied from it
+   once per USB open, in ua_usbmidi_open below, which stock runs on every
+   full open (boot and cable attach: c016ab8c -> c016ab70 -> c0159758 ->
+   c0145124 -> c0145158) before the device connects (c016ab80 -> c015af18,
+   docs/helpers/USB_MODE_ASTRA_2026-10-16.md), so the descriptors and the
+   registrations of one connection always agree. While `active` is 0 every
+   patch behaves as stock: the descriptor veneer tail-branches to the stock
+   builder for every type, IF2/IF3 are never registered, the map thunk runs
+   the stock code, and no alternate is ever set (SOF tick and tap idle).
+   `magic` tells the controller payload that this layer is present. */
+#define UA_MAGIC 0x41425355u      /* "USBA" */
+typedef struct { volatile u32 active, request, magic; } ua_mode_t;
 #pragma DATA_SECTION(ua_mode, ".ua_mode")
-volatile u32 ua_mode = 0u;
+ua_mode_t ua_mode = { 0u, 0u, UA_MAGIC };
 
 #pragma DATA_SECTION(ua_reg_result, ".ua_state")
 volatile u32 ua_reg_result[2] = { 0xffffffffu, 0xffffffffu };
@@ -84,8 +92,10 @@ volatile u32 ua_reg_result[2] = { 0xffffffffu, 0xffffffffu };
    later slot can never take IF2's place. */
 int ua_usbmidi_open(u32 callback)
 {
-    int r = STOCK_USBMIDI_OPEN(callback);
-    if (r == 0 && ua_mode) {
+    int r;
+    ua_mode.active = ua_mode.request ? 1u : 0u;
+    r = STOCK_USBMIDI_OPEN(callback);
+    if (r == 0 && ua_mode.active) {
         ua_reg_result[0] = (u32)STOCK_REGISTER(6u, ua_if2_record);
         if (ua_reg_result[0] == 0u)
             ua_reg_result[1] = (u32)STOCK_REGISTER(6u, ua_if3_record);

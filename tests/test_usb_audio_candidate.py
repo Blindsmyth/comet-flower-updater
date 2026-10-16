@@ -115,7 +115,7 @@ class UsbAudioCandidateBuild(unittest.TestCase):
         heads = [ln for ln in lines if ".fphead" in ln]
         self.assertTrue(heads and re.search(r"\.fphead\s+p,", heads[0]), heads)   # protected loads
         self.assertRegex((ua.OUT / "usb_audio.map").read_text(),
-                         r"c01a8000\s+00000004\s+ua_glue\.obj \(\.ua_mode\)")
+                         r"c01a8000\s+0000000c\s+ua_glue\.obj \(\.ua_mode\)")
 
     def test_packager_accepts_the_layer_only_in_test_builds(self):
         import make_fs_restore_updater as packager
