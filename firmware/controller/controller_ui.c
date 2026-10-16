@@ -46,11 +46,17 @@ extern State ctl_state;
 #define PORT_STATE ((volatile u32 *)0xc01152b8u)
 #define TX4 ((volatile u32 *)(0xc011297cu + 0x2a8u * 4u))
 #define TICKS (*(volatile u32 *)0xc0182054u)          /* SYS/BIOS tick counter */
+/* Page buffer: byte = one 8-pixel column, bit 0 on top (c011d2d4:
+   11800000 + ctx<<9 + page<<7 + x). The caller marks the page dirty. */
+#define LCD_COLS ((volatile u8 *)0x11800000u)
 #endif
+
+u32 controller_hold_ticks(void);   /* controller.c: mode button held, 0 if not */
 
 #define CTX 0u
 #define UI_TICKS 50           /* Clock ticks per UI tick (period unproven; see TICKS) */
 #define STALL_TICKS 20u       /* consecutive UI ticks with TX4 outstanding */
+#define HOLD_TICKS 2000u      /* matches controller.c MODE_HOLD_TICKS */
 
 #pragma DATA_SECTION(ui, ".ctl_state")
 struct {
@@ -58,9 +64,9 @@ struct {
     volatile u32 sent;        /* accepted CCs */
     u32 stall;                /* consecutive ticks with TX4 outstanding */
     u32 repaint;              /* a stock event ran: paint even if unchanged */
-    u32 shown[4];             /* model last painted */
+    u32 shown[6];             /* model last painted */
     volatile u32 stock_redraw; /* MIDI mode was left: stock repaints its screen */
-} ui = { 0, 0, 0, 1, { 0, 0, 0, 0 }, 0 };
+} ui = { 0, 0, 0, 1, { 0, 0, 0, 0, 0, 0 }, 0 };
 
 void controller_ui_sent(u32 control, u32 value)
 {
@@ -132,6 +138,18 @@ static void line5(u32 page, const char *s)
     LCD_DIRTY[CTX] |= (u8)(1u << page);
 }
 
+/* Columns x0..x0+w-1 of a bar on one or two pages. top/bottom are the
+   outline bytes, full the filled column; fill = value*(w-2)/127 rounded,
+   without a division: (value*(w-2)*258 + 2^14) >> 15 is exact for w <= 66. */
+static void bar(u32 page, u32 x0, u32 w, u32 value, u8 edge, u8 full)
+{
+    volatile u8 *col = LCD_COLS + (CTX << 9) + (page << 7) + x0;
+    u32 fill = (value * (w - 2u) * 258u + 16384u) >> 15, x;
+    for (x = 0; x < w; x++)
+        col[x] = x == 0u || x == w - 1u || x <= fill ? full : edge;
+    LCD_DIRTY[CTX] |= (u8)(1u << page);
+}
+
 static char *source(char *p, u32 control)
 {
     if (control == 11u)
@@ -152,7 +170,7 @@ void controller_diag_ui(u32 *peak, u32 *creates, u32 *fault, u32 *teardown);
 u32 controller_diag_beacons(void);
 #endif
 
-static void paint(u32 usb, u32 q, u32 last)
+static void paint(u32 usb, u32 q, u32 last, u32 hold)
 {
     char b[48], *p;
     LCD_CLEAR(CTX, 1u);
@@ -176,19 +194,41 @@ static void paint(u32 usb, u32 q, u32 last)
         line5(2u, b);
     }
 #else
-    line5(0u, usb == 2u ? "COMET FLOWER TX STALL" : usb ? "COMET FLOWER USB  CH1"
-                                                       : "COMET FLOWER NO USB");
+    /* MIDI-mode page (owner request 2026-10-16): what was pressed, as a
+       reference, and every knob position at a glance. */
+    p = put(b, usb == 2u ? "MIDI CH1 STALL" : usb ? "MIDI CH1 USB" : "MIDI CH1 NO USB");
     if (last >> 31) {
+        while (p < b + 17)
+            *p++ = ' ';
+        p = dec(put(p, "CC"), (last >> 8) & 0x7fu, 0);
+    }
+    *p = 0;
+    line5(0u, b);
+    if (hold) {
+        TEXT8(CTX, "LET GO=EFFECTS", 0u, 10u);   /* 126 px */
+    } else if (last >> 31) {
         u32 control = (last >> 8) & 0x7fu, value = last & 0x7fu;
-        p = dec(put(b, "CC"), control, 0);
-        *p++ = ' ';
-        p = source(p, control);
-        *p++ = ' ';
-        p = dec(p, value, 3);
+        p = source(b, control);
         *p = 0;
         TEXT8(CTX, b, 0u, 10u);
+        if (control >= 20u && control <= 31u) {
+            TEXT8(CTX, value ? "ON" : "OFF", 45u, 10u);
+        } else {
+            p = dec(b, value, 3);
+            *p = 0;
+            TEXT8(CTX, b, 36u, 10u);
+            bar(1u, 72u, 56u, value, 0x10u, 0xf0u);   /* y 12..19 */
+            bar(2u, 72u, 56u, value, 0x08u, 0x0fu);
+        }
     } else {
         TEXT8(CTX, usb ? "READY" : "CONNECT USB", 0u, 10u);
+    }
+    {
+        u32 i;
+        for (i = 0; i < 4u; i++) {
+            GLYPH5(CTX, '1' + i, 3u, i << 5);
+            bar(3u, (i << 5) + 7u, 24u, ctl_state.knob[i], 0x42u, 0x7eu);
+        }
     }
 #endif
 #ifdef CTL_DIAG
@@ -198,12 +238,9 @@ static void paint(u32 usb, u32 q, u32 last)
         p = dec(put(p, " CC"), (last >> 8) & 0x7fu, 0);
         p = dec(put(p, "="), last & 0x7fu, 0);
     }
-#else
-    p = dec(put(b, "sent "), ui.sent, 0);
-    p = dec(put(p, "  q "), q, 0);
-#endif
     *p = 0;
     line5(3u, b);
+#endif
     {
         u32 key = GATE_ENTER(LCD_GATE);
         LCD_FLUSH(CTX);
@@ -214,21 +251,26 @@ static void paint(u32 usb, u32 q, u32 last)
 static void tick(void)
 {
     u32 ready = PORT_STATE[3] == 1u && PORT_STATE[9] != 0u;
-    u32 q = TX4[5], last = ui.last, usb;
+    u32 q = TX4[5], last = ui.last, usb, knobs, hold;
     ui.stall = ready && q ? ui.stall + (ui.stall < STALL_TICKS) : 0u;
     usb = !ready ? 0u : ui.stall >= STALL_TICKS ? 2u : 1u;
 #ifdef CTL_DIAG
     ui.repaint = 1u;                   /* the tick counter changes every time */
 #endif
+    knobs = (u32)ctl_state.knob[0] | (u32)ctl_state.knob[1] << 8 |
+            (u32)ctl_state.knob[2] << 16 | (u32)ctl_state.knob[3] << 24;
+    hold = controller_hold_ticks() >= HOLD_TICKS;
     if (!ui.repaint && ui.shown[0] == usb && ui.shown[1] == q && ui.shown[2] == last
-            && ui.shown[3] == ui.sent)
+            && ui.shown[3] == ui.sent && ui.shown[4] == knobs && ui.shown[5] == hold)
         return;
     ui.shown[0] = usb;
     ui.shown[1] = q;
     ui.shown[2] = last;
     ui.shown[3] = ui.sent;
+    ui.shown[4] = knobs;
+    ui.shown[5] = hold;
     ui.repaint = 0u;
-    paint(usb, q, last);
+    paint(usb, q, last, hold);
 }
 
 /* An infinite wait is replaced by finite waits that return only on a real

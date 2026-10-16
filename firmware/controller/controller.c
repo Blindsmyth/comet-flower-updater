@@ -286,6 +286,15 @@ int controller_worker_pump(u32 event, volatile u32 *bits, int result)
     return result;
 }
 
+#ifdef CTL_UI
+/* For the screen (UpdateUI): how long the mode button has been held. */
+u32 controller_hold_ticks(void)
+{
+    u32 t0 = sw.t0;
+    return sw.down ? TICKS - t0 : 0u;
+}
+#endif
+
 static void enter_midi(void)
 {
     u32 i;

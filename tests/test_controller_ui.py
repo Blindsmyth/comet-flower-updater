@@ -50,10 +50,11 @@ def lines(rec):
     return text, big
 
 
-def render(rec, buf):
+def render(rec, buf, columns=None):
     """Replay recorded calls with the firmware fonts (glyph = font_5x7 at page*8,
-    text8 = font_8x13 with the stock 9-pixel advance)."""
-    spec = []
+    text8 = font_8x13 with the stock 9-pixel advance), over the raw columns the
+    code wrote straight into the page buffer (bars)."""
+    spec = [("columns", bytes(columns))] if columns is not None else []
     for op, a, b, c, s in rec:
         if op == 2:
             spec.append(("text", "font_5x7", c, b * 8, chr(a)))
@@ -82,25 +83,37 @@ class ControllerUi(unittest.TestCase):
         p = arr(self.lib, "host_port", ctypes.c_uint, 16)
         p[3], p[9] = (1, 1) if ready else (0, 0)
 
+    def lcd(self):
+        return bytes(arr(self.lib, "host_lcd", ctypes.c_ubyte, 512))
+
     def shot(self, name):
         rec = ops(self.lib)
         if RES1.exists():
             OUT.mkdir(parents=True, exist_ok=True)
-            ui_mock.show(render(rec, RES1.read_bytes())).save(OUT / f"fw_{name}.png")
+            ui_mock.show(render(rec, RES1.read_bytes(), self.lcd())).save(OUT / f"fw_{name}.png")
         return rec
+
+    def bar_fill(self, page, x0, w, full):
+        """Filled columns inside a bar's outline."""
+        cols = self.lcd()[page * 128 + x0: page * 128 + x0 + w]
+        return sum(1 for c in cols[1:-1] if c == full)
 
     def test_screens_and_repaint_policy(self):
         L = self.lib
         L.host_set_mode(1)
+        for i in range(4):
+            L.host_knob(i, 64)
         L.host_tick()                                   # first tick always paints
         text, big = lines(self.shot("ctl_no_usb"))
-        self.assertEqual(text[0], "COMET FLOWER NO USB")
+        self.assertEqual(text[0], "MIDI CH1 NO USB")
         self.assertEqual(big, [(0, 10, "CONNECT USB")])
-        self.assertEqual(text[3], "sent 0  q 0")
+        self.assertEqual(text[3], "1234")               # knob labels; the bars are columns
+        for i in range(4):
+            self.assertEqual(self.bar_fill(3, 32 * i + 7, 24, 0x7e), 11)   # 64/127 of 22
         self.assertEqual(ctypes.c_uint.in_dll(L, "host_flushes").value, 1)
         self.assertEqual(ctypes.c_uint.in_dll(L, "host_gate_bad").value, 0)
         dirty = arr(L, "host_dirty", ctypes.c_ubyte, 4)
-        self.assertEqual(dirty[0] & 0b1001, 0b1001)     # pages 0 and 3 by the 5x7 lines
+        self.assertEqual(dirty[0] & 0b1001, 0b1001)     # pages 0 and 3
 
         L.host_reset()
         L.host_tick()                                   # nothing changed: no draw, no flush
@@ -108,19 +121,54 @@ class ControllerUi(unittest.TestCase):
         self.assertEqual(ctypes.c_uint.in_dll(L, "host_flushes").value, 0)
 
         self.usb(True)
-        L.host_sent(20, 127)
+        L.host_sent(21, 127)
         L.host_reset()
         L.host_tick()
-        text, big = lines(self.shot("ctl_fs1"))
-        self.assertEqual(text[0], "COMET FLOWER USB  CH1")
-        self.assertEqual(big, [(0, 10, "CC20 FS1 127")])
-        self.assertEqual(text[3], "sent 1  q 0")
+        text, big = lines(self.shot("ctl_fs2_on"))
+        self.assertEqual(text[0], "MIDI CH1 USB     CC21")
+        self.assertEqual(big, [(0, 10, "FS2"), (45, 10, "ON")])
 
-        L.host_sent(11, 5)
+        L.host_sent(24, 0)
+        L.host_reset()
+        L.host_tick()
+        _, big = lines(self.shot("ctl_b3_off"))
+        self.assertEqual(big, [(0, 10, "B3"), (45, 10, "OFF")])
+
+        L.host_knob(1, 127)
+        L.host_sent(41, 127)
+        L.host_reset()
+        L.host_tick()
+        text, big = lines(self.shot("ctl_k2"))
+        self.assertEqual(big, [(0, 10, "K2"), (36, 10, "127")])
+        self.assertEqual(self.bar_fill(1, 72, 56, 0xf0), 54)     # full value bar
+        self.assertEqual(self.bar_fill(3, 32 + 7, 24, 0x7e), 22)  # K2 bar full
+        self.assertEqual(self.bar_fill(3, 7, 24, 0x7e), 11)
+
+        L.host_sent(11, 0)
         L.host_reset()
         L.host_tick()
         _, big = lines(self.shot("ctl_exp"))
-        self.assertEqual(big, [(0, 10, "CC11 EXP   5")])
+        self.assertEqual(big, [(0, 10, "EXP"), (36, 10, "  0")])
+        self.assertEqual(self.bar_fill(1, 72, 56, 0xf0), 0)
+
+        L.host_knob(2, 0)                               # a knob move alone repaints
+        L.host_reset()
+        L.host_tick()
+        self.assertEqual(ctypes.c_uint.in_dll(L, "host_flushes").value, 1)
+        self.assertEqual(self.bar_fill(3, 64 + 7, 24, 0x7e), 0)
+
+    def test_hold_prompt(self):
+        L = self.lib
+        L.host_set_mode(1)
+        self.usb(True)
+        ctypes.c_uint.in_dll(L, "host_hold").value = 1999
+        L.host_tick()
+        L.host_reset()
+        ctypes.c_uint.in_dll(L, "host_hold").value = 2000
+        L.host_tick()
+        _, big = lines(self.shot("ctl_hold"))
+        self.assertEqual(big, [(0, 10, "LET GO=EFFECTS")])
+        ctypes.c_uint.in_dll(L, "host_hold").value = 0
 
     def test_tx_stall_indicator(self):
         L = self.lib
@@ -132,12 +180,12 @@ class ControllerUi(unittest.TestCase):
         L.host_reset()
         L.host_tick()                                   # 20th consecutive tick
         text, _ = lines(self.shot("ctl_stall"))
-        self.assertEqual(text[0], "COMET FLOWER TX STALL")
+        self.assertTrue(text[0].startswith("MIDI CH1 STALL"), text[0])
         arr(L, "host_tx4", ctypes.c_uint, 16)[5] = 0
         L.host_reset()
         L.host_tick()                                   # drains: back to OK at once
         text, _ = lines(ops(L))
-        self.assertEqual(text[0], "COMET FLOWER USB  CH1")
+        self.assertTrue(text[0].startswith("MIDI CH1 USB"), text[0])
 
     def test_pend_contract(self):
         L = self.lib

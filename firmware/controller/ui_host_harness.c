@@ -17,7 +17,8 @@ EXPORT hu32 host_op[MAXOPS], host_a[MAXOPS], host_b[MAXOPS], host_c[MAXOPS];
 EXPORT char host_str[MAXOPS][32];
 EXPORT hu32 host_nops, host_flushes, host_gate_depth, host_gate_bad;
 EXPORT hu32 host_port[16], host_tx4[16], host_ticks, host_pend_results[8], host_pend_count;
-EXPORT unsigned char host_dirty[4];
+EXPORT unsigned char host_dirty[4], host_lcd[512];
+EXPORT hu32 host_hold;
 EXPORT hu32 host_diag[4] = { 768, 2, 0, 1 };   /* peak, creates, fault, teardown */
 
 static void rec(hu32 op, hu32 a, hu32 b, hu32 c, const char *s)
@@ -60,6 +61,7 @@ static void h_leave(hu32 gate, hu32 key) { (void)gate; if (key != 0x55u) host_ga
 #define PORT_STATE host_port
 #define TX4 host_tx4
 #define TICKS host_ticks
+#define LCD_COLS host_lcd
 
 #ifdef CTL_DIAG
 void controller_diag_ui(hu32 *peak, hu32 *creates, hu32 *fault, hu32 *teardown)
@@ -76,6 +78,8 @@ EXPORT hu32 host_beacons = 7;
 hu32 controller_diag_beacons(void) { return host_beacons; }
 #endif
 
+hu32 controller_hold_ticks(void) { return host_hold; }
+
 #include "controller_ui.c"
 
 State ctl_state;
@@ -86,7 +90,10 @@ EXPORT void host_reset(void)
     host_nops = host_flushes = host_gate_depth = host_gate_bad = host_pend_count = 0;
     for (i = 0; i < 4u; i++)
         host_dirty[i] = 0;
+    for (i = 0; i < 512u; i++)
+        host_lcd[i] = 0;
 }
+EXPORT void host_knob(hu32 i, hu32 v) { ctl_state.knob[i] = (unsigned char)v; }
 EXPORT void host_set_mode(hu32 m) { ctl_state.mode = (unsigned char)m; }
 EXPORT void host_tick(void) { tick(); }
 EXPORT hu32 host_pend(int timeout) { return controller_ui_pend(1, 0, 255, timeout); }

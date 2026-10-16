@@ -12,6 +12,7 @@ A spec is a list of items:
     ("bar", x, y, w, h, frac)      outlined bar filled to frac (0..1)
     ("invert", x, y, w, h)         invert a rectangle (highlight)
     ("bitmap", addr, x, y, w, h)   a stock bitmap from the firmware (g1fw_gfx.BITMAPS)
+    ("columns", data)              raw page buffer (4 pages x 128 column bytes, bit 0 on top)
 """
 import sys
 from pathlib import Path
@@ -66,6 +67,12 @@ def render(spec, buf):
                     edge = cx in (0, w - 1) or cy in (0, h - 1)
                     if edge or cx - 1 < fill:
                         px[x + cx, y + cy] = 1
+        elif kind == "columns":
+            data = item[1]
+            for i, b in enumerate(data[:W * H // 8]):
+                for bit in range(8):
+                    if b >> bit & 1:
+                        px[i % W, (i // W) * 8 + bit] = 1
         elif kind == "invert":
             _, x, y, w, h = item
             for cx in range(x, min(W, x + w)):
