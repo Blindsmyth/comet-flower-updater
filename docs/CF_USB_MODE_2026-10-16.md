@@ -92,3 +92,12 @@ The host fetched our descriptors (14 builds) but the second audio registration w
 c015c6b4 searches only registry slots 0..1 (`c015c718 MVK 2,A3`, reject ffff8a5c at c015c744), so with
 MIDI in slot 0 only one more record fits. Fix (build `eff36a4e`): one audio record owns IF2 and IF3
 (map thunk: slot 1 -> IF2 and IF3); its SETUP callback picks IF3 by wIndex (SETUP byte 4).
+
+## Next build, prepared (not to flash until the silence build shows STAT ON and a Windows device)
+
+`build/cf_usb_audio_tap_2026-10-16/Comet Flower G1X4 Updater (USB audio tap TEST build).exe` (`a7e856e5…`,
+firmware `00ad91ce…`): the same, with the real-audio tap (`docs/USB_AUDIO_TAP_CANDIDATE_2026-10-15.md`)
+instead of silence: the pedal's final stereo output streams to the PC. The tap stores audio only while
+the host has the stream open (IF3 alt 1, which needs USB mode active and registered); in FX mode its
+cost per audio block is one extra branch and one test. The TEST packager now also accepts the tap layer
+(its veneer in the dead padding at 11818c88 and the TX-pack call 11818c64, each checked).

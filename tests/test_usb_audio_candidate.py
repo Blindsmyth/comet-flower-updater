@@ -147,6 +147,27 @@ class UsbAudioCandidateBuild(unittest.TestCase):
             with self.assertRaises(ValueError):
                 packager.strip_usb_audio(self.stock, bytes(bad))
 
+    def test_packager_accepts_the_tap_layer_in_test_builds(self):
+        import make_fs_restore_updater as packager
+        with tempfile.TemporaryDirectory() as d:
+            menu = Path(d) / "menu.bin"
+            ctl.build(RES1, menu, RES1, ui=True, usb_product="Comet Flower ZG1X4 MIDI")
+            both, plan, _ = ua.build(menu, Path(d) / "tap.bin", tap=True)
+            self.assertEqual(packager.strip_usb_audio(self.stock, both), menu.read_bytes())
+            with self.assertRaises(ValueError):
+                packager.validate_controller_fw(self.stock, both)          # never a release
+            for vma, off, old, new, kind, sym in plan:
+                bad = bytearray(both)
+                struct.pack_into("<I", bad, off, new ^ (1 << 2))           # outside the target field
+                with self.assertRaises(ValueError, msg=hex(vma)):
+                    packager.strip_usb_audio(self.stock, bytes(bad))
+            bad = bytearray(both)                                          # veneer aimed elsewhere
+            lo = [p[1] for p in plan if p[4] == "veneer_hi"][0]
+            word = struct.unpack_from("<I", bad, lo)[0]
+            struct.pack_into("<I", bad, lo, ua.mvk_set(word, 0xc012))
+            with self.assertRaises(ValueError):
+                packager.strip_usb_audio(self.stock, bytes(bad))
+
     def test_layers_onto_controller_lifecycle_candidate(self):
         with tempfile.TemporaryDirectory() as d:
             life = Path(d) / "life.bin"

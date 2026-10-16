@@ -138,8 +138,8 @@ def validate_patch_fw(old_fw, new_fw):
 
 
 def strip_usb_audio(old_fw, new_fw):
-    """TEST builds only: accept the USB-audio silence layer of
-    make_usb_audio_fw.py on top of a controller image, and return the
+    """TEST builds only: accept the USB-audio silence or real-audio tap layer
+    of make_usb_audio_fw.py on top of a controller image, and return the
     controller-only image for validate_controller_fw. The layer is one AIS
     section in the USB-audio reservation (c01a8000, 32 KiB) and the listed
     patch words, each changed only in its target field and pointing into
@@ -159,14 +159,22 @@ def strip_usb_audio(old_fw, new_fw):
     if new_fw[end:] != new_fw[-8:] or len(new_fw) - end != 8:
         raise ValueError("USB audio section is not the last before jump-and-close")
     view = bytearray(new_fw[:off] + new_fw[end:])
-    mvk = {}
-    for vma, stock, kind, ref, _ in ua.PATCHES:
+    # The real-audio tap layer (make_usb_audio_fw.py --tap) is recognised by
+    # its TX-pack site: stock CALLP 11818aa0 at 11818c64 retargeted.
+    tap_site = [p for p in ua.TAP_PATCHES if p[0] == 0x11818c64][0]
+    o = ua.vma_offset(old_fw, tap_site[0])
+    tap = new_fw[o:o + 4] != old_fw[o:o + 4]
+    mvk, veneer = {}, {}
+    for vma, stock, kind, ref, _ in (ua.TAP_PATCHES if tap else ua.PATCHES):
         o = ua.vma_offset(old_fw, vma)
         old = struct.unpack_from("<I", old_fw, o)[0]
         new = struct.unpack_from("<I", new_fw, o)[0]
         if (stock is not None and old != stock) or not ua.stock_ok(vma, old, kind, ref):
             raise ValueError("USB audio site %#x does not hold its stock word" % vma)
-        if kind == "callp":
+        if kind == "callp" and vma == tap_site[0]:                     # 11818c64 -> veneer
+            if (old ^ new) & ~(0x1fffff << 7) or ctl.callp_target(vma, new) != ua.TAP_VENEER:
+                raise ValueError("USB audio tap call %#x does not reach its veneer" % vma)
+        elif kind == "callp":
             if (old ^ new) & ~(0x1fffff << 7) or not base <= ctl.callp_target(vma, new) < base + size:
                 raise ValueError("USB audio patch %#x is not a CALLP into its section" % vma)
         elif kind == "callp_over":
@@ -177,12 +185,24 @@ def strip_usb_audio(old_fw, new_fw):
             if (old ^ new) & ~(0xffff << 7):
                 raise ValueError("USB audio patch %#x changed more than its constant" % vma)
             mvk[kind] = ua.mvk_field(new)
+        elif kind in ("veneer_lo", "veneer_hi"):                       # dead padding -> MVK/MVKH B31
+            tmpl = ua.VENEER_MVK if kind == "veneer_lo" else ua.VENEER_MVKH
+            if (tmpl ^ new) & ~(0xffff << 7):
+                raise ValueError("USB audio veneer word %#x is not MVK/MVKH B31" % vma)
+            veneer[kind] = ua.mvk_field(new)
+        elif kind == "fixed":
+            if new != ref:
+                raise ValueError("USB audio veneer word %#x is not %08x" % (vma, ref))
         else:
             raise ValueError("USB audio patch kind %s is not accepted" % kind)
         struct.pack_into("<I", view, o, old)
     target = (mvk.get("mvk_hi", 0) << 16) | mvk.get("mvk_lo", 0)
     if not base <= target < base + size:
         raise ValueError("USB audio SOF hook %#x is outside its section" % target)
+    if tap:
+        target = (veneer.get("veneer_hi", 0) << 16) | veneer.get("veneer_lo", 0)
+        if not base <= target < base + size:
+            raise ValueError("USB audio TX veneer target %#x is outside its section" % target)
     return bytes(view)
 
 
@@ -365,7 +385,7 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
               % (controller_fw, len(new_fw) - len(old_fw),
                  "; TEST build with diag/UI hooks (owner-run test only)" if test else ""))
         if usb_audio:
-            print("  includes the USB-audio silence layer (TEST only; off unless USB mode is chosen)")
+            print("  includes a USB-audio layer, silence or real-audio tap (TEST only; off unless USB mode is chosen)")
     if logo is not None or firmware is not None or patch_fw is not None or grown is not None:
         new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
     # Every image: the boot/update-mode program [0, 0x28000) holds the only
