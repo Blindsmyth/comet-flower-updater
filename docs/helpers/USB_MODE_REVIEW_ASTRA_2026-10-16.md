@@ -179,4 +179,69 @@ unproved rather than asserted either way.
 
 ## R4. Malformed-image rejection
 
-Pending.
+**Verdict: bug. Confidence: confirmed** (read directly, tools/make_fs_restore_updater.py
+and tools/make_usb_audio_fw.py).
+
+`strip_usb_audio(old_fw, new_fw)` (make_fs_restore_updater.py:140-186) is
+only used to build `checked`, which is passed to `validate_controller_fw`
+for validation. It is **not** what gets written to the updater: at
+line 363, `grown = new_fw` — the original, un-stripped bytes, including
+whatever is in the USB-audio AIS section — and `grown` is what
+`grow_resource(data, FW_RES, grown)` (line 397, using `grow_resource` at
+line 245-273, which writes `payload` i.e. `grown` verbatim into the PE
+resource) actually embeds in the output updater. So for a `--test-controller-fw`
+build with a USB-audio layer, the bytes that get shipped are never the bytes
+`validate_controller_fw` examined.
+
+`strip_usb_audio` itself only checks, for each of the small, fixed list of
+patch words in `ua.PATCHES` (the 7 descriptor-builder call sites, the
+usbmidi_open call, the map-thunk overwrite, the two SOF-hook MVK/MVKH
+halves): that the word's *encoding* is a well-formed, in-place-only change
+(same opcode/unit/parallel bits, only the displacement or 16-bit immediate
+field differs) and that the *target address* it decodes to lands inside the
+just-identified trailing AIS section (`base <= target < base+size`). It then
+unconditionally overwrites those words back to their pristine stock values
+(`struct.pack_into("<I", view, o, old)`) and discards the whole trailing
+section before handing `checked` to `validate_controller_fw`. At no point
+does either function hash, diff, or otherwise inspect the *contents* of the
+USB-audio section itself against any known-good build (e.g. the output of
+`make_usb_audio_fw.py`'s own `build()`, which does rebuild from source via
+the TI toolchain and does check its own output byte-for-byte). `--controller-fw`
+takes an arbitrary file path from the command line; nothing requires it to
+have actually been produced by `make_usb_audio_fw.py`.
+
+Concrete failure scenario: hand-craft (or take a buggy build of) a
+`controller_fw` image that is byte-identical to a legitimate controller +
+USB-audio build except that the bytes at the symbol targets `ua_usbmidi_open`,
+`usb_audio_descriptor_veneer`, `ua_map_thunk`, or `usb_audio_sof_tick` inside
+the trailing section hold different code — e.g. code that omits the
+`ua_mode.active` gate entirely, or anything else, as long as the seven
+BUILDER_CALLS/usbmidi_open/map-thunk/SOF-hook words are still well-formed
+retargets landing inside that section's address range (which is easy:
+copy them unchanged from a real build). `strip_usb_audio` will restore the
+same handful of call-site words to stock, `validate_controller_fw` will pass
+the resulting `checked` (its per-byte loop at lines 230-233 only inspects
+bytes before `close`, which this attack never touches), and
+`make_fs_restore_updater.py` will then embed the **original, unverified**
+`new_fw` — section contents and all — into the output updater, printing
+"TEST build with diag/UI hooks (owner-run test only)" with no indication
+anything is wrong. The packager's validation is a structural/format check
+on a reconstructed copy, not a content check on what is actually shipped.
+
+Suggested fix: either (a) have the caller flash/write `checked` plus the
+re-attached, hash-pinned section (i.e. validate the exact bytes that will be
+shipped, not a derived reconstruction), or (b) have `strip_usb_audio`/
+`validate_controller_fw` additionally verify the stripped section's bytes
+against a freshly-built reference (e.g. accept a `--expect-usb-audio-sha256`
+or rebuild via `make_usb_audio_fw.build()` and compare), so a malformed or
+tampered USB-audio payload is rejected rather than silently embedded.
+
+Minor, secondary robustness note (not itself a "passes validation" bug):
+`off, op, args = cmds[-2]` (line 152) and the equivalent in
+`validate_controller_fw` will raise an unhandled `IndexError` rather than a
+`ValueError` if `new_fw`'s AIS command list has fewer than 2 entries; this
+is only caught by `except ValueError` in `main()`, so a sufficiently
+malformed (not just malicious) `--controller-fw` file crashes the packager
+with a raw traceback instead of the usual clean error message. No image
+passes in that case either way, so this is a diagnostics gap, not an
+acceptance bug.
