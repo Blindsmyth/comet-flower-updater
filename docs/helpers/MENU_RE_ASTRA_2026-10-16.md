@@ -37,3 +37,24 @@ source/initializer trace. No raw words from a guessed offset are evidence.
 Instruction anchor: `c01495cc MVK 0x413c,A5; c01495d0 MVKH c0180000,A5;
 c01495d4 LDW *A5[A4],A0; c01495d8 BNOP A0,5`. The disassembly's
 `c018413c .word c0149658` validates the dispatch table's correct mapping.
+
+### Finding 3 - page state and descriptor dispatch (B2)
+Confidence: confirmed. MainApp's screen selector is the word c011ad8c:
+`c0156e80 MVK 0xffffad8c,A4; c0156e84 MVKH c0110000,A4;
+c0156e88 LDW *A4[0],A4`. It is distinct from the current menu descriptor
+pointer at B14[120] (byte offset 0x1e0). `c0149664` resolves page ID via
+c01495c0, compares the result to B14[120], invokes old descriptor word[5]
+(exit), writes new pointer (`c0149698 STW A0,*+B14[120]`), and invokes
+new word[4] (entry). `c01497f4..c0149808` returns descriptor word[0],
+or 0xfff if absent. Table c018413c maps ID 10 -> c0149608 -> c0167230
+-> c0183788 (SETUP), ID 11 -> c0149600 -> c01632ec -> c01837ac (PWR/LCD).
+MainApp screen IDs 4 and 7 both route to c0149840: c01840c8/c01840d4
+contain c0134b44; `c0134b44 CALLP c0149840` forwards the event pointer.
+This handler forwards events through descriptor word[8]: `c014990a LDW
+*B4[8],B0; c0149910 B B0; c0149918 MV A10,A4`. Thus a descriptor
+callback replacement can intercept values without editing the generic dispatcher.
+Events 6/7 trigger the exit test (`c014980e ADD A0,-6,A0; c0149810
+CMPLTU 1,A0,A0`); IDs other than 0,1,9 allow exit (`c0149824..9836`).
+The taken exit arm `c01498f4 CALLP c0149820` leads to c0149924, then
+`c0149934 CALLP c0156e8c; c0149938 CALLP c0135b70`. Physical switch
+legends and the exact restored screen require the producer/transition trace.
