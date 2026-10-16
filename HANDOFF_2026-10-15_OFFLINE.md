@@ -121,7 +121,9 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
 - **FIRST HARDWARE RUN (owner, 2026-10-15 ~20:00):** the diag-UI screen works on the pedal and CCs flow.
   Readback: **worker stack peak 924/2048 B**; TX outstanding 0. Fault 0x8 = 18 type-19 teardowns via the
   queue 32/33 consumer in enumeration bursts (benign at setup). The abort path is not exercised yet.
-  Pending from the owner: tick period, mid-session unplug capture. Log: recon/04, 2026-10-15 row.
+  **Reconnect test passed:** 4 USB re-plugs on batteries (worker #5), TX outstanding 0, readback OK.
+  Stack max 940/2048 B. The abort drain never ran; teardowns go through the consumer. The stack and liveness
+  gates are closed by measurement. Pending: tick period (t over 60 s). Log: recon/04, 2026-10-15 rows.
 - **Comet Flower stock image (owner request):** `docs/CF_STOCK_IMAGE_2026-10-15.md`. Clean CF-only
   effects, CF presets, logo and USB name "Comet Flower" (`tools/cf_usb_name.py`; update mode unchanged),
   plus a TEST variant with the controller diag-UI. Next: decode EDTB to write CF patches (a starter bank).
