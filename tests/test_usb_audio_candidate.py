@@ -60,10 +60,15 @@ class UsbAudioCandidateBuild(unittest.TestCase):
 
     def test_handler_records_hold_glue_functions(self):
         a, img = payload(self.data)
-        for rec, cb in (("ua_if2_record", "ua_if2_request"), ("ua_if3_record", "ua_if3_request")):
-            words = struct.unpack_from("<5I", img, self.syms[rec] - a)
-            stub = self.syms["ua_ret0"]
-            self.assertEqual(words, (stub, stub, stub, self.syms[cb], stub))
+        # one record for IF2 + IF3: the stock registry takes only two records
+        words = struct.unpack_from("<5I", img, self.syms["ua_audio_record"] - a)
+        stub = self.syms["ua_ret0"]
+        self.assertEqual(words, (stub, stub, stub, self.syms["ua_audio_request"], stub))
+        self.assertNotIn("ua_if3_record", self.syms)
+        dis = (ua.OUT / "usb_audio.dis").read_text(errors="replace")
+        body = dis[dis.index("ua_map_audio:"):dis.index("ua_map_ok:")]
+        self.assertRegex(body, r"\[ A0\]\s+STW\.D1T1\s+A4,\*\+A5\[2\]")   # slot 1 -> IF2
+        self.assertRegex(body, r"\[ A0\]\s+STW\.D1T1\s+A4,\*\+A5\[3\]")   # slot 1 -> IF3
 
     def test_payload_clear_of_controller_region(self):
         a, img = payload(self.data)
@@ -155,6 +160,15 @@ class UsbAudioCandidateBuild(unittest.TestCase):
 
 
 class UsbAudioStockFacts(unittest.TestCase):
+    @unittest.skipUnless(MAIN_DIS.exists(), "stock disassembly not available")
+    def test_registry_takes_two_records(self):
+        # c015c6b4's allocation loop searches only slots 0..1 (first hardware
+        # run 2026-10-16: a third registration was refused with ffff8a5c).
+        text = MAIN_DIS.read_text(errors="replace")
+        for pat in (r"^c015c718\s+\S+\s+MVK\.L1\s+2,A3",
+                    r"^c015c744\s+\S+\s+MVK\.S1\s+0xffff8a5c,A0"):
+            self.assertRegex(text, "(?m)" + pat)
+
     @unittest.skipUnless(MAIN_DIS.exists(), "stock disassembly not available")
     def test_patch_assumptions_pinned(self):
         text = MAIN_DIS.read_text(errors="replace")

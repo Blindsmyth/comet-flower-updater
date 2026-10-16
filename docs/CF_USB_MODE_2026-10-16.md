@@ -4,8 +4,8 @@ Folder: `build/cf_usb_mode_2026-10-16/` (owner use only: it contains Zoom's firm
 
 | File | SHA-256 (start) | Contents |
 |---|---|---|
-| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `8088d23d459f344d` | Menu candidate + USB-audio silence layer |
-| `res1_cf_usb_mode.bin` | `020ff47c01eba1ce` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
+| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `eff36a4e84a2fda3` | Menu candidate + USB-audio silence layer |
+| `res1_cf_usb_mode.bin` | `ba76881f215da550` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
 
 Packaged with `--test-controller-fw` (the strict release path refuses the audio layer). Presets and
 effects as in the release. **Not flashed. First hardware run of any USB-audio code.**
@@ -85,3 +85,10 @@ Reading them: WAIT -> the open hook never ran with the request (latch path); ERR
 refused (c015afa0); ON with HOST 0 -> the host never asked our builder (another descriptor path, or
 Windows reused cached data); ON with HOST > 0 but no device -> Windows rejected the configuration
 (check Device Manager for a device with a warning sign, and Windows' USB event log).
+
+## Second run (build 8088d23d): STAT ERR, HOST 14
+
+The host fetched our descriptors (14 builds) but the second audio registration was refused: stock
+c015c6b4 searches only registry slots 0..1 (`c015c718 MVK 2,A3`, reject ffff8a5c at c015c744), so with
+MIDI in slot 0 only one more record fits. Fix (build `eff36a4e`): one audio record owns IF2 and IF3
+(map thunk: slot 1 -> IF2 and IF3); its SETUP callback picks IF3 by wIndex (SETUP byte 4).

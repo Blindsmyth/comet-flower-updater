@@ -11,7 +11,7 @@
 ; clobber set {A0, A4, A5, B0, B4}, plus A1 for the mode test (see below). Mapping (recon/24 5.1):
 ;   all:    record_vector[slot] (c011aa18) = record
 ;   slot 0: IF0, IF1, EP3 (c011aa4c), EP 0x84 (c011aa90) = 0   (stock MIDI)
-;   slot 1: IF2 = 1;   slot 2: IF3 = 2
+;   slot 1: IF2 = IF3 = 1 (one audio record; the registry takes two records)
 ; USB-audio mode off (ua_mode == 0): run the untouched stock code instead,
 ; with B3 restored to c015c768 (the value the stock routine returns through):
 ; selector == 6 -> c015c678, the instruction after the overwritten gate;
@@ -58,8 +58,7 @@ ua_map_on:
 ua_map_audio:
         CMPEQ   .L1     1,A4,A0
  [A0]   STW     .D1T1   A4,*A5[2]           ; slot 1 -> IF2
-        CMPEQ   .L1     2,A4,A0
- [A0]   STW     .D1T1   A4,*A5[3]           ; slot 2 -> IF3
+ [A0]   STW     .D1T1   A4,*A5[3]           ; slot 1 -> IF3
 ua_map_ok:
         MVK     .S1     0,A4
         B       .S2     B3
