@@ -63,8 +63,8 @@ DIAG_HOOKS = [
     (0xc0121a18, 0x15994, 0x1ffc0a92, 0xc011fa54, "controller_diag_consumer_hook"),
 ]
 
-# OFFLINE on-pedal status screen (--ui). Stock word 100fc413 at c013c76c is
-# UpdateUI's CALLP c0144580 (Event_pend, timeout -1); never in HOOKS.
+# On-pedal status screen (--ui; run on hardware 2026-10-15, packageable). Stock word 100fc413 at c013c76c is
+# UpdateUI's CALLP c0144580 (Event_pend, timeout -1); optional, so not in HOOKS.
 UI_HOOKS = [
     (0xc013c76c, 0x306e8, 0x100fc413, 0xc0144580, "controller_ui_pend"),
 ]

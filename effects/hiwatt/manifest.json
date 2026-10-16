@@ -1,9 +1,9 @@
 {
-  "name": "CF DR103",
+  "name": "CF Watt",
   "filename": "DR103",
   "id": "04000f81",
   "version": "1.00",
-  "display": "CF DR103",
+  "display": "CF Watt",
   "badge": "CF",
   "description": "Hiwatt DR103 Custom 100 (1971) circuit model from Comet Flower: real V1/tone-stack/presence/NFB networks, five tube stages with sag, 4x oversampled with anti-aliasing, datasheet Fane 4x12 cab.",
   "dspload": 80,

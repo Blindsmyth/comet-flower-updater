@@ -233,7 +233,7 @@ class UiHook(unittest.TestCase):
             self.assertRegex(text, "(?m)" + pat)
 
     @unittest.skipUnless(RES1.exists() and ctl.CGT.exists(), "stock res1 or TI CGT not available")
-    def test_ui_build_hooks_and_packager_refuses_it(self):
+    def test_ui_build_hooks_and_packager_accepts_it_without_diag(self):
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "ui.bin"
@@ -245,17 +245,20 @@ class UiHook(unittest.TestCase):
             self.assertEqual(ctl.callp_target(vma, word), syms[sym])
             keep = ~(0x1fffff << 7) & 0xffffffff
             self.assertEqual(word & keep, word0 & keep)         # p-bit and unit kept
-            with self.assertRaises(ValueError):                 # DO_NOT_FLASH: not packageable
-                packager.validate_controller_fw(stock, data)
-            packager.validate_controller_fw(stock, data, test=True)   # explicit test path
+            packager.validate_controller_fw(stock, data)        # release: the screen hook is allowed
+            packager.validate_controller_fw(stock, data, test=True)
             bad = bytearray(data)
             bad[0x30000] ^= 1                                    # any other stock byte
             with self.assertRaises(ValueError):
                 packager.validate_controller_fw(stock, bytes(bad), test=True)
             ctl.build(str(RES1), str(out), str(RES1), diag=True, ui=True)
             packager.validate_controller_fw(stock, out.read_bytes(), test=True)
-            with self.assertRaises(ValueError):
+            with self.assertRaises(ValueError):                 # diag hooks stay TEST-only
                 packager.validate_controller_fw(stock, out.read_bytes())
+            bad = bytearray(data)
+            bad[off] ^= 1 << 3                                   # screen hook: opcode bits changed
+            with self.assertRaises(ValueError):
+                packager.validate_controller_fw(stock, bytes(bad))
 
     def test_test_package_needs_test_in_name(self):
         with self.assertRaises(SystemExit):

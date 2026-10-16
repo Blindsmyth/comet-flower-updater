@@ -139,10 +139,11 @@ def validate_patch_fw(old_fw, new_fw):
 
 def validate_controller_fw(old_fw, new_fw, test=False):
     """Accept only stock v2.00 + the controller section and listed hooks.
-    test=True (--test-controller-fw) also accepts the OFFLINE diag/UI hook
-    rows (make_controller_fw DIAG_HOOKS, UI_HOOKS), each either untouched or
-    redirected into the controller section; the seven lifecycle hooks are
-    still required."""
+    The on-pedal screen hook (make_controller_fw UI_HOOKS, run on hardware
+    2026-10-15) is optional in every build; test=True (--test-controller-fw)
+    also accepts the diag hook rows (DIAG_HOOKS). Each optional hook is either
+    untouched or redirected into the controller section; the seven lifecycle
+    hooks are still required."""
     import os
     sys.path.insert(0, os.path.dirname(__file__))
     import make_controller_fw as ctl
@@ -164,18 +165,18 @@ def validate_controller_fw(old_fw, new_fw, test=False):
         raise ValueError("--controller-fw: unexpected image length")
     hooks = {off: (vma, target) for vma, off, _, target, _ in ctl.HOOKS}
     optional = {off: (vma, target) for vma, off, _, target, _ in
-                (ctl.DIAG_HOOKS + ctl.UI_HOOKS if test else [])}
+                (ctl.UI_HOOKS + (ctl.DIAG_HOOKS if test else []))}
     for off, (vma, stock_target) in optional.items():
         old = struct.unpack_from("<I", old_fw, off)[0]
         new = struct.unpack_from("<I", new_fw, off)[0]
         if ctl.callp_target(vma, old) != stock_target:
-            raise ValueError("--test-controller-fw: hook %#x is not the stock CALLP" % vma)
+            raise ValueError("--controller-fw: optional hook %#x is not the stock CALLP" % vma)
         if new == old:
             continue
         if (old ^ new) & ~(0x1fffff << 7):
-            raise ValueError("--test-controller-fw: hook %#x changed more than its target" % vma)
+            raise ValueError("--controller-fw: optional hook %#x changed more than its target" % vma)
         if not base <= ctl.callp_target(vma, new) < base + size:
-            raise ValueError("--test-controller-fw: hook %#x leaves the controller section" % vma)
+            raise ValueError("--controller-fw: optional hook %#x leaves the controller section" % vma)
     allowed_hook_words = set(hooks) | set(optional)
     for i in range(close):
         if (new_fw[i] != old_fw[i] and i & ~3 not in allowed_hook_words
