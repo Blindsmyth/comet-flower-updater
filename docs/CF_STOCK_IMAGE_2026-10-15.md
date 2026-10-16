@@ -26,3 +26,12 @@ firmware `0x033000`. The boot/update program and the settings sector are never w
 Caveats: Windows may cache the old port name per device. If it still shows "ZOOM G Series",
 uninstall the device in Device Manager (View → Show hidden devices) and re-plug. Editors that look for
 "ZOOM G Series" by name (ToneLib, Zoom Guitar Lab) may no longer find the pedal.
+
+## Unified updater (2026-10-15, later)
+
+`build/cf_unified_2026-10-15/Comet Flower G1X4 Updater (TEST build).exe` (`2268ca95c907b852`): one
+updater with all of the above plus controller mode and the on-pedal screen. Normal mode shows
+"COMET FLOWER …"; the diagnostics page is headed "CLAUDE W#…" (the owner's nod). It is still a
+TEST build: the diag hooks stay in until the stack and liveness gates are measured. Its
+`RESTORE_stock_fw_factory_fs.exe` is in the same folder. The boot program still says "ZOOM G Series"
+in update mode (owner decision pending; see the risk note in the session record).

@@ -147,7 +147,7 @@ static void paint(u32 usb, u32 q, u32 last)
     {
         u32 peak, creates, fault, teardown;
         controller_diag_ui(&peak, &creates, &fault, &teardown);
-        p = dec(put(b, "DIAG W#"), creates, 0);
+        p = dec(put(b, "CLAUDE W#"), creates, 0);   /* the diag page: a quiet nod */
         p = dec(put(p, " t"), TICKS, 0);
         *p = 0;
         line5(0u, b);
@@ -163,8 +163,8 @@ static void paint(u32 usb, u32 q, u32 last)
         line5(2u, b);
     }
 #else
-    line5(0u, usb == 2u ? "MIDI CTRL  TX STALL!" : usb ? "MIDI CTRL  USB OK CH1"
-                                                       : "MIDI CTRL  NO USB CH1");
+    line5(0u, usb == 2u ? "COMET FLOWER TX STALL" : usb ? "COMET FLOWER USB  CH1"
+                                                       : "COMET FLOWER NO USB");
     if (last >> 31) {
         u32 control = (last >> 8) & 0x7fu, value = last & 0x7fu;
         p = dec(put(b, "CC"), control, 0);

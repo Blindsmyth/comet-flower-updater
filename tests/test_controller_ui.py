@@ -94,7 +94,7 @@ class ControllerUi(unittest.TestCase):
         L.host_set_mode(1)
         L.host_tick()                                   # first tick always paints
         text, big = lines(self.shot("ctl_no_usb"))
-        self.assertEqual(text[0], "MIDI CTRL  NO USB CH1")
+        self.assertEqual(text[0], "COMET FLOWER NO USB")
         self.assertEqual(big, [(0, 10, "CONNECT USB")])
         self.assertEqual(text[3], "sent 0  q 0")
         self.assertEqual(ctypes.c_uint.in_dll(L, "host_flushes").value, 1)
@@ -112,7 +112,7 @@ class ControllerUi(unittest.TestCase):
         L.host_reset()
         L.host_tick()
         text, big = lines(self.shot("ctl_fs1"))
-        self.assertEqual(text[0], "MIDI CTRL  USB OK CH1")
+        self.assertEqual(text[0], "COMET FLOWER USB  CH1")
         self.assertEqual(big, [(0, 10, "CC20 FS1 127")])
         self.assertEqual(text[3], "sent 1  q 0")
 
@@ -132,12 +132,12 @@ class ControllerUi(unittest.TestCase):
         L.host_reset()
         L.host_tick()                                   # 20th consecutive tick
         text, _ = lines(self.shot("ctl_stall"))
-        self.assertEqual(text[0], "MIDI CTRL  TX STALL!")
+        self.assertEqual(text[0], "COMET FLOWER TX STALL")
         arr(L, "host_tx4", ctypes.c_uint, 16)[5] = 0
         L.host_reset()
         L.host_tick()                                   # drains: back to OK at once
         text, _ = lines(ops(L))
-        self.assertEqual(text[0], "MIDI CTRL  USB OK CH1")
+        self.assertEqual(text[0], "COMET FLOWER USB  CH1")
 
     def test_pend_contract(self):
         L = self.lib
@@ -187,7 +187,7 @@ class DiagUi(unittest.TestCase):
             OUT.mkdir(parents=True, exist_ok=True)
             ui_mock.show(render(rec, RES1.read_bytes())).save(OUT / "fw_diag.png")
         text, big = lines(rec)
-        self.assertEqual(text[0], "DIAG W#2 t123456")
+        self.assertEqual(text[0], "CLAUDE W#2 t123456")
         self.assertEqual(text[1], "STACK 768/2048")
         self.assertEqual(text[2], "USB OK q0 F0x0 TD1")
         self.assertEqual(text[3], "sent 1  q 0 CC40=64")
