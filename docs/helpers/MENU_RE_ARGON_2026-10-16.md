@@ -187,6 +187,42 @@ UpdateUI task loop (c013c754)
 
 ## A3. Item Current Value Storage (Global Struct / Offsets)
 
+### 1. System Settings Global Struct at `0x11812f74..0x11812fe8` (Confirmed)
+- All 16 menu items across `OUTPUT`, `SETUP`, `PWR/LCD`, and `TUNER` store their live 32-bit `int` values inside a 30-word (`0x78` = 120-byte) global struct at **`0x11812f74..0x11812fe8`** in L2 SRAM (zero-initialized at boot by `.cinit` record #2 `0xc01868f4 -> 0x1180bd40` at `.cinit` `0xc0186b77`, then populated by `c0154b0c` / `c0154a44`).
+- The first **27 words (`108` bytes, `0x11812f74..0x11812fdc`, offsets `+0x00..+0x68`)** are the persisted system settings block:
+  - Defaulted and range-validated by the **26-entry (`0x1a`) schema table at `0xc01823f8..0xc0182598`** (`c0154984` & `c0154b34 MVK 0x23f8,B5; MVKH 0xc0180000,B5`, 16 bytes per entry: `{min, max, default, word_count}`).
+  - Shadowed for dirty-checking at **`0x11812f08..0x11812f73`** (`108` bytes): `c0154af0..c0154b04` copies `108` bytes (`MVK.S1 108,A0`) from `0x11812f74` to `0x11812f08` via `c0169fc0` (`memcpy`), and `118060e8..11806118` compares `0x11812f74` vs `0x11812f08` byte-for-byte to check if system settings need saving.
+- The last **3 words (`12` bytes, `0x11812fe0..0x11812fe8`, offsets `+0x6c..+0x74`)** are non-persisted runtime state validated by a 3-entry schema table at `0xc0180540` (`c01549d8 MVK 0x0540,A7; MVKH 0xc0180000,A7`).
+
+### 2. Per-Item Global Address, Offset, Default, and Accessor Chain (Confirmed)
+
+| Page | Item | Global Address | Struct Offset | Schema Rec (`0xc01823f8`) | Min..Max (Default) | `w8` (`get_val`) | `w9` (`set_val`) | `w10` (`on_change` / HW apply) |
+|---|---|---|---|---|---|---|---|---|
+| **SETUP** | `BPM` | `0x11812f78` | `+0x04` (w1) | Rec 1 (`c0182408`) | `40..250` (`120`) | `11805e64` (`LDW *0x11812f78`) | `00000000` | `c016716c -> c015e6d8 -> c016846c -> c016ed30 -> 11805bf8` (`STW *0x11812f78`) + `c016ed20 -> 11802cd4` + `c015e680(1)` |
+| **SETUP** | `AUTO SAVE` | `0x11812f80` | `+0x0c` (w3) | Rec 3 (`c0182428`) | `0..1` (`1` = ON) | `11805ec4` (`LDW *0x11812f80`) | `c0168488 -> c016ed10 -> 11805c78` (`STW *0x11812f80`) + `c016ed00 -> 11802cec` | `00000000` |
+| **SETUP** | `PRE-SELECT` | `0x11812f8c` | `+0x18` (w6) | Rec 6 (`c0182458`) | `0..1` (`0` = OFF) | `11805e2c` (`LDW *0x11812f8c`) | `11805bb0` (`STW *0x11812f8c`) | `c0167160 -> c0148b6c` |
+| **SETUP** | `BANK HOLD` | `0x11812fd0` | `+0x5c` (w23) | Rec 23 (`c0182568`) | `0..1` (`0` = OFF) | `11805f30` (`LDW *0x11812fd0`) | `11805d0c` (`STW *0x11812fd0`) | `00000000` |
+| **PWR/LCD** | `BATTERY` | `0x11812fb0` | `+0x3c` (w15) | Rec 15 (`c01824e8`) | `0..1` (`0` = ALKALI) | `11805f24` (`LDW *0x11812fb0`) | `11805cf8` (`STW *0x11812fb0`) | `00000000` |
+| **PWR/LCD** | `ECO` | `0x11812f88` | `+0x14` (w5) | Rec 5 (`c0182448`) | `0..1` (`1` = ON) | `11805eb4` (`LDW *0x11812f88`) | `11805c68` (`STW *0x11812f88`) | `c01631ac -> c0155290 -> c01551c0(8, val&0xff)` |
+| **PWR/LCD** | `BACKLIGHT` | `0x11812fb4` | `+0x40` (w16) | Rec 16 (`c01824f8`) | `0..3` (`1` = ON) | `11805f08` (`LDW *0x11812fb4`) | `11805cd4` (`STW *0x11812fb4`) | `c01631ca -> c016f6e0 -> 1180add8` |
+| **PWR/LCD** | `CONTRAST` | `0x11812f84` | `+0x10` (w4) | Rec 4 (`c0182438`) | `1..13` (`8`) | `c0163200 -> c016ee00 -> 11805ea8(0)` (`LDW *0x11812f84`) | `c01631a0 -> c016ee10 -> 11805c54(val, 0)` (`STW *0x11812f84`) | `c01631b8 -> c0169700(0, val)`: LUT `0xc0180244[val]` -> `c016ee40 -> 11805614` |
+| **TUNER** | `OUTPUT` | `0x11812f94` | `+0x20` (w8) | Rec 8 (`c0182478`) | `0..1` (`0` = BYPASS) | `11805dcc` (`LDW *0x11812f94`) | `11805b30` (`STW *0x11812f94`) | `c01591cc -> c01507c0` |
+| **TUNER** | `CALIB` | `0x11812f98` | `+0x24` (w9) | Rec 9 (`c0182488`) | `0..10` (`5` = 440Hz) | `11805de8` (`LDW *0x11812f98`) | `c0168434 -> c016ed70 -> 11805b54` (`STW *0x11812f98`) + `c016ed60 -> 11802c70` | `c0159354` |
+| **TUNER** | `TYPE` | `0x11812f9c` | `+0x28` (w10) | Rec 10 (`c0182498`) | `0..6` (`0` = CHROMATIC; clamped to `0..1` if `c016f740()==1` at `c0159224`) | `11805dc0` (`LDW *0x11812f9c`) | `c0168400 -> c016edb0 -> 11805b20` (`STW *0x11812f9c`) + `c016eda0 -> 11802c44` | `00000000` (note: `w7 = c0159120` caches `val` to `*0xc010ad84` and returns `0` so custom overlay at `c0159274` draws it) |
+| **TUNER** | `FLAT` | `0x11812fa0` | `+0x2c` (w11) | Rec 11 (`c01824a8`) | `0..3` (`0` = OFF) | `11805dd8` (`LDW *0x11812fa0`) | `c01591ac -> c0168418 -> c016ed90 -> 11805b44` (`STW *0x11812fa0`) | `00000000` |
+| **OUTPUT** | `Lo` | `0x11812fa4` | `+0x30` (w12) | Rec 12 (`c01824b8`) | `0..100` (`50`) | `11805e48` (`LDW *0x11812fa4`) | `11805bd4` (`STW *0x11812fa4`) | `00000000` |
+| **OUTPUT** | `MID` | `0x11812fa8` | `+0x34` (w13) | Rec 13 (`c01824c8`) | `0..100` (`50`) | `11805e38` (`LDW *0x11812fa8`) | `11805bc4` (`STW *0x11812fa8`) | `00000000` |
+| **OUTPUT** | `Hi` | `0x11812fac` | `+0x38` (w14) | Rec 14 (`c01824d8`) | `0..100` (`50`) | `11805e54` (`LDW *0x11812fac`) | `11805be8` (`STW *0x11812fac`) | `00000000` |
+| **OUTPUT** | `MVOL` | `0x11812f74` | `+0x00` (w0) | Rec 0 (`c01823f8`) | `0..120` (`100`) | `11805ef8` (`LDW *0x11812f74`) | `11805cc4` (`STW *0x11812f74`) | `00000000` |
+
+### 3. Complete Map of Non-Menu Words in `0x11812f74..0x11812fe8` (Confirmed)
+- `+0x08` (`0x11812f7c`, Rec 2, `0..1`, def `0`): patch/bank selection mode (`11805df4` / `11805b68`).
+- `+0x1c` (`0x11812f90`, Rec 7, `0..12`, def `6`): accessed via `11805ee0` / `11805ca0`.
+- `+0x44..+0x60` (`0x11812fb8..0x11812fd4`, Recs 17..22 & 24): rhythm/looper/pedal parameters (`11805e04..11805e98`, `11805b78..11805c44`).
+- **`+0x64` (`0x11812fd8`) and `+0x68` (`0x11812fdc`) (Rec 25 at `0xc0182588`, `min=0, max=0, def=0, count=2`)**: **UNUSED / RESERVED** (zero references in `refs.txt`, no getter/setter in `11805b20..11805f50`, included inside the 108-byte persisted/shadowed block!).
+- `+0x6c..+0x74` (`0x11812fe0..0x11812fe8`): runtime-only fields (`11805eec`, `11805f14`, `11805ed0`).
+
+
 ## A4. Free / Unused Room and Repurposing Candidates
 
 ## Cross-Findings (B1-B4 Notes Discovered Along the Way)
