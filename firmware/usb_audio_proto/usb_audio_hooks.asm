@@ -23,6 +23,7 @@
     .ref desc_ptrs
     .ref stock_descriptor_builder   ; = 0xc0160ec0, defined by the linker command file
     .ref ua_mode                    ; ua_glue.c: 0 = USB-audio mode off -> all stock
+    .ref ua_note_build              ; ua_glue.c: status counter for the settings page
 
 usb_audio_descriptor_veneer:
     ; USB-audio mode off: the stock builder for every type (A0 is scratch,
@@ -50,6 +51,7 @@ usb_audio_descriptor_veneer:
     ; Preserve the stock out-pointer above the callee's stack frame.
     STW   .D2T2 B3,*B15--[4]
     STW   .D2T1 A6,*+B15[3]
+    CALLP .S2   ua_note_build,B3
     CALLP .S2   usb_audio_build_descriptors,B3
     LDW   .D2T1 *+B15[3],A6
     LDW   .D2T2 *++B15[4],B3

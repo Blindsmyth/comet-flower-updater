@@ -4,8 +4,8 @@ Folder: `build/cf_usb_mode_2026-10-16/` (owner use only: it contains Zoom's firm
 
 | File | SHA-256 (start) | Contents |
 |---|---|---|
-| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `82737f77a618b97e` | Menu candidate + USB-audio silence layer |
-| `res1_cf_usb_mode.bin` | `a0c9b9b7561e199b` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
+| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `8088d23d459f344d` | Menu candidate + USB-audio silence layer |
+| `res1_cf_usb_mode.bin` | `020ff47c01eba1ce` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
 
 Packaged with `--test-controller-fw` (the strict release path refuses the audio layer). Presets and
 effects as in the release. **Not flashed. First hardware run of any USB-audio code.**
@@ -69,3 +69,19 @@ So with USB mode off this build should behave exactly like the menu candidate.
 B1 SETTINGS, B2 EDIT, B4..B8 slot buttons 1..5, B10 Rhythm, FS1/FS2 footswitches, K1..K4 knobs, EXP.
 Switch bits 2 and 8 (B3, B9) have no physical button; the pedal has no arrow buttons, so chooser
 pages flip with the knobs only.
+
+## First hardware run (2026-10-16, build 82737f77)
+
+Owner: booted holding slot 1 into effects mode; COMET FLOWER page showed USB = AUDIO (the request was
+read), but Windows showed nothing new. The page only showed the request, so the build was rebuilt
+(`8088d23d`) with read-only status columns:
+
+| Column | Shows |
+|---|---|
+| STAT (K3) | OFF; WAIT = requested, not latched by a USB open yet; ON = latched and IF2 + IF3 registered; ERR = latched, a registration failed |
+| HOST (K4) | how many device/configuration descriptors the host fetched through our builder while active |
+
+Reading them: WAIT -> the open hook never ran with the request (latch path); ERR -> registration
+refused (c015afa0); ON with HOST 0 -> the host never asked our builder (another descriptor path, or
+Windows reused cached data); ON with HOST > 0 but no device -> Windows rejected the configuration
+(check Device Manager for a device with a warning sign, and Windows' USB event log).

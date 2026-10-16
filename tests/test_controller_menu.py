@@ -127,16 +127,42 @@ class Menu(unittest.TestCase):
         L.host_page_draw()
         self.assertEqual(self.u("host_draw_count"), 1)             # no layer: MODE only
         self.assertEqual(self.event("host_desc5", 26, 1), 0)       # knob 2 does nothing
-        ua = (ctypes.c_uint * 3).in_dll(L, "host_ua")
+        ua = (ctypes.c_uint * 8).in_dll(L, "host_ua")
         ua[2] = 0x41425355                                          # "USBA"
         L.host_page_draw()
-        self.assertEqual(self.u("host_draw_count"), 2)
+        self.assertEqual(self.u("host_draw_count"), 4)             # MODE, USB, STAT, HOST
         self.assertEqual(self.event("host_desc5", 26, 1), 1)       # knob 2 edits it
-        self.assertEqual(self.u("host_edit_count"), 2)
+        self.assertEqual(self.u("host_edit_count"), 4)
+        for ev in (27, 28):                                         # status columns: read-only
+            self.assertEqual(self.event("host_desc5", ev, 1), 0)
+        self.assertEqual(self.u("host_edit_calls"), 1)
+
+    def test_usb_status_columns(self):
+        L = self.L
+        ua = (ctypes.c_uint * 8).in_dll(L, "host_ua")
+        ua[2] = 0x41425355
+        L.host_install()
+        L.host_page_draw()
+        rec = ctypes.cast(ctypes.c_void_p.in_dll(L, "host_draw_records"), ctypes.POINTER(W))
+        stat = [rec[22 + i] for i in range(11)]
+        host_ = [rec[33 + i] for i in range(11)]
+        self.assertEqual(ctypes.string_at(stat[3]), b"STAT")
+        self.assertEqual(ctypes.string_at(host_[3]), b"HOST")
+        self.assertEqual((stat[9], host_[9], host_[7]), (0, 0, 0))   # no setters; HOST prints %d
+        fmt = ctypes.CFUNCTYPE(ctypes.c_char_p, ctypes.c_int)(stat[7])
+        get = ctypes.CFUNCTYPE(ctypes.c_int)(stat[8])
+        hget = ctypes.CFUNCTYPE(ctypes.c_int)(host_[8])
+        cases = [((0, 0, 0, 0), b"OFF"), ((0, 1, 0, 0), b"WAIT"), ((1, 1, 0, 0), b"ON"),
+                 ((1, 1, 0xffff8a5c, 0xffffffff), b"ERR"), ((1, 0, 0, 0), b"WAIT")]
+        for (act, req, r0, r1), want in cases:
+            ua[0], ua[1], ua[4], ua[5] = act, req, r0, r1
+            self.assertEqual(fmt(get()), want, (act, req, r0, r1))
+        ua[6] = 7
+        self.assertEqual(hget(), 7)
 
     def usb_record(self):
         L = self.L
-        (ctypes.c_uint * 3).in_dll(L, "host_ua")[2] = 0x41425355
+        (ctypes.c_uint * 8).in_dll(L, "host_ua")[2] = 0x41425355
         L.host_install()
         L.host_page_draw()
         rec = ctypes.cast(ctypes.c_void_p.in_dll(L, "host_draw_records"), ctypes.POINTER(W))
@@ -152,7 +178,7 @@ class Menu(unittest.TestCase):
     def test_usb_item_replugs_only_while_usb_is_open(self):
         L = self.L
         get, put = self.usb_record()
-        ua = (ctypes.c_uint * 3).in_dll(L, "host_ua")
+        ua = (ctypes.c_uint * 8).in_dll(L, "host_ua")
         put(1)                                                      # USB not open: request only
         self.assertEqual((ua[1], get(), self.u("host_closes")), (1, 1, 0))
         put(0)

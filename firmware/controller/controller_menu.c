@@ -49,7 +49,8 @@ typedef u32 word;
 #define DESC5 ((volatile word *)0xc0183740u)
 #define LIST_B ((volatile word *)0xc0181368u)
 #define COL_X ((const u32 *)0xc0181548u)   /* column centres {17, 48, 79, 110} */
-/* USB-audio layer (firmware/usb_audio/ua_glue.c): {active, request, magic} */
+/* USB-audio layer (firmware/usb_audio/ua_glue.c): {active, request, magic,
+   opens, reg[2], builds, set_alts} */
 #define UA ((volatile u32 *)0xc01a8000u)
 /* Stock USB lifecycle, as the cable handler 1180a7ec uses it: state word 0
    = USB open (attach writes 0 after c016ab8c, detach 1 after c016ab58);
@@ -136,19 +137,48 @@ static void usb_set(int value)
     TASK_SETPRI(SWITCH_TASK, SWITCH_TASK_PRI);
 }
 
+/* Read-only USB-audio status (columns 3 and 4; knobs 3/4 are not passed to
+   the editor): STAT = what the last USB open did with the request, HOST =
+   descriptors the host fetched through our builder while active. */
+static const char *const stat_names[4] = { "OFF", "WAIT", "ON", "ERR" };
+
+static const char *stat_text(int value)
+{
+    return stat_names[value & 3];
+}
+
+static int stat_get(void)
+{
+    if (UA[0] != UA[1])
+        return 1;                       /* applies at the next USB open */
+    if (!UA[0])
+        return 0;
+    return UA[4] == 0u && UA[5] == 0u ? 2 : 3;
+}
+
+static int host_get(void)
+{
+    return (int)UA[6];
+}
+
 /* One 0x2c record per knob: {index, 0xfff, 0xfff, label, label line 2, min,
    max, formatter, getter, setter, after-change}. */
-#define CF_ITEMS_MAX 2u
+#define CF_ITEMS_MAX 4u
+#define CF_EDITABLE_USB 2u
 static const word cf_items[CF_ITEMS_MAX * 11u] = {
     0u, 0xfffu, 0xfffu, (word)"MODE", 0u, 0u, 1u,
     (word)mode_text, (word)mode_get, (word)mode_set, 0u,
     1u, 0xfffu, 0xfffu, (word)"USB", 0u, 0u, 1u,
     (word)usb_text, (word)usb_get, (word)usb_set, 0u,
+    2u, 0xfffu, 0xfffu, (word)"STAT", 0u, 0u, 3u,
+    (word)stat_text, (word)stat_get, 0u, 0u,
+    3u, 0xfffu, 0xfffu, (word)"HOST", 0u, 0u, 0u,
+    0u, (word)host_get, 0u, 0u,
 };
 
 static u32 cf_count(void)
 {
-    return ua_present() ? 2u : 1u;
+    return ua_present() ? CF_ITEMS_MAX : 1u;
 }
 
 static void cf_page_draw(u32 flag)
@@ -161,7 +191,7 @@ static int cf_page_event(int *event)
 {
     int id = event[0];
     u32 n = cf_count();
-    if (id < 25 || id >= 25 + (int)n)
+    if (id < 25 || id >= 25 + (int)(n < CF_EDITABLE_USB ? n : CF_EDITABLE_USB))
         return 0;
     return ITEM_EDIT(n, event, cf_items);
 }

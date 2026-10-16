@@ -22,6 +22,38 @@ typedef unsigned int u32;
 #define REJECT      0xffff8a5cu   /* any other nonzero result STALLs EP0 (c0135ab4..c4) */
 #define AS_INTERFACE 3u
 
+/* USB-audio mode, at the fixed address c01a8000 (ua.cmd) so the controller
+   payload can use it: {active, request, magic}. The controller writes only
+   `request` (start-up button, settings page). `active` is copied from it
+   once per USB open, in ua_usbmidi_open below, which stock runs on every
+   full open (boot and cable attach: c016ab8c -> c016ab70 -> c0159758 ->
+   c0145124 -> c0145158) before the device connects (c016ab80 -> c015af18,
+   docs/helpers/USB_MODE_ASTRA_2026-10-16.md), so the descriptors and the
+   registrations of one connection always agree. While `active` is 0 every
+   patch behaves as stock: the descriptor veneer tail-branches to the stock
+   builder for every type, IF2/IF3 are never registered, the map thunk runs
+   the stock code, and no alternate is ever set (SOF tick and tap idle).
+   `magic` tells the controller payload that this layer is present. The
+   rest is read-only status for the settings page (first hardware run
+   2026-10-16: request set, nothing new on Windows): open count, the two
+   registration results of the last open (-1 = not attempted), and how
+   often the host fetched a descriptor through our builder and set an IF3
+   alternate while active. */
+#define UA_MAGIC 0x41425355u      /* "USBA" */
+typedef struct {
+    volatile u32 active, request, magic;
+    volatile u32 opens, reg[2], builds, set_alts;
+} ua_mode_t;
+#pragma DATA_SECTION(ua_mode, ".ua_mode")
+ua_mode_t ua_mode = { 0u, 0u, UA_MAGIC, 0u, { 0xffffffffu, 0xffffffffu }, 0u, 0u };
+
+/* Called by usb_audio_descriptor_veneer (usb_audio_hooks.asm) before it
+   builds our device/configuration descriptor (active only). */
+void ua_note_build(void)
+{
+    ua_mode.builds++;
+}
+
 extern int usb_audio_set_alt(u32 alt);
 extern int ua_ep0_ack(void);                  /* ua_thunks.asm: c015af48(128, 0, 0) as c0151f5a */
 
@@ -54,6 +86,7 @@ int ua_if3_request(u32 type, const u8 *setup)
     if (usb_audio_set_alt(alt) != 0)
         return (int)REJECT;
     ALT_ARRAY[AS_INTERFACE] = (u8)alt;
+    ua_mode.set_alts++;
     ua_ep0_ack();
     return 0;
 }
@@ -66,25 +99,6 @@ const ua_fn ua_if2_record[5] = { ua_ret0, ua_ret0, ua_ret0, (ua_fn)ua_if2_reques
 #pragma DATA_SECTION(ua_if3_record, ".ua_state")
 const ua_fn ua_if3_record[5] = { ua_ret0, ua_ret0, ua_ret0, (ua_fn)ua_if3_request, ua_ret0 };
 
-/* USB-audio mode, at the fixed address c01a8000 (ua.cmd) so the controller
-   payload can use it: {active, request, magic}. The controller writes only
-   `request` (start-up button, settings page). `active` is copied from it
-   once per USB open, in ua_usbmidi_open below, which stock runs on every
-   full open (boot and cable attach: c016ab8c -> c016ab70 -> c0159758 ->
-   c0145124 -> c0145158) before the device connects (c016ab80 -> c015af18,
-   docs/helpers/USB_MODE_ASTRA_2026-10-16.md), so the descriptors and the
-   registrations of one connection always agree. While `active` is 0 every
-   patch behaves as stock: the descriptor veneer tail-branches to the stock
-   builder for every type, IF2/IF3 are never registered, the map thunk runs
-   the stock code, and no alternate is ever set (SOF tick and tap idle).
-   `magic` tells the controller payload that this layer is present. */
-#define UA_MAGIC 0x41425355u      /* "USBA" */
-typedef struct { volatile u32 active, request, magic; } ua_mode_t;
-#pragma DATA_SECTION(ua_mode, ".ua_mode")
-ua_mode_t ua_mode = { 0u, 0u, UA_MAGIC };
-
-#pragma DATA_SECTION(ua_reg_result, ".ua_state")
-volatile u32 ua_reg_result[2] = { 0xffffffffu, 0xffffffffu };
 
 /* Replaces c0145158 CALLP c0152410 (task context, before c015af18's
    soft-connect, recon/24 5.1). Registration order is an invariant: MIDI is
@@ -94,11 +108,13 @@ int ua_usbmidi_open(u32 callback)
 {
     int r;
     ua_mode.active = ua_mode.request ? 1u : 0u;
+    ua_mode.opens++;
+    ua_mode.reg[0] = ua_mode.reg[1] = 0xffffffffu;
     r = STOCK_USBMIDI_OPEN(callback);
     if (r == 0 && ua_mode.active) {
-        ua_reg_result[0] = (u32)STOCK_REGISTER(6u, ua_if2_record);
-        if (ua_reg_result[0] == 0u)
-            ua_reg_result[1] = (u32)STOCK_REGISTER(6u, ua_if3_record);
+        ua_mode.reg[0] = (u32)STOCK_REGISTER(6u, ua_if2_record);
+        if (ua_mode.reg[0] == 0u)
+            ua_mode.reg[1] = (u32)STOCK_REGISTER(6u, ua_if3_record);
     }
     return r;
 }

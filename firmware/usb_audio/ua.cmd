@@ -5,6 +5,7 @@
 --retain="usb_audio_sof_tick"
 --retain="ua_usbmidi_open"
 --retain="ua_map_thunk"
+--retain="ua_note_build"
 --retain="*(.ua_state)"
 --retain="*(.ua_mode)"
 --retain="*(.text:ua_map)"

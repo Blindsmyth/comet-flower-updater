@@ -20,7 +20,7 @@ EXPORT hu32 host_draw_count, host_draw_font_label, host_draw_font_value;
 EXPORT const char *host_draw_title;
 EXPORT const hword *host_draw_records;
 EXPORT hu32 host_mode, host_mode_sets;
-EXPORT hu32 host_ua[3], host_usb_state, host_closes, host_opens, host_slept;
+EXPORT hu32 host_ua[8], host_usb_state, host_closes, host_opens, host_slept;
 EXPORT unsigned char host_usb_ready;
 EXPORT hu32 host_trace[8], host_ntrace;   /* 1 close, 2 sleep, 3 open */
 
@@ -96,7 +96,8 @@ EXPORT void host_reset(void)
     host_set_calls = host_set_last = host_chooser_calls = host_edit_calls = 0;
     host_edit_count = host_draw_calls = host_draw_count = 0;
     host_mode = host_mode_sets = 0;
-    host_ua[0] = host_ua[1] = host_ua[2] = 0;
+    for (i = 0; i < 8u; i++)
+        host_ua[i] = 0;
     host_usb_state = 1;
     host_usb_ready = 0;
     host_closes = host_opens = host_slept = host_ntrace = 0;
