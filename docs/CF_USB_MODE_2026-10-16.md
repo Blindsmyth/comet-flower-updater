@@ -117,3 +117,13 @@ The tap build was rebuilt the same way.
 Owner notes from run 3: VPB still sees the MIDI port, but Learn detects nothing outside MIDI mode. That is
 intended: the pedal sends controller MIDI only in MIDI mode. Owner wish for later: the MIDI port should not
 be visible to the host at all until the pedal is set to MIDI mode.
+
+## Fourth run (build 6d8c936a): the input shows and records
+
+Owner: "Line (Comet Flower ZG1X4 MIDI)" appears in Windows and in the app. Claude recorded 3 s from it on
+the owner's PC (`ffmpeg -f dshow`): it opened without error, 44.1 kHz stereo 16-bit, ran in real time.
+Samples: 0 or ±1, spread evenly over both channels (77 % zero). That is dither from the Windows audio
+engine on a zero signal, so the stream reads as silence, as designed. The pedal side does not show whether
+the SOF packets were sent (the `set_alts` counter is not on the page), so "silence from our packets" and
+"Windows fills a stream that gets no packets" cannot be told apart here. Next: the tap build, where real
+audio settles it.
