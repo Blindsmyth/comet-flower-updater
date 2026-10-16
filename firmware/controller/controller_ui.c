@@ -59,12 +59,24 @@ struct {
     u32 stall;                /* consecutive ticks with TX4 outstanding */
     u32 repaint;              /* a stock event ran: paint even if unchanged */
     u32 shown[4];             /* model last painted */
-} ui = { 0, 0, 0, 1, { 0, 0, 0, 0 } };
+    volatile u32 stock_redraw; /* MIDI mode was left: stock repaints its screen */
+} ui = { 0, 0, 0, 1, { 0, 0, 0, 0 }, 0 };
 
 void controller_ui_sent(u32 control, u32 value)
 {
     ui.last = 0x80000000u | (control << 8) | value;
     ui.sent++;
+}
+
+/* MainApp, after it changed ctl_state.mode. UpdateUI event bit 0 is a full
+   stock redraw: c013c8ba passes it to the render c013c700, whose arg bit 0
+   clears the page (c011f8d8) and redraws the current screen (c013c0c8). */
+void controller_ui_mode(u32 mode)
+{
+    if (mode)
+        ui.repaint = 1u;
+    else
+        ui.stock_redraw = 1u;
 }
 
 /* ---- text helpers ------------------------------------------------------ */
@@ -233,7 +245,11 @@ u32 controller_ui_pend(u32 event, u32 and_mask, u32 or_mask, int timeout)
             ui.repaint = 1u;
             return r;
         }
-        if (ctl_state.mode)
+        if (ctl_state.mode) {
             tick();
+        } else if (ui.stock_redraw) {
+            ui.stock_redraw = 0u;
+            return 1u;
+        }
     }
 }

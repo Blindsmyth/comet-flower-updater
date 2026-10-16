@@ -158,6 +158,21 @@ class ControllerUi(unittest.TestCase):
         res[0] = 0
         self.assertEqual(L.host_pend(100), 0)
 
+    def test_leaving_midi_mode_requests_one_stock_redraw(self):
+        L = self.lib
+        res = arr(L, "host_pend_results", ctypes.c_uint, 8)
+        L.host_set_mode(0)
+        L.host_ui_mode(0)                               # MainApp left MIDI mode
+        L.host_reset()
+        res[0], res[1] = 0, 0x24
+        self.assertEqual(L.host_pend(-1), 0x01)         # bit 0: full stock redraw
+        self.assertEqual(ops(L), [])                    # drawn by stock, not by us
+        L.host_reset()
+        res[0], res[1] = 0, 0x24
+        self.assertEqual(L.host_pend(-1), 0x24)         # only once
+        L.host_ui_mode(1)                               # entering MIDI mode
+        self.assertEqual(L.host_repaint(), 1)
+
     def test_text_fits_the_panel(self):
         L = self.lib
         L.host_set_mode(1)

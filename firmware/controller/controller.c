@@ -13,9 +13,12 @@
  * The state is initialised by the AIS load itself (mode 0 = stock), so any
  * hook that runs before controller_start takes the stock path.
  *
- * Policy (v1): hold GPIO0 (switch bitmap bit 9; likely the Rhythm/Looper
- * button, recon/15) at power-up to enter
- * controller mode for this boot. MIDI channel 1. Footswitches CC20/21,
+ * Policy (v2): hold GPIO0 (switch bitmap bit 9; likely the Rhythm/Looper
+ * button, recon/15) at power-up to start in MIDI mode, or hold it for 2 s
+ * at run time to switch between effects mode and MIDI mode (owner choice
+ * 2026-10-16). Audio keeps running in both. In effects mode a short press
+ * reaches the stock firmware on release (controller_gate). In MIDI mode
+ * that button is a tap: CC31 127 then 0 on a short release. MIDI channel 1. Footswitches CC20/21,
  * the ten normal buttons CC22..31 (127 press, 0 release), knobs CC40..43
  * absolute 0..127 starting at 64, expression CC11. Physical legends are
  * unverified (recon/17 A5).
@@ -33,6 +36,7 @@ typedef struct { volatile u8 mode, entry_held; u8 knob[4]; } State;
 #pragma DATA_SECTION(ctl_state, ".ctl_state")
 State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
 
+#ifndef CTL_HOST   /* tests/test_controller_mode.py supplies host stubs */
 #define STOCK_STARTUP ((void (*)(void))0xc015d428u)
 /* Writes the ten-button bitmap (bit set = released) through its argument;
    it does not return it (recon/18 1.2). */
@@ -45,11 +49,22 @@ State ctl_state = { 0, 0, { 64, 64, 64, 64 } };
 #define TASK_CREATE ((u32 (*)(u32))0xc014a400u)
 #define MIDI_LOCK (*(volatile u32 *)0xc0184f64u)  /* B14[89] */
 #define PORT_STATE ((volatile u32 *)0xc01152b8u)
+#define TICKS (*(volatile u32 *)0xc0182054u)        /* 1 tick = 1 ms (recon/04) */
+/* MainApp's raw event mailbox B14[162] and its post c0166780(handle, msg,
+   timeout); c01534c4 pends on it and c015350c normalizes the raw ID. The
+   last fetched raw ID is kept in B14[106] (copied into record word 1). */
+#define MAINAPP_MBX (*(volatile u32 *)0xc0185088u)
+#define MBX_POST ((int (*)(u32, void *, int))0xc0166780u)
+#define LAST_RAW_ID (*(volatile u32 *)0xc0184fa8u)
 
 /* Stock MIDI ring c0117b28: read index +0, write index +4, 1025 positions
    (wrap after index 1024), full when next write == read (recon/17 A3). */
 #define RING ((volatile u32 *)0xc0117b28u)
+#endif
 #define RING_POSITIONS 1025u
+#define EV_MODE_PRESS 23    /* GPIO0, bitmap bit 9: 5 + 2*9 */
+#define EV_MODE_RELEASE 24
+#define MODE_HOLD_TICKS 2000u
 
 /* One MainApp producer for button/knob state, one AD producer for expression,
    and one MIDI-worker consumer. All shared records are aligned 32-bit words.
@@ -65,7 +80,17 @@ void controller_diag_worker(u32 task);
 
 #ifdef CTL_UI
 void controller_ui_sent(u32 control, u32 value);
+void controller_ui_mode(u32 mode);
 #endif
+
+/* Run-time mode toggle. Only MainApp touches this record. */
+#pragma DATA_SECTION(sw, ".ctl_state")
+struct {
+    u32 down, t0;           /* mode button held since TICKS t0 */
+    u32 replay;             /* a reposted release must reach stock */
+    int press[4];           /* the normalized press record, held back */
+    u32 msg[4];             /* raw mailbox message for the reposted release */
+} sw = { 0 };
 
 #define BTN_QLEN 16u
 #pragma DATA_SECTION(tx, ".ctl_state")
@@ -261,6 +286,69 @@ int controller_worker_pump(u32 event, volatile u32 *bits, int result)
     return result;
 }
 
+static void enter_midi(void)
+{
+    u32 i;
+    for (i = 0; i < 4u; i++)
+        tx.knob_record[i] = ((tx.knob_record[i] + 0x200u) & ~0x1ffu) |
+                            0x100u | ctl_state.knob[i];
+    tx.connected = 0;       /* the worker replays every value on its next pass */
+    ctl_state.mode = 1;
+#ifdef CTL_UI
+    controller_ui_mode(1u);
+#endif
+}
+
+static void leave_midi(void)
+{
+    ctl_state.mode = 0;
+#ifdef CTL_UI
+    controller_ui_mode(0u);  /* UpdateUI redraws the stock screen */
+#endif
+}
+
+/* Effects mode, called by the dispatch hook for every normalized event
+   before the stock dispatchers; nonzero consumes the event. The mode-button
+   press is held back. A release after 2 s enters MIDI mode; an earlier one
+   becomes the saved press, and the raw release is posted back to MainApp's
+   mailbox so stock sees press then release, in order. */
+int controller_gate(int *event)
+{
+    int id = event[0];
+    if (id == EV_MODE_PRESS) {
+        sw.down = 1;
+        sw.t0 = TICKS;
+        sw.press[0] = event[0];
+        sw.press[1] = event[1];
+        sw.press[2] = event[2];
+        sw.press[3] = event[3];
+        return 1;
+    }
+    if (id != EV_MODE_RELEASE)
+        return 0;
+    if (sw.replay) {
+        sw.replay = 0;
+        return 0;
+    }
+    if (!sw.down)
+        return 0;
+    sw.down = 0;
+    if (TICKS - sw.t0 >= MODE_HOLD_TICKS) {
+        enter_midi();
+        return 1;
+    }
+    sw.msg[0] = EV_MODE_RELEASE;
+    sw.msg[1] = sw.msg[2] = sw.msg[3] = 0;
+    LAST_RAW_ID = EV_MODE_PRESS;   /* as if the press had just been fetched */
+    if (MBX_POST(MAINAPP_MBX, sw.msg, 0))
+        sw.replay = 1;
+    event[0] = sw.press[0];
+    event[1] = sw.press[1];
+    event[2] = sw.press[2];
+    event[3] = sw.press[3];
+    return 0;
+}
+
 /* Stock start-up runs first: it configures the GPIOs (c0160ad8) before
    the switches are read. MainApp enters its event loop after we return. */
 void controller_start(void)
@@ -284,6 +372,24 @@ void controller_event(const int *event)
     if (ctl_state.entry_held && (id == 23 || id == 24)) {
         if (id == 24)
             ctl_state.entry_held = 0;
+        return;
+    }
+    /* The mode button: a short press is a CC31 tap, 2 s leaves MIDI mode. */
+    if (id == EV_MODE_PRESS) {
+        sw.down = 1;
+        sw.t0 = TICKS;
+        return;
+    }
+    if (id == EV_MODE_RELEASE) {
+        if (!sw.down)
+            return;
+        sw.down = 0;
+        if (TICKS - sw.t0 >= MODE_HOLD_TICKS) {
+            leave_midi();
+        } else {
+            queue_button(31u, 127u);
+            queue_button(31u, 0u);
+        }
         return;
     }
 #ifdef CTL_DIAG

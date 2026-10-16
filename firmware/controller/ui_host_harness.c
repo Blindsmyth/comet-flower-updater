@@ -92,3 +92,4 @@ EXPORT void host_tick(void) { tick(); }
 EXPORT hu32 host_pend(int timeout) { return controller_ui_pend(1, 0, 255, timeout); }
 EXPORT void host_sent(hu32 c, hu32 v) { controller_ui_sent(c, v); }
 EXPORT hu32 host_repaint(void) { return ui.repaint; }
+EXPORT void host_ui_mode(hu32 m) { controller_ui_mode(m); }

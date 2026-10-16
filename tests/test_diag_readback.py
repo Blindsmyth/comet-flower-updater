@@ -14,7 +14,8 @@ import make_controller_fw as ctl  # noqa: E402
 DIAG_C = (ROOT / "firmware" / "controller" / "controller_diag.c").read_text()
 CTL_C = (ROOT / "firmware" / "controller" / "controller.c").read_text()
 RES1 = ROOT / "build" / "fw" / "res1_493412.bin"
-LIFECYCLE_SHA = "3e7f523649fcbb8bbd8c0c440e64b332dabe9d2854b2656103932204131928b9"
+# Lifecycle build pin; changed 2026-10-16 by the run-time effects/MIDI mode toggle (controller_gate).
+LIFECYCLE_SHA = "eecc13ba4a0f883f99bded0220c12b8f284133e1098fbfe066195e31db4570d2"
 
 
 def fw_stream(words):
