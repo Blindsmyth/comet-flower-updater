@@ -22,11 +22,14 @@ import decode_ctl_diag as dcd  # noqa: E402
 def main():
     import mido
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--port", default="", help="substring of the MIDI input port name")
+    ap.add_argument("--port", default="", help="substring of the MIDI input port name "
+                    "(default: the pedal, 'ZOOM G...' or 'Comet Flower...')")
     ap.add_argument("--out", type=Path, default=Path("build/diag_capture.json"))
     ap.add_argument("--timeout", type=float, default=60.0)
     a = ap.parse_args()
-    names = [n for n in mido.get_input_names() if a.port.lower() in n.lower()]
+    from pedal_ports import is_pedal_port
+    names = [n for n in mido.get_input_names()
+             if (a.port.lower() in n.lower() if a.port else is_pedal_port(n))]
     if not names:
         sys.exit(f"no MIDI input port matching {a.port!r}; available: {mido.get_input_names()}")
     pairs, begun = [], False

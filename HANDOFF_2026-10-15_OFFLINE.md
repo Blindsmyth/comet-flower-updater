@@ -12,7 +12,7 @@ list) and [ROADMAP.md](ROADMAP.md).
 
 - Python: `.venv/Scripts/python.exe`. Run the tests with
   `.venv/Scripts/python.exe -m pytest tests tools/test_usb_audio_proto.py -q`.
-  **242 passed, 615 subtests.** Never leave the suite red.
+  **248 passed, 615 subtests.** Never leave the suite red.
 - Lifecycle controller candidate SHA-256: `3e7f5236…28b9`. It must stay
   byte-identical; `tests/test_diag_readback.py` rebuilds it and checks the hash.
 - Commit small and often, on `master`. Do not push unless the owner asks.
@@ -118,7 +118,10 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
   procedure `docs/TEST_RUN_2026-10-15.md`. `make_fs_restore_updater.py --test-controller-fw`
   packages the diag/UI images; the output name must contain TEST, and `--controller-fw` stays strict.
   The UpdateUI stack gate is closed statically (8 KB task, 168 B added).
-- Tests: **242 passed**.
+- **Comet Flower stock image (owner request):** `docs/CF_STOCK_IMAGE_2026-10-15.md`. Clean CF-only
+  effects, CF presets, logo and USB name "Comet Flower" (`tools/cf_usb_name.py`; update mode unchanged),
+  plus a TEST variant with the controller diag-UI. Next: decode EDTB to write CF patches (a starter bank).
+- Tests: **248 passed**.
 
 ## Offline work queue (in order)
 

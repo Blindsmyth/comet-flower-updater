@@ -39,9 +39,11 @@ def write(first, data, last):
     logdir = PROJ / "build" / "pedal-logs"
     logdir.mkdir(parents=True, exist_ok=True)
     log = open(logdir / "wire.log", "a")
+    import pedal_ports
+    pedal_ports.register_zoomzt2(zoomzt2)
     pedal = zoomzt2.zoomzt2()
     if not pedal.connect():
-        sys.exit("FAIL: no 'ZOOM G' MIDI port found.")
+        sys.exit("FAIL: no 'ZOOM G' / 'Comet Flower' MIDI port found.")
     pedal.inport = GuardedPort(pedal.inport, log)
     pedal.outport = GuardedPort(pedal.outport, log)
     try:

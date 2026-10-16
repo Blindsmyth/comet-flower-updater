@@ -121,9 +121,11 @@ def writetest(path, dry_run):
     import file_session as fs
     import zoomzt2
 
+    import pedal_ports
+    pedal_ports.register_zoomzt2(zoomzt2)
     pedal = zoomzt2.zoomzt2()
     if not pedal.connect():
-        refuse("no 'ZOOM G' MIDI port (is ToneLib or another editor open?)")
+        refuse("no 'ZOOM G' / 'Comet Flower' MIDI port (is ToneLib or another editor open?)")
     logdir = PROJ / "build" / "pedal-logs"
     logdir.mkdir(parents=True, exist_ok=True)
     transport = LoggedTransport(fs.MidoTransport(pedal.inport, pedal.outport),
@@ -207,9 +209,11 @@ def add_entry(flst, path):
 def open_session():
     import file_session as fs
     import zoomzt2
+    import pedal_ports
+    pedal_ports.register_zoomzt2(zoomzt2)
     pedal = zoomzt2.zoomzt2()
     if not pedal.connect():
-        refuse("no 'ZOOM G' MIDI port (is ToneLib or another editor open?)")
+        refuse("no 'ZOOM G' / 'Comet Flower' MIDI port (is ToneLib or another editor open?)")
     logdir = PROJ / "build" / "pedal-logs"
     logdir.mkdir(parents=True, exist_ok=True)
     transport = LoggedTransport(fs.MidoTransport(pedal.inport, pedal.outport),

@@ -100,9 +100,11 @@ def main():
     log = open(outdir / "wire.log", "a")
     log.write(f"# session {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
+    import pedal_ports
+    pedal_ports.register_zoomzt2(zoomzt2)
     pedal = zoomzt2.zoomzt2()
     if not pedal.connect():
-        sys.exit("FAIL: no 'ZOOM G' MIDI port found.")
+        sys.exit("FAIL: no 'ZOOM G' / 'Comet Flower' MIDI port found.")
     pedal.inport = GuardedPort(pedal.inport, log)
     pedal.outport = GuardedPort(pedal.outport, log)
 

@@ -179,7 +179,8 @@ class MidiMonitorApp:
             self.port_combo["values"] = names
             if names:
                 # Prioritize Zoom G port
-                zoom_ports = [n for n in names if n.startswith(PORT_PREFIX)]
+                from pedal_ports import is_pedal_port
+                zoom_ports = [n for n in names if is_pedal_port(n)]
                 if zoom_ports:
                     self.port_combo.set(zoom_ports[0])
                 else:

@@ -22,9 +22,10 @@ HDR = [0x52, 0x00, 0x6E]          # Zoom, device 0, G1 Four family
 
 
 def find(names):
-    hits = [n for n in names if n.startswith(PREFIX)]
+    from pedal_ports import is_pedal_port
+    hits = [n for n in names if is_pedal_port(n)]
     if not hits:
-        sys.exit(f"no '{PREFIX}' MIDI port (pedal unplugged, or ToneLib holding it?)")
+        sys.exit("no 'ZOOM G' / 'Comet Flower' MIDI port (pedal unplugged, or ToneLib holding it?)")
     return hits[0]
 
 
