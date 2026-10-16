@@ -49,6 +49,9 @@ static void h_trace(hu32 k) { if (host_ntrace < 8u) host_trace[host_ntrace++] = 
 static void h_close(void) { host_closes++; h_trace(1u); }
 static void h_open(void) { host_opens++; h_trace(3u); }
 static void h_sleep(hu32 ms) { host_slept = ms; h_trace(2u); }
+EXPORT hu32 host_switch_task = 0x5a5au;
+EXPORT int host_pris[8];
+static void h_setpri(hu32 task, int pri) { if (task == 0x5a5au) h_trace(pri < 0 ? 4u : 5u); host_pris[host_ntrace & 7u] = pri; }
 
 #define SCREEN_SET h_set
 #define SCREEN_ID h_id
@@ -66,6 +69,8 @@ static void h_sleep(hu32 ms) { host_slept = ms; h_trace(2u); }
 #define USB_CLOSE h_close
 #define USB_OPEN h_open
 #define SLEEP_MS h_sleep
+#define TASK_SETPRI h_setpri
+#define SWITCH_TASK host_switch_task
 
 hu32 controller_get_mode(void) { return host_mode; }
 void controller_set_mode(hu32 mode) { host_mode_sets++; host_mode = mode; }

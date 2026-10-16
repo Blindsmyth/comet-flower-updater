@@ -59,7 +59,14 @@ typedef u32 word;
 #define USB_CLOSE ((void (*)(void))0xc016ab58u)    /* worker + MIDI + controller close */
 #define USB_OPEN ((void (*)(void))0xc016ab8cu)     /* full init + MIDI open + connect */
 #define SLEEP_MS ((void (*)(u32))0xc014a28cu)      /* c0158980 Task_sleep, 1 tick = 1 ms */
+/* The cable handler 1180a7ec runs in the switch task (SwitchNrmlSpdRead,
+   priority 9 > MainApp 3) and calls the same unlocked close/open. Stock sets
+   its priority with Task_setPri c01529c0(*B14[156], 9) (c0157138..44);
+   MIDI teardown uses the same call with -1 (c0159644) to park a task. */
+#define TASK_SETPRI ((void (*)(u32, int))0xc01529c0u)
+#define SWITCH_TASK (*(volatile u32 *)0xc0185070u)  /* B14[156], B14 = c0184e00 */
 #endif
+#define SWITCH_TASK_PRI 9
 #define UA_MAGIC 0x41425355u                       /* "USBA" */
 #define REPLUG_MS 500u                             /* detached time the host sees */
 
@@ -109,14 +116,24 @@ static int usb_get(void)
     return UA[1] ? 1 : 0;
 }
 
+/* The switch task is parked (priority -1) for the replug so a cable event
+   cannot run the same close/open in the middle of ours (review
+   USB_MODE_REVIEW_ASTRA_2026-10-16.md R3); the USB state is checked again
+   after parking. Once restored, the task compares the cable pin with its
+   state word on its next poll, so a cable change in the window is handled
+   then. The task also scans the buttons: they pause for the window. */
 static void usb_set(int value)
 {
     UA[1] = value ? 1u : 0u;
-    if (UA[0] != UA[1] && USB_READY && USB_STATE == 0u) {
+    if (UA[0] == UA[1] || !USB_READY || USB_STATE != 0u)
+        return;
+    TASK_SETPRI(SWITCH_TASK, -1);
+    if (USB_STATE == 0u) {
         USB_CLOSE();
         SLEEP_MS(REPLUG_MS);
         USB_OPEN();
     }
+    TASK_SETPRI(SWITCH_TASK, SWITCH_TASK_PRI);
 }
 
 /* One 0x2c record per knob: {index, 0xfff, 0xfff, label, label line 2, min,

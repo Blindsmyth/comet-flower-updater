@@ -159,7 +159,10 @@ class Menu(unittest.TestCase):
         ctypes.c_ubyte.in_dll(L, "host_usb_ready").value = 1
         ctypes.c_uint.in_dll(L, "host_usb_state").value = 0         # open
         put(1)                                                      # differs from active: replug
-        self.assertEqual(list((ctypes.c_uint * 8).in_dll(L, "host_trace"))[:3], [1, 2, 3])
+        # park the switch task (4), close, sleep, open, restore it (5)
+        self.assertEqual(list((ctypes.c_uint * 8).in_dll(L, "host_trace"))[:5], [4, 1, 2, 3, 5])
+        pris = list((ctypes.c_int * 8).in_dll(L, "host_pris"))
+        self.assertEqual((pris[1], pris[5]), (-1, 9))
         self.assertEqual(self.u("host_slept"), 500)
         ua[0] = 1                                                   # the open latched it
         put(1)                                                      # unchanged: no replug

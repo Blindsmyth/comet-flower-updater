@@ -4,8 +4,8 @@ Folder: `build/cf_usb_mode_2026-10-16/` (owner use only: it contains Zoom's firm
 
 | File | SHA-256 (start) | Contents |
 |---|---|---|
-| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `821f42aad84f43cf` | Menu candidate + USB-audio silence layer |
-| `res1_cf_usb_mode.bin` | `a9657f98c2671048` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
+| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `1cb9b8fd6e1e1ad1` | Menu candidate + USB-audio silence layer |
+| `res1_cf_usb_mode.bin` | `6d972e803c308894` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
 
 Packaged with `--test-controller-fw` (the strict release path refuses the audio layer). Presets and
 effects as in the release. **Not flashed. First hardware run of any USB-audio code.**
@@ -32,8 +32,9 @@ So with USB mode off this build should behave exactly like the menu candidate.
   c0140c8c, table c0180570). Never hold the 2nd button alone (bit 1: stock ALL INITIALIZE prompt).
 - **Menu (experimental):** SETTING, turn a knob right, slot 1 (COMET FLOWER), knob 2 **USB: OFF/AUDIO**.
   The item appears only in this build. Changing it while USB is connected does a software replug
-  (stock close c016ab58, 500 ms, stock open c016ab8c; the same pair the cable handler uses). If USB is
-  not connected it only stores the choice for the next connection.
+  (stock close c016ab58, 500 ms, stock open c016ab8c; the same pair the cable handler uses), with the
+  switch task (which runs the cable handler and scans the buttons) parked at priority -1 for that window
+  so a cable event cannot interleave (review R3). If USB is not connected it only stores the choice.
 
 ## Pedal / PC checklist
 
@@ -53,3 +54,11 @@ So with USB mode off this build should behave exactly like the menu candidate.
 - Live replug: recovery of in-flight USB transfers on a close while the host is connected is not
   proved offline (docs/helpers/USB_MODE_ASTRA_2026-10-16.md finding 6). The cable handler's extra steps
   (power/UI bookkeeping, event 43) are skipped on purpose; review in USB_MODE_REVIEW_ASTRA_2026-10-16.md.
+
+## Review (Claude Sonnet, Codex capped): docs/helpers/USB_MODE_REVIEW_ASTRA_2026-10-16.md
+
+- R1 off == stock: ok. R2 latch/registration consistency: ok (one residual: c016ab70 may connect
+  without the open when a stock Hwi flag says so; not believed to break the invariant).
+- R3 replug race with the cable handler: **fixed** (switch task parked during the replug).
+- R4 the packager checks the layer's structure, not its code contents: by design (same as the
+  controller payload; the payload is our own build, pinned by the tests and this doc's hashes).
