@@ -114,6 +114,6 @@ endpoints carry), so Sound settings did not list it. The cause is the input term
 One byte in the firmware; the rebuilt updater differs from `eff36a4e` in 2 bytes (that byte and a checksum).
 The tap build was rebuilt the same way.
 
-Owner notes from run 3: VPB still sees the MIDI port; MIDI input from the pedal did not work as
-expected in this mode (details pending). Owner suggestion for later: disable MIDI while in audio mode
-or effects mode.
+Owner notes from run 3: VPB still sees the MIDI port, but Learn detects nothing outside MIDI mode. That is
+intended: the pedal sends controller MIDI only in MIDI mode. Owner wish for later: the MIDI port should not
+be visible to the host at all until the pedal is set to MIDI mode.
