@@ -152,3 +152,52 @@ but its implementation is a stub here: `c014a4d0 MVK 1,A4; c014a4d2 BNOP
 B3,5`, and `c014a1d8 MVK 0,A4; c014a1da BNOP B3,5`.
 Do not rely on it to serialize a mode switch. The worker mailbox does
 block: `c014a216 MVK -1,A6; c014a218 CALLP c0166680` from c0138318.
+### Finding 6 — complete close path and CPPI limits (U2/U3)
+**Confidence: confirmed** for the following call chain; **unproved** for
+complete in-flight DMA ownership recovery.
+Cable detach uses `1180a824 CALLP 1180b180` -> c016ab58.
+`c016ab5a CALLP c016ab40` with B14[24] as A4 first stops the worker
+(`c016ab48 CALLP c015af0c`) then, if enabled, closes MIDI
+(`c016ab50 CALLP c0159620`). `c016ab64 CALLP c015af00` ->
+`c015af04 CALLP c0138300` -> `c0138302 CALLP c013826c` and
+`c0138304 CALLP c01200c0` performs the additional controller close.
+That last step matters: `c01200d0 CALLP c014a36c` deletes the Hwi,
+`c01200e0 STW B0,*+B14[131]` clears its handle on success, then
+`c01200e4 CALLP c011ffc0; c01200e6 CALLP c0120004` perform hardware
+shutdown. Do not substitute just c015af0c before full layer init, which
+would leave the live-Hwi guard from Finding 5.
+
+MIDI close `c0159624 CALLP c0144ed0` calls c0144e58 (stop/drain) and
+`c0144ed4 CALLP c0152318`; the latter only clears callback word c011ac80
+(`c0152326 STW A0,*A4[0]`), not interface registry. MIDI task/event teardown
+uses `c0159644 CALLP c01529c0` with -1, `c015964c CALLP c016cba0`,
+`c0159658 CALLP c016c960`. Stop/drain can sleep:
+`c0144ea4 CALLP c014a28c` with A4=10 -> `c014a290 CALLP c0158980`,
+inside a retry loop (`c0144eb4 [A0] BNOP c0144e80`), counter initialized
+to 0x3e9 at c0144e74. Run this from an external task, never Hwi/Swi or
+the USB worker being deleted. Do not hold producer locks while waiting:
+MIDI send pends indefinitely on B14[161] (`c01274d4 CALLP c0150b20`,
+B4=-1 at c01274e0); another lock wrapper is `c014a096 MVK -1,B4;
+c014a098 CALLP c0150b20`. A new lifecycle lock must exclude cable
+transitions and mode requests without deadlocking these existing waits.
+
+CPPI state is layered. c011ff28 clears global I/O state via
+`c011ffb2 CALLP c011fe70` with A4=0; controller init calls it with A4=1
+(`c0122280 CALLP c011fe70; c0122284 MVK 1,A4`), enabling its additional
+per-endpoint clearing (`c011fe98 [!B0] BNOP c011ff20`). Connect iterates
+c0120888/c01201e0 to program channel queue/control fields from templates
+c0180598/c01805c8/c01805cc (`c01208b2 LDW *A4[0],A2`;
+`c012020a LDW *A4[0],A4`; `c012024c STW A0,*B4[0]`). Those writes
+reconfigure channels; they do NOT demonstrate that old submitted packets
+or completion queues are empty.
+
+Existing offline teardown decision (docs/helpers/USB_TEARDOWN_DECISION_2026-10-14.md)
+identifies the still-open ownership issue. Cross-checked instructions:
+`c0120744 CALLP c011fa54; c0120748 CALLP c0120550` classify/recycle a
+completion; `c0120778 LDW *-A4[3],A11; c0120780 CALLP c011fa20`
+drains the endpoint's submit queue. For stored MIDI template {22,24,25},
+this late drain is queue 22, not proof of a matching TX teardown or recovery
+of an already in-flight descriptor. **Likely safety requirement:** account
+for matching teardown completion and all retained descriptors before reuse;
+on timeout/ambiguous ownership stay disconnected and do not recycle buffers.
+Neither a full stock reopen nor a bare pull-up toggle closes this proof gap.
