@@ -19,8 +19,9 @@ I32 = ctypes.c_int * 16
 
 
 def pattern(start, n):
-    c = (np.arange(start, start + n) % 65536).astype(np.int64)
-    return np.stack([c.astype(np.uint16).view(np.int16), ua_capture.SINE[c % 44]], axis=1)
+    """Frames start..start+n-1 as the firmware sends them: 16-bit counter, sine by full count."""
+    c = np.arange(start, start + n, dtype=np.int64)
+    return np.stack([(c % 65536).astype(np.uint16).view(np.int16), ua_capture.SINE[c % 44]], axis=1)
 
 
 def words_to_frames(words):
@@ -40,6 +41,23 @@ class AnalyserTests(unittest.TestCase):
         lines, ev = self.kinds(data)
         self.assertEqual(ev, [])
         self.assertIn("in-order valid frames: 3000 (100.000 %)", lines)
+
+    def test_take_starting_after_earlier_wraps(self):
+        data = pattern(7 * 65536 + 123, 5000)              # pedal streamed for a while first
+        self.assertTrue(ua_capture.is_pattern(data))
+        self.assertEqual(self.kinds(data)[1], [])
+
+    def test_in_band_diag_frames_are_decoded(self):
+        data = pattern(1000, 44 * 64)
+        for p in range(64):                               # one diag frame per 44-frame packet
+            tag, val = p % 8, (p // 8 if p % 8 == 0 else 5 if p % 8 == 4 else 3)
+            data[p * 44, 1] = np.uint16(tag << 13 | val).view(np.int16)
+        lines, ev = self.kinds(data)
+        self.assertEqual(ev, [])
+        text = "\n".join(lines)
+        self.assertIn("pedal diag: 64 packet-start frames", text)
+        self.assertIn("packets loaded by the pedal 56, received 56, lost on the way 0", text)
+        self.assertIn("ring fill at SOF: min 5, median 5, max 5", text)
 
     def test_gap_repeat_padding_corrupt(self):
         a = pattern(0, 500)
@@ -122,6 +140,9 @@ class PatternFirmwareTests(unittest.TestCase):
         lines, events = ua_capture.analyse_pattern(frames[start:])
         self.assertEqual(events, [], lines)
         self.assertTrue(ua_capture.is_pattern(frames[start:]))
+        text = "\n".join(lines)
+        self.assertIn("lost on the way 0 (0.00 %)", text)
+        self.assertIn("SOFs skipped (TxPktRdy still set): +0", text)
         self.assertEqual(self.lib.host_tap_state(4), 0)   # no overruns
 
     def test_overrun_shows_as_16_frame_gap(self):

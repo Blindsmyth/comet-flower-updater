@@ -40,6 +40,17 @@
  * ua_pattern_sine[counter mod 44], which is never 0, so an all-zero frame is
  * always padding. A block dropped on overrun still advances the counter, so
  * the drop shows as a 16-frame jump.
+ *
+ * The pattern build also reports the pedal's side of the link in-band: in the
+ * first frame of every ring packet the right sample is replaced by a diag
+ * word, (tag << 13) | (value & 0x1fff), tag = packet number mod 8:
+ *   0 packets loaded   1 SOFs skipped, TxPktRdy still set
+ *   2 TXCSR UnderRun seen (an IN found no packet)   3 USB frames with no SOF
+ *     tick (FRAME register jumped by more than 1)
+ *   4 ring fill at this SOF   5 tap overruns   6 tap underruns
+ *   7 TXCSR as read at this SOF (low 13 bits)
+ * The left counter is untouched, so frame continuity is still checked, and
+ * the diag frames mark where each packet starts.
  */
 #include "usb_audio.c"
 
@@ -122,6 +133,52 @@ static inline void ua_pattern_advance(u32 n)
 }
 #endif
 
+#ifdef UA_TAP_PATTERN
+#define USB_FRAME        USB_AUDIO_REG16(0x01e0040cu)
+#define TXCSR_UNDERRUN   0x0004u
+
+typedef struct {
+    volatile u32 packets;      /* ring packets loaded */
+    volatile u32 underrun;     /* SOFs that found TXCSR UnderRun set */
+    volatile u32 frame_skips;  /* USB frames that passed without a tick */
+    volatile u32 last_frame;   /* FRAME at the previous tick, 0x8000 = none yet */
+    volatile u32 txcsr;        /* TXCSR as read at the latest tick */
+} ua_pattern_diag_t;
+
+#pragma DATA_SECTION(ua_pattern_diag, ".ua_state")
+ua_pattern_diag_t ua_pattern_diag = { 0, 0, 0, 0x8000u, 0 };
+
+static u32 ua_pattern_diag_word(u32 fill)
+{
+    u32 tag = ua_pattern_diag.packets & 7u;
+    u32 v[8];
+
+    v[0] = ua_pattern_diag.packets >> 3;
+    v[1] = usb_audio_state.missed_sof;
+    v[2] = ua_pattern_diag.underrun;
+    v[3] = ua_pattern_diag.frame_skips;
+    v[4] = fill;
+    v[5] = usb_audio_tap.overruns;
+    v[6] = usb_audio_tap.underruns;
+    v[7] = ua_pattern_diag.txcsr;
+    return (tag << 13) | (v[tag] & 0x1fffu);
+}
+
+/* Every tick, before anything else: frame-number gap and TXCSR status. */
+static void ua_pattern_diag_tick(void)
+{
+    u32 f = USB_FRAME & 0x7ffu, last = ua_pattern_diag.last_frame;
+    u32 csr = USB_EP1_TXCSR;
+
+    if (last != 0x8000u && ((f - last) & 0x7ffu) > 1u)
+        ua_pattern_diag.frame_skips += ((f - last) & 0x7ffu) - 1u;
+    ua_pattern_diag.last_frame = f;
+    ua_pattern_diag.txcsr = csr;
+    if (csr & TXCSR_UNDERRUN)
+        ua_pattern_diag.underrun++;
+}
+#endif
+
 static inline u32 ua_tap_sample(int x)
 {
     return ((u32)UA_SSHL(UA_SMPY32(x, UA_TAP_GAIN), 2) >> 16) & 0xffffu;
@@ -172,6 +229,10 @@ void usb_audio_sof_tick_tap(void)
 {
     u32 n, i, w, r, fill, have;
 
+#ifdef UA_TAP_PATTERN
+    if (usb_audio_state.stream_enabled)
+        ua_pattern_diag_tick();
+#endif
     if (!usb_audio_state.stream_enabled) {
         /* Consumer-side discard: a restart never replays an old stream.
            The Swi stores nothing while the stream is off. */
@@ -212,7 +273,16 @@ void usb_audio_sof_tick_tap(void)
 
     n = (fill > UA_TAP_TARGET) ? 45u : 44u;
     have = (fill < n) ? fill : n;
+#ifdef UA_TAP_PATTERN
+    if (have) {
+        USB_EP1_FIFO = (usb_audio_ring[r & UA_TAP_MASK] & 0xffffu) |
+                       (ua_pattern_diag_word(fill) << 16);
+        ua_pattern_diag.packets++;
+    }
+    for (i = have ? 1u : 0u; i < have; i++)
+#else
     for (i = 0; i < have; i++)
+#endif
         USB_EP1_FIFO = usb_audio_ring[(r + i) & UA_TAP_MASK];
     for (; i < n; i++)
         USB_EP1_FIFO = 0;

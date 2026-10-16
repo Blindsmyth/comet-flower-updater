@@ -150,3 +150,19 @@ Swi stores a known signal instead of the audio: left = frame counter, right = 10
 and corrupt frame with spacing, and the effective rate. The normal tap build is unchanged (`74de4495…`).
 Tests: `tests/test_usb_audio_pattern.py` (analyser on synthetic faults; the pattern C on the host, steady stream clean,
 overrun = 16-frame gaps; same patch sites as the tap).
+
+## Sixth run (pattern build 0581631d), take `build/ua_takes/take_20261016_142020.wav`
+
+20 s, WASAPI exclusive. No corrupt frames, no 16-frame (overrun) gaps, one start-up padding run. **8.4 % of frames
+lost as whole USB packets**: 1679 gaps, mostly 44 (x1349) or 45 frames, also 88/132/176 (2-4 packets in a row);
+most common rhythm "3 packets received, 1 lost"; bursty over time (14..214 losses per second). Also 86 single-frame
+repeat + gap pairs (one frame replaced by its predecessor). The pedal produces 44.1 kHz (counter advance =
+received + lost); the loss is between the pedal's FIFO load and Windows. Earlier "48 kHz" reading in chat was a
+mistake (frames sent over frames received, not over time).
+
+Why a loaded packet disappears is not visible from the PC side, so the pattern build now carries pedal-side
+counters in-band (first frame of each packet, right channel, `(tag << 13) | value`): packets loaded, SOFs skipped
+with TxPktRdy set, TXCSR UnderRun seen, USB frames with no tick (FRAME register), ring fill, overruns, underruns,
+raw TXCSR. `ua_capture.py` decodes them ("pedal diag" lines) and compares packets loaded vs received.
+Analyser fixes in this pass: the sine phase follows the full frame count (65536 % 44 = 20), so the analyser
+unwraps the counter and searches the 11 possible starting wrap offsets.

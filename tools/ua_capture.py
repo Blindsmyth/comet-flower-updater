@@ -19,6 +19,7 @@ Analysis:
   and sample-to-sample jumps far above the signal's own slope (clicks), with spacing.
 """
 import argparse
+import collections
 import sys
 import wave
 from pathlib import Path
@@ -73,8 +74,27 @@ def is_pattern(data):
     """True when most frames carry the counter + matching sine."""
     if len(data) < 100:
         return False
+    return np.mean(data[:, 1] == SINE[_unwrap(data) % 44]) > 0.5
+
+
+def _unwrap(data):
+    """Full frame count from the 16-bit left counter. The sine phase follows the full
+    count (65536 % 44 != 0), so it is needed to check the right channel after a wrap.
+    Padding frames are skipped when counting wraps."""
     l = data[:, 0].astype(np.uint16).astype(np.int64)
-    return np.mean(data[:, 1] == SINE[l % 44]) > 0.5
+    real = ~((data[:, 0] == 0) & (data[:, 1] == 0))
+    idx = np.where(real)[0]
+    wraps = np.zeros(len(l), np.int64)
+    if len(idx) > 1:
+        back = np.diff(l[idx]) < -32768
+        w = np.concatenate([[0], np.cumsum(back)])
+        wraps[idx] = w
+        wraps = np.maximum.accumulate(wraps)
+    full = l + 65536 * wraps
+    # Wraps before the take shift the sine phase by 20 per wrap (65536 % 44), period 11:
+    # pick the starting wrap count that matches the right channel best.
+    best = max(range(11), key=lambda k: np.sum(data[:, 1] == SINE[(full + 65536 * k) % 44]))
+    return full + 65536 * best
 
 
 def _spacing(idx):
@@ -89,7 +109,7 @@ def analyse_pattern(data):
     l = data[:, 0].astype(np.uint16).astype(np.int64)
     r = data[:, 1]
     zero = (data[:, 0] == 0) & (data[:, 1] == 0)        # the sine is never 0: padding
-    good_r = r == SINE[l % 44]
+    good_r = r == SINE[_unwrap(data) % 44]
     corrupt = ~zero & ~good_r
     valid = np.where(~zero & good_r)[0]
     events = []                                          # (frame index, kind, size)
@@ -123,10 +143,11 @@ def analyse_pattern(data):
     if len(reps):
         sizes = np.bincount([e[2] for e in reps])
         lines.append("  repeat sizes: " + ", ".join("%d x%d" % (s, c) for s, c in enumerate(sizes) if c))
-    if cruns:
+    lines += diag_report(data, corrupt)
+    if cruns and not any(l.startswith("pedal diag") for l in lines):
         i = cruns[0][0]
         lines.append("  first corrupt frame %d: L %04x R %04x (expected R %04x); neighbours %s" % (
-            i, int(data[i, 0]) & 0xffff, int(data[i, 1]) & 0xffff, int(SINE[l[i] % 44]) & 0xffff,
+            i, int(data[i, 0]) & 0xffff, int(data[i, 1]) & 0xffff, int(SINE[_unwrap(data)[i] % 44]) & 0xffff,
             [(int(x) & 0xffff, int(y) & 0xffff) for x, y in data[max(i - 2, 0):i + 3]]))
     if len(valid) > 1:
         # Counter span over the take (unwrapped from the in-order steps).
@@ -139,6 +160,45 @@ def analyse_pattern(data):
     if first:
         lines.append("first events (frame, kind, size): %s" % first)
     return lines, events
+
+
+DIAG_NAMES = ["packets loaded", "SOFs skipped (TxPktRdy still set)", "TXCSR UnderRun seen",
+              "USB frames with no tick", "ring fill", "tap overruns", "tap underruns", "TXCSR"]
+
+
+def diag_report(data, mismatch):
+    """Pedal-side counters carried in the first frame of each packet (pattern build with
+    in-band diag, usb_audio_tap.c). Returns [] when the take has none."""
+    idx = np.where(mismatch)[0]
+    if len(idx) < 16:
+        return []
+    r = data[idx, 1].astype(np.uint16).astype(np.int64)
+    tag, val = r >> 13, r & 0x1fff
+    # Real diag frames come one per packet with tags cycling 0..7.
+    if np.mean((np.diff(tag) % 8) == 1) < 0.5:
+        return []
+    out = ["pedal diag: %d packet-start frames received; packet length (frames between): %s" % (
+        len(idx), dict(sorted(collections.Counter(np.diff(idx).tolist()).most_common(6))))]
+    t0 = np.where(tag == 0)[0]
+    if len(t0) > 1:
+        loaded = (int(val[t0[-1]]) - int(val[t0[0]])) % 8192 * 8
+        got = t0[-1] - t0[0]
+        out.append("  packets loaded by the pedal %d, received %d, lost on the way %d (%.2f %%)" % (
+            loaded, got, loaded - got, 100.0 * (loaded - got) / max(loaded, 1)))
+    for k in (1, 2, 3, 5, 6):
+        sel = np.where(tag == k)[0]
+        if len(sel) > 1:
+            out.append("  %s: +%d during the take (last %d)" % (
+                DIAG_NAMES[k], (int(val[sel[-1]]) - int(val[sel[0]])) % 8192, int(val[sel[-1]])))
+    sel = np.where(tag == 4)[0]
+    if len(sel):
+        f = val[sel]
+        out.append("  ring fill at SOF: min %d, median %d, max %d" % (f.min(), np.median(f), f.max()))
+    sel = np.where(tag == 7)[0]
+    if len(sel):
+        out.append("  TXCSR at SOF: %s" % ", ".join("%04x x%d" % (v, c) for v, c in
+                                                     collections.Counter(val[sel].tolist()).most_common(6)))
+    return out
 
 
 def _runs(mask):
