@@ -59,6 +59,20 @@ class AnalyserTests(unittest.TestCase):
         self.assertIn("packets loaded by the pedal 56, received 56, lost on the way 0", text)
         self.assertIn("ring fill at SOF: min 5, median 5, max 5", text)
 
+    def test_variant_loss_report(self):
+        data = pattern(0, 44 * 160)
+        for p in range(160):
+            tag, var = p % 8, p // 80                    # variant 0 then 1
+            val = {0: p // 8, 3: var << 11}.get(tag, 0)
+            data[p * 44, 1] = np.uint16(tag << 13 | val).view(np.int16)
+        keep = np.ones(len(data), bool)
+        for p in range(88, 160, 4):                      # variant 1: lose 1 packet in 4
+            if p % 8:                                    # (never a tag-0 packet)
+                keep[p * 44:(p + 1) * 44] = False
+        text = "\n".join(ua_capture.analyse_pattern(data[keep])[0])
+        self.assertRegex(text, r"0 double buffer, ISOUpdate on +\d+ / +\d+ / +0\.0 %")
+        self.assertRegex(text, r"1 single buffer, ISOUpdate on +\d+ / +\d+ / +[1-9]")
+
     def test_gap_repeat_padding_corrupt(self):
         a = pattern(0, 500)
         gap = pattern(516, 300)                           # 16 frames lost

@@ -178,3 +178,22 @@ Received packets come in a 4 ms rhythm (here mostly 1 of 4; run 6 mostly 3 of 4)
 **Host path:** the pedal is behind a Genesys GL850G hub (`USB\VID_05E3&PID_0608`, single TT) on the USB 3.0 root,
 sharing it with a TP-Link Wi-Fi adapter, a Bluetooth adapter and a Logitech receiver. Full-speed isochronous through
 a busy single-TT hub is the prime suspect. Next: pedal directly on a PC port, same build, same capture.
+
+## Eighth run (diag build e3cdc633, pedal on a motherboard USB 3.0 root port), take `take_20261016_145840.wav`
+
+Direct on `USB Root Hub (USB 3.0)`: still **44 % lost** (40,304 loaded, 22,438 received), no rhythm. Pedal counters
+clean again (0 skips, 0 UnderRun, 0 frame skips, TXCSR 0x0002 every SOF). Raw frames show packets that arrive
+**truncated to their first 1-2 frames** (4-8 bytes), e.g. a diag frame alone and then the next packet 45 counts
+later. Noise destroys whole packets; a clean short packet means the controller sent a bank that was still being
+loaded. Loss also grew from 8 % (tap build) to 44-63 % when the diag build added a little work per tick. Working
+hypothesis: a race between the SOF-tick FIFO load and the host's IN token in this FIFO set-up (double-buffered,
+ISOUpdate on). The hub likely adds to it but is not the cause.
+
+## Variants build (one capture compares FIFO set-ups)
+
+`build/cf_usb_audio_variants_2026-10-16/Comet Flower G1X4 Updater (USB audio variants TEST build).exe`
+(`74f779cb…`, firmware `87cef306…`): the pattern diag build, but the endpoint-1 set-up cycles every 4 s
+through 0 double+ISOUpdate (as now), 1 single+ISOUpdate, 2 double without ISOUpdate, 3 single without, reconfigured
+inside the USB interrupt (INDEX saved/restored, FIFO flushed twice). Diag tags changed: 3 = variant << 11 | frame
+skips, 5 = ticks in an unchanged frame, 6 = overruns << 7 | underruns (older takes decode wrongly with the new
+analyser on those tags). `ua_capture.py` prints loaded / received / lost per variant. Record >= 32 s.

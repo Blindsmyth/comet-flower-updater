@@ -167,7 +167,10 @@ def analyse_pattern(data):
 
 
 DIAG_NAMES = ["packets loaded", "SOFs skipped (TxPktRdy still set)", "TXCSR UnderRun seen",
-              "USB frames with no tick", "ring fill", "tap overruns", "tap underruns", "TXCSR"]
+              "USB frames with no tick", "ring fill", "ticks in an unchanged frame",
+              "tap overruns/underruns", "TXCSR"]
+VARIANTS = ["double buffer, ISOUpdate on", "single buffer, ISOUpdate on",
+            "double buffer, ISOUpdate off", "single buffer, ISOUpdate off"]
 
 
 def diag_report(data, mismatch):
@@ -190,11 +193,19 @@ def diag_report(data, mismatch):
         got = t0[-1] - t0[0]
         out.append("  packets loaded by the pedal %d, received %d, lost on the way %d (%.2f %%)" % (
             loaded, got, loaded - got, 100.0 * (loaded - got) / max(loaded, 1)))
-    for k in (1, 2, 3, 5, 6):
+    fields = {1: (val, 8192), 2: (val, 8192), 3: (val & 0x7ff, 2048), 5: (val, 8192),
+              6: (val >> 7, 64)}
+    for k, (v, mod) in fields.items():
         sel = np.where(tag == k)[0]
         if len(sel) > 1:
+            name = "tap overruns" if k == 6 else DIAG_NAMES[k]
             out.append("  %s: +%d during the take (last %d)" % (
-                DIAG_NAMES[k], (int(val[sel[-1]]) - int(val[sel[0]])) % 8192, int(val[sel[-1]])))
+                name, (int(v[sel[-1]]) - int(v[sel[0]])) % mod, int(v[sel[-1]])))
+    sel = np.where(tag == 6)[0]
+    if len(sel) > 1:
+        u = val[sel] & 0x7f
+        out.append("  tap underruns: +%d during the take" % ((int(u[-1]) - int(u[0])) % 128))
+    out += variant_report(tag, val)
     sel = np.where(tag == 4)[0]
     if len(sel):
         f = val[sel]
@@ -203,6 +214,35 @@ def diag_report(data, mismatch):
     if len(sel):
         out.append("  TXCSR at SOF: %s" % ", ".join("%04x x%d" % (v, c) for v, c in
                                                      collections.Counter(val[sel].tolist()).most_common(6)))
+    return out
+
+
+def variant_report(tag, val):
+    """Packets loaded vs received for each FIFO set-up variant (tag 3 bits 11..12)."""
+    t3 = np.where(tag == 3)[0]
+    if len(t3) == 0 or not np.any(val[t3] >> 11):
+        return []
+    var = np.full(len(tag), -1)
+    var[t3] = val[t3] >> 11
+    for i in range(1, len(var)):                 # carry the latest variant forward
+        if var[i] < 0:
+            var[i] = var[i - 1]
+    t0 = np.where(tag == 0)[0]
+    loaded, got = collections.Counter(), collections.Counter()
+    for a, b in zip(t0[:-1], t0[1:]):
+        seg = var[a:b + 1]
+        if seg[0] < 0 or np.any(seg != seg[0]):
+            continue                             # spans a variant change
+        n = (int(val[b]) - int(val[a])) % 8192 * 8
+        if n > 400:
+            continue                             # long silence; skip
+        loaded[int(seg[0])] += n
+        got[int(seg[0])] += b - a
+    out = ["  per FIFO set-up variant (packets loaded / received / lost):"]
+    for k in range(4):
+        if loaded[k]:
+            out.append("    %d %-30s %6d / %6d / %5.1f %%" % (
+                k, VARIANTS[k], loaded[k], got[k], 100.0 * (loaded[k] - got[k]) / loaded[k]))
     return out
 
 

@@ -44,11 +44,15 @@
  * The pattern build also reports the pedal's side of the link in-band: in the
  * first frame of every ring packet the right sample is replaced by a diag
  * word, (tag << 13) | (value & 0x1fff), tag = packet number mod 8:
- *   0 packets loaded   1 SOFs skipped, TxPktRdy still set
- *   2 TXCSR UnderRun seen (an IN found no packet)   3 USB frames with no SOF
- *     tick (FRAME register jumped by more than 1)
- *   4 ring fill at this SOF   5 tap overruns   6 tap underruns
+ *   0 packets loaded >> 3   1 SOFs skipped, TxPktRdy still set
+ *   2 TXCSR UnderRun seen (an IN found no packet)
+ *   3 (variant << 11) | USB frames with no tick (FRAME jumped by more than 1)
+ *   4 ring fill at this SOF   5 ticks that saw the same FRAME as the last one
+ *   6 (tap overruns << 7) | tap underruns (6 + 7 bits)
  *   7 TXCSR as read at this SOF (low 13 bits)
+ * Variants (endpoint-1 FIFO set-up, cycled every UA_VARIANT_TICKS ticks so one
+ * capture compares them): bit 0 = single-buffered FIFO (else double),
+ * bit 1 = POWER.ISOUpdate off (else on). Variant 0 is the normal tap set-up.
  * The left counter is untouched, so frame continuity is still checked, and
  * the diag frames mark where each packet starts.
  */
@@ -137,8 +141,13 @@ static inline void ua_pattern_advance(u32 n)
 #define USB_FRAME        USB_AUDIO_REG16(0x01e0040cu)
 #define TXCSR_UNDERRUN   0x0004u
 
+#define UA_VARIANT_TICKS 4000u   /* 4 s per FIFO set-up variant */
+
 typedef struct {
     volatile u32 packets;      /* ring packets loaded */
+    volatile u32 same_frame;   /* ticks that saw an unchanged FRAME */
+    volatile u32 ticks;        /* streaming ticks in the current variant */
+    volatile u32 variant;      /* FIFO set-up in force, 0..3 */
     volatile u32 underrun;     /* SOFs that found TXCSR UnderRun set */
     volatile u32 frame_skips;  /* USB frames that passed without a tick */
     volatile u32 last_frame;   /* FRAME at the previous tick, 0x8000 = none yet */
@@ -146,7 +155,7 @@ typedef struct {
 } ua_pattern_diag_t;
 
 #pragma DATA_SECTION(ua_pattern_diag, ".ua_state")
-ua_pattern_diag_t ua_pattern_diag = { 0, 0, 0, 0x8000u, 0 };
+ua_pattern_diag_t ua_pattern_diag = { 0, 0, 0, 0, 0, 0, 0x8000u, 0 };
 
 static u32 ua_pattern_diag_word(u32 fill)
 {
@@ -156,10 +165,10 @@ static u32 ua_pattern_diag_word(u32 fill)
     v[0] = ua_pattern_diag.packets >> 3;
     v[1] = usb_audio_state.missed_sof;
     v[2] = ua_pattern_diag.underrun;
-    v[3] = ua_pattern_diag.frame_skips;
+    v[3] = (ua_pattern_diag.variant << 11) | (ua_pattern_diag.frame_skips & 0x7ffu);
     v[4] = fill;
-    v[5] = usb_audio_tap.overruns;
-    v[6] = usb_audio_tap.underruns;
+    v[5] = ua_pattern_diag.same_frame;
+    v[6] = ((usb_audio_tap.overruns & 0x3fu) << 7) | (usb_audio_tap.underruns & 0x7fu);
     v[7] = ua_pattern_diag.txcsr;
     return (tag << 13) | (v[tag] & 0x1fffu);
 }
@@ -172,10 +181,37 @@ static void ua_pattern_diag_tick(void)
 
     if (last != 0x8000u && ((f - last) & 0x7ffu) > 1u)
         ua_pattern_diag.frame_skips += ((f - last) & 0x7ffu) - 1u;
+    if (last == f)
+        ua_pattern_diag.same_frame++;
     ua_pattern_diag.last_frame = f;
     ua_pattern_diag.txcsr = csr;
     if (csr & TXCSR_UNDERRUN)
         ua_pattern_diag.underrun++;
+}
+
+/* Hwi context, inside the stock USB interrupt (so no other USB code runs
+   between the INDEX writes). Returns 1 when the set-up changed this tick:
+   the FIFO was flushed and nothing is loaded until the next tick. */
+static u32 ua_pattern_variant_tick(void)
+{
+    u32 want, idx;
+
+    if (++ua_pattern_diag.ticks < UA_VARIANT_TICKS)
+        return 0;
+    ua_pattern_diag.ticks = 0;
+    want = (ua_pattern_diag.variant + 1u) & 3u;
+    idx = USB_INDEX;
+    USB_INDEX = 1;
+    USB_TXFIFOSZ = (want & 1u) ? 0x05u : 0x15u;      /* 256 B single : 2 x 256 B */
+    USB_INDEX = idx;
+    if (want & 2u)
+        USB_POWER &= ~POWER_ISOUPDATE;
+    else
+        USB_POWER |= POWER_ISOUPDATE;
+    USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
+    USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_FLUSHFIFO;
+    ua_pattern_diag.variant = want;
+    return 1;
 }
 #endif
 
@@ -230,8 +266,11 @@ void usb_audio_sof_tick_tap(void)
     u32 n, i, w, r, fill, have;
 
 #ifdef UA_TAP_PATTERN
-    if (usb_audio_state.stream_enabled)
+    if (usb_audio_state.stream_enabled) {
         ua_pattern_diag_tick();
+        if (ua_pattern_variant_tick())
+            return;
+    }
 #endif
     if (!usb_audio_state.stream_enabled) {
         /* Consumer-side discard: a restart never replays an old stream.

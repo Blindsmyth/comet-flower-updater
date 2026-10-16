@@ -9,4 +9,5 @@ EXPORT void host_pattern_reset(void)
     ua_pattern_diag.packets = ua_pattern_diag.underrun = ua_pattern_diag.frame_skips = 0;
     ua_pattern_diag.last_frame = 0x8000u;
     ua_pattern_diag.txcsr = 0;
+    ua_pattern_diag.same_frame = ua_pattern_diag.ticks = ua_pattern_diag.variant = 0;
 }
