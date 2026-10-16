@@ -110,3 +110,26 @@ are confirmed by `c0141900 CMPGT B5,A3,B0` (lower clamp) and `c0141908
 CMPGT A3,A2,A0` (upper clamp), with B6=0 from c01499c4. SETUP entry
 c01671da clears four bytes at c00be5c4 (`c01671e4 CALLP c0167b00`),
 so these are page-local state, not evidence of a saved settings buffer.
+
+### Finding 6 - settings RAM, dirty comparison and save/load boundary (B3)
+Confidence: confirmed for buffers/calls; persistence backend not yet traced.
+Live settings start at 11812f74; last-saved comparison image is 11812f08.
+`118060e4 MVK 0x6c,B0; 118060f8 LDBU *A4[0],A1; 118060fa LDBU
+*B4[0],B1; 11806100 CMPEQ A1,B1,A0` compares 108 bytes, returning
+0 if equal / 1 if different at 11806114. PRE-SELECT setter `11805bc0
+STW A0,*A4[0]` uses 11812f8c; BANK HOLD setter `11805d18 STW A0,*A4[0]`
+uses 11812fd0; AUTO SAVE getter `11805ecc LDW *A4[0],A4` uses 11812f80.
+These are 32-bit settings fields, not isolated spare bytes.
+Save helper c01548d8 serializes the input buffer (`c01548e8 CALLP c01548c0`),
+calls `c01548f0: 10358813 CALLP c016f520` with A4=50, B4=stack+8,
+and copies 108 bytes to 11812f08 (`c015490c CALLP c016d4c0`). It is
+called after a dirty check when leaving/changing screen (`c0156d18 CALLP
+c016f3d0; c0156d28 CALLP c01548d8`, A4=11812f74), also at c0134a44.
+Load helper c0154934 calls `c0154948 CALLP c016f510` with A4=50,
+B4=stack+8, then c0154918 to unpack into the destination. Thus 50 is a
+logical persistent record key, not yet a file name or flash address.
+Validation c0154960 uses 26 records at c01823f8, each min/max/default/count:
+`c01549a8 CMPLTU A1,A0,A0; c01549aa CMPGTU A1,B3,A1; c01549b4
+STW A0,*A5[0]` replaces out-of-range values with defaults. A new MODE
+value in an existing boolean field would be clamped unless this policy changes.
+No byte is proved reserved or safe to own by this finding.
