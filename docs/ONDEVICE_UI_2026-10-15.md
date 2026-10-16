@@ -81,9 +81,13 @@ Rules:
   rendered with the firmware fonts, give
   ![rendered](design/ondevice_ui_fw_render_2026-10-15.png)
   The lifecycle image is still byte-identical. The packager refuses both UI images (an extra hook).
-- **Open gates before the first pedal run:** UpdateUI stack depth (our frame plus stock draw
-  routines, which UpdateUI already calls), the tick period, and stock screens flashing briefly
+- **UpdateUI stack: closed statically.** UpdateUI is a static task with an 8 KB stack
+  (`0x2000` at `c0181b8c`, stack `c00e0800`, decoded cinit). Our frames are 168 B
+  (pend 32 + paint 104 + line5 32), called at the top of UpdateUI's loop. The stock draw
+  primitives below them are ones UpdateUI already calls from deeper in the same loop.
+- **Open, measured on the pedal:** the tick period (diag `t`), and stock screens flashing
   between our repaints after stock events.
+- **Test run:** `docs/TEST_RUN_2026-10-15.md`; kit in `build/test_kit_2026-10-15/`.
 
 ## Original open questions (recon brief `docs/helpers/ONDEVICE_UI_RECON_BRIEF.md`)
 

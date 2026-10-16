@@ -12,7 +12,7 @@ list) and [ROADMAP.md](ROADMAP.md).
 
 - Python: `.venv/Scripts/python.exe`. Run the tests with
   `.venv/Scripts/python.exe -m pytest tests tools/test_usb_audio_proto.py -q`.
-  **241 passed, 615 subtests.** Never leave the suite red.
+  **242 passed, 615 subtests.** Never leave the suite red.
 - Lifecycle controller candidate SHA-256: `3e7f5236…28b9`. It must stay
   byte-identical; `tests/test_diag_readback.py` rebuilds it and checks the hash.
 - Commit small and often, on `master`. Do not push unless the owner asks.
@@ -114,7 +114,11 @@ USB audio silence candidate (`tools/make_usb_audio_fw.py`,
   (diag screen) hook UpdateUI's pend `c013c76c` and draw in UpdateUI's own task. Host-tested, with
   renders from the real C. The packager refuses them. Gates: UpdateUI stack, tick period.
   For the first pedal run, the diag-UI image shows the stack peak and the tick counter on the LCD.
-- Tests: **241 passed**.
+- **Owner back at the workstation (2026-10-15 late):** test kit `build/test_kit_2026-10-15/`,
+  procedure `docs/TEST_RUN_2026-10-15.md`. `make_fs_restore_updater.py --test-controller-fw`
+  packages the diag/UI images; the output name must contain TEST, and `--controller-fw` stays strict.
+  The UpdateUI stack gate is closed statically (8 KB task, 168 B added).
+- Tests: **242 passed**.
 
 ## Offline work queue (in order)
 

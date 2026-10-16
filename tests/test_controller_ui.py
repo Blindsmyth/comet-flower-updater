@@ -247,3 +247,16 @@ class UiHook(unittest.TestCase):
             self.assertEqual(word & keep, word0 & keep)         # p-bit and unit kept
             with self.assertRaises(ValueError):                 # DO_NOT_FLASH: not packageable
                 packager.validate_controller_fw(stock, data)
+            packager.validate_controller_fw(stock, data, test=True)   # explicit test path
+            bad = bytearray(data)
+            bad[0x30000] ^= 1                                    # any other stock byte
+            with self.assertRaises(ValueError):
+                packager.validate_controller_fw(stock, bytes(bad), test=True)
+            ctl.build(str(RES1), str(out), str(RES1), diag=True, ui=True)
+            packager.validate_controller_fw(stock, out.read_bytes(), test=True)
+            with self.assertRaises(ValueError):
+                packager.validate_controller_fw(stock, out.read_bytes())
+
+    def test_test_package_needs_test_in_name(self):
+        with self.assertRaises(SystemExit):
+            packager.main("in.exe", "out.exe", test_controller_fw="x.bin")

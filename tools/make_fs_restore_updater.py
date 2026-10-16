@@ -137,8 +137,12 @@ def validate_patch_fw(old_fw, new_fw):
         raise ValueError("--patch-fw requires the exact reviewed nine-byte diff")
 
 
-def validate_controller_fw(old_fw, new_fw):
-    """Accept only stock v2.00 + the controller section and listed hooks."""
+def validate_controller_fw(old_fw, new_fw, test=False):
+    """Accept only stock v2.00 + the controller section and listed hooks.
+    test=True (--test-controller-fw) also accepts the OFFLINE diag/UI hook
+    rows (make_controller_fw DIAG_HOOKS, UI_HOOKS), each either untouched or
+    redirected into the controller section; the seven lifecycle hooks are
+    still required."""
     import os
     sys.path.insert(0, os.path.dirname(__file__))
     import make_controller_fw as ctl
@@ -159,8 +163,22 @@ def validate_controller_fw(old_fw, new_fw):
     if len(new_fw) != close + 12 + ((size + 3) & ~3) + 8:
         raise ValueError("--controller-fw: unexpected image length")
     hooks = {off: (vma, target) for vma, off, _, target, _ in ctl.HOOKS}
+    optional = {off: (vma, target) for vma, off, _, target, _ in
+                (ctl.DIAG_HOOKS + ctl.UI_HOOKS if test else [])}
+    for off, (vma, stock_target) in optional.items():
+        old = struct.unpack_from("<I", old_fw, off)[0]
+        new = struct.unpack_from("<I", new_fw, off)[0]
+        if ctl.callp_target(vma, old) != stock_target:
+            raise ValueError("--test-controller-fw: hook %#x is not the stock CALLP" % vma)
+        if new == old:
+            continue
+        if (old ^ new) & ~(0x1fffff << 7):
+            raise ValueError("--test-controller-fw: hook %#x changed more than its target" % vma)
+        if not base <= ctl.callp_target(vma, new) < base + size:
+            raise ValueError("--test-controller-fw: hook %#x leaves the controller section" % vma)
+    allowed_hook_words = set(hooks) | set(optional)
     for i in range(close):
-        if (new_fw[i] != old_fw[i] and i & ~3 not in hooks
+        if (new_fw[i] != old_fw[i] and i & ~3 not in allowed_hook_words
                 and not FW_CONST[0] <= i < FW_CONST[1]):
             raise ValueError("--controller-fw: stock byte %#x changed" % i)
     for off, (vma, stock_target) in hooks.items():
@@ -206,11 +224,19 @@ def grow_resource(data, res_id, payload):
 
 
 def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=None,
-         patch_fw=None, controller_fw=None):
+         patch_fw=None, controller_fw=None, test_controller_fw=None):
     if Path(src).resolve() == Path(dst).resolve():
         sys.exit("output must differ from the official updater")
     if patch_fw is not None and (firmware is not None or logo is not None):
         sys.exit("--patch-fw cannot be combined with --firmware or --logo")
+    if test_controller_fw is not None:
+        if controller_fw is not None:
+            sys.exit("--test-controller-fw and --controller-fw are exclusive")
+        if "TEST" not in Path(dst).name.upper():
+            sys.exit("--test-controller-fw: the output name must contain TEST")
+        controller_fw, test = test_controller_fw, True
+    else:
+        test = False
     if controller_fw is not None and (firmware is not None or logo is not None
                                       or patch_fw is not None):
         sys.exit("--controller-fw cannot be combined with --firmware, --logo or --patch-fw")
@@ -279,12 +305,13 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
         if len(new_fw) > FW_SIZE:
             sys.exit("firmware is %d bytes, larger than its %#x flash region" % (len(new_fw), FW_SIZE))
         try:
-            validate_controller_fw(old_fw, new_fw)
+            validate_controller_fw(old_fw, new_fw, test=test)
         except ValueError as exc:
             sys.exit(str(exc))
         grown = new_fw
-        print("firmware %s: stock v2.00 + controller section (%d bytes larger)"
-              % (controller_fw, len(new_fw) - len(old_fw)))
+        print("firmware %s: stock v2.00 + controller section (%d bytes larger)%s"
+              % (controller_fw, len(new_fw) - len(old_fw),
+                 "; TEST build with diag/UI hooks (owner-run test only)" if test else ""))
     if logo is not None or firmware is not None or patch_fw is not None or grown is not None:
         new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
     # Every image: the boot/update-mode program [0, 0x28000) holds the only
@@ -332,6 +359,6 @@ if __name__ == "__main__":
     parser.add_argument("src")
     parser.add_argument("dst")
     for key in ("image", "splash", "presets", "logo", "firmware", "patch-fw",
-                "controller-fw"):
+                "controller-fw", "test-controller-fw"):
         parser.add_argument("--" + key)
     main(**vars(parser.parse_args()))
