@@ -4,8 +4,8 @@ Folder: `build/cf_usb_mode_2026-10-16/` (owner use only: it contains Zoom's firm
 
 | File | SHA-256 (start) | Contents |
 |---|---|---|
-| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `eff36a4e84a2fda3` | Menu candidate + USB-audio silence layer |
-| `res1_cf_usb_mode.bin` | `ba76881f215da550` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
+| `Comet Flower G1X4 Updater (USB mode TEST build).exe` | `6d8c936aae847aaa` | Menu candidate + USB-audio silence layer |
+| `res1_cf_usb_mode.bin` | `97c3a6d87b939941` | `make_controller_fw.py --ui --usb-product …` then `make_usb_audio_fw.py` |
 
 Packaged with `--test-controller-fw` (the strict release path refuses the audio layer). Presets and
 effects as in the release. **Not flashed. First hardware run of any USB-audio code.**
@@ -95,9 +95,25 @@ MIDI in slot 0 only one more record fits. Fix (build `eff36a4e`): one audio reco
 
 ## Next build, prepared (not to flash until the silence build shows STAT ON and a Windows device)
 
-`build/cf_usb_audio_tap_2026-10-16/Comet Flower G1X4 Updater (USB audio tap TEST build).exe` (`a7e856e5…`,
-firmware `00ad91ce…`): the same, with the real-audio tap (`docs/USB_AUDIO_TAP_CANDIDATE_2026-10-15.md`)
+`build/cf_usb_audio_tap_2026-10-16/Comet Flower G1X4 Updater (USB audio tap TEST build).exe` (`c270cb83…`,
+firmware `74de4495…`): the same, with the real-audio tap (`docs/USB_AUDIO_TAP_CANDIDATE_2026-10-15.md`)
 instead of silence: the pedal's final stereo output streams to the PC. The tap stores audio only while
 the host has the stream open (IF3 alt 1, which needs USB mode active and registered); in FX mode its
 cost per audio block is one extra branch and one test. The TEST packager now also accepts the tap layer
 (its veneer in the dead padding at 11818c88 and the TX-pack call 11818c64, each checked).
+
+## Third run (build eff36a4e): STAT ON, HOST 12, Windows hid the input
+
+Registration now works. Windows (read on the owner's PC with `Get-PnpDevice`) bound the audio function:
+`USB\VID_1686&PID_04A1&MI_02` "Comet Flower ZG1X4 MIDI", service `usbaudio`, no problem code. It also
+created a capture endpoint, "Analog Connector (Comet Flower ZG1X4 MIDI)", but with DeviceState
+`0x10000001` (active plus the hidden bit, the same bit MIDI devices' dummy "Internal AUX Jack"
+endpoints carry), so Sound settings did not list it. The cause is the input terminal type 0x0601
+("Analog connector"), which Windows does not show. Fix (build `6d8c936a`): terminal type 0x0603
+("Line connector"), the type ordinary USB line inputs use; expected name "Line (Comet Flower ZG1X4 MIDI)".
+One byte in the firmware; the rebuilt updater differs from `eff36a4e` in 2 bytes (that byte and a checksum).
+The tap build was rebuilt the same way.
+
+Owner notes from run 3: VPB still sees the MIDI port; MIDI input from the pedal did not work as
+expected in this mode (details pending). Owner suggestion for later: disable MIDI while in audio mode
+or effects mode.

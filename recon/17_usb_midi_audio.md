@@ -217,7 +217,7 @@ Replace the stock configuration header with `09 02 c0 00 04 01 00 80 fa`, retain
 ```text
 09 04 02 00 00 01 01 00 00       ; IF2 AudioControl
 09 24 01 00 01 1e 00 01 03       ; UAC1, AC total 30, collection IF3
-0c 24 02 01 01 06 00 02 03 00 00 00 ; IT1 analog connector, stereo FL/R
+0c 24 02 01 01 06 00 02 03 00 00 00 ; IT1 analog connector, stereo FL/R (firmware now uses 0x0603 line connector: Windows hides 0x0601 endpoints)
 09 24 03 02 01 01 00 01 00       ; OT2 USB streaming, source IT1
 09 04 03 00 00 01 02 00 00       ; IF3 alt0, zero endpoints
 09 04 03 01 01 01 02 00 00       ; IF3 alt1, one endpoint
