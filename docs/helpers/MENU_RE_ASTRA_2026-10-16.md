@@ -58,3 +58,26 @@ CMPLTU 1,A0,A0`); IDs other than 0,1,9 allow exit (`c0149824..9836`).
 The taken exit arm `c01498f4 CALLP c0149820` leads to c0149924, then
 `c0149934 CALLP c0156e8c; c0149938 CALLP c0135b70`. Physical switch
 legends and the exact restored screen require the producer/transition trace.
+
+### Finding 4 - direct knob-to-item edits and reusable records (B2/B4)
+Confidence: confirmed dispatch/layout; likely semantic names for callbacks.
+SETUP handler c01671ac accepts only event IDs 25..28 (`c01671b0 SUB
+A0,0x19,A0; c01671b4 CMPLTU 3,A0,A0`). Its full-word candidate hook is
+`c01671c8: 1fc4f113 CALLP c0149948,B3`, with A4=4 (count), B4=event
+pointer, A6=c0182bb0 (records), loaded by c01671c4..71d2. MainApp context
+follows descriptor word[8] dispatch in Finding 3; the final descriptor contents
+still need initializer recovery to close that linkage. No current-item cursor
+is needed for this path: index=event[0]-25, record stride 0x2c (`c0149954
+SUB B0,0x19,B0; c0149978 MVK 0x2c,B0; c0149980 MPYLI B0,B4,B1:B0`).
+Generic editor calls record word[8] without an explicit argument (getter),
+then `c01499a8: 10135893 CALLP c0153464` with A4=word[6], B4=event;
+adds that result to old value (`c01499b2 ADD A0,A4,A1`), calls c01418ec
+with A4=sum, B4=word[5], A6=word[6], B6=0 (likely clamp/range), and
+compares old/new at c01499cc. On difference it calls word[9], then word[10],
+both with A4=new value (`c01499d2 LDW *A4[9],A0; c01499d8 B A0;
+c01499e4 MV A11,A4; c01499ea LDW *A4[10],A0; c01499f8 MV A11,A4`).
+Success returns 1, unchanged/missing getter returns 0 (`c0149a00..9a08`).
+Prefer a cloned 4-record table with one record's label/range/getter/setter/
+post-change callbacks replaced, passed to BOTH page draw and edit wrappers.
+This avoids a fifth knob/item and leaves stock records untouched. Exact range
+semantics and redraw callback ownership remain to be verified below.
