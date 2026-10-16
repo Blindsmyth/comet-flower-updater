@@ -1,42 +1,21 @@
-# USB mode — Codex Astra — 2026-10-16
+# USB mode â€” Codex Astra â€” 2026-10-16
 
 ## Summary
-Work in progress; offline disassembly analysis only.
+- U1: current controller_start latch precedes USB open on traced normal boot paths (Finding 3).
+- Initial open/connect runs in MainApp, priority 3; later GPIO78 transitions run in SwitchNrmlSpdRead, priority 9.
+- The priority-30 USB worker is created before SOFTCONN; the initiating task sets SOFTCONN.
+- c015af18 is a worker restart wrapper, not just a POWER write (Findings 1â€“2).
+- POWER bit 6 is set at c0120e1a/c0120e20 and cleared at c011ff4a/c011ff4c.
+- Worker-only reconnect does not rerun usbmidi_open or rebuild IF2/IF3 (Finding 4).
+- Full layer init clears registry/maps; full controller close must remove the old Hwi first (Findings 5â€“6).
+- Config/alt state and custom stream state need reset separately; the apparent USB lock is a stub.
+- U3: use checked, serialized task-context lifecycle steps; function inventory is in Finding 7.
+- A safe live switch remains unproved because DMA ownership/reclamation is not established (Finding 6).
+- Evidence and confidence tags follow; analysis was offline and no firmware/updater files were changed.
 
 ## U1. Ordering at boot
 
-## U2. Software disconnect / reconnect
-
-## U3. Full re-open functions, contexts, and synchronization
-
-## Unproved points
-### Finding 1 — connect wrapper includes teardown (U2/U3)
-**Confidence: confirmed** for call graph; lifecycle safety is not yet established.
-`c015af18 STW B3,*B15--[2]`; `c015af20 CALLP c0138720` is the public
-connect wrapper, not the POWER write itself. `c0138722 CALLP c013826c`
-first shuts down the previous instance. Shutdown starts `c0138274 CALLP
-c011ff28`, then handles task/synchronization objects in B14[94..96]:
-`c0138298 CALLP c014a160`, `c01382a4 CALLP c014a2b0`,
-`c01382d0 CALLP c014a344`, `c01382e0 CALLP c014a340`.
-Creation uses `c0138730 CALLP c014a4d0`, `c013876c CALLP c014a4d4`,
-`c01387ac CALLP c014a400`, storing handles in B14[96], [95], [94].
-The explicit stop wrapper is `c015af10 CALLP c013826c` (entry c015af0c).
-These wrappers need task-context lifecycle serialization; they cannot be
-assumed to be a harmless SOFTCONN toggle from Hwi.
-### Finding 2 — actual POWER writes and shutdown work (U2)
-**Confidence: confirmed.** POWER is 0x01e00401. Connect: `c0120e18 LDBU
-*A4[0],A0; c0120e1a SET A0,6,6,A0; c0120e20 STB A0,*A4[0]`.
-Disconnect: `c011ff34 LDBU *A4[0],A1; c011ff4a CLR A1,6,6,A1;
-c011ff4c STB A1,*A4[0]`. Stop also writes zero / 0x4000 through
-0x01e01800 / 0x01e01808 with 32-byte strides (`c011ff68 STW
-A0,*B4++[8]`; `c011ff6c STW B0,*A4++[8]`), masks wrapper interrupts
-(`c011ff8a STW A0,*A4[0]`, address 0x01e00034), and calls interrupt
-control `c011ff8c CALLP c014a2a0` with A4=7. Connect enables interrupts
-(`c0120de8 CALLP c014a278`, A4=7), iterates endpoint setup
-`c0120df0 CALLP c0120888; c0120e00 CALLP c01201e0`, then sets SOFTCONN.
-Thus stock disconnect does more than remove the pull-up. DMA descriptor
-ownership reclamation is not proved by these register writes alone.
-### Finding 3 — normal boot ordering and task priorities (U1)
+### Finding 3 â€” normal boot ordering and task priorities (U1)
 **Confidence: confirmed** for the traced normal-boot control flow and task
 records; **likely** that no untraced indirect task-priority mutation bypasses it.
 The important boundary is NOT entry versus return of stock c015d428:
@@ -89,7 +68,23 @@ options**, not claims of a verified new patch. Do not re-sample on every
 cable reconnection: latch once per power-up, initialize FX by default, and
 preserve later explicit settings-page choices. Earlier raw GPIO reads
 before platform initialization are not certified here.
-### Finding 4 — registration replay is separate from SOFTCONN (U2)
+
+## U2. Software disconnect / reconnect
+
+### Finding 2 â€” actual POWER writes and shutdown work (U2)
+**Confidence: confirmed.** POWER is 0x01e00401. Connect: `c0120e18 LDBU
+*A4[0],A0; c0120e1a SET A0,6,6,A0; c0120e20 STB A0,*A4[0]`.
+Disconnect: `c011ff34 LDBU *A4[0],A1; c011ff4a CLR A1,6,6,A1;
+c011ff4c STB A1,*A4[0]`. Stop also writes zero / 0x4000 through
+0x01e01800 / 0x01e01808 with 32-byte strides (`c011ff68 STW
+A0,*B4++[8]`; `c011ff6c STW B0,*A4++[8]`), masks wrapper interrupts
+(`c011ff8a STW A0,*A4[0]`, address 0x01e00034), and calls interrupt
+control `c011ff8c CALLP c014a2a0` with A4=7. Connect enables interrupts
+(`c0120de8 CALLP c014a278`, A4=7), iterates endpoint setup
+`c0120df0 CALLP c0120888; c0120e00 CALLP c01201e0`, then sets SOFTCONN.
+Thus stock disconnect does more than remove the pull-up. DMA descriptor
+ownership reclamation is not proved by these register writes alone.
+### Finding 4 â€” registration replay is separate from SOFTCONN (U2)
 **Confidence: confirmed.** `c015afa4 CALLP c0138a6c` -> `c0138a70 CALLP
 c015c6b4` edits the persistent three-slot selector/record registry at
 c011aa28. Null B4 takes removal/compaction (`c015c6c0 [B2] BNOP
@@ -124,7 +119,7 @@ and dispatches operation 0 (`c0152438 CALLP c01520f4`, A4=0, B4=-1).
 Registration then uses `c01521b0 CALLP c015afa0`, A4=6,
 B4=c018137c. Therefore a worker reconnect does not automatically rebuild
 the audio registry, and a full MIDI reopen must not append duplicate slots.
-### Finding 5 — full layer init clears registry; alternatives do not (U2/U3)
+### Finding 5 â€” full layer init clears registry; alternatives do not (U2/U3)
 **Confidence: confirmed.** Full c016ab8c invokes c015b114 -> c0138a78;
 `c0138b20 CALLP c015c814`; that routine calls `c015c816 CALLP c015c620`
 and clears persistent selector/record pairs at c011aa28 (`c015c836 STW
@@ -152,7 +147,23 @@ but its implementation is a stub here: `c014a4d0 MVK 1,A4; c014a4d2 BNOP
 B3,5`, and `c014a1d8 MVK 0,A4; c014a1da BNOP B3,5`.
 Do not rely on it to serialize a mode switch. The worker mailbox does
 block: `c014a216 MVK -1,A6; c014a218 CALLP c0166680` from c0138318.
-### Finding 6 — complete close path and CPPI limits (U2/U3)
+
+## U3. Full re-open functions, contexts, and synchronization
+
+### Finding 1 â€” connect wrapper includes teardown (U2/U3)
+**Confidence: confirmed** for call graph; lifecycle safety is not yet established.
+`c015af18 STW B3,*B15--[2]`; `c015af20 CALLP c0138720` is the public
+connect wrapper, not the POWER write itself. `c0138722 CALLP c013826c`
+first shuts down the previous instance. Shutdown starts `c0138274 CALLP
+c011ff28`, then handles task/synchronization objects in B14[94..96]:
+`c0138298 CALLP c014a160`, `c01382a4 CALLP c014a2b0`,
+`c01382d0 CALLP c014a344`, `c01382e0 CALLP c014a340`.
+Creation uses `c0138730 CALLP c014a4d0`, `c013876c CALLP c014a4d4`,
+`c01387ac CALLP c014a400`, storing handles in B14[96], [95], [94].
+The explicit stop wrapper is `c015af10 CALLP c013826c` (entry c015af0c).
+These wrappers need task-context lifecycle serialization; they cannot be
+assumed to be a harmless SOFTCONN toggle from Hwi.
+### Finding 6 â€” complete close path and CPPI limits (U2/U3)
 **Confidence: confirmed** for the following call chain; **unproved** for
 complete in-flight DMA ownership recovery.
 Cable detach uses `1180a824 CALLP 1180b180` -> c016ab58.
@@ -201,7 +212,7 @@ of an already in-flight descriptor. **Likely safety requirement:** account
 for matching teardown completion and all retained descriptors before reuse;
 on timeout/ambiguous ownership stay disconnected and do not recycle buffers.
 Neither a full stock reopen nor a bare pull-up toggle closes this proof gap.
-### Finding 7 — proposed mode-switch transaction (U2/U3)
+### Finding 7 â€” proposed mode-switch transaction (U2/U3)
 **Confidence: likely design; not a proved safe implementation.** The smallest
 change in software is not necessarily the smallest safe hardware transition.
 The evidence supports two possible transactions:
