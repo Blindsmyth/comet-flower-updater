@@ -133,3 +133,36 @@ Validation c0154960 uses 26 records at c01823f8, each min/max/default/count:
 STW A0,*A5[0]` replaces out-of-range values with defaults. A new MODE
 value in an existing boolean field would be clamped unless this policy changes.
 No byte is proved reserved or safe to own by this finding.
+
+### Finding 7 - entry, page selection, exit and draw context (B1/B2/B4)
+Confidence: confirmed for event IDs and code; physical panel legend unproved.
+From effect/stomp screen ID 0, MainApp c0134acc selects c01308e4 via
+c01840b8=c0134b94 (`c0134b94 CALLP c01308e4`). Event 6 maps via
+c0183e64=c01309b6 to c0130748 (`c01309b6 CALLP c0130748`). When
+c0155328(0/1) gates are clear and c011abf8 is zero, `c0130780 CALLP
+c0156d68` with A4=4 enters menu screen 4. It is a single normal-button event,
+not the two-foot event 4. Screen 1 also accepts event 6: c0183ec4=c0148fe2
+-> c0148ea0 -> `c0148ef8 CALLP c0156d68`, A4=4, subject to its guards.
+Producer identification from prior recon/15 is GPIO4 high transition (event 6),
+paired with low event 5; panel label and pressed polarity remain unproved,
+so this report does not claim a named physical gesture from the event ID alone.
+Screen transition writes c011ad8c (`c0156d82 STW B0,*A4[0]`), dispatches
+screen 4 via c018436c=c0156de0 -> c01496d0, which clears the old descriptor
+(ID 0xfff), selects page 0, the SETTING chooser (c01833dc).
+Chooser handler c0157bac maps events 12,14,16,18,20 to c0157ae8 via
+c0184190/4198/41a0/41a8/41b0. `c0157b24 CALLP c0149664` loads
+page ID from c0181350[event[2]], whose five words are 4,6,7,10,11.
+Thus effect button indices 3/4 choose SETUP/PWR-LCD. Exact producer
+index/legend mapping still needs verification. Alternate chooser page ID 1
+uses c0181368={5,9,3,8,12}. Return exits use events 6/7 as Finding 3;
+`c0156e8e CALLP c0156e64; c0156e90 CALLP c0156d68` restores the
+screen recorded at c011ad94 (`c0156e6c LDW *A4[0],A4`).
+There is also bounded page stepping c0149a90: sign(A4) adds +1/-1 to page,
+clamps 2..12 (`c0149ab0 CMPGT 2,A4; c0149ab8 CMPLT 12,A4`) and calls
+c0149664 at c0149ac4. Caller c0164870 needs producer context before
+attributing that path to a particular physical control.
+Draw task chain is now closed: UpdateUI c013c754 -> c013c0c8 ->
+c013c060; screen 4/7 table c01843ac/c01843b8 -> c013c090 -> c013bfe0;
+`c013bfe4: 101b5112 CALLP c0149a68` invokes current descriptor word[6]
+(`c0149a7a LDW *B4[6],B0; c0149a84 B B0`). For SETUP this is c01671f6,
+so Finding 1's c0167210 is a redraw hook in UpdateUI, not just an initializer.
