@@ -1,5 +1,30 @@
 ﻿# USB mode review — Claude Sonnet review — 2026-10-16
 
+## Summary
+- R1 (inactive-mode == stock): **ok, confirmed.** Descriptor veneer and map
+  thunk fall back byte-for-byte (protected-load fetch packets explain the
+  missing explicit NOP4); the SOF-hook's stock target is itself an empty
+  stub, so replacing it unconditionally loses nothing; `ua_usbmidi_open`
+  latches `active` before the stock open runs and returns the same value.
+- R2 (latch/registration consistency): **ok, confirmed** that `c0145158` is
+  the sole call site reachable to the stock MIDI open, so active can't
+  diverge from the registrations of the same (re)open. **Unproved**: found
+  that `c016ab70` can skip the whole open/registration chain while still
+  connecting (SOFTCONN), depending on a stock Hwi-exists flag; traced enough
+  to believe it doesn't break the invariant R2 cares about, not enough to
+  rule out a host-visible race.
+- R3 (software replug): **bug.** `usb_set` calls the same unlocked, non-
+  reentrant stock close/open entry points the cable handler (higher-priority
+  switch task) also calls, with no mutual exclusion beyond a stub lock;
+  concurrent cable events during the 500 ms window can corrupt shared
+  worker/Hwi/registry state. Concrete scenario and fix given below.
+- R4 (malformed image): **bug.** `strip_usb_audio` validates a stripped,
+  reconstructed copy (`checked`); the updater actually ships the original,
+  unstripped `new_fw` (`grown = new_fw`) verbatim, so the USB-audio section's
+  real contents are never checked against any known-good build. A payload
+  with well-formed call-site retargets but arbitrary code inside the section
+  passes silently. Concrete scenario and fix given below.
+
 Offline correctness review. Findings record instruction/source evidence, verdict, and confidence. Unproved claims remain explicitly unproved.
 
 ## R1. Inactive-mode stock behavior
