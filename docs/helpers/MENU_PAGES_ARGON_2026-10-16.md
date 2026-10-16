@@ -168,6 +168,83 @@ c0149ad0       a1ef           BNOP.S2       B3,5
 
 ## P4. Adding Screen IDs >= 15 (`c01495c0` and Screen-ID Assumptions)
 
+### 1. Disassembly of `c01495c0` & Switch Table `0xc018413c` (Confirmed)
+```
+c01495c0   01bc54f6           STW.D2T2      B3,*B15--[2]
+c01495c4   0011cbd8           CMPLTU.L1     0xe,A4,A0          ; 14 < (uint32_t)screen_id ?
+c01495c8   c010a120    [ A0]  BNOP.S1       0xc01495e0,5       ; if screen_id > 14 -> return NULL (0)
+c01495cc   02a09e28           MVK.S1        0x413c,A5
+c01495d0   02e00c68           MVKH.S1       0xc0180000,A5      ; A5 = 0xc018413c (15-word .switch table)
+c01495d4       854c           LDW.D1T1      *A5[A4],A0         ; A0 = switch_table[screen_id]
+c01495d6       6c6e           NOP           4
+c01495d8       116b           BNOP.S1       A0,5               ; branch to case handler
+c01495da       0c6e           NOP           1
+c01495dc   0c6e               NOP           1
+c01495e0       0626           MVK.L1        0,A4               ; out-of-range (> 14) -> A4 = NULL
+c01495e2       3177           LDW.D2T2      *++B15[2],B3
+c01495e4       6c6e           NOP           4
+c01495e6       a1ef           BNOP.S2       B3,5
+```
+- **The 15-entry `.switch` table at `0xc018413c..0xc0184174` (in `.switch:sc0184000`, read-only flash)**:
+  - `0xc018413c` (`ID 0`): `0xc0149658` -> `CALLP 0xc0157c38` -> `0xc01833dc` (`SETTING` Chooser List A)
+  - `0xc0184140` (`ID 1`): `0xc0149650` -> `CALLP 0xc0157c44` -> `0xc0183400` (`SETTING` Chooser List B)
+  - `0xc0184144` (`ID 2`): `0xc0149648` -> `CALLP 0xc0164934` -> `0xc01836b0` (`TEMPO`)
+  - `0xc0184148` (`ID 3`): `0xc0149640` -> `CALLP 0xc01658e4` -> `0xc01836f8` (Custom `c016578c` screen)
+  - `0xc018414c` (`ID 4`): `0xc0149638` -> `CALLP 0xc01511c4` -> `0xc01833b8` (`CHAIN`)
+  - `0xc0184150` (`ID 5`): `0xc0149630` -> `CALLP 0xc016a9ac` -> `0xc0183740` (`OUTPUT`)
+  - `0xc0184154` (`ID 6`): `0xc0149628` -> `CALLP 0xc0142f2c` -> `0xc0183394` (`PATCH`)
+  - `0xc0184158` (`ID 7`): `0xc0149620` -> `CALLP 0xc0139540` -> `0xc018326c` (`SAVE`)
+  - `0xc018415c` (`ID 8`): `0xc0149618` -> `CALLP 0xc0139534` -> `0xc0183248` (`SWAP`)
+  - `0xc0184160` (`ID 9`): `0xc0149610` -> `CALLP 0xc0159264` -> `0xc0183424` (`TUNER`)
+  - `0xc0184164` (`ID 10`): `0xc0149608` -> `CALLP 0xc016724c` -> `0xc0183764` (`SETUP`)
+  - `0xc0184168` (`ID 11`): `0xc0149600` -> `CALLP 0xc01632c8` -> `0xc018368c` (`PWR/LCD`)
+  - `0xc018416c` (`ID 12`): `0xc01495f8` -> `CALLP 0xc016ab44` -> `0xc01837f4` (`VERSION`)
+  - `0xc0184170` (`ID 13`): `0xc01495f0` -> `CALLP 0xc0157934` -> `0xc018371c` (`EDITED! SAVE?`)
+  - `0xc0184174` (`ID 14`): `0xc01495e8` -> `CALLP 0xc0139528` -> `0xc0183224` (`SAVE` from `EDITED! SAVE?`)
+
+### 2. Every Call Site of `c01495c0` in the Firmware (Confirmed: 5 Sites)
+| # | Address & Instruction Word | Form / Parallel Bit | Caller Function | `A4` Passed | Role |
+|---:|---|---|---|---|---|
+| 1 | `c0149668: f61b CALLP.S2 0xc01495c0,B3` | **16-bit compact** (`f61b`, paired with `c014966a: 4646 MV.L1 A4,A10`, `.fphead c0149660`) | `c0149664` (screen transition) | `screen_id` | Looks up new descriptor for `*+B14[120]` |
+| 2 | `c0149758: 1fffd012 \|\| CALLP.S2 0xc01495c0,B3` | 32-bit `CALLP`, **parallel bit = `0`** (parallel with `c0149756: 2e26 MVK.L1 9,A4`, `.fphead c014975c`) | `c0149750` (Tuner `w8` wrapper) | Hardcoded `9` | Calls `c01495c0(9)->w8(ev)` |
+| 3 | `c0149776: e61b CALLP.S2 0xc01495c0,B3` | **16-bit compact** (`c0149778: 2e26 \|\| MVK.L1 9,A4`) | `c0149770` (Tuner `w4` wrapper) | Hardcoded `9` | Calls `c01495c0(9)->w4()` |
+| 4 | `c0149796: e41b CALLP.S2 0xc01495c0,B3` | **16-bit compact** (`c0149798: 2e26 \|\| MVK.L1 9,A4`) | `c0149794` (Tuner `w6` wrapper) | Hardcoded `9` | Calls `c01495c0(9)->w6(1)` |
+| 5 | `c0149ada: b01b CALLP.S2 0xc01495c0,B3` | **16-bit compact** (`b01b`, paired with `c0149adc: 8247 MV.L2 B4,B0`, `.fphead c0149ae0`) | `c0149ad4` (icon bitmap selector `w1..w3`) | `screen_id` | Looks up descriptor to return `w1` (`B4==0`), `w2` (`B4==1`), or `w3` (`B4==2`) |
+
+### 3. Every Table Indexed by `screen_id` & Every Check on `c01497f4()` / `(*+B14[120])->w0` (Confirmed)
+- **Tables indexed by `screen_id`**:
+  - **Only `0xc018413c..0xc0184174` inside `c01495c0`!** No other array, bitmap table, or jump table in the entire firmware is indexed by `screen_id`.
+- **All 9 Callers of `c01497f4()` + 2 Direct Readers of `(*+B14[120])->w0`**:
+  1. `c01497b0` (`c01497c0: 0004 LDW.D2T2 *B4[0],B0; c01497c6: 836a CMPEQ.L2 6,B0,B0`): checks `w0 == 6` (`PATCH`). Safe for `>= 15`.
+  2. `c01497d0` (`c01497e0: 0004 LDW.D2T2 *B4[0],B0; c01497e6: 836a CMPEQ.L2 6,B0,B0`): checks `w0 == 6` (`PATCH`). Safe for `>= 15`.
+  3. **`c0149820`** (`c0149822 CALLP 0xc01497f4; c0149824: 00103bd8 CMPLTU.L1 1,A4,A0; c014982c: 00049a58 CMPEQ.L1 9,A1,A0`):
+     - Returns `0` for `w0` in `{0, 1, 9}` (chooser or tuner) and **`1` for all other IDs (including `>= 15`)**.
+     - In `c0149840`, when `c0149820()` returns `1`, pressing `SETTINGS` (`ev->w0 == 6`) or `Memory` (`ev->w0 == 7`) automatically calls `c01498f8 -> c0149924 -> c0156e8c` to exit the subpage! Thus **any subpage with `w0 >= 15` (or `w0 = 5`) automatically gets stock `SETTINGS`/`Memory` exit behavior for free!**
+  4. `c0149a0c` (`c0149a0e: 1fff7b12 CALLP.S2 0xc01497f4,B3`): saves `w0` into `*0xc010ad0c` before `EDITED! SAVE?`. Safe for `< 15`; if `>= 15`, `c0157954 -> c0149664` restores via `c0149664`.
+  5. `c0149a90` (`c0149a94: 1fffae92 CALLP.S2 0xc01497f4,B3`): only called on Screen ID `2`.
+  6. `c014ad4c` (`c014ad78: 1ffb5392 CALLP.S2 0xc01497f4,B3`): checks `w0` in `{7, 8, 14}` (`SAVE`/`SWAP`); returns `1` for all other IDs. Safe for `>= 15`.
+  7. `c0154338` (`c0154350: 1feaa292 CALLP.S2 0xc01497f4,B3; c0154398: 00393a58 CMPEQ.L1 9,A14,A0`): checks `w0 == 9` (`TUNER` label `y=11` vs standard `y=13`). Safe for `>= 15` (uses `y=13`).
+  8. `c0157ae8` (`c0157af0: 1fe3a292 CALLP.S2 0xc01497f4,B3`) & `c0157b2c` (`1fe39392 CALLP.S2 0xc01497f4,B3`): checks `w0 == 1` and new `w0 == 7`. Safe for `>= 15`.
+  9. `c0157b6c` (`c0157b70: 1fe39292 CALLP.S2 0xc01497f4,B3`): ignores return value. Safe.
+  10. `c0157c0c` (`c0157c10: 1fe37e92 CALLP.S2 0xc01497f4,B3`): checks `w0 == 1`. Safe.
+- **Screen Redraw (`UpdateUI`: `c013c754 -> c013c0c8 -> c013c060 -> c013bfe0 -> c0149a68`)**:
+  - `c0149a68` (`c0149a70: 0000786e LDW.D2T2 *+B14[120],B0; c0149a7a: c084 LDW.D2T2 *B4[6],B0; c0149a80: 00000062 B.S2 B0`) **never inspects `w0` (`screen_id`) at all** — it simply calls `(*+B14[120])->w6(1)`!
+
+### 4. How to Add Custom Pages (Both `< 15` and `>= 15`) (Confirmed)
+- **Important instruction-encoding catch**: Inside `c0149664` (`c0149668: f61b`) and `c0149ad4` (`c0149ada: b01b`), the `CALLP.S2 0xc01495c0,B3` instructions are **16-bit compact instructions**, not 32-bit `CALLP` words.
+- We have two clean, verified ways to add custom pages without ever touching a 16-bit instruction:
+  1. **Zero-Extension Route (Reuse Existing Screen IDs `1` and `5`, or `2, 3, 8, 12`)**:
+     - Screen ID `1` (`0xc0183400`, Chooser List B) and Screen ID `5` (`0xc0183740`, `OUTPUT` 4-item page) are already `< 15`, already in `0xc018413c`, and **both descriptors (`0xc0183400` and `0xc0183740`) reside in writable `.cinit` RAM**!
+     - Even better: if we want **every slot (`0..4`) of Screen ID `1`** to open our own custom pages (up to 5 custom pages on Chooser Page 2, or unlimited pages by paging!), we can either overwrite `w6`/`w8` of the target descriptors in RAM (`0xc0183740` for Slot 0 `ID 5`, `0xc01836f8` for Slot 2 `ID 3`, etc.) **or** hook the single 32-bit `CALLP` in `c0157ae8` (`c0157b24: 1fe36893 CALLP.S2 0xc0149664,B3`, parallel bit = `1`) and the single 32-bit `CALLP` in `c01579cc` (`c0157a00: 1fe41a93 CALLP.S2 0xc0149ad4,B3`, parallel bit = `1`).
+  2. **Unlimited Screen IDs `>= 15` Route (via C Transition Helper + `*+B14[120]`)**:
+     - What `c0149664(id)` actually does (`c0149664..c01496ae`) is just 10 lines of logic:
+       1. Look up `new_desc` (for `id < 15`, `c01495c0(id)`; for `id >= 15`, `our_desc_table[id - 15]`).
+       2. If `old_desc = *(screen_desc_t **)(B14 + 0x1e0)` (`*+B14[120]`) is non-NULL and `old_desc->w5` is non-NULL, call `old_desc->w5()`.
+       3. Write `*(screen_desc_t **)(B14 + 0x1e0) = new_desc`.
+       4. If `new_desc != NULL`: if `new_desc->w4 != NULL`, call `new_desc->w4()`; then call `c0139fd8(1)` (request UI redraw).
+     - And for chooser icons (`c0149ad4`), its **only caller in the entire firmware** is the 32-bit `CALLP` at **`c0157a00: 1fe41a93 CALLP.S2 0xc0149ad4,B3`** (parallel bit = `1`).
+
+
 ## P5. Our Own 4-Item Page (Constructor `c0154564`, Descriptor, Formatter `w7`, OUTPUT Example)
 
 ## Recommended Design (Entry Control + Hook List)
