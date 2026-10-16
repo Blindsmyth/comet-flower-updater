@@ -89,3 +89,38 @@ options**, not claims of a verified new patch. Do not re-sample on every
 cable reconnection: latch once per power-up, initialize FX by default, and
 preserve later explicit settings-page choices. Earlier raw GPIO reads
 before platform initialization are not certified here.
+### Finding 4 — registration replay is separate from SOFTCONN (U2)
+**Confidence: confirmed.** `c015afa4 CALLP c0138a6c` -> `c0138a70 CALLP
+c015c6b4` edits the persistent three-slot selector/record registry at
+c011aa28. Null B4 takes removal/compaction (`c015c6c0 [B2] BNOP
+c015c70c`; `c015c6ec CMPEQ A0,A2,A0`; `c015c6f2 STW A0,*A4[0]`;
+`c015c6f4 STW A0,*A4[1]`). It removes matching selector entries, not a
+chosen record pointer: c015afa0(6,0) removes MIDI and both audio records.
+Non-null B4 allocates a free slot (`c015c738 STW B2,*B4[1]`;
+`c015c73a STW A2,*B4[0]`), or returns ffff8a5c at c015c744.
+After successful mutation `c015c74a CALLP c015c620` clears derived maps,
+and `c015c760 CALLP c015c66c` replays each surviving record with ordinal
+A6 (`c015c764 ADD B1,1,A6`). No locking is present in these small wrappers.
+
+Reset targets: endpoint owners c011aa40 (32 words to -1:
+`c015c622 MVK 32,B0; c015c628 ADD B0,-4,B0; c015c632 STW A0,*A4++[1]`),
+interface owners c011aac0 (five words, sufficient for IF0..3:
+`c015c640 MVK 1,B0; c015c64a STW A0,*A4++[1]`), and record vector
+c011aa18 (zero: `c015c660 MVK 0,A0; c015c664 STW A0,*A4++[1]`).
+SPLOOPD ILC counts require pipeline-fill iterations; do not interpret ILC
+as the whole store count. Stock interface-owner index 5 is not cleared.
+Stock replay always assigns MIDI endpoints and IF0/1 to its slot:
+`c015c684 STW A4,*A5[0]` (c011aa4c), `c015c68a STW A4,*B4[0]`
+(c011aa90), and c015c696's doubleword store at c011aac0. Keep the audio
+candidate's slot-aware replay modification: slot0 -> IF0/1 + MIDI EP3/EP4;
+slot1 -> IF2; slot2 -> IF3. Merely flipping descriptor mode leaves stale
+records/maps. Rebuild MIDI first, then audio IF2 then IF3 only for USB mode,
+check all return values, and leave disconnected on partial registration.
+
+`c0145158 CALLP c0152410` is re-executed by the full c016ab8c cable/start
+path (Finding 3), but NOT by c015af18/c0138720 alone. Its stock open clears
+40 bytes at c011ac80 (`c0152428 CALLP c0167b00`, A6=40), stores callback,
+and dispatches operation 0 (`c0152438 CALLP c01520f4`, A4=0, B4=-1).
+Registration then uses `c01521b0 CALLP c015afa0`, A4=6,
+B4=c018137c. Therefore a worker reconnect does not automatically rebuild
+the audio registry, and a full MIDI reopen must not append duplicate slots.
