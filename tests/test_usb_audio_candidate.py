@@ -117,6 +117,31 @@ class UsbAudioCandidateBuild(unittest.TestCase):
         self.assertRegex((ua.OUT / "usb_audio.map").read_text(),
                          r"c01a8000\s+00000004\s+ua_glue\.obj \(\.ua_mode\)")
 
+    def test_packager_accepts_the_layer_only_in_test_builds(self):
+        import make_fs_restore_updater as packager
+        with tempfile.TemporaryDirectory() as d:
+            menu = Path(d) / "menu.bin"
+            ctl.build(RES1, menu, RES1, ui=True, usb_product="Comet Flower ZG1X4 MIDI")
+            both, plan, _ = ua.build(menu, Path(d) / "both.bin")
+            view = packager.strip_usb_audio(self.stock, both)
+            self.assertEqual(view, menu.read_bytes())                 # exactly the controller image
+            packager.validate_controller_fw(self.stock, view, test=True)
+            with self.assertRaises(ValueError):                       # strict path: refused
+                packager.validate_controller_fw(self.stock, both)
+            plain = menu.read_bytes()
+            self.assertIs(packager.strip_usb_audio(self.stock, plain), plain)   # no layer
+            for vma, off, old, new, kind, sym in plan:                # tampered patch words
+                bad = bytearray(both)
+                struct.pack_into("<I", bad, off, new ^ (1 << 3))      # opcode/creg bits
+                with self.assertRaises(ValueError, msg=hex(vma)):
+                    packager.strip_usb_audio(self.stock, bytes(bad))
+            bad = bytearray(both)                                     # SOF hook out of section
+            lo_off = [p[1] for p in plan if p[4] == "mvk_lo"][0]
+            word = struct.unpack_from("<I", bad, lo_off)[0]
+            struct.pack_into("<I", bad, lo_off, ua.mvk_set(word, 0xfff0))
+            with self.assertRaises(ValueError):
+                packager.strip_usb_audio(self.stock, bytes(bad))
+
     def test_layers_onto_controller_lifecycle_candidate(self):
         with tempfile.TemporaryDirectory() as d:
             life = Path(d) / "life.bin"

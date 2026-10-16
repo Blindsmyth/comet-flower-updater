@@ -137,6 +137,55 @@ def validate_patch_fw(old_fw, new_fw):
         raise ValueError("--patch-fw requires the exact reviewed nine-byte diff")
 
 
+def strip_usb_audio(old_fw, new_fw):
+    """TEST builds only: accept the USB-audio silence layer of
+    make_usb_audio_fw.py on top of a controller image, and return the
+    controller-only image for validate_controller_fw. The layer is one AIS
+    section in the USB-audio reservation (c01a8000, 32 KiB) and the listed
+    patch words, each changed only in its target field and pointing into
+    that section. Returns new_fw unchanged when there is no such layer."""
+    import os
+    sys.path.insert(0, os.path.dirname(__file__))
+    import make_controller_fw as ctl
+    import make_usb_audio_fw as ua
+    cmds = list(ctl.ais_commands(new_fw))
+    off, op, args = cmds[-2]
+    if op != ctl.AIS_SECTION_LOAD or args[0] != ua.UA_BASE:
+        return new_fw
+    base, size = args
+    if base + size > ua.UA_BASE + ua.UA_SIZE or base + size > ctl.FREE_SDRAM[1]:
+        raise ValueError("USB audio section %#x+%#x outside its reservation" % (base, size))
+    end = off + 12 + ((size + 3) & ~3)
+    if new_fw[end:] != new_fw[-8:] or len(new_fw) - end != 8:
+        raise ValueError("USB audio section is not the last before jump-and-close")
+    view = bytearray(new_fw[:off] + new_fw[end:])
+    mvk = {}
+    for vma, stock, kind, ref, _ in ua.PATCHES:
+        o = ua.vma_offset(old_fw, vma)
+        old = struct.unpack_from("<I", old_fw, o)[0]
+        new = struct.unpack_from("<I", new_fw, o)[0]
+        if (stock is not None and old != stock) or not ua.stock_ok(vma, old, kind, ref):
+            raise ValueError("USB audio site %#x does not hold its stock word" % vma)
+        if kind == "callp":
+            if (old ^ new) & ~(0x1fffff << 7) or not base <= ctl.callp_target(vma, new) < base + size:
+                raise ValueError("USB audio patch %#x is not a CALLP into its section" % vma)
+        elif kind == "callp_over":
+            target = ctl.callp_target(vma, new)
+            if new != ctl.callp_retarget(vma, ua.CALLP_S2_TEMPLATE, target) or not base <= target < base + size:
+                raise ValueError("USB audio patch %#x is not a CALLP into its section" % vma)
+        elif kind in ("mvk_lo", "mvk_hi"):
+            if (old ^ new) & ~(0xffff << 7):
+                raise ValueError("USB audio patch %#x changed more than its constant" % vma)
+            mvk[kind] = ua.mvk_field(new)
+        else:
+            raise ValueError("USB audio patch kind %s is not accepted" % kind)
+        struct.pack_into("<I", view, o, old)
+    target = (mvk.get("mvk_hi", 0) << 16) | mvk.get("mvk_lo", 0)
+    if not base <= target < base + size:
+        raise ValueError("USB audio SOF hook %#x is outside its section" % target)
+    return bytes(view)
+
+
 def validate_controller_fw(old_fw, new_fw, test=False):
     """Accept only stock v2.00 + the controller section and listed hooks.
     The on-pedal screen hook (make_controller_fw UI_HOOKS, run on hardware
@@ -306,13 +355,17 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
         if len(new_fw) > FW_SIZE:
             sys.exit("firmware is %d bytes, larger than its %#x flash region" % (len(new_fw), FW_SIZE))
         try:
-            validate_controller_fw(old_fw, new_fw, test=test)
+            checked = strip_usb_audio(old_fw, new_fw) if test else new_fw
+            usb_audio = checked is not new_fw
+            validate_controller_fw(old_fw, checked, test=test)
         except ValueError as exc:
             sys.exit(str(exc))
         grown = new_fw
         print("firmware %s: stock v2.00 + controller section (%d bytes larger)%s"
               % (controller_fw, len(new_fw) - len(old_fw),
                  "; TEST build with diag/UI hooks (owner-run test only)" if test else ""))
+        if usb_audio:
+            print("  includes the USB-audio silence layer (TEST only; off unless USB mode is chosen)")
     if logo is not None or firmware is not None or patch_fw is not None or grown is not None:
         new += [(1, FW_ADDR, FW_SIZE, 0), (2, FW_ADDR, 0, FW_RES)]
     # Every image: the boot/update-mode program [0, 0x28000) holds the only
