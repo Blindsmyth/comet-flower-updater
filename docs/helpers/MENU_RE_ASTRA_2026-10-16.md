@@ -81,3 +81,32 @@ Prefer a cloned 4-record table with one record's label/range/getter/setter/
 post-change callbacks replaced, passed to BOTH page draw and edit wrappers.
 This avoids a fifth knob/item and leaves stock records untouched. Exact range
 semantics and redraw callback ownership remain to be verified below.
+
+### Finding 5 - recovered runtime descriptors and SETUP callbacks (B2/B4)
+Confidence: confirmed, decoded from cinit load c0185260 -> run c0181b28
+(size 0x2049), handler 1/RLE24. Decoder adapted read-only from the existing
+build/agy5/cinit.py; output confined to astra_menu. This closes Finding 4's
+missing descriptor link. Evidence for consumers: c0149698 stores descriptor,
+c01496a4 loads entry word[4], c0149910 calls event word[8], and c01499d2
+loads setter word[9]. Exact descriptor words:
+
+| Address | Words (ascending addresses, 4-byte stride) |
+|---|---|
+| c0183788 | 0000000a c017eb48 c017e848 c017e548 c01671da 00000000 c01671f6 c01671a0 c01671ac |
+| c01837ac | 0000000b c017eba8 c017e8a8 c017e5a8 c0163296 00000000 c01632b2 c0163258 c0163268 |
+
+SETUP record summaries (each 0x2c bytes; word[3]/[4] label, [5]/[6]
+min/max, [7] formatter, [8] getter, [9] setter, [10] post-change):
+
+| Record | Label pointers | Min/max | Formatter | Getter | Setter | Post-change |
+|---|---|---|---|---|---|---|
+| c0182bb0 | c0180690 / 0 | 40/250 | 0 | 11805e64 | 0 | c016716c |
+| c0182bdc | c0180694 / c0180699 | 0/1 | c0167178 | 11805ec4 | c0168488 | 0 |
+| c0182c08 | c018069e / c01806a3 | 0/1 | c0167178 | 11805e2c | 11805bb0 | c0167160 |
+| c0182c34 | c01806aa / c01806af | 0/1 | c0167178 | 11805f30 | 11805d0c | 0 |
+
+All records word[0]=index 0..3 and word[1]/[2]=0xfff. Min/max semantics
+are confirmed by `c0141900 CMPGT B5,A3,B0` (lower clamp) and `c0141908
+CMPGT A3,A2,A0` (upper clamp), with B6=0 from c01499c4. SETUP entry
+c01671da clears four bytes at c00be5c4 (`c01671e4 CALLP c0167b00`),
+so these are page-local state, not evidence of a saved settings buffer.
