@@ -46,6 +46,47 @@ TXFIFOADDR 0x464, RXFIFOSZ 0x463, RXFIFOADDR 0x466, plus TXCSR 0x412) are
 reproduced exactly from the live instruction stream, not taken on recon's
 word alone.
 
+### Finding 2: the stock FIFO RAM map (EP0, RX3, TX4, EP1) — cross-confirmed
+
+Sole caller of the setup routine is `c01358b4 CALLP c01212e0,B3` (confirmed:
+`grep c01212e0 main.dis` returns exactly the definition line and this one
+call site). recon/17 B2 finding 2 already traced its arguments
+(`c01358ac LDHU *A4[2],A6` = max packet, `c01358b0 LDBU *A4[3],B4` =
+attributes, `c01358b2 LDBU *A4[2],A4` = endpoint#) back to the stock
+descriptor bytes (recon/17 B1: OUT endpoint 0x03 / IN endpoint 0x84, both
+bulk, both wMaxPacketSize=64). That table, which I re-derive here
+independently from the "base byte 64" constant at `c012146e` plus the
+confirmed 64-rounding/double-buffer logic at `c0121352..8c` (same block
+re-read in Finding 1) and cross-check against it exactly:
+
+| FIFO | byte range | size | FIFOSZ (SPRUFM9H enc.) | FIFOADDR (8-B units) |
+|---|---|---:|---|---:|
+| EP0 (fixed, non-indexed) | 0x000-0x03f | 64 B | n/a — hardware default, never written by software (see note) | n/a |
+| RX3 (MIDI OUT, bulk) | 0x040-0x0bf | 2x64 B = 128 B | 0x13 (low4=3=log2(64/8), bit4=1 dbuf) | 0x008 |
+| TX4 (MIDI IN, bulk) | 0x0c0-0x13f | 2x64 B = 128 B | 0x13 | 0x018 |
+| EP1 (stock/current, ISO) | 0x140-0x33f | 2x256 B = 512 B | 0x15 (low4=5=log2(256/8), bit4=1) | 0x028 |
+
+Total stock (EP0+RX3+TX4) = 64+128+128 = **320 B used**, matching
+recon/17/18/20/21's figure exactly; `320+3776=4096`. 4096 B is the USB0
+FIFO RAM total per [SPRUFM9H](https://www.ti.com/lit/ug/sprufm9h/sprufm9h.pdf)
+sections 2.6/4.55-4.58 (cited already in recon/17 B2; not independently
+re-opened the PDF this pass — inherited citation, confidence likely for
+the *document* claim, confirmed for the arithmetic it is checked against).
+EP0 row: confirmed-by-absence — refs.txt/main.dis show **zero** software
+writes to any EP0-indexed FIFOSZ/FIFOADDR (INDEX is never set to 0 before
+such a write anywhere in the image: `c0121338`'s STB writes whatever
+endpoint number the caller passed, and the only caller c01358b4 always
+passes 3 or 4, read from real descriptor bytes, never 0), consistent with
+standard MUSB behavior where EP0's FIFO is a fixed 64 B single-buffered
+block at RAM offset 0, not part of the indexed allocation space (this
+part — the *hardware default value* itself — is "likely": datasheet-
+standard, not literally present as a disassembled constant, since there
+is nothing to disassemble for a register nobody writes).
+Confidence: confirmed (RX3/TX4/EP1 ranges, sizes, SZ encoding, total);
+likely (EP0's hardware-default placement/size, and the SPRUFM9H 4096 B
+citation, both inherited/datasheet-based, not re-derived from a new PDF
+read this pass).
+
 New check (not in prior recon passes): grepped `build/fw/map/refs.txt`
 (global scan of every resolved MVK+MVKH absolute-address constant in the
 whole image, 4527 lines) for `01e0040e` — **exactly one hit**, at
