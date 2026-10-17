@@ -48,3 +48,20 @@ EHX Electric Mistress V2 flanger model running directly at 44.1 kHz:
 
 ## Problems
 None. 81 of 81 tests pass. Worst residual across all tests is -103.5 dB.
+
+## Round 2
+Branch-free per-sample path per `docs/helpers/KIT_REVIEW_2026-10-17.md`:
+- `double lfoPhase` / `phaseInc` converted to `float`; wrapped with `lfoPhase -= (lfoPhase >= 1.0f) ? 1.0f : 0.0f;`.
+- `mistress_lfo_shape`: branch-free, both rise and fall branches computed and selected via ternary of plain values.
+- `mistress_tanh` and `mistress_ln_cosh`: early returns removed, small-|x| approximations selected via branch-free ternary.
+- `mistress_adaa_process`: branch-free ADAA quotient using safe denominator `(ad < 0.2f) ? 1.0f : diff` and ternary selection; `ad0` evaluated once.
+- `if (k->matrixMode)` removed: unified delay calculation with `shape = k->matrixMode ? 1.0f : lfo_shape;`.
+
+Scores:
+```
+worst INTERP -64.0 dB (limit -55.0); worst LOOSE -37.7 dB (limit -30.0); worst DEFAULT -49.2 dB (limit -40.0)
+STRETCH: worst pluck/chirp residual -37.7 dB (lower is better)
+ACCURACY: PASS
+```
+Date: 2026-10-17 10:31 PDT
+

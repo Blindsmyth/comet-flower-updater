@@ -61,7 +61,7 @@
 typedef struct {
     float buf[MISTRESS_BUF_SIZE];
     int   wp;
-    double lfoPhase;
+    float lfoPhase;
     float ctiState;
     float feedbackState;
     float adaa_x1;
@@ -76,10 +76,9 @@ typedef struct {
 } MistressState;
 
 typedef struct {
-    double phaseInc;
+    float phaseInc;
     float depth;
     float depthRangeMs;
-    float staticDelayMs;
     float feedbackGain;
     int   matrixMode;
     float dryGain;
@@ -93,24 +92,22 @@ TS_INLINE float mistress_lfo_shape(float phi)
     const float fallK = 1.8f;
     const float invRise = 0.15651764274966567f; /* 1.0 / (exp(2.0) - 1.0) */
     const float invFall = 1.1980336336214532f;  /* 1.0 / (1.0 - exp(-1.8)) */
-    if (phi < 0.5f) {
-        float p = phi * 2.0f;
-        return (ts_exp_pos(riseK * p) - 1.0f) * invRise;
-    } else {
-        float p = (phi - 0.5f) * 2.0f;
-        float e_pos = ts_exp_pos(fallK * p);
-        float e_neg = ts_rcp(e_pos);
-        return 1.0f - (1.0f - e_neg) * invFall;
-    }
+    float p_rise = ts_clamp(phi * 2.0f, 0.0f, 1.0f);
+    float shape_rise = (ts_exp_pos(riseK * p_rise) - 1.0f) * invRise;
+    float p_fall = ts_clamp((phi - 0.5f) * 2.0f, 0.0f, 1.0f);
+    float e_pos = ts_exp_pos(fallK * p_fall);
+    float e_neg = ts_rcp(e_pos);
+    float shape_fall = 1.0f - (1.0f - e_neg) * invFall;
+    return (phi < 0.5f) ? shape_rise : shape_fall;
 }
 
 TS_INLINE float mistress_tanh(float m)
 {
     float a = m < 0.0f ? -m : m;
-    if (a < 1.0e-4f) return m;
     float e2 = ts_exp_pos(2.0f * a);
     float t = 1.0f - 2.0f * ts_rcp(e2 + 1.0f);
-    return m < 0.0f ? -t : t;
+    float res = (a < 1.0e-4f) ? a : t;
+    return m < 0.0f ? -res : res;
 }
 
 TS_INLINE float mistress_mean_tanh(float p, float d)
@@ -129,14 +126,15 @@ TS_INLINE float mistress_mean_tanh(float p, float d)
 TS_INLINE float mistress_ln_cosh(float z)
 {
     float a = z < 0.0f ? -z : z;
-    if (a < 1.0e-4f) return 0.5f * a * a;
+    float approx = 0.5f * a * a;
     float e2 = ts_exp_pos(2.0f * a);
     float w = ts_rcp(e2);
     float sv = w * ts_rcp(2.0f + w);
     float s2 = sv * sv;
     float log1p_w = 2.0f * sv * (1.0f + s2 * (1.0f / 3.0f + s2 * (1.0f / 5.0f + s2 * (1.0f / 7.0f
                     + s2 * (1.0f / 9.0f + s2 * (1.0f / 11.0f + s2 * (1.0f / 13.0f)))))));
-    return a + log1p_w - 0.6931471805599453f;
+    float full = a + log1p_w - 0.6931471805599453f;
+    return (a < 1.0e-4f) ? approx : full;
 }
 
 TS_INLINE float mistress_adaa_process(MistressState *s, float x)
@@ -144,25 +142,22 @@ TS_INLINE float mistress_adaa_process(MistressState *s, float x)
     float x1 = s->adaa_x1;
     float diff = x - x1;
     float ad = diff < 0.0f ? -diff : diff;
-    float out;
-    if (ad < 0.2f) {
-        out = mistress_mean_tanh(x1, 0.5f * diff);
-    } else {
-        float ad0 = mistress_ln_cosh(x);
-        out = (ad0 - s->adaa_ad1) * ts_rcp(diff);
-    }
+    float ad0 = mistress_ln_cosh(x);
+    float safe_diff = (ad < 0.2f) ? 1.0f : diff;
+    float out_large = (ad0 - s->adaa_ad1) * ts_rcp(safe_diff);
+    float out_small = mistress_mean_tanh(x1, 0.5f * diff);
+    float out = (ad < 0.2f) ? out_small : out_large;
     s->adaa_x1 = x;
-    s->adaa_ad1 = mistress_ln_cosh(x);
+    s->adaa_ad1 = ad0;
     return out;
 }
 
 TS_INLINE void mistress_coeffs(MistressCoeffs *k, float rate, float depth,
                                float feedback, float matrix, float mix)
 {
-    k->phaseInc = (double)rate / 44100.0;
+    k->phaseInc = rate * (1.0f / 44100.0f);
     k->depth = depth;
     k->depthRangeMs = depth * (6.4f - 0.64f);
-    k->staticDelayMs = 0.64f + depth * (6.4f - 0.64f);
     k->feedbackGain = feedback * 0.94f;
     k->matrixMode = (matrix != 0.0f);
     k->dryGain = 1.0f - mix * 0.5f;
@@ -178,21 +173,15 @@ TS_INLINE float mistress_process(MistressState *s, const MistressCoeffs *k, floa
     float drySample = x - lp_hp;
 
     /* 2. LFO phase accumulator */
-    double lfoPhase = s->lfoPhase + k->phaseInc;
-    if (lfoPhase >= 1.0) lfoPhase -= 1.0;
+    float lfoPhase = s->lfoPhase + k->phaseInc;
+    lfoPhase -= (lfoPhase >= 1.0f) ? 1.0f : 0.0f;
     s->lfoPhase = lfoPhase;
 
     /* 3. Delay time calculation */
-    float u;
-    float delayMs;
-    if (k->matrixMode) {
-        u = k->depth;
-        delayMs = k->staticDelayMs;
-    } else {
-        float shape = mistress_lfo_shape((float)lfoPhase);
-        u = shape * k->depth;
-        delayMs = 0.64f + shape * k->depthRangeMs;
-    }
+    float lfo_shape = mistress_lfo_shape(lfoPhase);
+    float shape = k->matrixMode ? 1.0f : lfo_shape;
+    float u = shape * k->depth;
+    float delayMs = 0.64f + shape * k->depthRangeMs;
     float delayInSamples = delayMs * 44.1f;
 
     /* 4. CTI cutoff and alpha */
