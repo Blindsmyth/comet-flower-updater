@@ -34,11 +34,6 @@ def sample(x):
     return (sshl(smpy32(x, GAIN), 2) >> 16) & 0xffff
 
 
-def dry(x):
-    """Dry input: the high half of RX unpack's stored word (11f03730, full-scale int32)."""
-    return (x >> 16) & 0xffff
-
-
 class UsbAudioTapTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -112,7 +107,7 @@ class UsbAudioTapTests(unittest.TestCase):
         expected = []
         for _ in range(10):                          # 160 frames, > PRIME
             l, r = self.random_block()
-            expected += [sample(a) | dry(b) << 16 for a, b in zip(l, r)]
+            expected += [sample(a) | sample(b) << 16 for a, b in zip(l, r)]
         # Interleave: two SOFs while only 2 blocks exist -> silence.
         self.lib.host_reset()
         self.lib.usb_audio_set_alt(1)
@@ -138,7 +133,7 @@ class UsbAudioTapTests(unittest.TestCase):
             self.block(l, r)
         word = self.sof()[0]
         self.assertEqual(word & 0xffff, sample(l[0]))
-        self.assertEqual(word >> 16, dry(r[0]))   # right = dry input, not TX right
+        self.assertEqual(word >> 16, sample(r[0]))
 
     def test_underrun_pads_zeros_counts_and_reprimes(self):
         self.lib.usb_audio_set_alt(1)
@@ -169,7 +164,7 @@ class UsbAudioTapTests(unittest.TestCase):
         fresh = []
         for _ in range(8):
             l, r = self.random_block()
-            fresh += [sample(a) | dry(b) << 16 for a, b in zip(l, r)]
+            fresh += [sample(a) | sample(b) << 16 for a, b in zip(l, r)]
             self.block(l, r)
         # The disabled SOF discarded the old ring: only fresh frames play.
         self.assertEqual(self.state(4), 0)
@@ -193,7 +188,7 @@ class UsbAudioTapTests(unittest.TestCase):
         while t_sof < seconds:
             if t_block <= t_sof:
                 l, r = self.random_block()
-                produced += [sample(a) | dry(b) << 16 for a, b in zip(l, r)]
+                produced += [sample(a) | sample(b) << 16 for a, b in zip(l, r)]
                 self.block(l, r)
                 t_block += BLOCK / FS
             else:
@@ -246,7 +241,7 @@ class UsbAudioTapTests(unittest.TestCase):
         while t_sof < seconds:
             if t_block <= t_sof:
                 l, r = self.random_block()
-                produced += [sample(a) | dry(b) << 16 for a, b in zip(l, r)]
+                produced += [sample(a) | sample(b) << 16 for a, b in zip(l, r)]
                 self.block(l, r)
                 t_block += block_period
             else:

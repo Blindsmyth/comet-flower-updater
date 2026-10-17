@@ -71,7 +71,23 @@
    keeps the dry input in the wet path's polarity. */
 #ifndef UA_TAP_RX_L
 #define UA_TAP_RX_L ((const volatile int *)0x11f03730u)
+#define UA_TAP_RX_R ((const volatile int *)0x11f03770u)
+/* Mix buses read by the patch-level stage 11817a90 (called at 11818c44,
+   before the pack at 11818c64), docs/helpers/RHYTHM_LOOPER_TAP_2026-10-17.md
+   R5: 11f03830/11f03870 stereo (added to the chain output), 11f03930 mono
+   (x gain c011acd0), 11f03970 mono (address published, no consumer found).
+   Float, 16 per channel, 1.0 = full scale (11818428 scales by 2^31). Their
+   producer is unknown: the 8-channel build sends them so a take shows what
+   they carry (rhythm, looper, ...). Read-only. */
+#define UA_TAP_BUS_L ((const volatile float *)0x11f03830u)
+#define UA_TAP_BUS_R ((const volatile float *)0x11f03870u)
+#define UA_TAP_BUS_M ((const volatile float *)0x11f03930u)
+#define UA_TAP_BUS_X ((const volatile float *)0x11f03970u)
 #endif
+#if UA_NCH == 8 && defined(UA_TAP_PATTERN)
+#error "the pattern diagnostic build is 2-channel only"
+#endif
+#define UA_WPF (UA_NCH / 2u)   /* ring words per frame: two 16-bit channels per word */
 #ifndef UA_TAP_STOCK_PACK
 #define UA_TAP_STOCK_PACK() (((void (*)(void))0x11818aa0u)())
 #endif
@@ -121,7 +137,7 @@ usb_audio_tap_t usb_audio_tap = { 0, 0, 0, 0, 0, 0, 0 };
 /* One stereo frame per word: left in the low half, right in the high half,
    which is the UAC1 16-bit stereo byte order on a little-endian FIFO. */
 #pragma DATA_SECTION(usb_audio_ring, ".ua_state")
-volatile u32 usb_audio_ring[UA_TAP_FRAMES];
+volatile u32 usb_audio_ring[UA_TAP_FRAMES * UA_WPF];
 
 #ifdef UA_TAP_PATTERN
 #pragma DATA_SECTION(ua_pattern_frame, ".ua_state")
@@ -236,10 +252,36 @@ static inline u32 ua_tap_dry(int x)
     return ((u32)x >> 16) & 0xffffu;
 }
 
-/* Swi context. Bounded: 16 frames, no waits. l = processed output (TX left),
-   d = dry input (RX left): USB left = wet, USB right = dry (owner, 2026-10-17:
-   one take gives the pedal's sound and the DI for re-amping / shoot-outs). */
-void usb_audio_tap_block(const volatile int *l, const volatile int *d)
+#if UA_NCH == 8
+#ifdef __TI_COMPILER_VERSION__
+#define UA_SPINT(f) _spint(f)          /* SPINT: round, saturate to int32 */
+#else
+static int UA_SPINT(float f)
+{
+    double d = (double)f;
+    if (d >= 2147483647.0)
+        return 0x7fffffff;
+    if (d <= -2147483648.0)
+        return (int)0x80000000;
+    return (int)(d < 0 ? d - 0.5 : d + 0.5);
+}
+#endif
+/* Float bus sample (1.0 = full scale) -> 16-bit: saturate at int32, high half,
+   the same truncation as the pack path. */
+static inline u32 ua_tap_float(float x)
+{
+    return ((u32)UA_SPINT(x * 2147483648.0f) >> 16) & 0xffffu;
+}
+#endif
+
+/* Swi context. Bounded: 16 frames, no waits. l / r = processed output (TX
+   left / right): USB channels 1-2, the pedal's stereo output. With 8 channels
+   (owner, 2026-10-17: keep stereo, add the DI and internal sources):
+     3 dry input (left ADC, guitar jack)   4 right ADC (wiring unknown)
+     5-6 stereo mix bus 11f03830/70        7 mono mix bus 11f03930
+     8 bus 11f03970
+   Every source is only read, after the stock code finished it this block. */
+void usb_audio_tap_block(const volatile int *l, const volatile int *r)
 {
     u32 w, i;
 
@@ -254,16 +296,26 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *d)
         return;
     }
 #ifdef UA_TAP_PATTERN
-    (void)l; (void)d;
+    (void)l; (void)r;
     for (i = 0; i < UA_TAP_BLOCK; i++) {
         usb_audio_ring[(w + i) & UA_TAP_MASK] = (ua_pattern_frame & 0xffffu) |
             ((u32)(unsigned short)ua_pattern_sine[ua_pattern_phase] << 16);
         ua_pattern_advance(1u);
     }
 #else
+#if UA_NCH == 2
     for (i = 0; i < UA_TAP_BLOCK; i++)
         usb_audio_ring[(w + i) & UA_TAP_MASK] =
-            ua_tap_sample(l[i]) | (ua_tap_dry(d[i]) << 16);
+            ua_tap_sample(l[i]) | (ua_tap_sample(r[i]) << 16);
+#else
+    for (i = 0; i < UA_TAP_BLOCK; i++) {
+        volatile u32 *f = &usb_audio_ring[((w + i) & UA_TAP_MASK) * UA_WPF];
+        f[0] = ua_tap_sample(l[i]) | (ua_tap_sample(r[i]) << 16);
+        f[1] = ua_tap_dry(UA_TAP_RX_L[i]) | (ua_tap_dry(UA_TAP_RX_R[i]) << 16);
+        f[2] = ua_tap_float(UA_TAP_BUS_L[i]) | (ua_tap_float(UA_TAP_BUS_R[i]) << 16);
+        f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_tap_float(UA_TAP_BUS_X[i]) << 16);
+    }
+#endif
 #endif
     usb_audio_tap.ring_wr = w + UA_TAP_BLOCK;     /* publish last */
     usb_audio_tap.blocks++;
@@ -274,7 +326,7 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *d)
 void ua_tx_pack_tap(void)
 {
     UA_TAP_STOCK_PACK();
-    usb_audio_tap_block(UA_TAP_TX_L, UA_TAP_RX_L);
+    usb_audio_tap_block(UA_TAP_TX_L, UA_TAP_TX_R);
 }
 
 /* Hwi context: bounded (at most 45 FIFO writes), never spins, direct EP1
@@ -332,7 +384,7 @@ void usb_audio_sof_tick_tap(void)
             usb_audio_state.frame_phase++;
             if (usb_audio_state.frame_phase >= 10)
                 usb_audio_state.frame_phase = 0;
-            for (i = 0; i < n; i++)
+            for (i = 0; i < n * UA_WPF; i++)
                 USB_EP1_FIFO = 0;
             USB_EP1_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_TXPKTRDY;
             usb_audio_state.serviced_sof++;
@@ -349,12 +401,25 @@ void usb_audio_sof_tick_tap(void)
         ua_pattern_diag.packets++;
     }
     for (i = have ? 1u : 0u; i < have; i++)
-#else
-    for (i = 0; i < have; i++)
-#endif
         USB_EP1_FIFO = usb_audio_ring[(r + i) & UA_TAP_MASK];
     for (; i < n; i++)
         USB_EP1_FIFO = 0;
+#elif UA_NCH == 2
+    for (i = 0; i < have; i++)
+        USB_EP1_FIFO = usb_audio_ring[(r + i) & UA_TAP_MASK];
+    for (; i < n; i++)
+        USB_EP1_FIFO = 0;
+#else
+    for (i = 0; i < have; i++) {
+        const volatile u32 *f = &usb_audio_ring[((r + i) & UA_TAP_MASK) * UA_WPF];
+        USB_EP1_FIFO = f[0];
+        USB_EP1_FIFO = f[1];
+        USB_EP1_FIFO = f[2];
+        USB_EP1_FIFO = f[3];
+    }
+    for (i = have * UA_WPF; i < n * UA_WPF; i++)
+        USB_EP1_FIFO = 0;
+#endif
     usb_audio_tap.ring_rd = r + have;
     if (have < n) {
         usb_audio_tap.underruns++;

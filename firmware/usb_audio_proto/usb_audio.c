@@ -44,6 +44,22 @@ typedef unsigned char  u8;
 typedef unsigned short u16;
 typedef unsigned int   u32;
 
+/* USB channel count: 2 (stereo, the default, every existing build) or 8
+   (multichannel tap build, make_usb_audio_fw.py --tap8; channel map in
+   usb_audio_tap.c). 16-bit samples; 45 frames worst case per 1 ms packet. */
+#ifndef UA_NCH
+#define UA_NCH 2
+#endif
+#if UA_NCH != 2 && UA_NCH != 8
+#error "UA_NCH must be 2 or 8"
+#endif
+#define UA_PKT_MAX   (45u * 2u * UA_NCH)        /* 180 or 720 bytes */
+#if UA_NCH == 2
+#define UA_FIFOSZ    0x15u   /* 2 x 256 B (size code 5 = 256 B, bit 4 double) */
+#else
+#define UA_FIFOSZ    0x17u   /* 2 x 1024 B at 0x140..0x93f: free per USB_OPT_A3 (stock uses 0x000..0x13f) */
+#endif
+
 /* The host regression harness replaces these lvalues with in-memory registers.
    Target builds always use the physical, volatile MMIO accesses below. */
 #ifndef USB_AUDIO_REG8
@@ -131,9 +147,9 @@ typedef unsigned int   u32;
 void usb_audio_setup_ep1(void)
 {
     USB_INDEX = 1;
-    USB_TXMAXP = 180;            /* recon/17 B5: wMaxPacketSize 0x00b4 */
+    USB_TXMAXP = UA_PKT_MAX;     /* = wMaxPacketSize (180 for 2 channels, recon/17 B5) */
     USB_TXFIFOADDR = 0x28;       /* byte 0x140, recon/18 3.3/3.6 point 4 */
-    USB_TXFIFOSZ = 0x15;         /* 256 B/bank, double-buffered; recon/18 3.3's figure, not re-derived bit-by-bit here */
+    USB_TXFIFOSZ = UA_FIFOSZ;    /* double-buffered, bank >= one max packet */
     /* TX mode, PIO, toggle reset, FIFO flushed: 0x6048 (recon/21 3.3 fix 1) */
     USB_TXCSR = TXCSR_MODE | TXCSR_ISO | TXCSR_CLRDATATOG | TXCSR_FLUSHFIFO;
 }
@@ -282,7 +298,9 @@ static const u8 stock_cs_ep2[5]       = { 0x05,0x25,0x01,0x01,0x14 };
 
 static const u8 uac_if2_ac[9]      = { 0x09,0x04,0x02,0x00,0x00,0x01,0x01,0x00,0x00 };
 static const u8 uac_ac_header[9]   = { 0x09,0x24,0x01,0x00,0x01,0x1e,0x00,0x01,0x03 };
-static const u8 uac_it1[12]        = { 0x0c,0x24,0x02,0x01,0x03,0x06,0x00,0x02,0x03,0x00,0x00,0x00 };
+/* Input terminal: bNrChannels = UA_NCH, wChannelConfig L|R (channels 3.. are
+   non-predefined, UAC1 4.3.2.1). */
+static const u8 uac_it1[12]        = { 0x0c,0x24,0x02,0x01,0x03,0x06,0x00,UA_NCH,0x03,0x00,0x00,0x00 };
 static const u8 uac_ot2[9]         = { 0x09,0x24,0x03,0x02,0x01,0x01,0x00,0x01,0x00 };
 static const u8 uac_if3_alt0[9]    = { 0x09,0x04,0x03,0x00,0x00,0x01,0x02,0x00,0x00 };
 static const u8 uac_if3_alt1[9]    = { 0x09,0x04,0x03,0x01,0x01,0x01,0x02,0x00,0x00 };
@@ -293,8 +311,8 @@ static const u8 uac_as_general[7]  = { 0x07,0x24,0x01,0x02,0x01,0x01,0x00 };
    than Windows' wLength 255, ends with the stock zero-length-packet path; after
    it the pedal STALLed SET_CONFIGURATION on a root port (Code 10, USB ETW trace
    2026-10-16, docs/CF_USB_MODE_2026-10-16.md). Keep wTotalLength % 64 != 0. */
-static const u8 uac_format_i[14]   = { 0x0e,0x24,0x02,0x01,0x02,0x02,0x10,0x00,0x44,0xac,0x00,0x44,0xac,0x00 };
-static const u8 uac_ep1[9]         = { 0x09,0x05,0x81,0x05,0xb4,0x00,0x01,0x00,0x00 };
+static const u8 uac_format_i[14]   = { 0x0e,0x24,0x02,0x01,UA_NCH,0x02,0x10,0x00,0x44,0xac,0x00,0x44,0xac,0x00 };
+static const u8 uac_ep1[9]         = { 0x09,0x05,0x81,0x05,UA_PKT_MAX & 0xffu,UA_PKT_MAX >> 8,0x01,0x00,0x00 };
 static const u8 uac_cs_ep[7]       = { 0x07,0x25,0x01,0x00,0x00,0x00,0x00 };
 
 #define DESC_COUNT 25   /* 24 populated + null terminator, recon/20 2.1 */

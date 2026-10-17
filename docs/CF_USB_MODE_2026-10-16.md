@@ -356,3 +356,29 @@ Unproved on hardware: that 11f03730 still holds this block's input at TX time (n
 that the guitar is on the left ADC, and the DI level (ADC PGA 0 dB). Check: a take with a patch whose sound
 clearly differs from the DI (e.g. heavy drive) and confirm R is the clean guitar, in time with L.
 `ua_capture.py` still analyses L == R takes as one signal; per-channel analysis for wet/dry takes is next.
+
+## 8-channel tap build (2026-10-17): find out what the internal buses carry
+
+Owner kept stereo (tap4 wet/dry superseded, never flashed) and wants the drum machine and looper as their own
+channels. The audio Swi never renders rhythm or looper itself; the patch-level stage 11817a90 adds two internal
+mix buses to the chain output: 11f03830/11f03870 (stereo, added directly) and 11f03930 (mono, x gain c011acd0);
+11f03970 is a third published bus with no consumer found (docs/helpers/RHYTHM_LOOPER_TAP_2026-10-17.md). Their
+producer is unknown, so the 8-channel build sends them and a take tells what they carry.
+
+`make_usb_audio_fw.py --tap8` (`UA_NCH=8`): 1-2 pedal output L/R (stock pack math, as tap3), 3 left ADC (DI,
+11f03730 high half), 4 right ADC (11f03770), 5-6 bus 11f03830/70, 7 bus 11f03930, 8 bus 11f03970 (float,
+1.0 = full scale, SPINT x 2^31 high half). Descriptor: 8 channels, wMaxPacketSize 720, wTotalLength 195
+(% 64 != 0); EP1 TXMAXP 720, FIFO 2 x 1024 B at 0x140 (TXFIFOSZ 0x17; stock uses 0x000..0x13f). Ring 256 frames
+x 4 words. All sources read-only, after the stock code finished them this block. The 2-channel build is
+unchanged: rebuilt from this source it is byte-identical to tap3 (`dcf7cb50`). Host tests
+`tests/test_usb_audio_tap8.py` (descriptor, FIFO, packet order of all 8, float scaling, priming silence width,
+drift -1000/+10000 ppm continuity). Static cost: the 8-channel copy loop is not software-pipelined (volatile
+reads), estimate < 1 % of a block with the SOF writes; ClkT measurement still owed.
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB audio 8ch** `build/cf_usb_audio_8ch_2026-10-17/` (desktop: `GUITAR AUDIO 5 - Comet Flower USB 8ch TEST.exe`) | `e9b56839` | `7a4cef2a` |
+
+Test: flash, power on holding slot 1 (hub and port 13), Windows should list an 8-channel "Line (Comet Flower ZG1X4
+MIDI)". Record with `tools/ua_capture8.py --seconds 30` while (a) playing, (b) running the drum machine, (c)
+recording and playing a loop. The report prints per-channel level and which channels resemble each other.
