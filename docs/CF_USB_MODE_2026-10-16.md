@@ -220,3 +220,15 @@ hub it enumerated (HOST 22). Port 13 left as an open puzzle.) 40 s, delivered au
 
 The variants build now numbers 0 = double + ISOUpdate off (the new default), bit 1 = ISOUpdate on. Next: tap build
 with guitar, `ua_capture.py` audio take (expect no clicks), then a pattern check on the hub and a direct port.
+
+## Long run (tap build de0925d4, hub), take `build/ua_takes/longrun_20261016_hum.wav` (2026-10-16 evening)
+
+5 min, WASAPI exclusive, nothing played (input = 60/180 Hz mains hum at -34 dBFS rms, L == R).
+13,230,000 frames in 300.1 s wall time (full rate; the 0.1 s is stream start). One zero run: the 89-frame
+priming at the start, none after. The old click count (668) is the hum's own waveform, not defects. A
+linear-prediction residual scan (order 24, 8192-frame blocks, > 12 x MAD) finds 3 outliers at 4,786,658 and
+5,140,620: smooth ~4 kHz bursts over ~12 samples (input pops), not steps. **0 dropouts in 5 min.**
+
+Static CPU estimate for the tap (from `build/usb_audio_tap/usb_audio.dis`): Swi copy SPLOOP ii 14 x 16 frames
+~250 cycles/block; SOF Hwi ring loop ii 6 x 45 frames ~300 cycles/ms ~110/block plus entry. About 0.4 % of the
+132,354-cycle block; ClkT confirmation still open.
