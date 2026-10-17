@@ -84,3 +84,19 @@ alike. The test tone means a diag build is on the pedal. Check: `ua_capture.py` 
 - C674x payload rules: a `switch` became a jump table in `.switch`, which the build refuses ("needs run-time
   support"): use an array. `/` and `%` were avoided up front (they may call RTS divide helpers, which the
   payload does not link; not tested): use countdowns. The build check catches both.
+
+## Update, late evening (optimisation pass)
+
+Details: `docs/CF_USB_MODE_2026-10-16.md` (last four sections), helper reports `docs/helpers/USB_OPT_*_2026-10-16.md`.
+- 5-min long run on tap: full rate, 0 dropouts. Tap CPU (static) ~0.4 % of a block.
+- **Start-splice bug fixed** (1 in ~15 stream opens: host polls late, ring overran, splice 128 frames in):
+  **tap2 TEST updater `d6e62256`** (fw `72e97df5`), desktop `GUITAR AUDIO 2 - Comet Flower USB tap2 TEST.exe`.
+  Not flashed yet. After flashing: 15 x 3 s opens into `build/ua_takes/starts_tap2/`, expect no event at ~217.
+- `ua_capture.py` now has Argon's linear-prediction defect detector (lost / repeat / zero / jump, "N defects in M min");
+  a normal take can now prove "no dropouts". A host-side first-buffer replay (exact copy, priming included) can occur
+  at stream start: not the pedal.
+- Port 13 Code 10: not the ZLP case (stock EP0 sends one) and not the first descriptor fetch; the composite
+  device failed at start-up. Retest on port 13 with tap2.
+- Level: USB follows the digital master volume (MVOL) and patch level (both before the tap). Turn master up to record.
+- 24-bit option: EP1 2 x 512 B fits at 0x140 unchanged (stock uses 320 B of 4 KB FIFO RAM). Not built; owner's call.
+- Astra (Codex) capped until 22:28 2026-10-16.
