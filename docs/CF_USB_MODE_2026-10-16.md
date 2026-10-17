@@ -332,3 +332,8 @@ Host side (owner's VPB app, its `startup_audio_log.txt`): dropout prompts came f
 device xruns at 48 kHz / 480 samples (pedal input 44.1 kHz on its own clock, speakers 48 kHz on another, Windows
 shared mode bridges them), and DSP xruns after the buffer was lowered to 132 samples with a 9-effect chain.
 Advice: buffer >= 256-480, speakers at 44.1 kHz. Real fix later: a USB playback endpoint so in/out share the pedal clock.
+
+Splice check on tap3, port 13, owner strumming (Bm-G-F#-Em loop), 15 opens x 3 s (`build/ua_takes/starts_tap3/`):
+levels -22..-28 dBFS rms, peaks to -3.5 dBFS, no clipping; priming 89 frames each; **no event near frame 217 in
+any open** (tap1: 1 in 15). The LP detector flagged 14-89 "lost frames" per take in clusters at strum attacks;
+inspected spots are smooth (no steps): false positives on real playing. Retune: docs/helpers/GLITCH_TUNE_BRIEF_2026-10-17.md.
