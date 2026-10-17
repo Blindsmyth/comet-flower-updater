@@ -1,0 +1,15 @@
+{
+  "firmware": "8ch-b TEST 3f290e3e (fw 18840d2a)",
+  "note": "USB input channels of the Comet Flower ZG1X4 8-channel build. Edit here when the map changes; tools/ua_capture8.py and tools/make_reaper_template.py read it.",
+  "channels": [
+    {"ch": 1, "label": "Pedal Out L", "source": "TX left 11f038b0 (stock pack math)"},
+    {"ch": 2, "label": "Pedal Out R", "source": "TX right 11f038f0"},
+    {"ch": 3, "label": "Guitar DI", "source": "left ADC 11f03730 (dry input)"},
+    {"ch": 4, "label": "Guitar DI copy", "source": "right ADC 11f03770 (same jack, identical to ch3 on 2026-10-17)"},
+    {"ch": 5, "label": "Bus A L", "source": "mix bus 11f03830 (silent so far)"},
+    {"ch": 6, "label": "Bus A R", "source": "mix bus 11f03870 (silent so far)"},
+    {"ch": 7, "label": "Bus B", "source": "mix bus 11f03930 (band-passed guitar-like)"},
+    {"ch": 8, "label": "Bus C", "source": "bus 11f03970 (identical to ch7 on 2026-10-17)"}
+  ],
+  "stereo_pairs": [[1, 2, "Pedal Out"], [5, 6, "Bus A"]]
+}

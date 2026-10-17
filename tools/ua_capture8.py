@@ -3,8 +3,9 @@
     python tools/ua_capture8.py [--seconds 20] [--out take.wav]
     python tools/ua_capture8.py --wav take.wav
 
-Channels (make_usb_audio_fw.py --tap8): 1-2 pedal output L/R, 3 dry input (left ADC),
-4 right ADC, 5-6 internal mix bus 11f03830/70, 7 bus 11f03930, 8 bus 11f03970.
+Channel labels come from tools/ua_channels.json (the one place to edit when the map changes).
+Each recording also writes one mono WAV per channel named after its signal
+(take8_<time>_03_Guitar_DI.wav, ...) and take8_<time>.channels.json with the map.
 Per channel: rms / peak in dBFS, clipped samples, the share of the take that is silent
 (digital zero), and the strongest correlation with another channel, so a take with the
 drum machine or the looper running shows which bus carries it. WASAPI exclusive mode,
@@ -16,10 +17,35 @@ import time
 import wave
 from pathlib import Path
 
+import json
+import re
+
 import numpy as np
 
 FS = 44100
-NAMES = ["out L", "out R", "DI (ADC L)", "ADC R", "bus 3830 L", "bus 3870 R", "bus 3930", "bus 3970"]
+MAP_FILE = Path(__file__).with_name("ua_channels.json")
+CHMAP = json.loads(MAP_FILE.read_text())
+NAMES = [c["label"] for c in CHMAP["channels"]]
+
+
+def slug(label):
+    return re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_")
+
+
+def save_labelled(out, data):
+    """Next to the multichannel take: one mono WAV per channel named after its signal, and a
+    JSON sidecar with the channel map, so every take stays labelled outside this tool."""
+    stem = out.with_suffix("")
+    files = []
+    for ch in range(data.shape[1]):
+        label = NAMES[ch] if ch < len(NAMES) else "ch%d" % (ch + 1)
+        f = Path("%s_%02d_%s.wav" % (stem, ch + 1, slug(label)))
+        save(f, data[:, ch:ch + 1])
+        files.append(f.name)
+    side = stem.with_suffix(".channels.json")
+    side.write_text(json.dumps({"take": out.name, "firmware": CHMAP.get("firmware"),
+                                "channels": CHMAP["channels"][:data.shape[1]], "files": files}, indent=2))
+    return files, side
 
 
 def record(seconds, nch, device=None):
@@ -93,9 +119,14 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--wav")
     ap.add_argument("--device", type=int)
+    ap.add_argument("--no-split", action="store_true", help="do not write the per-channel labelled WAVs")
+    ap.add_argument("--split", action="store_true", help="with --wav: write labelled per-channel WAVs for it")
     a = ap.parse_args()
     if a.wav:
         data = load(a.wav)
+        if a.split:
+            files, side = save_labelled(Path(a.wav), data)
+            print("labelled: %s ... (%d files), map %s" % (files[0], len(files), side.name))
     else:
         data = record(a.seconds, a.channels, a.device)
         out = Path(a.out) if a.out else Path(__file__).resolve().parents[1] / "build" / "ua_takes" / (
@@ -103,6 +134,9 @@ def main():
         out.parent.mkdir(parents=True, exist_ok=True)
         save(out, data)
         print("recorded", out)
+        if not a.no_split:
+            files, side = save_labelled(out, data)
+            print("labelled: %s ... (%d files), map %s" % (files[0], len(files), side.name))
     print("\n".join(report(data)))
 
 
