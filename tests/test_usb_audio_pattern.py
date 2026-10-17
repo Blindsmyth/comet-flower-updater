@@ -102,8 +102,7 @@ class AnalyserTests(unittest.TestCase):
         data = np.stack([x, x], axis=1)
         self.assertFalse(ua_capture.is_pattern(data))
         lines = ua_capture.analyse_audio(data)
-        self.assertIn("clicks", lines[-1])
-        self.assertTrue(lines[-1].startswith("clicks") and ": 0" in lines[-1])
+        self.assertTrue(lines[-1].startswith("0 defects"), lines[-1])
 
     def test_wav_round_trip(self):
         data = pattern(7, 1000)

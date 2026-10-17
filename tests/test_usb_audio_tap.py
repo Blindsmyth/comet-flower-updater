@@ -171,6 +171,66 @@ class UsbAudioTapTests(unittest.TestCase):
         self.assertEqual(self.sof(), fresh[:45])
         self.assertEqual(self.state(2), 1)
 
+    def busy_sof(self):
+        """One SOF while the host has not taken the queued packet yet."""
+        self.lib.host_set_register(TXCSR, 0x6001)
+        self.lib.usb_audio_sof_tick_tap()
+        buf = (ctypes.c_uint * 64)()
+        self.assertEqual(self.lib.host_take_fifo(buf, 64), 0)
+
+    def stream_with_stall(self, stall_from, stall_ms, seconds=0.2):
+        """Blocks at 44.1 kHz against 1 ms SOFs; SOFs stall_from..+stall_ms find
+        the endpoint busy (host not polling). Returns the received segments,
+        each a list of frames between re-primes."""
+        self.lib.usb_audio_set_alt(1)
+        produced, segments = [], []
+        t_block, t_sof, k = 0.0, 0.0, 0
+        while t_sof < seconds:
+            if t_block <= t_sof:
+                l, r = self.random_block()
+                produced += [sample(a) | sample(b) << 16 for a, b in zip(l, r)]
+                self.block(l, r)
+                t_block += BLOCK / FS
+            else:
+                if stall_from <= k < stall_from + stall_ms:
+                    self.busy_sof()
+                else:
+                    was = self.state(2)
+                    packet = self.sof()
+                    if self.state(2):
+                        if not was:
+                            segments.append([])
+                        segments[-1] += packet
+                k += 1
+                t_sof += 1e-3
+        return produced, segments
+
+    def assert_contiguous(self, produced, frames):
+        # Saturated samples repeat, so try every place the first frame occurs.
+        starts = [i for i, f in enumerate(produced) if f == frames[0]]
+        self.assertTrue(any(produced[i:i + len(frames)] == frames for i in starts),
+                        "received frames are not one contiguous stretch")
+
+    def test_host_late_at_stream_start_no_splice(self):
+        # Run 10 take: the host polled late after alt 1, the ring overran
+        # and priming then joined two distant stretches (a splice 128 frames in).
+        produced, segments = self.stream_with_stall(0, 12)
+        self.assertEqual(self.state(4), 0, "overruns")
+        self.assertEqual(len(segments), 1)
+        self.assert_contiguous(produced, segments[0])
+
+    def test_host_stall_mid_stream_reprimes_without_splice(self):
+        produced, segments = self.stream_with_stall(50, 20)
+        self.assertEqual(self.state(4), 0, "overruns")
+        self.assertEqual(len(segments), 2)          # re-primed after the stall
+        for s in segments:
+            self.assert_contiguous(produced, s)
+
+    def test_single_busy_sof_keeps_stream_primed(self):
+        produced, segments = self.stream_with_stall(50, 1)
+        self.assertEqual(len(segments), 1)
+        self.assert_contiguous(produced, segments[0])
+
     def run_clocks(self, ppm, seconds=10):
         """Blocks at the codec rate (with drift) against 1 ms SOFs."""
         self.lib.usb_audio_set_alt(1)

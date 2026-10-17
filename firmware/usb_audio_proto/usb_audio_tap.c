@@ -282,6 +282,18 @@ void usb_audio_sof_tick_tap(void)
         return;
     }
     if (USB_EP1_TXCSR & TXCSR_TXPKTRDY) {
+        /* Host not polling (late after alt 1, or stalled). Keep only the
+           newest UA_TAP_PRIME frames so the Swi never overruns: an overrun
+           drops the newest block, and priming on the stored frames would
+           then join two distant stretches (run 10: a splice 128 frames into
+           the stream). A stall long enough to fill the ring re-primes. */
+        w = usb_audio_tap.ring_wr;
+        if (!usb_audio_tap.primed ||
+            w - usb_audio_tap.ring_rd > UA_TAP_FRAMES - 2u * UA_TAP_BLOCK) {
+            usb_audio_tap.primed = 0;
+            if (w - usb_audio_tap.ring_rd > UA_TAP_PRIME)
+                usb_audio_tap.ring_rd = w - UA_TAP_PRIME;
+        }
         usb_audio_state.missed_sof++;
         return;
     }

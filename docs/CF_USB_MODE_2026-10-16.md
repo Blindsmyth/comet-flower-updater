@@ -249,3 +249,28 @@ Static CPU estimate for the tap (from `build/usb_audio_tap/usb_audio.dis`): Swi 
 Level chain (Astra A2): the tap follows the digital master volume (`MVOL`, float 11f03e34 applied at 11818d60)
 and the patch level (c011acd4 at 11817bd4). USB level therefore follows the pedal's volume setting; the -27 dBFS
 guitar peak is most likely a low master volume, not the tap's scaling.
+
+## Stream-start splice and the tap2 build (evening)
+
+Argon's linear-prediction detector (`ua_capture.py`, `docs/helpers/USB_OPT_ARGON_2026-10-16.md`; verified: 0 false
+events on the 10 s takes) found **one splice in the 5-min take at frame 217** (signal steps 471 -> 18). 217 = 89
+priming frames + 128 = `UA_TAP_PRIME`. Cause (tap code, reproduced on the host): when the host polls late after
+alt 1, every SOF finds TxPktRdy set and returned before the priming logic; the Swi filled the ring, overran
+(dropping the *newest* blocks), and priming on the newest stored 128 frames joined them to frames stored after
+the overrun. Seen in 1 of 3 takes; once per stream open, ~3 ms in.
+
+Fix (`usb_audio_tap.c`, busy-SOF path, consumer side so `ring_rd` keeps one writer): while not primed, or when a
+stall has filled the ring to within 2 blocks, trim to the newest `UA_TAP_PRIME` frames and un-prime. A single busy
+SOF while primed changes nothing. New host tests: late host at start, 20 ms stall mid-stream (re-primes, each
+stretch contiguous), single busy SOF (stays primed); the first two failed before the fix. 369 tests pass
+(`tests/`, `tools/test_usb_audio_proto.py`, `tools/test_ua_capture_glitch.py`).
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB audio tap2** `build/cf_usb_audio_tap2_2026-10-16/` (desktop: `GUITAR AUDIO 2 - Comet Flower USB tap2 TEST.exe`) | `d6e62256` | `72e97df5` |
+
+Same pipeline as tap (`make_controller_fw.py --base build/fw/res1_cf_usbname.bin --ui --usb-product "Comet Flower
+ZG1X4 MIDI"`, `make_usb_audio_fw.py --tap`, `make_fs_restore_updater.py --test-controller-fw … --presets
+build/fw/cfupd_res85.bin --image build/cf_release_2026-10-16/fs_cf.bin`); rebuilding the old source with it gives
+`32afe08d` / `de0925d4` exactly, so tap2 differs only by the fix. **Not flashed yet.** Check after flashing:
+open the stream ~20 times (`ua_capture.py --seconds 3` in a loop) and look for a lost-frame event near frame 217.
