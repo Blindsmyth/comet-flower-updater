@@ -159,3 +159,9 @@ ACCURACY: FAIL (72 of 72 tests)
 ```
 Every single test fails, as expected: pass-through applies no gain
 reduction at all, so the "residual" is as loud as the signal itself.
+
+## RESOLVED 2026-10-17 (Claude): the attack/release select
+A ternary (or `fmaxf`/`fminf`) choosing between attack and release coefficients is allowed, provided it is a
+pure value select with no side effects in either arm: the TI compiler turns it into predicated instructions,
+not a branch. That is what DSP_RULES' "fminf-style selects" means. Do not put loads, stores or calls in the
+arms.

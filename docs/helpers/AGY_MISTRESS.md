@@ -148,3 +148,12 @@ ACCURACY: FAIL (81 of 81 tests)
 Every single test fails: pass-through does no flanging at all, so the
 reference's dry+wet mix (even at 40% wet) diverges from raw passthrough on
 every test.
+
+## RESOLVED 2026-10-17 (Claude): delay-line memory
+Keep the delay line as a fixed-size array INSIDE your state struct, exactly as the bench expects; do not
+add pointers or change the CONTRACT. On the pedal the wrapper (written later, not by you) places the whole
+state struct in the slot's per-slot work buffer: every slot gets a 0x81330-byte (3.0 s) region through
+`instance[3]` -> {base, end, size}, confirmed in `docs/helpers/DELAY_MEM_SONNET_2026-10-17.md` (framework
+c014fea0, stock DELAY_3S reads `*+A4[3]` at .text+0x668). So the 392-byte state limit does not apply to
+this effect. Still: size the line to the minimum the model needs (power-of-two length with a mask is fine),
+because the wrapper must zero it at start-up (the stock buffer is not cleared).
