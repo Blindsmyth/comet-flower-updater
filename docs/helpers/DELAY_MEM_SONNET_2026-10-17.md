@@ -163,4 +163,76 @@ found in D3).
 
 ## D4. Lifetime: zeroed on load? shared/other writers?
 
+**Likely: zeroed once at power-on, NOT on every patch/slot change.** Traced
+the call chain upward from the zeroing routine `c0164a98` and the
+instance-wiring routine `c014fea0` (both in `build/fw/map/main.dis`):
+
+- Both are called, back-to-back with ~15 other init calls, from a single
+  straight-line function at `c016bee0..c016bf2c` (no loop, no branch between
+  the calls — `c016bef4 CALLP c0165e98` [5-slot state/coeff memset, recon/14
+  confirmed], `c016bef8 CALLP c014fea0` [instance wiring, D1], ...,
+  `c016bf14 CALLP c0164a98` [0x81330 zeroing, recon/14 confirmed]). This
+  function is called from exactly **one** site: `c015d4b4`.
+- `c015d4b4` sits inside a larger function (entered at `c015d428`, called
+  once from `c0134e14`) that looks like a boot-stage dispatcher: it tests a
+  state value against 7 (`CMPEQ.L1 7,A4,A0` at `c015d4a0`) before running a
+  short sequence that ends by calling the `c016bee0` init block unconditionally.
+- `c0134e14` itself sits inside a polling loop (`c0134dc0`..`c0134e1c`) that
+  compares a state variable to 42 and loops back on itself
+  (`CMPEQ.L2 B0,B1,B0` / `[B0] BNOP.S1 0xc0134dc4,5` at `c0134de4`/`dec`)
+  while that state persists, falling through to the one-time init path
+  (`c0134df0`→...→`c015d428`) only when the state changes away from 42, then
+  looping back to the top (`c0134e18 CALLP c0134db8`). This is consistent
+  with a boot/state-machine dispatcher executing a particular state's
+  handler once per transition, not per patch load.
+- This matches recon/14's own treatment of the neighboring `c0165e98`
+  five-slot memset (coefficients/state) as "static startup configuration",
+  not re-verified per load.
+
+Confidence: **likely**, not confirmed — I did not trace all the way back to
+the reset vector, and I did not find (or look hard for) a second call site
+reached specifically on "load new patch" or "change slot's effect". Given
+the call sites found, the simplest reading is a single boot-time
+initialization; **this is exactly the kind of claim the brief flags as
+needing a pedal test** (see D5).
+
+**Consequence if true:** loading a *different* effect into a slot does
+**not** re-zero that slot's 0x81330 buffer. DELAY_3S's own `Fx_DLY_Delay_init`
+(`.text+0x580`, traced in full) only initializes `instance[1]` (copies 0x80
+default coefficients from `.const` `_Fx_DLY_Delay_Coe` at `.text+0x3ec`) and
+part of `instance[2]` (two memsets, 16 and 52 bytes, i.e. ≤68 bytes of state)
+— it never touches the big buffer or its write cursor's absolute content.
+So a freshly-loaded delay effect inherits whatever was last written into
+that slot's SDRAM region by the previous effect/patch; the first
+buffer-length's worth of playback may include stale samples until the
+write cursor has wrapped once. This is an audible-click-or-residual-noise
+risk worth a pedal test, not a correctness bug.
+
+**Not shared between slots:** the five bases (`c0226000, c02a7330,
+c0328660, c03a9990, c042acc0`) are distinct, contiguous, non-overlapping
+0x81330 regions (confirmed in D1/D2's cross-check), and each slot's
+`instance[3]` only ever points at its own slot's descriptor — slot N's
+effect cannot reach slot M's buffer through this mechanism.
+
+**A separate, larger buffer exists and is NOT part of this mechanism —
+likely the looper, ownership not confirmed.** The descriptor table at
+`c0183470` has a 6th 12-byte entry right after the five slot entries, at
+`c01834ac`: base `c04abff0`, size `0x2b1100` (~2.8 MB; recon/14 flagged this
+but left ownership open). The 5-iteration loop in `c014fea0` (D1) never
+reaches this 6th entry (`ILC`=4, i.e. exactly 5 iterations). I found
+different code reading it:
+```
+c0139ae0  MVK.S1   0x34ac,A4
+c0139ae4  MVKH.S1  0xc0180000,A4
+c0139ae8  LDW.D1T1 *+A4[0],A0     ; A0 = descriptor[0] = base = c04abff0
+```
+followed by storing derived addresses into an unrelated `0xc0110000+`
+region. This is clearly a different subsystem from the per-slot effect
+instance wiring. Given its size (far larger than any single 3 s delay line,
+and matching nothing in the 5-slot effect machinery), **the looper is a
+reasonable guess** for its owner, but I did not identify the enclosing
+function by name or confirm this on the pedal. Confidence: **guess** for
+"who owns it"; **confirmed** that it is a disjoint buffer not reachable via
+any effect's `instance[3]`.
+
 ## D5. Recipe for a CF effect
