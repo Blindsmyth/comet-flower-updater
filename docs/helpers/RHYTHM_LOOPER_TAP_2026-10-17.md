@@ -30,6 +30,26 @@ follow-up pass: find the Task function bodies for `g_Task_RhythmService`/
 `g_Task_LooperUI` and the two helpers `c013a34c`/`c013a328` called from
 `c01502cc`.
 
+R5 (follow-up, 2026-10-17): fully traced `11817a90`'s four extra buffers.
+`11f03830` is a real **stereo** 16-sample float bus (confirmed by the
+loop's own per-channel pointer advance and the startup zero-size), added
+directly into the effect-chain output before the patch-level-gain multiply.
+`11f03930` is a real **mono** 16-sample float bus, scaled by gain cell
+`c011acd0` and summed in separately. `11f03970` is address-published
+(feature table slot 0) but has **no located consumer** anywhere. `c011acec`
+is **confirmed** to be a mirrored copy of the patch-level gain
+`c011acd8` (not a rhythm/looper volume) — traced to its exact setter
+function, which also (conditionally) forces both cells to 1.0 during a
+flag-gated path. The neighboring gain cells (`c011accc`/`acd0`/`ace4`/`ace8`)
+trace to the same generic "all-slots mute/reload" sequence recon/16 B2/B3
+already documented (confirmed: that sequence's mute-flag setter is
+`c01435a0`, and it also calls `c01502cc` per slot). **No producer (writer of
+actual samples) for `11f03830`/`11f03930`/`11f03970` was found** — this
+remains the key open item; the signal shape fits a rhythm/looper send, but
+the gain plumbing traces to generic mute infrastructure, not a
+string-identified rhythm/looper control, so the identification stays
+unconfirmed.
+
 ## R1. Audio Swi full call sequence
 
 Source: `build/fw/map/main.dis` lines 18270-18352 (prologue through the
@@ -281,6 +301,215 @@ verified** for the looper buffer specifically.
 
 **No pre/post-effects, pre/post-rhythm ordering for recording can be given**
 — no record-side code was located at all this pass.
+
+## R5. Follow-up: the four extra buffers `11817a90` touches
+
+Re-disassembled `11817a90`-`11817cdc` in full (`main.dis` lines 17011-17171)
+register-by-register, cross-checked against the startup zeroing sequence
+(`c0165c80`-`c0165d78`, which zeroes every `11f03xxx` audio buffer in address
+order with an explicit byte count per buffer — this is new evidence this
+pass, not previously in any `recon/*.md`) and against the big per-feature
+table-fill function `c014fea0`-`c01502c8` (also newly traced this pass).
+
+**New structural fact (confirmed): the zeroing sequence gives buffer sizes
+unambiguously.** `c0165c80`-`c0165d78` zeroes, in order: `11f03530`(128B),
+`11f035b0`(128B), `11f03630`(128B), `11f036b0`(128B), `11f03730`(128B),
+`11f037b0`(128B), **`11f03830`(128B)**, `11f038b0`(128B), **`11f03930`(64B)**,
+**`11f03970`(64B)**, then `11f039b0`(32B, different init pattern — a
+byte-accumulator, matches recon/16 C11's "unrelated" flag, confirmed still
+unrelated). Every one of the 128-byte entries before `11f03830` is a
+**known stereo pair** (e.g. `11f03730`/`11f03770` = ADC int32 L/R,
+`11f037b0`/`11f037f0` = float L/R, `11f038b0`/`11f038f0` = TX int32 L/R —
+all confirmed pre-existing). `11f03830`'s 128-byte zero call, by the exact
+same pattern, means **`11f03830` is also a stereo pair: L at `11f03830`,
+R at `11f03870`** (confirmed below by a second, independent piece of
+evidence — the loop in `11817a90` itself). `11f03930` and `11f03970` are
+each zeroed with only **64 bytes** — i.e. each is a **standalone mono**
+16-float buffer, not part of a stereo pair.
+
+### (a) What `11817a90` computes, and which buffers get added into `11f037b0`/`11f037f0`
+
+**Confirmed, by direct trace of the per-sample loop (`11817bb0`-`11817c98`,
+software-pipelined, outer count `B1`=2 for L-then-R at `11817bcc`/`c054`):**
+
+- `11817b90`/`11817c9c`-area: `LDW *B6++[1],A6` reads **sequential floats from
+  `11f03830`** (pointer `B19`/`B6`, confirmed).
+- `11817b98`: `LDW *+A18[0],A3` reads the **existing** sample already in
+  `11f037b0` (the effect-chain output, pointer `A18`/`A20`, confirmed).
+- `11817bbc`: `ADDSP A6,A3,A3` — **`11f03830` is added directly, sample for
+  sample, to the effect-chain output** (confirmed instruction).
+- `11817bd4`: that sum is multiplied by `A7` = `*(c011acd4)` — **the patch-level
+  gain** (confirmed register identity, matches
+  `docs/helpers/USB_OPT_ASTRA_2026-10-16.md` A2 finding 3 exactly).
+- `11817be0`: the result is multiplied again by `B4` = `*(c011accc)` (a second,
+  separate gain cell — see (c) below for what this cell is).
+- In parallel, `11817ba8`/`c0cb`-area: `LDW *A19++[1],B5` reads **sequential
+  floats from `11f03930`** (pointer `A21`/`A19`).
+- `11817bd8`: that sample is multiplied by `B8` = `*(c011acd0)` (yet another
+  gain cell, adjacent to `c011accc`, same struct — see (c)).
+- `11817bec`: `ADDSP A3,B5,A4` — the two branches are **summed together**.
+- `11817c3c`/`11817c98`: the final value is stored back into `11f037b0`
+  (`A18++`), i.e. **in place**, confirmed, matching Astra's existing finding
+  that `11817a90` writes the mixed result into `11f037b0`.
+- The **outer loop** (`B1`=2) confirms channel handling: after the first pass,
+  `11817c40`/`c44` add **64 bytes** to both the `11f03830` pointer (`B19`) and
+  the output pointer (`A20`) — moving to `11f03870`/`11f037f0` — so
+  **`11f03830` is read as a true stereo pair, L then R** (confirmed, not just
+  inferred from the zero-call size). By contrast, `11817c4c`/`c4e` **reset**
+  the `11f03930` pointer (`A19`→`A21`) and the `11f03de0` pointer (`A17`→`A23`)
+  back to their starting address for the second pass — **`11f03930` is mono
+  and gets reapplied identically to both the L and R output channels**
+  (confirmed).
+- A third gain multiply chain (`11817c28`, `c38`, `c50`, `c64`, `c74`) folds in
+  `A5` = `*(c011ace8)` and a broadcast constant computed in the function's
+  first loop (`11817ad8`-`b18`, from `c011acd8`/`acdc`/`ace0`/`acec` — see (c)).
+  **Likely, not fully nailed down**: the exact final algebraic order of all
+  three-to-four multiplies (patch level × `accc` × `ace8` × broadcast-constant)
+  was not resolved with full certainty — the code is heavily
+  software-pipelined (values from different logical samples share a fetch
+  packet), so hand-reconstructing the exact arithmetic order carries real
+  risk of error beyond what's stated above. The **individual facts above
+  (which buffer, which address, ADDSP vs MPYSP, stereo vs mono, which
+  pointer resets each channel pass) are confirmed**; the precise combined
+  formula is **likely** only.
+
+**Qualitative summary (likely)**: `out[L/R][i] ≈ patchLevel × accc-gain ×
+(chainOut[L/R][i] + buf_11f03830[L/R][i]) + acd0-gain × buf_11f03930[i]`,
+with `ace8`/the `acd8`-family broadcast constant folded in as additional
+smoothing/ramp factors.
+
+### (b) Role of each buffer — producer not found
+
+**No producer (writer of actual sample content) for `11f03830`, `11f03930`,
+or `11f03970` was found anywhere in `main.dis` this pass.** Every reference
+to these three addresses in `refs.txt` is accounted for and is one of: this
+function's own reads (`11817a90`), the startup zero (`c0165xxx`, confirmed
+above), or the feature-table fill at `c014ff58`-`c01502c8` (new trace this
+pass, see below) which stores their **addresses** into a lookup table —
+never writes sample data into them. This means **something writes 16 (or 32,
+for the stereo one) floats into these buffers every block, but that writer
+was not located** — it is not reachable from the audio Swi's own call graph
+(R1), so it is most likely a function reached only through a pointer/table
+this pass didn't resolve, or it runs as part of `g_Task_RhythmService`/
+`g_Task_LooperUI` (R2/R3's still-unlocated Task bodies) writing directly into
+these fixed L2 addresses ahead of the Swi's next invocation. This is the
+single most important open thread from this whole investigation.
+
+**The feature table (`c014fea0`-`c01502c8`, confirmed new trace this pass):**
+immediately after the already-known per-slot `instance[3]` wiring (D1 in
+`docs/helpers/DELAY_MEM_SONNET_2026-10-17.md`), the same large function fills
+a **63-entry array at `11f03b48`** (one `STW ...,*A4[0]` per entry, `A4`
+incrementing by 4 each time) with a mix of data-buffer addresses and function
+pointers. Entries recovered: `[0]=11f03970`, `[1]=11f037b0` (the effect
+output buffer), `[2]=11f03830`, `[3]=1180a2a8`/`[4]=1180a220` (ramp-start
+helper functions, same family as Astra's A2 finding 3's `1180a2a8`),
+`[5]=c0164684` (the mute/level-coefficient setter Astra found at A2 finding
+1), `[6]=c0164600` (a byte/string-copy helper used throughout the patch-load
+code traced for R3), `[7]=11f03e20`, `[8]=11f03de0`, `[9]=c011ad60`,
+`[10]=11f03e38`, entries `[11]`+ are further function pointers in the
+`c013dxxx`/`c016xxxx`/`1180axxx` ranges (several of which are the exact
+helpers called from `c013f594`, the CPU-load-looking routine from R1 step
+13 — e.g. `c016c240`, `c013ee60` both appear both as table entries and as
+direct `CALLP` targets inside `c013f594`). **Confirmed**: this table exists
+and holds these specific entries, in this order. **Guess**: given the mix of
+data addresses and function pointers, this looks like a generic
+"per-feature descriptor" array (one entry per internally-numbered
+setting/feature) rather than something rhythm/looper-specific; it does not
+by itself identify who produces `11f03830`'s or `11f03930`'s samples — it
+only shows where their *addresses* are published, presumably for some other
+code to look them up by feature-ID rather than by hardcoded immediate.
+Note `11f03930` is **not** in this table (consistent with the user's
+observation that it's otherwise only referenced at `11817b70` and the
+zeroing call) — whatever writes it must either hardcode the immediate the
+same way `11817a90` does, or reach it through a different table entirely.
+
+### (c) What is `c011acec` (and the neighboring cells)?
+
+**`c011acec` is a mirrored copy of the patch-level gain `c011acd8`, not a
+rhythm or looper volume (confirmed by direct trace).** Function `c01618a4`-
+`c01619d8` (`main.dis` lines ~115760-115880) is the patch-level **apply**
+routine: it calls the curve-mapping helper `c0151ce0` with value 101 (the
+exact 0-100/101-120 split Astra's A2 finding 3 already established for patch
+level), stores the result into `c011acd8` (`c01618e4`, confirmed), then
+checks a global flag bit at `1180312c` bit 31 and — only when that bit is
+set — **also** stores the identical value into `c011acec` (`c01618f8`-
+`c0161904`, confirmed). A second branch in the same function (triggered when
+a *different* test of the same `1180312c` flag succeeds, `c0161958`-`c0161988`)
+instead writes the float constant **1.0** into both `c011acd8` (`c0161976`)
+and `c011acec` (`c0161984`), then starts output-volume-style ramps (via
+`c016f320`, same ramp helper and the exact same duration constant
+`0x44306666` Astra found for master-volume smoothing) on `c011ace4`
+(`c011accc+0x18`) and `c011ace8` (`c011accc+0x1c`). The third writer the
+coordinator flagged, `c016bdf0`, was not fully traced but uses the identical
+`MVK 0xffffacec,A4` pattern (same mirror-store idiom).
+
+**`c011accc` is touched by a separate, more general routine, `c01435a0`-
+`c0143710`, which is the same "all-slots mute" sequence recon/16 B2 already
+identified** (`c01435a0` is literally the function that sets the audio-mute
+flag `B14[101]`/`c0184f94` at `c01435ac` — the exact flag the audio Swi reads
+at `11818bd8`, R1 step 10). Immediately around that mute-flag set, this
+function also: calls `c016d220` (Astra's A2 finding 1 output-mute ramp),
+ramps `c011accc`/`c011accc+4` toward `0x44306666` via `c016f320`, checks the
+same `1180312c` flag, and — when clear — loops over all 5 slots calling
+`c012afe0`, `c014ff44`, and **`c01502cc`** (the same per-slot
+LOOPER/RHYTHM-string-checking routine from R1 step 11!) before an indirect
+call through each slot's `instance[7]`. This matches recon/16 B3's
+"all five callbacks substituted before unload/load" reload sequence almost
+exactly, just with `c01502cc` now confirmed as part of it.
+
+**Conclusion (confirmed by these two traces together): `c011accc` through
+`c011acec` (9 contiguous words, `accc,ad0,ad4,ad8,adc,ae0,ae4,ae8,aec`) is a
+shared "whole-chain mute/level ramp" structure used by (1) the patch-level
+0-120-range apply code and (2) the generic all-slots mute/reload sequence,
+gated by the same global flag `1180312c`.** It is **not** a rhythm-specific
+or looper-specific volume control by any name/string evidence found — no UI
+string was found near either writer. This directly answers (c): **it is, at
+best, a generic ducking/mute-ramp gain, most plausibly tied to patch-level
+and reload-time muting, not a dedicated "rhythm volume" or "looper level."**
+This also means `11f03830`/`11f03930`'s gain multipliers (`c011accc`,
+`c011acd0`) are driven by this same general mute infrastructure, which
+weakens (without ruling out) the rhythm/looper-send hypothesis — it is
+equally or more consistent with `11f03830`/`11f03930` being a **generic
+crossfade/carry-over bus used across slot reloads** (e.g. "previous state to
+fade from") rather than a standing rhythm or looper send.
+
+### (d) Is one of these the rhythm or looper signal alone?
+
+**Not confirmed either way.** What's established:
+
+- **`11f03830`**: float, **stereo** planar (L `11f03830`, R `11f03870`,
+  confirmed by the loop's own 64-byte-per-channel pointer advance, matching
+  every other real audio buffer's layout convention), 16 samples/channel.
+  Added directly (`ADDSP`, confirmed) to the effect-chain output inside
+  `11817a90`, before the patch-level-gain multiply. **Last point in the Swi
+  where it is read intact for this block: `11817b90`/the equivalent
+  R-channel read on the loop's second outer pass (inside R1 step 12,
+  `11817a90`, called from `11818c44`)** — i.e. it must be freshly written by
+  its (unlocated) producer sometime before `11818c44` runs each block.
+- **`11f03930`**: float, **mono**, 16 samples (confirmed 64-byte zero, and
+  confirmed mono by the pointer-reset-per-channel behavior in the loop).
+  Scaled by `c011acd0` and summed in as a second term. **Last point in the
+  Swi where it is read intact: `11817ba8` (first channel pass) inside the
+  same `11817a90` call.**
+- **`11f03970`**: float, mono, 16 samples (same zero-size pattern as
+  `11f03930`), its **address** is published in the feature table slot `[0]`
+  — but **no consumer of its contents was found anywhere in `main.dis`**
+  (`refs.txt` shows only the table-writer and the zero-call referencing it).
+  This is the weakest-evidenced of the four buffers; it may be the "other"
+  of a rhythm/looper pair, or something unrelated whose only consumer reaches
+  it indirectly through the feature table (not as a literal immediate, so
+  `refs.py`'s MVK/MVKH scan would miss it).
+
+**No buffer here was confirmed, by name or by any producer code, to be
+"rhythm alone" or "looper alone."** The honest state of the evidence: these
+are real, additional, per-block audio-rate (16-sample) mix buses that get
+summed into the main output in `11817a90` — which is exactly the shape a
+rhythm or looper send would have — but their gain cells trace back to
+generic mute/reload infrastructure rather than anything string-identified as
+rhythm or looper, and their producer (who actually writes samples into them)
+was not located. Settling this requires finding that producer — almost
+certainly inside `g_Task_RhythmService` or `g_Task_LooperUI`'s own task-body
+code, which neither this pass nor the original R2/R3 pass located.
 
 ## R4. Buffer addresses at TX-pack time
 
