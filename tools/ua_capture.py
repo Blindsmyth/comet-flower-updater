@@ -259,25 +259,287 @@ def _runs(mask):
     return out
 
 
+def _fast_median_mad(x):
+    n = len(x)
+    mid = n >> 1
+    med = float(np.partition(x, mid)[mid])
+    ad = np.abs(x - med)
+    mad = float(np.partition(ad, mid)[mid])
+    return med, mad * 1.4826
+
+
+def _find_priming(data, chunk=4096):
+    n = len(data)
+    i = 0
+    while i < n:
+        sub = data[i:min(n, i + chunk)]
+        nz = np.where((sub[:, 0] != 0) | (sub[:, 1] != 0))[0]
+        if len(nz) > 0:
+            prim = i + int(nz[0])
+            return prim if prim >= 4 else 0
+        i += chunk
+    return n
+
+
+def _channel_level(data, ch, chunk=262144):
+    n = len(data)
+    if n == 0:
+        return 0.0, 0, 0
+    sum_s = 0.0
+    sum_s2 = 0.0
+    peak = 0
+    clipped = 0
+    for i in range(0, n, chunk):
+        s = data[i:min(n, i + chunk), ch].astype(np.float64)
+        sum_s += float(np.sum(s))
+        sum_s2 += float(np.dot(s, s))
+        ab = np.abs(s)
+        pk = int(ab.max())
+        if pk > peak:
+            peak = pk
+        clipped += int(np.sum(ab >= 32767))
+    mean = sum_s / n
+    var = max(0.0, (sum_s2 / n) - mean * mean)
+    return float(np.sqrt(var)), peak, clipped
+
+
+def detect_glitches(data, order=28, block=4096):
+    """Detect USB audio stream defects in a stereo int16 array in bounded O(block) memory.
+    Returns (priming_frames, events) where each event is (frame_idx, kind, size) and
+    kind is one of: 'lost', 'repeat', 'zero', 'jump'.
+    """
+    from numpy.lib.stride_tricks import sliding_window_view
+    n = len(data)
+    if n <= order * 2 + 4:
+        return 0, []
+    priming = _find_priming(data)
+    m_len = n - priming - 1
+    if m_len <= order * 2 + 4:
+        return priming, []
+
+    events = []
+    skip_until = 0
+    prev_r_end = 0.0
+    reg_idx = np.arange(order)
+
+    for b_start in range(order, m_len, block):
+        b_end = min(m_len, b_start + block)
+        if b_end - b_start <= order:
+            break
+
+        i0 = priming + b_start - order
+        i1 = min(n, priming + b_end + 1)
+        sub = data[i0:i1]
+        sub0 = sub[:, 0].astype(np.float64)
+        if np.array_equal(sub[:, 0], sub[:, 1]):
+            s_blk = sub0
+        else:
+            s_blk = 0.6 * sub0 + 0.4 * sub[:, 1].astype(np.float64)
+        blk = np.diff(s_blk)
+
+        w = sliding_window_view(blk, order + 1)
+        X = w[:, :-1]
+        y = w[:, -1]
+
+        d3 = np.abs(np.diff(blk, 3))
+        _, sc_d3 = _fast_median_mad(d3)
+        sc_d3 = max(sc_d3, 0.8)
+        bad_d3 = np.where(d3[order - 3:] > 25.0 * sc_d3)[0]
+        if len(bad_d3) > 0:
+            keep = np.ones(len(y), dtype=bool)
+            for bi in bad_d3:
+                keep[max(0, bi - 2):min(len(y), bi + order + 2)] = False
+            Xk, yk = (X[keep], y[keep]) if np.sum(keep) > order * 2 else (X, y)
+        else:
+            Xk, yk = X, y
+
+        XT = Xk.T
+        gram = XT @ Xk
+        gram[reg_idx, reg_idx] += 1e-6
+        coef = np.linalg.solve(gram, XT @ yk)
+        r = y - X @ coef
+
+        med_r, sc_r = _fast_median_mad(r)
+        sc_r = max(sc_r, 0.7)
+        dr = np.diff(r, prepend=prev_r_end)
+        prev_r_end = float(r[-1])
+        med_dr, sc_dr = _fast_median_mad(dr)
+        sc_dr = max(sc_dr, 0.9)
+
+        zr = np.abs(r - med_r) / sc_r
+        zdr = np.abs(dr - med_dr) / sc_dr
+
+        blk_rms = float(np.std(s_blk))
+        flagged = np.where(
+            ((zdr > 7.5) & (zr > 4.5) & (np.abs(r) > 3.5))
+            | ((zr > 11.5) & (np.abs(r) > 4.5))
+            | ((zr > 6.5) & (np.abs(r) > 5.0) & (zdr > 3.2))
+        )[0]
+
+        # In +-1 LSB silence (0.3 < blk_rms <= 3.0), linear prediction residuals on
+        # zero-runs or repeated slices are <= 2 LSB, so scan directly for >= 16-frame
+        # all-zero runs or exact slice repeats.
+        if 0.3 < blk_rms <= 3.0 and float(np.std(blk)) > 0.7:
+            z_mask = (sub[order:, 0] == 0) & (sub[order:, 1] == 0)
+            for z_start, z_len in _runs(z_mask):
+                if z_len >= 16 and z_start > 0:
+                    p_z = b_start + z_start
+                    if p_z >= skip_until:
+                        zf = priming + p_z
+                        full_z = 0
+                        while zf + full_z < n and data[zf + full_z, 0] == 0 and data[zf + full_z, 1] == 0:
+                            full_z += 1
+                        events.append((zf, "zero", full_z))
+                        skip_until = p_z + full_z + order + 2
+            cur_sub = sub[order:]
+            for L in (1, 8, 16, 20, 24, 32, 44, 45):
+                if priming + b_start >= L and len(cur_sub) > 16:
+                    prev_sub = data[priming + b_start - L:i1 - L]
+                    eq = (cur_sub[:, 0] == prev_sub[:, 0]) & (cur_sub[:, 1] == prev_sub[:, 1])
+                    nz = (cur_sub[:, 0] != 0) | (cur_sub[:, 1] != 0)
+                    for r_start, r_len in _runs(eq):
+                        if r_len >= 16 and np.any(nz[r_start:r_start + r_len]):
+                            p_r = b_start + r_start
+                            if p_r >= skip_until:
+                                rf = priming + p_r
+                                full_r = 0
+                                while rf + full_r < n and data[rf + full_r, 0] == data[rf - L + full_r, 0] and data[rf + full_r, 1] == data[rf - L + full_r, 1]:
+                                    full_r += 1
+                                events.append((rf, "repeat", full_r))
+                                skip_until = p_r + full_r + order + 2
+
+        if len(flagged) == 0:
+            continue
+
+        idx_pos = 0
+        while idx_pos < len(flagged):
+            k = int(flagged[idx_pos])
+            p = b_start + k + 1
+            if p < skip_until:
+                idx_pos += 1
+                continue
+
+            while k > 0 and (zr[k - 1] > 4.5 or zdr[k - 1] > 6.0) and abs(r[k - 1]) > 3.5:
+                k -= 1
+                p -= 1
+
+            g_frame = priming + p
+            loc_start = max(priming, g_frame - 128)
+            loc_end = min(n, g_frame + 128)
+            loc_sub = data[loc_start:loc_end]
+            if np.array_equal(loc_sub[:, 0], loc_sub[:, 1]):
+                s_loc = loc_sub[:, 0].astype(np.float64)
+            else:
+                s_loc = 0.6 * loc_sub[:, 0].astype(np.float64) + 0.4 * loc_sub[:, 1].astype(np.float64)
+            lp = g_frame - loc_start
+
+            # 1. Check for inserted zero frame(s) starting in [g_frame-2 .. g_frame+2]
+            zero_found = None
+            if blk_rms > 3.0:
+                for dz in range(-2, 3):
+                    zf = g_frame + dz
+                    lp_z = lp + dz
+                    if priming < zf < n and 1 <= lp_z < len(s_loc):
+                        if data[zf, 0] == 0 and data[zf, 1] == 0 and (data[zf - 1, 0] != 0 or data[zf - 1, 1] != 0):
+                            zlen = 0
+                            while zf + zlen < n and data[zf + zlen, 0] == 0 and data[zf + zlen, 1] == 0:
+                                zlen += 1
+                            extrap = 2.0 * s_loc[lp_z - 1] - (s_loc[lp_z - 2] if lp_z >= 2 else s_loc[lp_z - 1])
+                            if zlen >= 4 or abs(extrap) > max(4.0 * sc_r, 6.0) or abs(s_loc[lp_z - 1]) > max(4.0 * sc_r, 6.0):
+                                zero_found = (zf, "zero", zlen, (zf - priming) + zlen + order + 2)
+                                break
+            if zero_found is not None:
+                events.append(zero_found[:3])
+                skip_until = zero_found[3]
+                idx_pos += 1
+                continue
+
+            # 2. Check for repeated frame(s) starting in [g_frame-2 .. g_frame+2]
+            rep_found = None
+            if blk_rms > 3.0:
+                for drp in range(-2, 3):
+                    rp = lp + drp
+                    if 2 <= rp < len(s_loc) - 2:
+                        for L in range(2, min(96, rp)):
+                            if s_loc[rp] == s_loc[rp - L] and s_loc[rp + 1] == s_loc[rp - L + 1]:
+                                while rp > L and s_loc[rp - 1] == s_loc[rp - 1 - L]:
+                                    rp -= 1
+                                rf = loc_start + rp
+                                mlen = 0
+                                while rf + mlen < n and data[rf + mlen, 0] == data[rf - L + mlen, 0] and data[rf + mlen, 1] == data[rf - L + mlen, 1]:
+                                    mlen += 1
+                                if mlen >= 2:
+                                    rep_found = (rf, "repeat", mlen, (rf - priming) + mlen + order + 2)
+                                    break
+                    if rep_found is not None:
+                        break
+                if rep_found is None:
+                    for drp in (0, -1, 1):
+                        rp = lp + drp
+                        if 2 <= rp < len(s_loc) - 1 and s_loc[rp] == s_loc[rp - 1]:
+                            prev_step = abs(s_loc[rp - 1] - s_loc[rp - 2])
+                            next_step = abs(s_loc[rp + 1] - s_loc[rp])
+                            if prev_step > max(2.5 * sc_r, 3.0) and prev_step < 4.0 * max(next_step, 1.0):
+                                rf = loc_start + rp
+                                hlen = 0
+                                while rf + hlen < n and data[rf + hlen, 0] == data[rf - 1, 0] and data[rf + hlen, 1] == data[rf - 1, 1]:
+                                    hlen += 1
+                                rep_found = (rf, "repeat", hlen, (rf - priming) + hlen + order + 2)
+                                break
+            if rep_found is not None:
+                events.append(rep_found[:3])
+                skip_until = rep_found[3]
+                idx_pos += 1
+                continue
+
+            if k < len(zdr) and zdr[k] <= 7.5 and (k + 1 >= len(zdr) or zdr[k + 1] <= 7.5) and zr[k] <= 11.5:
+                idx_pos += 1
+                continue
+
+            # 3. Distinguish 'jump' vs 'lost'
+            is_jump = False
+            if blk_rms <= 3.0:
+                is_jump = True
+            elif 2 <= lp < len(s_loc) - 2:
+                slope_before = s_loc[lp - 1] - s_loc[lp - 2]
+                slope_after = s_loc[lp + 2] - s_loc[lp + 1]
+                interp_err_1 = abs((s_loc[lp + 1] - s_loc[lp - 1]) - (slope_before + slope_after))
+                step_err = max(abs(s_loc[lp] - s_loc[lp - 1] - slope_before), abs(s_loc[lp + 1] - s_loc[lp] - slope_after))
+                if step_err > 3.0 * max(interp_err_1, sc_r * 2.0):
+                    is_jump = True
+
+            kind = "jump" if is_jump else "lost"
+            events.append((g_frame, kind, 1))
+            skip_until = p + order + 4
+            idx_pos += 1
+
+    return priming, events
+
+
+EVENT_TYPES = (
+    ("lost", "lost frames"),
+    ("repeat", "repeated frames"),
+    ("zero", "inserted zero runs"),
+    ("jump", "sample jumps"),
+)
+
+
 def analyse_audio(data):
-    x = data.astype(np.float64)
-    lines = ["audio take: %d frames (%.2f s)" % (len(x), len(x) / FS)]
+    n = len(data)
+    lines = ["audio take: %d frames (%.2f s)" % (n, n / FS)]
     for ch, name in ((0, "L"), (1, "R")):
-        s = x[:, ch]
-        rms = s.std()
+        rms, peak, clipped = _channel_level(data, ch)
         lines.append("%s: rms %.0f (%.1f dBFS), peak %d, clipped frames %d" % (
-            name, rms, 20 * np.log10(max(rms, 1e-9) / 32768), int(abs(s).max()),
-            int(np.sum(abs(s) >= 32767))))
-    zero = np.all(data == 0, axis=1)
-    zr = [z for z in _runs(zero) if z[1] >= 8]
-    lines.append("all-zero runs of 8+ frames: %d %s" % (len(zr), _spacing([z[0] for z in zr])))
-    s = x[:, 0]
-    d2 = np.abs(np.diff(s, 2))
-    thr = 8 * np.median(d2) + 50
-    clicks = np.where(d2 > thr)[0]
-    if len(clicks):
-        clicks = clicks[np.append(True, np.diff(clicks) > 4)]
-    lines.append("clicks (2nd difference > %.0f): %d %s" % (thr, len(clicks), _spacing(clicks)))
+            name, rms, 20 * np.log10(max(rms, 1e-9) / 32768), peak, clipped))
+    priming, events = detect_glitches(data)
+    lines.append("leading zero (priming) frames: %d" % priming)
+    for kind, label in EVENT_TYPES:
+        pos = [e[0] for e in events if e[1] == kind]
+        sp = (" " + _spacing(pos)) if len(pos) > 1 else ""
+        lines.append("%s: %d, positions %s%s" % (label, len(pos), pos[:10], sp))
+    mins = n / (FS * 60.0)
+    min_str = "%d" % round(mins) if mins >= 1.0 and abs(mins - round(mins)) < 1e-2 else "%.2f" % mins
+    lines.append("%d defects in %s min" % (len(events), min_str))
     return lines
 
 
