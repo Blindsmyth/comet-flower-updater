@@ -232,3 +232,20 @@ linear-prediction residual scan (order 24, 8192-frame blocks, > 12 x MAD) finds 
 Static CPU estimate for the tap (from `build/usb_audio_tap/usb_audio.dis`): Swi copy SPLOOP ii 14 x 16 frames
 ~250 cycles/block; SOF Hwi ring loop ii 6 x 45 frames ~300 cycles/ms ~110/block plus entry. About 0.4 % of the
 132,354-cycle block; ClkT confirmation still open.
+
+## Port 13 Code 10: what is ruled out (evening)
+
+- **Not a missing ZLP:** the configuration descriptor is 192 B = 3 x 64, but Zoom's EP0 path queues an explicit
+  zero-length 4th packet when the reply is shorter than wLength (Astra, `docs/helpers/USB_OPT_ASTRA_2026-10-16.md` A1:
+  c015b330..b342 keeps the transfer pending, c0121142..114a writes TXPKTRDY|DATAEND for the 0-byte packet).
+  Unknown descriptor types (BOS etc.) STALL, which is legal.
+- **Not a dead first request:** Windows' device list has `USB\VID_1686&PID_04A1\5&DC4A972&0&13` (the composite
+  device on port 13) first installed 14:57:38 today (run 8, streamed) and present again 15:55-16:33 (the Code 10
+  attempt). The port-13 "Device Descriptor Request Failed" entry dates from 2026-10-10. So the Code 10 hit the
+  composite device after its descriptors were read: start-up (SET_CONFIGURATION / usbccgp), not the first fetch.
+- Still open: reproduce with the tap build on port 13; if it repeats, compare SET_CONFIGURATION handling and xHCI
+  bandwidth (the hub path goes through a TT, the root port does not).
+
+Level chain (Astra A2): the tap follows the digital master volume (`MVOL`, float 11f03e34 applied at 11818d60)
+and the patch level (c011acd4 at 11817bd4). USB level therefore follows the pedal's volume setting; the -27 dBFS
+guitar peak is most likely a low master volume, not the tap's scaling.
