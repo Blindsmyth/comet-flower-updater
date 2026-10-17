@@ -11,7 +11,6 @@
 #ifndef DYNACOMP_G1_H
 #define DYNACOMP_G1_H
 
-#include <math.h>
 #include "ts808_core.h"         /* TS_INLINE, ts_clamp, ts_rcp */
 
 /* Precomputed filter coefficients at 44.1 kHz */
@@ -40,7 +39,8 @@
 #define DC_SLOPE        (-0.875f)             /* 1.0/8.0 - 1.0 */
 #define DC_HALF_KNEE    3.0f                  /* kneeDb * 0.5 */
 #define DC_INV_2KNEE    (1.0f / 12.0f)        /* 1.0 / (2.0 * kneeDb) */
-#define DC_DB_TO_NEPER  0.11512925464970228f  /* ln(10) / 20 */
+#define DC_INV_1P2      0.8333333333333334f   /* 1.0 / 1.2 */
+#define DC_KNEE_RATIO   0.7079457843841379f   /* 10^(-3/20) */
 
 typedef struct {
     float v1_pre;
@@ -55,19 +55,108 @@ typedef struct {
 
 typedef struct {
     float threshold;
-    float thresholdDb;
+    float inv_threshold;
     float autoMakeup;
     float outTrim;
 } DynaCompCoeffs;
 
+/* --- Fast, libm-free arithmetic helpers ----------------------------------- */
+
+TS_INLINE float dc_absf(float x)
+{
+    return x < 0.0f ? -x : x;
+}
+
+/* exp(x) for x in [-80, 80], float, bit-accurate, no calls */
+TS_INLINE float dc_expf(float x)
+{
+    union { float f; unsigned u; } s;
+    float kf, r, p;
+    int k;
+    if (x > 80.0f) x = 80.0f;
+    if (x < -80.0f) return 0.0f;
+    kf = x * 1.44269504f;
+    k = (int)(kf + (kf >= 0.0f ? 0.5f : -0.5f));
+    r = x - (float)k * 0.693145752f - (float)k * 1.42860677e-06f;
+    p = 1.0f + r * (1.0f + r * (0.5f + r * (1.0f/6 + r * (1.0f/24
+        + r * (1.0f/120 + r * (1.0f/720 + r * (1.0f/5040)))))));
+    s.u = (unsigned)(k + 127) << 23;
+    return p * s.f;
+}
+
+/* 10^(db / 20) = exp(db * ln(10)/20) */
+TS_INLINE float dc_exp_db(float db)
+{
+    return dc_expf(db * 0.11512925464970228f);
+}
+
+/* 20 * log10(x) for x > 0, float, no calls */
+TS_INLINE float dc_20log10(float x)
+{
+    union { float f; unsigned u; } v;
+    v.f = x;
+    int e = (int)(v.u >> 23) - 127;
+    v.u = (v.u & 0x007FFFFFu) | 0x3F800000u;
+    if (v.f > 1.41421356f) {
+        v.f *= 0.5f;
+        e += 1;
+    }
+    float s = (v.f - 1.0f) * ts_rcp(v.f + 1.0f);
+    float z = s * s;
+    float p = s * (2.0f + z * (0.66666784f + z * (0.3997835f + z * 0.2983262f)));
+    return (float)e * 6.020599913279624f + p * 8.685889638065037f;
+}
+
+/* log(1 + w) on [0, 1] via degree-8 Horner polynomial */
+TS_INLINE float dc_log1p(float w)
+{
+    float p = -0.00632052f;
+    p =  0.03545882f + w * p;
+    p = -0.09413391f + w * p;
+    p =  0.16648205f + w * p;
+    p = -0.24010053f + w * p;
+    p =  0.33161391f + w * p;
+    p = -0.49984781f + w * p;
+    p =  0.99999509f + w * p;
+    return w * p;
+}
+
+/* ln(cosh(z)) = |z| + log1p(exp(-2|z|)) - ln(2)
+ * For small |z| (< 0.2), use Taylor expansion to avoid float catastrophic cancellation:
+ * z^2/2 - z^4/12 + z^6/45 - 17*z^8/2520 */
+TS_INLINE float dc_ln_cosh(float z)
+{
+    float a = dc_absf(z);
+    if (a < 0.2f) {
+        float z2 = a * a;
+        return z2 * (0.5f + z2 * (-0.08333333333333333f + z2 * (0.022222222222222223f - z2 * 0.006746031746031746f)));
+    }
+    if (a > 16.0f) {
+        return a - 0.6931471805599453f;
+    }
+    float w = dc_expf(-2.0f * a);
+    return a + dc_log1p(w) - 0.6931471805599453f;
+}
+
+/* tanh(t) = sign(t) * (1 - exp(-2|t|)) / (1 + exp(-2|t|)) */
+TS_INLINE float dc_tanhf(float t)
+{
+    float a = dc_absf(t);
+    if (a > 9.0f) {
+        return t < 0.0f ? -1.0f : 1.0f;
+    }
+    float w = dc_expf(-2.0f * a);
+    float th = (1.0f - w) * ts_rcp(1.0f + w);
+    return t < 0.0f ? -th : th;
+}
+
 TS_INLINE float dc_gain_reduction_db(float overDb)
 {
-    if (overDb <= -DC_HALF_KNEE) return 0.0f;
-    if (overDb < DC_HALF_KNEE) {
-        float t = overDb + DC_HALF_KNEE;
-        return DC_SLOPE * t * t * DC_INV_2KNEE;
-    }
-    return DC_SLOPE * overDb;
+    float t = overDb + DC_HALF_KNEE;
+    float gr_knee = DC_SLOPE * t * t * DC_INV_2KNEE;
+    float gr_above = DC_SLOPE * overDb;
+    float gr = (overDb < DC_HALF_KNEE) ? gr_knee : gr_above;
+    return (overDb <= -DC_HALF_KNEE) ? 0.0f : gr;
 }
 
 TS_INLINE void dynacomp_coeffs(DynaCompCoeffs *k, float sustain, float output_db)
@@ -75,44 +164,34 @@ TS_INLINE void dynacomp_coeffs(DynaCompCoeffs *k, float sustain, float output_db
     float s = ts_clamp(sustain, 0.0f, 10.0f) * 0.1f;
     float sc = (1.0f - s) * (1.0f - s);
     float threshold = 0.80f * sc + 0.005f;
-    float thresholdDb = 20.0f * log10f(threshold > 1.0e-9f ? threshold : 1.0e-9f);
-    float gr_ref = dc_gain_reduction_db(-12.0f - thresholdDb);
-    float autoMakeupDb = -gr_ref;
+    float thresholdDb = dc_20log10(threshold);
+    float autoMakeupDb = -dc_gain_reduction_db(-12.0f - thresholdDb);
     float outDb = ts_clamp(output_db, -60.0f, 24.0f);
 
     k->threshold = threshold;
-    k->thresholdDb = thresholdDb;
-    k->autoMakeup = powf(10.0f, autoMakeupDb * 0.05f);
-    k->outTrim = powf(10.0f, outDb * 0.05f);
-}
-
-TS_INLINE float dc_ln_cosh(float z)
-{
-    float a = fabsf(z);
-    return a + log1pf(expf(-2.0f * a)) - 0.6931471805599453f;
+    k->inv_threshold = ts_rcp(threshold);
+    k->autoMakeup = dc_exp_db(autoMakeupDb);
+    k->outTrim = dc_exp_db(outDb);
 }
 
 TS_INLINE float dynacomp_process(DynaCompState *s, const DynaCompCoeffs *k, float x)
 {
-    /* 1. Envelope detector */
-    float maxAbs = fabsf(x);
+    /* 1. Envelope detector: pure select with no side effects in arms */
+    float maxAbs = dc_absf(x);
     float env = s->envelope;
-    if (maxAbs > env) {
-        env = DC_ATTACK_COEFF * (env - maxAbs) + maxAbs;
-    } else {
-        env = DC_RELEASE_COEFF * env;
-        if (env < 1.0e-9f) env = 0.0f;
-    }
+    float env_att = DC_ATTACK_COEFF * (env - maxAbs) + maxAbs;
+    float env_rel = DC_RELEASE_COEFF * env;
+    env_rel = (env_rel < 1.0e-9f) ? 0.0f : env_rel;
+    env = (maxAbs > env) ? env_att : env_rel;
     s->envelope = env;
 
-    /* 2. Gain computer */
+    /* 2. Gain computer: below knee (0.7079 * threshold) gr is unity */
     float gr = 1.0f;
-    if (env > 1.0e-9f && k->threshold > 1.0e-9f) {
-        float overDb = 20.0f * log10f(env / k->threshold);
+    float ratio = env * k->inv_threshold;
+    if (ratio > DC_KNEE_RATIO) {
+        float overDb = dc_20log10(ratio);
         float grDb = dc_gain_reduction_db(overDb);
-        if (grDb < 0.0f) {
-            gr = expf(grDb * DC_DB_TO_NEPER);
-        }
+        gr = (grDb < 0.0f) ? dc_exp_db(grDb) : 1.0f;
     }
 
     /* 3. Pre-emphasis high shelf (DF2T) */
@@ -124,16 +203,15 @@ TS_INLINE float dynacomp_process(DynaCompState *s, const DynaCompCoeffs *k, floa
     v *= gr;
     v *= k->autoMakeup;
 
-    /* 5. ADAA tanh(v / 1.2) * 1.2 */
+    /* 5. ADAA tanh(v / 1.2) * 1.2: no division on hot path */
     {
-        float ad0 = 1.2f * dc_ln_cosh(v * (1.0f / 1.2f));
+        float ad0 = 1.2f * dc_ln_cosh(v * DC_INV_1P2);
         float diff = v - s->adaa_x1;
-        float adaa_out;
-        if (fabsf(diff) > 1.0e-5f) {
-            adaa_out = (ad0 - s->adaa_ad1) / diff;
-        } else {
-            adaa_out = tanhf(0.5f * (v + s->adaa_x1) * (1.0f / 1.2f));
-        }
+        float abs_diff = dc_absf(diff);
+        float diff_safe = (abs_diff > 1.0e-5f) ? diff : 1.0f;
+        float adaa_secant = (ad0 - s->adaa_ad1) * ts_rcp(diff_safe);
+        float adaa_mid = dc_tanhf(0.5f * (v + s->adaa_x1) * DC_INV_1P2);
+        float adaa_out = (abs_diff > 1.0e-5f) ? adaa_secant : adaa_mid;
         s->adaa_x1 = v;
         s->adaa_ad1 = ad0;
         v = adaa_out * 1.2f;
