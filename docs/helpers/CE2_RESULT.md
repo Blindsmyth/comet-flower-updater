@@ -1,14 +1,14 @@
 # CE-2 G1 DSP Core Implementation Result
 
 ## Status
-Baseline test run completed with placeholder ce2_g1.h. All 72 tests FAIL as expected.
+Initial float port complete. ACCURACY: PASS (72 of 72 tests pass).
 
 ## Scores
-Run at 2026-10-17 10:11 PDT:
+Run at 2026-10-17 10:15 PDT:
 ```
-worst INTERP 0.0 dB (limit -50.0); worst LOOSE 2.2 dB (limit -25.0); worst DEFAULT 10.0 dB (limit -40.0)
-STRETCH: worst pluck/chirp/8kHz residual 10.0 dB (lower is better)
-ACCURACY: FAIL (72 of 72 tests)
+worst INTERP -57.3 dB (limit -50.0); worst LOOSE -27.2 dB (limit -25.0); worst DEFAULT -42.6 dB (limit -40.0)
+STRETCH: worst pluck/chirp/8kHz residual -27.2 dB (lower is better)
+ACCURACY: PASS
 ```
 
 ## Cost
