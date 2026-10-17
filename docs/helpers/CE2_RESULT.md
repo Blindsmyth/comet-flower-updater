@@ -1,10 +1,15 @@
 # CE-2 G1 DSP Core Implementation Result
 
 ## Status
-Initial setup: created report file. Candidate header `effects/common/ce2_g1.h` contains placeholder.
+Baseline test run completed with placeholder ce2_g1.h. All 72 tests FAIL as expected.
 
 ## Scores
-Not run yet.
+Run at 2026-10-17 10:11 PDT:
+```
+worst INTERP 0.0 dB (limit -50.0); worst LOOSE 2.2 dB (limit -25.0); worst DEFAULT 10.0 dB (limit -40.0)
+STRETCH: worst pluck/chirp/8kHz residual 10.0 dB (lower is better)
+ACCURACY: FAIL (72 of 72 tests)
+```
 
 ## Cost
 To be profiled / analyzed against TI C674x constraints.
