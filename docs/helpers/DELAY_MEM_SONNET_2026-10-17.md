@@ -5,7 +5,30 @@ Offline static analysis only (main.dis disassembly + ZD2/ELF parsing with
 existing tools/src helpers + dis6x). Nothing on the pedal was touched.
 
 ## Summary
-(filled in last)
+D1 (confirmed): framework loop `c014fea0` (called once, see D4) writes
+`instance[3]` = address of a 12-byte `{base,end,size}` descriptor at
+`c0183470+12*slot`, for all 5 slots unconditionally; descriptor values point
+at the fixed, contiguous 0x81330-byte SDRAM regions recon/14 already found.
+D2 (confirmed, 2 stock effects cross-checked): DELAY_3S and ANDLY_3S both
+read `*+A4[3]` at `.text+0x668` in their process function, then dereference
+`desc[0..2]` as `base/end/size` for a textbook circular buffer (wrap by
+`±size` against `end`). No framework "request" call exists — the pointer is
+pre-populated. D3 (confirmed): no ZD2 header/INFO field and no store in
+`Dll_Delay`'s entry-table constructor declares a buffer need; any effect in
+any slot gets `instance[3]` regardless. D4 (likely, pedal test needed): the
+zeroing (`c0164a98`) and wiring (`c014fea0`) both run from one straight-line
+boot-time init block (`c016bee0`), called once from what looks like a
+boot-state dispatcher, not per patch/slot load — so a freshly loaded effect
+should NOT assume the buffer is clean. Buffers are not shared between slots.
+A 6th, disjoint 0x2b1100-byte descriptor (`c01834ac`) is read by unrelated
+code, likely the looper (guess) but confirmed to be unreachable via any
+effect's `instance[3]`. D5: our effects already use the matching
+`void **instance` convention, so a CF effect needs only to read
+`instance[3]` and walk `base/end/size`; hard ceiling 0x81330 B = 3.0177 s
+mono @44.1 kHz. Open items for a pedal test: boot-vs-per-load zeroing
+timing, descriptor field order, the looper buffer's real owner, and an
+end-to-end check that a CF-built effect's own `instance[3]` is valid and
+slot-correct on real hardware.
 
 ## D1. Where are the per-slot large work buffers?
 
