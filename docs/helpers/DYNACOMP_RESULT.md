@@ -53,3 +53,23 @@ History:
 
 ## Problems
 None. All criteria and stretch goals met with margin.
+
+## Round 2
+2026-10-17 10:32 PDT
+Per-sample path completely branch-free (zero `if`, zero early `return`, zero data-dependent loops):
+- `dc_expf`: Replaced range check and early return with input clamp `ts_clamp(x, -80.0f, 80.0f)` letting the polynomial evaluate branchlessly.
+- `dc_20log10`: Replaced range branch with unconditional half-scale candidate and predicated ternary select.
+- `dc_ln_cosh`: Replaced Taylor and asymptotic range branches with clamped evaluation and pure value select.
+- `dc_tanhf`: Eliminated `|t| > 9.0` early exit branch; evaluates unconditionally with `ts_rcp(1.0f + w)` with exact float saturation.
+- `dynacomp_process`: Replaced `ratio > DC_KNEE_RATIO` conditional with safe clamped argument and ternary select.
+
+Scores:
+```
+worst residual -60.6 dB (limit -40.0, -30.0 on GENTLE/a005 tests); worst GR trajectory 0.00 dB (limit 0.3)
+STRETCH: worst pluck/step residual -70.1 dB (lower is better)
+ACCURACY: PASS
+```
+Verification:
+- Clean C674x compilation: `cl6x -mv6740 -O3 -s` generates fully predicated instructions with zero inner loop branches (`nobr`).
+- Zero runtime library calls or undefined symbols (`nm6x -u`).
+

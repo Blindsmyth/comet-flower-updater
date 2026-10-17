@@ -67,14 +67,13 @@ TS_INLINE float dc_absf(float x)
     return x < 0.0f ? -x : x;
 }
 
-/* exp(x) for x in [-80, 80], float, bit-accurate, no calls */
+/* exp(x) for x in [-80, 80], float, bit-accurate, no calls, branch-free */
 TS_INLINE float dc_expf(float x)
 {
     union { float f; unsigned u; } s;
     float kf, r, p;
     int k;
-    if (x > 80.0f) x = 80.0f;
-    if (x < -80.0f) return 0.0f;
+    x = ts_clamp(x, -80.0f, 80.0f);
     kf = x * 1.44269504f;
     k = (int)(kf + (kf >= 0.0f ? 0.5f : -0.5f));
     r = x - (float)k * 0.693145752f - (float)k * 1.42860677e-06f;
@@ -90,17 +89,17 @@ TS_INLINE float dc_exp_db(float db)
     return dc_expf(db * 0.11512925464970228f);
 }
 
-/* 20 * log10(x) for x > 0, float, no calls */
+/* 20 * log10(x) for x > 0, float, no calls, branch-free */
 TS_INLINE float dc_20log10(float x)
 {
     union { float f; unsigned u; } v;
     v.f = x;
     int e = (int)(v.u >> 23) - 127;
     v.u = (v.u & 0x007FFFFFu) | 0x3F800000u;
-    if (v.f > 1.41421356f) {
-        v.f *= 0.5f;
-        e += 1;
-    }
+    float vf_half = v.f * 0.5f;
+    int cond = (v.f > 1.41421356f);
+    v.f = cond ? vf_half : v.f;
+    e = cond ? (e + 1) : e;
     float s = (v.f - 1.0f) * ts_rcp(v.f + 1.0f);
     float z = s * s;
     float p = s * (2.0f + z * (0.66666784f + z * (0.3997835f + z * 0.2983262f)));
@@ -122,29 +121,23 @@ TS_INLINE float dc_log1p(float w)
 }
 
 /* ln(cosh(z)) = |z| + log1p(exp(-2|z|)) - ln(2)
- * For small |z| (< 0.2), use Taylor expansion to avoid float catastrophic cancellation:
- * z^2/2 - z^4/12 + z^6/45 - 17*z^8/2520 */
+ * Branch-free evaluation: computes Taylor expansion for small |z| and general form
+ * for large |z|, selecting with a predicated value ternary. */
 TS_INLINE float dc_ln_cosh(float z)
 {
     float a = dc_absf(z);
-    if (a < 0.2f) {
-        float z2 = a * a;
-        return z2 * (0.5f + z2 * (-0.08333333333333333f + z2 * (0.022222222222222223f - z2 * 0.006746031746031746f)));
-    }
-    if (a > 16.0f) {
-        return a - 0.6931471805599453f;
-    }
+    float a_taylor = ts_clamp(a, 0.0f, 0.2f);
+    float z2 = a_taylor * a_taylor;
+    float val_taylor = z2 * (0.5f + z2 * (-0.08333333333333333f + z2 * (0.022222222222222223f - z2 * 0.006746031746031746f)));
     float w = dc_expf(-2.0f * a);
-    return a + dc_log1p(w) - 0.6931471805599453f;
+    float val_large = a + dc_log1p(w) - 0.6931471805599453f;
+    return (a < 0.2f) ? val_taylor : val_large;
 }
 
-/* tanh(t) = sign(t) * (1 - exp(-2|t|)) / (1 + exp(-2|t|)) */
+/* tanh(t) = sign(t) * (1 - exp(-2|t|)) / (1 + exp(-2|t|)), branch-free */
 TS_INLINE float dc_tanhf(float t)
 {
     float a = dc_absf(t);
-    if (a > 9.0f) {
-        return t < 0.0f ? -1.0f : 1.0f;
-    }
     float w = dc_expf(-2.0f * a);
     float th = (1.0f - w) * ts_rcp(1.0f + w);
     return t < 0.0f ? -th : th;
@@ -185,14 +178,13 @@ TS_INLINE float dynacomp_process(DynaCompState *s, const DynaCompCoeffs *k, floa
     env = (maxAbs > env) ? env_att : env_rel;
     s->envelope = env;
 
-    /* 2. Gain computer: below knee (0.7079 * threshold) gr is unity */
-    float gr = 1.0f;
+    /* 2. Gain computer: branch-free soft-knee gain calculation */
     float ratio = env * k->inv_threshold;
-    if (ratio > DC_KNEE_RATIO) {
-        float overDb = dc_20log10(ratio);
-        float grDb = dc_gain_reduction_db(overDb);
-        gr = (grDb < 0.0f) ? dc_exp_db(grDb) : 1.0f;
-    }
+    float ratio_eval = (ratio > DC_KNEE_RATIO) ? ratio : DC_KNEE_RATIO;
+    float overDb = dc_20log10(ratio_eval);
+    float grDb = dc_gain_reduction_db(overDb);
+    float gr_exp = (grDb < 0.0f) ? dc_exp_db(grDb) : 1.0f;
+    float gr = (ratio > DC_KNEE_RATIO) ? gr_exp : 1.0f;
 
     /* 3. Pre-emphasis high shelf (DF2T) */
     float v = DC_PRE_B0 * x + s->v1_pre;
