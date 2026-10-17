@@ -27,7 +27,7 @@
 #define CE2_G1_H
 
 #include "ts808_core.h"         /* TS_INLINE, ts_clamp, ts_rcp */
-#include <math.h>
+#include "ce2_sat_table.h"
 
 /* --- Fixed filter coefficients at 44100 Hz --- */
 /* Pre-emphasis: High shelf +15 dB, 979 Hz, Q 0.70710678 */
@@ -62,7 +62,7 @@
 #define CE2_RECON_LP2_A1  -6.9810814731e-01f
 #define CE2_RECON_LP2_A2   2.5907953150e-01f
 
-/* 72 Hz LFO smoothing coefficient */
+/* 72 Hz LFO smoothing coefficient: 1 - exp(-2*pi*72/44100) */
 #define CE2_LFO_SMOOTH_COEFF 1.0205825215e-02f
 
 typedef struct {
@@ -103,8 +103,29 @@ TS_INLINE void ce2_coeffs(Ce2Coeffs *k, float rate, float depth, float mix)
 
 TS_INLINE float ce2_ln_cosh(float z)
 {
-    float a = fabsf(z);
-    return a + log1pf(expf(-2.0f * a)) - 0.6931471805599453f;
+    float a = z < 0.0f ? -z : z;
+    if (a >= CE2_SAT_ZMAX) {
+        return a - CE2_SAT_LN2;
+    }
+    float p = a * CE2_SAT_INV_DZ;
+    int idx = (int)p;
+    float t = p - (float)idx;
+    const float *c = ce2_sat_table[idx];
+    return c[0] + t * (c[1] + t * (c[2] + t * c[3]));
+}
+
+TS_INLINE float ce2_tanh(float z)
+{
+    float a = z < 0.0f ? -z : z;
+    if (a >= CE2_SAT_ZMAX) {
+        return z < 0.0f ? -1.0f : 1.0f;
+    }
+    float p = a * CE2_SAT_INV_DZ;
+    int idx = (int)p;
+    float t = p - (float)idx;
+    const float *c = ce2_sat_table[idx];
+    float der = (c[1] + t * (2.0f * c[2] + t * (3.0f * c[3]))) * CE2_SAT_INV_DZ;
+    return z < 0.0f ? -der : der;
 }
 
 TS_INLINE float ce2_biquad_process(float x, float b0, float b1, float b2, float a1, float a2, float *v1, float *v2)
@@ -119,10 +140,10 @@ TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
 {
     float dry = x;
 
-    /* 1. Pre-emphasis */
+    /* 1. Pre-emphasis (+15 dB high shelf at 979 Hz) */
     float bbdIn = ce2_biquad_process(dry, CE2_PRE_B0, CE2_PRE_B1, CE2_PRE_B2, CE2_PRE_A1, CE2_PRE_A2, &s->pre_v1, &s->pre_v2);
 
-    /* 2. Anti-aliasing cascade */
+    /* 2. Anti-aliasing cascade (48 Hz HPF + 6.6 kHz 3-pole LP) */
     bbdIn = bbdIn - ts_onepole_lp(&s->aa_hp_s, CE2_AA_HP_G, bbdIn);
     bbdIn = ts_onepole_lp(&s->aa_lp1_s, CE2_AA_LP1_G, bbdIn);
     bbdIn = ce2_biquad_process(bbdIn, CE2_AA_LP2_B0, CE2_AA_LP2_B1, CE2_AA_LP2_B2, CE2_AA_LP2_A1, CE2_AA_LP2_A2, &s->aa_lp2_v1, &s->aa_lp2_v2);
@@ -131,11 +152,12 @@ TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
     {
         float ad0 = ce2_ln_cosh(bbdIn * 0.7f) * (1.0f / 0.7f);
         float diff = bbdIn - s->sat_x1;
+        float abs_diff = diff < 0.0f ? -diff : diff;
         float sat_out;
-        if (fabsf(diff) > 1.0e-5f) {
-            sat_out = (ad0 - s->sat_ad1) / diff;
+        if (abs_diff > 1.0e-5f) {
+            sat_out = (ad0 - s->sat_ad1) * ts_rcp(diff);
         } else {
-            sat_out = tanhf(0.5f * (bbdIn + s->sat_x1) * 0.7f);
+            sat_out = ce2_tanh(0.5f * (bbdIn + s->sat_x1) * 0.7f);
         }
         s->sat_x1 = bbdIn;
         s->sat_ad1 = ad0;
@@ -153,7 +175,7 @@ TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
     s->lfo_smoothed += CE2_LFO_SMOOTH_COEFF * (lfoRaw - s->lfo_smoothed);
     float lfoMod = s->lfo_smoothed;
 
-    /* 6. BBD Delay read (Lagrange 3rd-order) */
+    /* 6. BBD Delay read (Lagrange 3rd-order fractional read) */
     float delayMs = 12.8f + lfoMod * k->sweepMs;
     float delaySamples = delayMs * 44.1f;
     int M = (int)delaySamples;
@@ -175,19 +197,25 @@ TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
     float p2  = s->delay_buf[(wp - 1 - (M + 2) + 2048) & 1023];
     float wet = Lm1 * pm1 + L0 * p0 + L1 * p1 + L2 * p2;
 
-    /* 7. CTI dynamic one-pole low pass */
+    /* 7. CTI dynamic one-pole low pass (swept 3 kHz..7 kHz with BBD clock) */
     float bbdClockNorm = ts_clamp((17.8f - delayMs) * 0.1f, 0.0f, 1.0f);
-    float ctiFc = 3000.0f + bbdClockNorm * 4000.0f;
-    float ctiCoeff = 1.0f - expf(-2.0f * 3.14159265358979323846f * ctiFc * (1.0f / 44100.0f));
+    /* Degree-6 polynomial fit for 1 - exp(-2*pi*(3000 + 4000*b)/44100) on b in [0, 1] */
+    float ctiCoeff = -2.3402821807e-05f;
+    ctiCoeff = ctiCoeff * bbdClockNorm + 3.1669828878e-04f;
+    ctiCoeff = ctiCoeff * bbdClockNorm - 2.8597907957e-03f;
+    ctiCoeff = ctiCoeff * bbdClockNorm + 2.0117343879e-02f;
+    ctiCoeff = ctiCoeff * bbdClockNorm - 1.0591106449e-01f;
+    ctiCoeff = ctiCoeff * bbdClockNorm + 3.7168222915e-01f;
+    ctiCoeff = ctiCoeff * bbdClockNorm + 3.4781536380e-01f;
     s->cti_state += ctiCoeff * (wet - s->cti_state);
     wet = s->cti_state;
 
-    /* 8. Reconstruction cascade */
+    /* 8. Reconstruction cascade (14.6 Hz HPF + 6.9 kHz 3-pole LP) */
     wet = wet - ts_onepole_lp(&s->recon_hp_s, CE2_RECON_HP_G, wet);
     wet = ts_onepole_lp(&s->recon_lp1_s, CE2_RECON_LP1_G, wet);
     wet = ce2_biquad_process(wet, CE2_RECON_LP2_B0, CE2_RECON_LP2_B1, CE2_RECON_LP2_B2, CE2_RECON_LP2_A1, CE2_RECON_LP2_A2, &s->recon_lp2_v1, &s->recon_lp2_v2);
 
-    /* 9. De-emphasis */
+    /* 9. De-emphasis (-15 dB high shelf at 979 Hz) */
     wet = ce2_biquad_process(wet, CE2_DE_B0, CE2_DE_B1, CE2_DE_B2, CE2_DE_A1, CE2_DE_A2, &s->de_v1, &s->de_v2);
 
     /* 10. Dry / wet mix */
