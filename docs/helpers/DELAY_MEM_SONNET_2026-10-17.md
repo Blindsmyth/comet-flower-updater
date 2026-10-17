@@ -236,3 +236,81 @@ function by name or confirm this on the pedal. Confidence: **guess** for
 any effect's `instance[3]`.
 
 ## D5. Recipe for a CF effect
+
+Our own effects (`effects/ratx/ratx.c`, `effects/common/hiwatt_kernel.h`,
+`effects/common/mp_timing.h`) already declare their audio-process function
+exactly as `void SH_AUDIO_FN(void **instance, void **ctx)`, with
+`instance[1]`/`instance[2]` used as coefficient/state pointers — i.e. our
+build already uses the same word-array convention the framework and
+DELAY_3S use for `A4`. This means **no new framework plumbing is needed**;
+the per-slot descriptor is already sitting in the instance array the
+framework hands us. Minimal steps for a CF Delay:
+
+1. In the process function, read `instance[3]` (no cast needed beyond
+   `uint32_t *desc = (uint32_t *)instance[3];` or an equivalent struct
+   pointer) — this is already non-NULL and valid for every slot, for every
+   effect, with no registration step (D1/D3). **Confirmed.**
+2. Treat `desc[0]`/`desc[1]`/`desc[2]` as `base`/`end`/`size` (byte
+   addresses/byte count), matching stock DELAY_3S/ANDLY_3S (D2, cross-checked
+   on two stock effects). **Confirmed.**
+3. Keep a running write-cursor as a *negative byte offset* from `base`
+   (stock pattern: decrement by 4 per sample, add `size` when it goes
+   negative) rather than an absolute pointer; this is what stock state
+   (`instance[2]`) is used for. Compute the absolute write address as
+   `base + cursor` and store. **Confirmed pattern**, though the exact cursor
+   representation (why negative-growing rather than positive) is not
+   necessary to replicate — any wraparound scheme keeping the address within
+   `[base, end)` and using `size` as the wrap modulus will work, since that
+   is the invariant the stock code maintains.
+4. For any read tap, compute `write_addr + tap_offset*4`, then wrap by
+   subtracting `size` if the result is `>= end` (stock pattern, D2).
+5. Budget: **0x81330 bytes = 532,272 bytes = 133,068 samples (32-bit
+   words)** is the hard per-slot ceiling (recon/14, confirmed from the fixed
+   zeroing loop and the contiguous-base cross-check in D1). At 44.1 kHz
+   that is exactly 3.0177 s mono — i.e. "DELAY_3S" is sized to almost
+   exactly fill the buffer (44100*3*4 = 529200; the buffer is slightly larger,
+   532272, leaving ~3072 bytes/768 samples of headroom, enough for e.g. a
+   couple of extra tap/interpolation guard samples but not for a second
+   independent full-length line). A longer "modulation line" effect must
+   fit within this same 0x81330 ceiling; it is a fixed, non-negotiable
+   size (no bigger buffer is reachable this way — D4's 0x2b1100 buffer is a
+   different, disjoint allocation with no demonstrated path for an effect
+   to reach it).
+6. **Do not assume the buffer is zero/clean at effect init.** D4's "likely"
+   boot-only-zeroing finding means a freshly-loaded slot may contain stale
+   SDRAM content from whatever was there before (previous effect, previous
+   patch, or power-on zero if nothing has run there yet). Stock DELAY_3S's
+   own `Fx_DLY_Delay_init` does not zero the big buffer either, so this is
+   evidently an accepted stock behavior (presumably inaudible after it wraps
+   once), but a careful implementation could optionally self-zero its
+   working region on init (at the cost of extra init-time cycles) if an
+   audible first-pass artifact matters for the use case.
+7. Nothing needs to be added to the ZD2 header/INFO block or to the
+   `Dll_<Name>` entry-table constructor to "request" the buffer (D3) — only
+   the normal entry[0]/[1]/[entry-callback] fields our `tools/build_g1.sh`
+   pipeline already emits are needed; the loader does not gate the
+   buffer behind any such field.
+
+**What stays unproved / what a pedal test would prove:**
+- **D4 boot-vs-per-load timing** is the single biggest open item: load CF
+  MEMPRB (or a custom probe) into a slot, write a known byte pattern across
+  that slot's 0x81330 region from one patch, switch to a different patch (or
+  load a different effect into the same slot) without power-cycling, then
+  read the region back. If the pattern survives, the "zeroed once at boot
+  only" claim is confirmed; if it is cleared, there is a per-load zero this
+  static trace missed.
+- **Descriptor field order** (`base, end, size` vs. some other order) is
+  inferred from how DELAY_3S's code uses the three words, not from an
+  explicit struct definition; a probe that dumps `instance[3]` and its
+  pointee on the pedal (CF MEMPRB-style) alongside the known stock bases
+  would nail this down numerically.
+- **The 0x2b1100/looper buffer's real owner** (D4) is a guess; a pedal test
+  that engages the looper and checks whether `c04abff0..c075d0f0` is being
+  written would confirm or refute it.
+- **Whether `instance[3]` round-trips correctly for a CF-built effect**
+  (i.e., whether our `tools/build_g1.sh` output, loaded via the normal ZD2
+  path, really does arrive with a valid, slot-correct `instance[3]`) is the
+  most directly actionable pedal test: build a minimal effect that writes a
+  known pattern through `instance[3]` in `init` and reads it back in
+  `process`, confirming both the pointer's validity and that it differs
+  correctly slot-to-slot.
