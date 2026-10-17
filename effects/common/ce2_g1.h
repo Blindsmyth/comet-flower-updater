@@ -104,28 +104,30 @@ TS_INLINE void ce2_coeffs(Ce2Coeffs *k, float rate, float depth, float mix)
 TS_INLINE float ce2_ln_cosh(float z)
 {
     float a = z < 0.0f ? -z : z;
-    if (a >= CE2_SAT_ZMAX) {
-        return a - CE2_SAT_LN2;
-    }
-    float p = a * CE2_SAT_INV_DZ;
+    float a_tab = (a < CE2_SAT_ZMAX) ? a : 0.0f;
+    float p = a_tab * CE2_SAT_INV_DZ;
     int idx = (int)p;
+    idx = (idx > 255) ? 255 : idx;
     float t = p - (float)idx;
     const float *c = ce2_sat_table[idx];
-    return c[0] + t * (c[1] + t * (c[2] + t * c[3]));
+    float y_table = c[0] + t * (c[1] + t * (c[2] + t * c[3]));
+    float y_asymp = a - CE2_SAT_LN2;
+    return (a >= CE2_SAT_ZMAX) ? y_asymp : y_table;
 }
 
 TS_INLINE float ce2_tanh(float z)
 {
     float a = z < 0.0f ? -z : z;
-    if (a >= CE2_SAT_ZMAX) {
-        return z < 0.0f ? -1.0f : 1.0f;
-    }
-    float p = a * CE2_SAT_INV_DZ;
+    float a_tab = (a < CE2_SAT_ZMAX) ? a : 0.0f;
+    float p = a_tab * CE2_SAT_INV_DZ;
     int idx = (int)p;
+    idx = (idx > 255) ? 255 : idx;
     float t = p - (float)idx;
     const float *c = ce2_sat_table[idx];
     float der = (c[1] + t * (2.0f * c[2] + t * (3.0f * c[3]))) * CE2_SAT_INV_DZ;
-    return z < 0.0f ? -der : der;
+    float y_table = (z < 0.0f) ? -der : der;
+    float y_asymp = (z < 0.0f) ? -1.0f : 1.0f;
+    return (a >= CE2_SAT_ZMAX) ? y_asymp : y_table;
 }
 
 TS_INLINE float ce2_biquad_process(float x, float b0, float b1, float b2, float a1, float a2, float *v1, float *v2)
@@ -153,12 +155,10 @@ TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
         float ad0 = ce2_ln_cosh(bbdIn * 0.7f) * (1.0f / 0.7f);
         float diff = bbdIn - s->sat_x1;
         float abs_diff = diff < 0.0f ? -diff : diff;
-        float sat_out;
-        if (abs_diff > 1.0e-5f) {
-            sat_out = (ad0 - s->sat_ad1) * ts_rcp(diff);
-        } else {
-            sat_out = ce2_tanh(0.5f * (bbdIn + s->sat_x1) * 0.7f);
-        }
+        float safe_diff = (abs_diff < 1.0e-5f) ? 1.0e-5f : diff;
+        float sat_quot = (ad0 - s->sat_ad1) * ts_rcp(safe_diff);
+        float sat_fallback = ce2_tanh(0.5f * (bbdIn + s->sat_x1) * 0.7f);
+        float sat_out = (abs_diff < 1.0e-5f) ? sat_fallback : sat_quot;
         s->sat_x1 = bbdIn;
         s->sat_ad1 = ad0;
         bbdIn = sat_out * (1.0f / 0.7f);
@@ -222,8 +222,9 @@ TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
     float out = dry * 0.5f + wet * k->wetGain;
 
     /* Advance LFO phase */
-    s->lfo_phase += k->phaseInc;
-    if (s->lfo_phase >= 1.0f) s->lfo_phase -= 1.0f;
+    float p = s->lfo_phase + k->phaseInc;
+    p -= (p >= 1.0f) ? 1.0f : 0.0f;
+    s->lfo_phase = p;
 
     return out;
 }
