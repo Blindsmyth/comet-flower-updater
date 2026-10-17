@@ -8,7 +8,26 @@ build/scratch/sonnet_a3/ (unused so far; no script was needed).
 
 ## Summary
 
-Work in progress.
+Stock USB0 FIFO RAM (4096 B total, SPRUFM9H 2.6/4.55-4.58): EP0 fixed
+0x000-0x03f (64 B, hardware default, never software-written); RX3 (MIDI
+OUT) 0x040-0x0bf (128 B, FIFOSZ 0x13); TX4 (MIDI IN) 0x0c0-0x13f (128 B,
+FIFOSZ 0x13) — both set by the sole generic-allocator call site
+`c01358b4 -> c01212e0/c012146e..c01214c6`. Today's EP1 sits at 0x140,
+2x256B. **Yes, 2x512B EP1 (24-bit/270 B packets, TXFIFOSZ 0x16, TXMAXP
+270) fits at the same unchanged address 0x140**: it ends at 0x540,
+2752 B still free, no stock range touched. Confirmed by a global
+`refs.txt`/`main.dis` scan: `c01212e0`/`c012146e..c01214c6` is the *only*
+code in the whole image that ever writes INDEX/TXFIFOSZ/TXFIFOADDR/
+RXFIFOSZ/RXFIFOADDR. It is reached only from stock SET_CONFIGURATION
+(`c0135660`) and SET_INTERFACE (`c0135940`), and the bus-reset handler
+(`c0138660`) does not touch USB0 MMIO at all. Under the firmware's own
+adopted design (recon/21 3.1 "design (b)") neither path ever reaches EP1
+(IF3 alt1 is intercepted before `c0135940`; IF3 alt0 has no endpoints), so
+nothing clobbers a moved/enlarged EP1 today. The only residual hazard is
+if a *future* patch routes EP1 through the stock alt-setting path
+(recon/17's rejected "design (a)"), which would renumber RX3/TX4 — a
+design-choice risk, not a risk in the current code, and unrelated to
+EP1's size. Details and instruction evidence: Findings 1-4 below.
 
 ## A3. USB0 FIFO RAM map and 24-bit EP1 feasibility
 
@@ -45,6 +64,18 @@ All six register offsets the brief names (INDEX 0x40e, TXFIFOSZ 0x462,
 TXFIFOADDR 0x464, RXFIFOSZ 0x463, RXFIFOADDR 0x466, plus TXCSR 0x412) are
 reproduced exactly from the live instruction stream, not taken on recon's
 word alone.
+
+New check (not in prior recon passes): grepped `build/fw/map/refs.txt`
+(global scan of every resolved MVK+MVKH absolute-address constant in the
+whole image, 4527 lines) for `01e0040e` — **exactly one hit**, at
+`c012132c` (inside c01212e0 itself) — and grepped `main.dis` for the low
+halves of TXFIFOSZ/TXFIFOADDR/RXFIFOSZ/RXFIFOADDR (`0x462,`/`0x463,`/
+`0x464,`/`0x466,`) — **zero hits** anywhere outside the offset arithmetic
+already quoted above (those addresses are never built as their own
+MVK/MVKH immediate pair; they only ever appear as `INDEX + constant`).
+Confidence: confirmed. This means `c01212e0`/`c012146e..c01214c6` is
+provably the *only* place in the firmware image that programs the indexed
+FIFO registers — there is no second, hidden allocator.
 
 ### Finding 2: the stock FIFO RAM map (EP0, RX3, TX4, EP1) — cross-confirmed
 
@@ -87,14 +118,77 @@ likely (EP0's hardware-default placement/size, and the SPRUFM9H 4096 B
 citation, both inherited/datasheet-based, not re-derived from a new PDF
 read this pass).
 
-New check (not in prior recon passes): grepped `build/fw/map/refs.txt`
-(global scan of every resolved MVK+MVKH absolute-address constant in the
-whole image, 4527 lines) for `01e0040e` — **exactly one hit**, at
-`c012132c` (inside c01212e0 itself) — and grepped `main.dis` for the low
-halves of TXFIFOSZ/TXFIFOADDR/RXFIFOSZ/RXFIFOADDR (`0x462,`/`0x463,`/
-`0x464,`/`0x466,`) — **zero hits** anywhere outside the offset arithmetic
-already quoted above (those addresses are never built as their own
-MVK/MVKH immediate pair; they only ever appear as `INDEX + constant`).
-Confidence: confirmed. This means `c01212e0`/`c012146e..c01214c6` is
-provably the *only* place in the firmware image that programs the indexed
-FIFO registers — there is no second, hidden allocator.
+### Finding 3: 2 x 512 B EP1 (TXFIFOSZ 0x16) fits at the same address 0x140, with 2752 B to spare (confirmed arithmetic; design already anticipated)
+
+24-bit stereo at 45 frames/ms needs 270 B/packet (brief's figure); rounding
+up to the next power-of-two bank size per the stock allocator's own
+rounding rule (Finding 1/2: low4 = log2(bank/8)) gives bank=512 B
+(log2(512/8)=6 -> low4=0x6), double-buffered (bit4=1) -> **TXFIFOSZ =
+0x16**, total FIFO = 2x512 = **1024 B**. This exactly matches recon/17 B2's
+own statement ("270-byte packets need 512 B per bank... size 0x16").
+
+Placed at the same tail address as today, byte **0x140 (FIFOADDR units =
+0x140/8 = 0x28)**:
+```
+0x140 + 1024 = 0x540 (1344 decimal)
+4096 - 1344  = 2752 B still free
+```
+0x540 < 4096, so it does not run off the end of FIFO RAM, and 0x140 is
+exactly the first byte *after* TX4's range (0x0c0-0x13f, Finding 2) — i.e.
+it does not overlap EP0 (0x000-0x03f), RX3 (0x040-0x0bf) or TX4
+(0x0c0-0x13f) either. **Yes: 2 x 512 B fits without moving any stock
+endpoint, at the unchanged address 0x140 (FIFOADDR 0x28).** Only the
+TXFIFOSZ byte (0x15 -> 0x16) and TXMAXP (180 -> 270) need to change versus
+today's `usb_audio_setup_ep1` (firmware/usb_audio_proto/usb_audio.c:
+`USB_TXFIFOSZ`/`USB_TXMAXP` writes) — the FIFOADDR write stays 0x28.
+Confidence: confirmed (pure arithmetic on confirmed stock ranges).
+
+### Finding 4: what *would* clobber a moved/enlarged EP1 — none of it reaches EP1 in the currently-adopted design (b); it is a live risk only if a future patch routes EP1 through the stock path
+
+Two places re-run the generic allocator after boot:
+- **SET_CONFIGURATION**: `c0135660` -> `c01356fa CALLP c01357c8,B3` (loop
+  over interfaces at alt 0) -> `c01357c8` -> `c01212e0` for each endpoint
+  of each alt-0 interface descriptor it walks (recon/21 3.1, re-checked).
+  IF3 alt 0 has no endpoint descriptors (recon/17 B5), so this pass never
+  calls c01212e0 for EP1 under the adopted design.
+- **SET_INTERFACE**: stock table slot 11, `c0135940`, also falls into
+  `c01357c8` -> `c01212e0` for whichever alt the request selects. Per
+  recon/21 3.1 (confirmed call-order tracing, not redone this pass): the
+  common SETUP decoder (`c01359e4`/`c0135a18..a82`) dispatches to a
+  registered **interface record's own callback first**, and only falls
+  through to the standard table `c0180210`/`c0135940` when that callback
+  returns `0xffff8a5b`. Design (b) (recon/21 3.1, "preferred") has IF3's
+  callback handle `bRequest 11` itself and return 0 — it never falls
+  through to `c0135940`, so `c01212e0` is never reached for EP1 this way
+  either.
+
+New check this pass (ruling out a *third*, undocumented path): grepped
+`main.dis`/`refs.txt` for any other code that builds `0x1e0040e` or the
+TXFIFOSZ/TXFIFOADDR/RXFIFOSZ/RXFIFOADDR low halves as an immediate
+(Finding 1: zero hits beyond c01212e0/c012146e), and read the bus-reset /
+deconfigure handler `c0138660` (callers `c015e8b0`, `c015e9f4`) in full —
+it only clears two small software record tables at `c0110000+0xa4e8` and
+`c0110000+0xa620` (SPLOOP byte/word clears, `c01386ec`/`c0138708`); it
+touches **no** `0x1e0xxxxx` MMIO address at all. So there is no reset-path
+FIFO rewrite outside the two SET_CONFIGURATION/SET_INTERFACE routes above.
+
+**Conclusion:** under the firmware's own adopted design — IF3 alt 1 never
+falls through to stock `c0135940`/`c01357c8` (recon/21 3.1, design (b)) and
+IF3 alt 0 has no endpoints — `c01212e0`/the repacker is *never* invoked for
+EP1, so enlarging EP1 to 2x512B at the same address 0x140 carries the same
+"not reached" safety as today's 2x256B version; the existing comment in
+`firmware/usb_audio_proto/usb_audio.c` ("fixed tail FIFO reservation...is
+not later overwritten by c012146e..14c6's generic repacker") already
+states this and remains correct for the enlarged size. The *residual* risk
+recon/17 B2 flagged ("stock allocator repacks all endpoints numerically;
+adding TX1 moves RX3/TX4") applies only to the **rejected** design (a),
+where EP1's descriptor would be walked by the stock alt-setting configure
+path and would then be inserted in numeric order (TX1 before RX3/TX4),
+shifting them to higher addresses — this is a design-choice risk, not a
+risk realized in the current firmware, and it is independent of EP1's
+size (256 B or 512 B per bank, same hazard either way).
+Confidence: confirmed (no other stock FIFO-register writer exists;
+SET_CONFIGURATION/SET_INTERFACE call chains to c01212e0; c0138660 does not
+touch USB0 MMIO) / likely (that no *third* record-callback path, beyond
+the ones already traced in recon/21 3.1, could still reach c0135940 for
+IF3 under some host request sequence not statically enumerated here).
