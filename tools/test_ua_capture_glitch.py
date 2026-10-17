@@ -238,3 +238,82 @@ def test_quiet_take_skips_defect_check():
     if wav_path.exists():  # real take, rms 4 LSB: the detector flagged 19 false events
         lines = ua_capture.analyse_audio(ua_capture.load_wav(wav_path))
         assert lines[-1].startswith("defect check skipped")
+
+
+STRUM_DIR = ROOT / "build" / "ua_takes" / "starts_tap3"
+LONGRUN_WAV = ROOT / "build" / "ua_takes" / "longrun_20261016_hum.wav"
+
+
+@pytest.mark.parametrize("take_idx", range(1, 16))
+def test_real_strum_corpus_clean_zero_events(take_idx):
+    wav_path = STRUM_DIR / f"s{take_idx}.wav"
+    if not wav_path.exists():
+        pytest.skip(f"{wav_path} not found")
+    data = ua_capture.load_wav(wav_path)
+    priming, events = ua_capture.detect_glitches(data)
+    assert events == [], f"s{take_idx}.wav gave {len(events)} unexpected false events: {events}"
+
+
+DEFECT_SPECS = [
+    ("lost", 1),
+    ("lost", 8),
+    ("lost", 44),
+    ("lost", 45),
+    ("repeat", 1),
+    ("repeat", 44),
+    ("zero", 44),
+    ("zero", 45),
+]
+
+
+def _build_injection_positions():
+    rng = np.random.default_rng(20261017)
+    positions = {}
+    for take_idx in range(1, 16):
+        positions[take_idx] = {}
+        for spec in DEFECT_SPECS:
+            positions[take_idx][spec] = int(rng.integers(15000, 132300 - 15000))
+    return positions
+
+
+INJECTION_POSITIONS = _build_injection_positions()
+
+
+@pytest.mark.parametrize("defect_spec", DEFECT_SPECS, ids=[f"{k}_{p}" for k, p in DEFECT_SPECS])
+@pytest.mark.parametrize("take_idx", range(1, 16))
+def test_real_strum_corpus_injected_defects(take_idx, defect_spec):
+    wav_path = STRUM_DIR / f"s{take_idx}.wav"
+    if not wav_path.exists():
+        pytest.skip(f"{wav_path} not found")
+    data = ua_capture.load_wav(wav_path)
+    kind, param = defect_spec
+    base_pos = INJECTION_POSITIONS[take_idx][defect_spec]
+    pos = _pick_active_point(data, base_pos)
+
+    if kind == "lost":
+        corrupted = np.concatenate([data[:pos], data[pos + param:]])
+    elif kind == "repeat":
+        corrupted = np.concatenate([data[:pos], data[pos - param:pos], data[pos:]])
+    elif kind == "zero":
+        zeros = np.zeros((param, 2), dtype=np.int16)
+        corrupted = np.concatenate([data[:pos], zeros, data[pos:]])
+    else:
+        raise ValueError(f"Unknown kind {kind}")
+
+    _, events = ua_capture.detect_glitches(corrupted)
+    assert len(events) == 1, f"Expected 1 event for s{take_idx} ({kind} {param}), got {events}"
+    frame, found_kind, size = events[0]
+    assert found_kind == kind, f"Expected kind {kind}, got {found_kind}"
+    assert abs(frame - pos) <= 2, f"Position mismatch: got {frame}, expected {pos} (+-2)"
+
+
+def test_longrun_hum_take_reports_single_real_splice():
+    if not LONGRUN_WAV.exists():
+        pytest.skip(f"{LONGRUN_WAV} not found")
+    data = ua_capture.load_wav(LONGRUN_WAV)
+    priming, events = ua_capture.detect_glitches(data)
+    assert len(events) == 1, f"Expected 1 defect in longrun take, got {events}"
+    frame, kind, _ = events[0]
+    assert abs(frame - 217) <= 2, f"Expected splice near frame 217, got {frame}"
+    assert kind == "lost"
+
