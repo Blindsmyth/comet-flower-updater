@@ -318,3 +318,17 @@ validator offsets shifted by 3. 370 tests pass.
 tap3 = tap2 (start-splice fix) + the 195-byte descriptor; 19 bytes differ from tap2. Test: flash, power on holding
 slot 1 **directly on port 13**; expect "Line (Comet Flower ZG1X4 MIDI)" and no Code 10. If Windows still shows
 Code 10, run `tools/usb_etw_trace.ps1 -WaitSeconds 120` across a replug.
+
+## tap3 on hardware (2026-10-17): port 13 Code 10 fixed
+
+Owner flashed tap3 (`393d1112`). On the hub (10:05) it enumerated and streamed. **Directly on motherboard root
+port 13 (`Port_#0013.Hub_#0003`, USB Root Hub (USB 3.0)) at 10:48:50 in USB-audio mode: composite device OK,
+MI_00 MIDI and MI_02 audio OK, no Code 10** (tap2 failed there every time). 10 s take `build/ua_takes/tap3_port13.wav`:
+full rate (441,000 frames in 10.1 s). So the 192-byte (3 x 64) configuration descriptor was the cause, as
+hypothesised: keep wTotalLength % 64 != 0 (pinned by a test). Windows also accepted the continuous-range format.
+Splice check (15 opens) still needs a take with signal (guitar plugged in): quiet takes are skipped.
+
+Host side (owner's VPB app, its `startup_audio_log.txt`): dropout prompts came from the app, not the stream:
+device xruns at 48 kHz / 480 samples (pedal input 44.1 kHz on its own clock, speakers 48 kHz on another, Windows
+shared mode bridges them), and DSP xruns after the buffer was lowered to 132 samples with a 9-effect chain.
+Advice: buffer >= 256-480, speakers at 44.1 kHz. Real fix later: a USB playback endpoint so in/out share the pedal clock.
