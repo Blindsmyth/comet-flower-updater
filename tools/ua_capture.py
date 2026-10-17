@@ -305,6 +305,21 @@ def _channel_level(data, ch, chunk=262144):
     return float(np.sqrt(var)), peak, clipped
 
 
+def _local_scale(r, win=512, step=32):
+    from numpy.lib.stride_tricks import sliding_window_view
+    n = len(r)
+    if n < win:
+        med, mad = _fast_median_mad(r)
+        return np.full(n, max(mad, 0.7))
+    pad = win // 2
+    padded = np.pad(np.abs(r), pad, mode="reflect")
+    windows = sliding_window_view(padded, win)[::step]
+    meds = np.partition(windows, win // 2, axis=1)[:, win // 2] * 1.4826
+    grid = np.arange(len(meds)) * step
+    loc_sc = np.interp(np.arange(n), grid, meds)
+    return np.maximum(loc_sc, 0.7)
+
+
 def detect_glitches(data, order=28, block=4096):
     """Detect USB audio stream defects in a stereo int16 array in bounded O(block) memory.
     Returns (priming_frames, events) where each event is (frame_idx, kind, size) and
@@ -321,7 +336,6 @@ def detect_glitches(data, order=28, block=4096):
 
     events = []
     skip_until = 0
-    prev_r_end = 0.0
     reg_idx = np.arange(order)
 
     for b_start in range(order, m_len, block):
@@ -330,7 +344,7 @@ def detect_glitches(data, order=28, block=4096):
             break
 
         i0 = priming + b_start - order
-        i1 = min(n, priming + b_end + 1)
+        i1 = min(n, priming + b_end + order + 1)
         sub = data[i0:i1]
         sub0 = sub[:, 0].astype(np.float64)
         if np.array_equal(sub[:, 0], sub[:, 1]):
@@ -340,43 +354,42 @@ def detect_glitches(data, order=28, block=4096):
         blk = np.diff(s_blk)
 
         w = sliding_window_view(blk, order + 1)
-        X = w[:, :-1]
-        y = w[:, -1]
+        X_f = w[:, :-1]
+        y_f = w[:, -1]
+        X_b = w[:, 1:]
+        y_b = w[:, 0]
 
-        d3 = np.abs(np.diff(blk, 3))
-        _, sc_d3 = _fast_median_mad(d3)
-        sc_d3 = max(sc_d3, 0.8)
-        bad_d3 = np.where(d3[order - 3:] > 25.0 * sc_d3)[0]
-        if len(bad_d3) > 0:
-            keep = np.ones(len(y), dtype=bool)
-            for bi in bad_d3:
-                keep[max(0, bi - 2):min(len(y), bi + order + 2)] = False
-            Xk, yk = (X[keep], y[keep]) if np.sum(keep) > order * 2 else (X, y)
-        else:
-            Xk, yk = X, y
+        gram_f = X_f.T @ X_f
+        gram_f[reg_idx, reg_idx] += 1e-6
+        coef_f = np.linalg.solve(gram_f, X_f.T @ y_f)
+        r_f = y_f - X_f @ coef_f
 
-        XT = Xk.T
-        gram = XT @ Xk
-        gram[reg_idx, reg_idx] += 1e-6
-        coef = np.linalg.solve(gram, XT @ yk)
-        r = y - X @ coef
+        gram_b = X_b.T @ X_b
+        gram_b[reg_idx, reg_idx] += 1e-6
+        coef_b = np.linalg.solve(gram_b, X_b.T @ y_b)
+        r_b = y_b - X_b @ coef_b
 
-        med_r, sc_r = _fast_median_mad(r)
-        sc_r = max(sc_r, 0.7)
-        dr = np.diff(r, prepend=prev_r_end)
-        prev_r_end = float(r[-1])
-        med_dr, sc_dr = _fast_median_mad(dr)
-        sc_dr = max(sc_dr, 0.9)
+        sc_f = _local_scale(r_f)
+        sc_b = _local_scale(r_b)
 
-        zr = np.abs(r - med_r) / sc_r
-        zdr = np.abs(dr - med_dr) / sc_dr
+        zf = np.abs(r_f) / sc_f
+        zb = np.abs(r_b) / sc_b
 
         blk_rms = float(np.std(s_blk))
-        flagged = np.where(
-            ((zdr > 7.5) & (zr > 4.5) & (np.abs(r) > 3.5))
-            | ((zr > 11.5) & (np.abs(r) > 4.5))
-            | ((zr > 6.5) & (np.abs(r) > 5.0) & (zdr > 3.2))
-        )[0]
+
+        # In active audio (blk_rms > 3.0), any zero run >= 4 frames where previous sample was active (> 10 LSB) is a stream defect
+        if blk_rms > 3.0:
+            z_mask = (sub[order:, 0] == 0) & (sub[order:, 1] == 0)
+            for z_start, z_len in _runs(z_mask):
+                if z_len >= 4 and z_start > 0 and (abs(int(sub[order + z_start - 1, 0])) > 10 or abs(int(sub[order + z_start - 1, 1])) > 10):
+                    p_z = b_start + z_start
+                    if p_z >= skip_until:
+                        zf_pos = priming + p_z
+                        full_z = 0
+                        while zf_pos + full_z < n and data[zf_pos + full_z, 0] == 0 and data[zf_pos + full_z, 1] == 0:
+                            full_z += 1
+                        events.append((zf_pos, "zero", full_z))
+                        skip_until = p_z + full_z + order + 2
 
         # In +-1 LSB silence (0.3 < blk_rms <= 3.0), linear prediction residuals on
         # zero-runs or repeated slices are <= 2 LSB, so scan directly for >= 16-frame
@@ -387,11 +400,11 @@ def detect_glitches(data, order=28, block=4096):
                 if z_len >= 16 and z_start > 0:
                     p_z = b_start + z_start
                     if p_z >= skip_until:
-                        zf = priming + p_z
+                        zf_pos = priming + p_z
                         full_z = 0
-                        while zf + full_z < n and data[zf + full_z, 0] == 0 and data[zf + full_z, 1] == 0:
+                        while zf_pos + full_z < n and data[zf_pos + full_z, 0] == 0 and data[zf_pos + full_z, 1] == 0:
                             full_z += 1
-                        events.append((zf, "zero", full_z))
+                        events.append((zf_pos, "zero", full_z))
                         skip_until = p_z + full_z + order + 2
             cur_sub = sub[order:]
             for L in (1, 8, 16, 20, 24, 32, 44, 45):
@@ -403,27 +416,60 @@ def detect_glitches(data, order=28, block=4096):
                         if r_len >= 16 and np.any(nz[r_start:r_start + r_len]):
                             p_r = b_start + r_start
                             if p_r >= skip_until:
-                                rf = priming + p_r
+                                rf_pos = priming + p_r
                                 full_r = 0
-                                while rf + full_r < n and data[rf + full_r, 0] == data[rf - L + full_r, 0] and data[rf + full_r, 1] == data[rf - L + full_r, 1]:
+                                while rf_pos + full_r < n and data[rf_pos + full_r, 0] == data[rf_pos - L + full_r, 0] and data[rf_pos + full_r, 1] == data[rf_pos - L + full_r, 1]:
                                     full_r += 1
-                                events.append((rf, "repeat", full_r))
+                                events.append((rf_pos, "repeat", full_r))
                                 skip_until = p_r + full_r + order + 2
 
-        if len(flagged) == 0:
+        if np.max(zf) < 6.0 or np.max(zb) < 6.0:
             continue
 
-        idx_pos = 0
-        while idx_pos < len(flagged):
-            k = int(flagged[idx_pos])
-            p = b_start + k + 1
-            if p < skip_until:
-                idx_pos += 1
+        m_start = max(order + 6, order)
+        m_end = min(len(r_b) - 8, b_end - b_start + order)
+        if m_end <= m_start:
+            continue
+        m_arr = np.arange(m_start, m_end)
+        kf_arr = m_arr - order
+        raw_cands = m_arr[(zf[kf_arr] >= 6.0) | (zb[m_arr] >= 6.0)]
+
+        passed = []
+        for m in raw_cands:
+            kf = m - order
+            zf_pk = max(zf[kf - 1 : kf + 3])
+            zb_pk = max(zb[m - 1 : m + 3])
+            if min(zf_pk, zb_pk) < 9.5:
                 continue
 
-            while k > 0 and (zr[k - 1] > 4.5 or zdr[k - 1] > 6.0) and abs(r[k - 1]) > 3.5:
-                k -= 1
-                p -= 1
+            zf_pre = max(zf[kf - 5 : kf - 1])
+            zb_post = max(zb[m + 3 : m + 7])
+            sc_f_val = zf_pk / max(1.0, zf_pre)
+            sc_b_val = zb_pk / max(1.0, zb_post)
+            score = min(sc_f_val, sc_b_val)
+            if score >= 6.0:
+                passed.append(m)
+
+        if not passed:
+            continue
+
+        # Group adjacent candidate frames within 4 samples into clusters
+        clusters = []
+        cur_clust = [passed[0]]
+        for m in passed[1:]:
+            if m <= cur_clust[-1] + 4:
+                cur_clust.append(m)
+            else:
+                clusters.append(cur_clust)
+                cur_clust = [m]
+        clusters.append(cur_clust)
+
+        for clust in clusters:
+            best_m = max(clust, key=lambda m: zf[m - order] + zb[m])
+            kf = best_m - order
+            p = b_start + kf + 1
+            if p < skip_until:
+                continue
 
             g_frame = priming + p
             loc_start = max(priming, g_frame - 128)
@@ -439,21 +485,19 @@ def detect_glitches(data, order=28, block=4096):
             zero_found = None
             if blk_rms > 3.0:
                 for dz in range(-2, 3):
-                    zf = g_frame + dz
+                    zf_f = g_frame + dz
                     lp_z = lp + dz
-                    if priming < zf < n and 1 <= lp_z < len(s_loc):
-                        if data[zf, 0] == 0 and data[zf, 1] == 0 and (data[zf - 1, 0] != 0 or data[zf - 1, 1] != 0):
+                    if priming < zf_f < n and 1 <= lp_z < len(s_loc):
+                        if data[zf_f, 0] == 0 and data[zf_f, 1] == 0 and (data[zf_f - 1, 0] != 0 or data[zf_f - 1, 1] != 0):
                             zlen = 0
-                            while zf + zlen < n and data[zf + zlen, 0] == 0 and data[zf + zlen, 1] == 0:
+                            while zf_f + zlen < n and data[zf_f + zlen, 0] == 0 and data[zf_f + zlen, 1] == 0:
                                 zlen += 1
-                            extrap = 2.0 * s_loc[lp_z - 1] - (s_loc[lp_z - 2] if lp_z >= 2 else s_loc[lp_z - 1])
-                            if zlen >= 4 or abs(extrap) > max(4.0 * sc_r, 6.0) or abs(s_loc[lp_z - 1]) > max(4.0 * sc_r, 6.0):
-                                zero_found = (zf, "zero", zlen, (zf - priming) + zlen + order + 2)
+                            if zlen >= 4 or abs(s_loc[lp_z - 1]) > 6.0:
+                                zero_found = (zf_f, "zero", zlen, (zf_f - priming) + zlen + order + 2)
                                 break
             if zero_found is not None:
                 events.append(zero_found[:3])
                 skip_until = zero_found[3]
-                idx_pos += 1
                 continue
 
             # 2. Check for repeated frame(s) starting in [g_frame-2 .. g_frame+2]
@@ -466,54 +510,57 @@ def detect_glitches(data, order=28, block=4096):
                             if s_loc[rp] == s_loc[rp - L] and s_loc[rp + 1] == s_loc[rp - L + 1]:
                                 while rp > L and s_loc[rp - 1] == s_loc[rp - 1 - L]:
                                     rp -= 1
-                                rf = loc_start + rp
+                                rf_f = loc_start + rp
                                 mlen = 0
-                                while rf + mlen < n and data[rf + mlen, 0] == data[rf - L + mlen, 0] and data[rf + mlen, 1] == data[rf - L + mlen, 1]:
+                                while rf_f + mlen < n and data[rf_f + mlen, 0] == data[rf_f - L + mlen, 0] and data[rf_f + mlen, 1] == data[rf_f - L + mlen, 1]:
                                     mlen += 1
                                 if mlen >= 2:
-                                    rep_found = (rf, "repeat", mlen, (rf - priming) + mlen + order + 2)
+                                    rep_found = (rf_f, "repeat", mlen, (rf_f - priming) + mlen + order + 2)
                                     break
                     if rep_found is not None:
                         break
                 if rep_found is None:
-                    for drp in (0, -1, 1):
+                    for drp in (0, -1, 1, 2, -2):
                         rp = lp + drp
                         if 2 <= rp < len(s_loc) - 1 and s_loc[rp] == s_loc[rp - 1]:
                             prev_step = abs(s_loc[rp - 1] - s_loc[rp - 2])
                             next_step = abs(s_loc[rp + 1] - s_loc[rp])
-                            if prev_step > max(2.5 * sc_r, 3.0) and prev_step < 4.0 * max(next_step, 1.0):
-                                rf = loc_start + rp
+                            if prev_step > max(2.5 * sc_f[kf], 10.0) and prev_step < 4.0 * max(next_step, 1.0):
+                                rf_f = loc_start + rp
                                 hlen = 0
-                                while rf + hlen < n and data[rf + hlen, 0] == data[rf - 1, 0] and data[rf + hlen, 1] == data[rf - 1, 1]:
+                                while rf_f + hlen < n and data[rf_f + hlen, 0] == data[rf_f - 1, 0] and data[rf_f + hlen, 1] == data[rf_f - 1, 1]:
                                     hlen += 1
-                                rep_found = (rf, "repeat", hlen, (rf - priming) + hlen + order + 2)
+                                rep_found = (rf_f, "repeat", hlen, (rf_f - priming) + hlen + order + 2)
                                 break
             if rep_found is not None:
                 events.append(rep_found[:3])
                 skip_until = rep_found[3]
-                idx_pos += 1
-                continue
-
-            if k < len(zdr) and zdr[k] <= 7.5 and (k + 1 >= len(zdr) or zdr[k + 1] <= 7.5) and zr[k] <= 11.5:
-                idx_pos += 1
                 continue
 
             # 3. Distinguish 'jump' vs 'lost'
             is_jump = False
+            best_g_frame = g_frame
             if blk_rms <= 3.0:
                 is_jump = True
             elif 2 <= lp < len(s_loc) - 2:
-                slope_before = s_loc[lp - 1] - s_loc[lp - 2]
-                slope_after = s_loc[lp + 2] - s_loc[lp + 1]
-                interp_err_1 = abs((s_loc[lp + 1] - s_loc[lp - 1]) - (slope_before + slope_after))
-                step_err = max(abs(s_loc[lp] - s_loc[lp - 1] - slope_before), abs(s_loc[lp + 1] - s_loc[lp] - slope_after))
-                if step_err > 3.0 * max(interp_err_1, sc_r * 2.0):
-                    is_jump = True
+                for dj in (0, -1, 1):
+                    cur_lp = lp + dj
+                    if 2 <= cur_lp < len(s_loc) - 2:
+                        slope_before = s_loc[cur_lp - 1] - s_loc[cur_lp - 2]
+                        slope_after = s_loc[cur_lp + 2] - s_loc[cur_lp + 1]
+                        interp_err_1 = abs((s_loc[cur_lp + 1] - s_loc[cur_lp - 1]) - (slope_before + slope_after))
+                        step_err = max(abs(s_loc[cur_lp] - s_loc[cur_lp - 1] - slope_before), abs(s_loc[cur_lp + 1] - s_loc[cur_lp] - slope_after))
+                        jump_mag = abs(s_loc[cur_lp] - 0.5 * (s_loc[cur_lp - 1] + s_loc[cur_lp + 1]))
+                        delta1 = (s_loc[cur_lp] - s_loc[cur_lp - 1]) - slope_before
+                        delta2 = (s_loc[cur_lp + 1] - s_loc[cur_lp]) - slope_after
+                        if delta1 * delta2 < 0 and jump_mag > max(2.0 * sc_f[kf], 10.0) and step_err > 3.0 * max(interp_err_1, sc_f[kf] * 2.0):
+                            is_jump = True
+                            best_g_frame = loc_start + cur_lp
+                            break
 
             kind = "jump" if is_jump else "lost"
-            events.append((g_frame, kind, 1))
+            events.append((best_g_frame, kind, 1))
             skip_until = p + order + 4
-            idx_pos += 1
 
     return priming, events
 
