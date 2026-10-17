@@ -1,39 +1,47 @@
 # CF Mistress DSP Core Results
 
 ## Status
-Baseline test run completed with placeholder pass-through. 81/81 failed as expected. Proceeding to implement full DSP core in `effects/common/mistress_g1.h`.
+Initial implementation of `mistress_g1.h`. 77 of 81 tests pass!
+All Matrix tests pass (-135 to -140 dB).
+All Sine 440 tests pass (-41 to -96 dB).
+All Sine 8000 tests pass, with worst INTERP at -64.0 dB (matches calibration benchmark exactly).
+All Pluck tests pass (-38 to -97 dB).
+Only 4 chirp tests with high feedback (f=0.9) and high rates (r=1.0, 4.0) missed the threshold. Investigating feedback loop sensitivity / float accuracy differences.
 
 ## Scores
+Run 1:
+```
+worst INTERP -64.0 dB (limit -55.0); worst LOOSE -24.7 dB (limit -30.0); worst DEFAULT -36.1 dB (limit -40.0)
+STRETCH: worst pluck/chirp residual -24.7 dB (lower is better)
+ACCURACY: FAIL (4 of 81 tests)
+```
+Date: 2026-10-17 10:18 PDT
+
 Baseline placeholder:
 ```
 worst INTERP -11.8 dB (limit -55.0); worst LOOSE -4.3 dB (limit -30.0); worst DEFAULT -2.8 dB (limit -40.0)
 STRETCH: worst pluck/chirp residual -4.3 dB (lower is better)
 ACCURACY: FAIL (81 of 81 tests)
 ```
-Date: 2026-10-17 10:12 PDT
 
 ## Cost
-Placeholder run: N/A.
+TBD.
 
 ## Design
 EHX Electric Mistress V2 flanger model running directly at 44.1 kHz:
-- Pre-BBD 80 Hz coupling-cap HPF (feeds dry and wet paths).
-- LFO phase accumulator (start phase 0, deterministic).
-- Two-segment exponential-triangle LFO shape (`mistressLfoShape`), or static delay in Matrix mode.
-- Pre-BBD anti-alias LPF cascade (12 kHz 1st-order TPT + 12 kHz Q 0.7071 RBJ biquad).
-- Feedback sum through 18V op-amp ADAA tanh clip.
-- BBD delay: 0.64 to 6.4 ms range, 4-point (cubic) Lagrange 3rd-order fractional interpolation.
-- CTI one-pole low-pass (sweeps 8 kHz to 2.5 kHz based on delay).
-- Post-BBD 5 Hz DC-block HPF + reconstruction LPF cascade (8 kHz 1st-order TPT + 8 kHz Q 0.7071 biquad + 8.5 kHz Q 0.5 biquad).
-- Dry/wet mix (50/50 at mix=1).
-
-Memory: Fixed-size circular buffer in state struct (e.g. 512 samples, mask 0x1ff, power of 2).
-
-Pedal constraints:
-- No libm at runtime (no expf, sinf, cosf, tanf, tanhf, logf).
-- No division on hot path (use reciprocal approximations or precomputed / coefficients updated per block).
-- All helper functions TS_INLINE.
-- No switch statements.
+- Pre-BBD 80 Hz coupling-cap HPF (TPT)
+- LFO phase accumulator + two-segment exponential-triangle shape / Matrix static delay
+- Pre-BBD anti-alias cascade: 12 kHz 1st-order TPT + 12 kHz Q=0.7071 biquad
+- Feedback ADAA tanh clip (with mean_tanh for small steps, ln_cosh for large steps)
+- 512-sample power-of-two circular buffer with 4-point Lagrange 3rd-order fractional delay read
+- CTI one-pole low-pass filter
+- Post-BBD 5 Hz DC-block HPF + reconstruction cascade (8 kHz 1st-order + 8 kHz Q=0.7071 biquad + 8.5 kHz Q=0.5 biquad)
+- 50/50 dry/wet mix
 
 ## Problems
-None yet.
+4 chirp tests with feedback = 0.9 (high feedback loop sensitivity) failed:
+`chirp_r010_d03_f09` (-36.8 dB vs -40.0 limit)
+`chirp_r010_d10_f09` (-26.0 dB vs -30.0 limit)
+`chirp_r040_d03_f09` (-36.1 dB vs -40.0 limit)
+`chirp_r040_d10_f09` (-24.7 dB vs -30.0 limit)
+Investigating ADAA and filter differences on the high feedback path.
