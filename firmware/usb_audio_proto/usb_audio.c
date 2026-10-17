@@ -296,7 +296,15 @@ static const u8 stock_cs_ep1[5]       = { 0x05,0x25,0x01,0x01,0x0a };
 static const u8 stock_in_ep[9]        = { 0x09,0x05,0x84,0x02,0x40,0x00,0x00,0x00,0x00 };
 static const u8 stock_cs_ep2[5]       = { 0x05,0x25,0x01,0x01,0x14 };
 
-static const u8 uac_if2_ac[9]      = { 0x09,0x04,0x02,0x00,0x00,0x01,0x01,0x00,0x00 };
+/* iInterface of IF2 (first interface of the audio function): Windows names the
+   function, and so the capture endpoint "Line (...)", after it. String 3 is the
+   stock empty record c017f41c, repointed by make_controller_fw.py
+   --usb-audio-name; 0 (no string, name from the product string) unless the
+   build defines UA_AUDIO_STRING. */
+#ifndef UA_AUDIO_STRING
+#define UA_AUDIO_STRING 0
+#endif
+static const u8 uac_if2_ac[9]      = { 0x09,0x04,0x02,0x00,0x00,0x01,0x01,0x00,UA_AUDIO_STRING };
 static const u8 uac_ac_header[9]   = { 0x09,0x24,0x01,0x00,0x01,0x1e,0x00,0x01,0x03 };
 /* Input terminal: bNrChannels = UA_NCH and a wChannelConfig with exactly UA_NCH
    positions: L|R (0x0003) for 2 channels, all eight UAC1 positions (0x00ff, the

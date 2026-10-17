@@ -86,7 +86,7 @@ def build_payload(tap=False, pattern=False, nch=2):
             "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
             "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
             *(["--define=UA_TAP_PATTERN"] if pattern else []),
-            *(["--define=UA_NCH=8"] if nch == 8 else []),
+            *(["--define=UA_NCH=8", "--define=UA_AUDIO_STRING=3"] if nch == 8 else []),
             "--compile_only", *srcs)
     elf = out / "usb_audio.elf"
     ctl.run(ctl.CGT / "bin/lnk6x", "--ram_model", *(TAP_RETAIN if tap else []),
@@ -153,6 +153,12 @@ def decode(vma, word, kind):
 def build(base_path, out_path, tap=False, pattern=False, nch=2):
     tap = tap or pattern or nch == 8
     base = Path(base_path).read_bytes()
+    if nch == 8:
+        # IF2's iInterface names string 3: the base must carry it, or Windows
+        # would show an empty audio device name.
+        off = ctl.CONST_DATA[0] + ctl.USB_STR3_RECORD - 0xc016f780
+        if int.from_bytes(base[off:off + 4], "little") == ctl.USB_STR3_STOCK_HDR:
+            sys.exit("--tap8 needs a base built with make_controller_fw.py --usb-audio-name")
     lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch), (UA_BASE, UA_SIZE))
     if lo != UA_BASE or len(img) > UA_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))

@@ -419,3 +419,21 @@ rebuilds the endpoint**; apps (Reaper, VPB) must reopen the device.
   shape relative to the DI (-28 dB at 100 Hz, -9 dB at 1 kHz, -37 dB at 12 kHz), dips every ~10 s, weak
   0.75 s envelope period. Not a copy of the input. Identity open: exported `build/ua_takes/listen_bus3930.wav`
   (normalised) for the owner to listen. What the owner ran during the take (drums, looper) to be confirmed.
+
+## Device-name label from firmware: 8ch "named" build (2026-10-17)
+
+Windows has no field for per-channel names in WASAPI/MME (UAC1 iChannelNames applies only to channels without a
+spatial position, and Windows needed all eight positions, mask 0x00ff), so the label goes in the device name.
+Zoom's string builder c0161008 hands out records for strings 0-4; 3 and 4 both point at c017f41c, a stock empty
+string (0x302) referenced only by c0161020 and never requested by Windows. `make_controller_fw.py
+--usb-audio-name` repoints that record at our text (same checks as --usb-product; 1..62 ASCII, never 31, so the
+reply is never a multiple of 64), and the 8-channel descriptor sets IF2 iInterface = 3 (`UA_AUDIO_STRING`).
+`make_usb_audio_fw.py --tap8` refuses a base without the string. Name: `CF8 Out1-2 DI3-4 BusA5-6 BusB7-8`;
+expected endpoint "Line (CF8 Out1-2 DI3-4 BusA5-6 BusB7-8)". Tests: tests/test_usb_string3.py. Base without the
+option unchanged (168d8790).
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB audio 8ch named** (desktop: `GUITAR AUDIO 7 - Comet Flower USB 8ch named TEST.exe`) | `504707d6` | `e329eed8` |
+
+After flashing: remove the device nodes again so Windows re-reads the names.

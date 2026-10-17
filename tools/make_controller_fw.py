@@ -204,6 +204,30 @@ def base_kind(base, stock):
 # longer name is appended to the payload and the record points there.
 USB_PRODUCT_RECORD, USB_PRODUCT_STOCK_PTR = 0xc017f42c, 0xc0181638
 USB_PRODUCT_MAX = 31            # Windows MIDI port names are at most 31 characters
+# USB string 3 (the USB-audio interface name, iInterface of IF2): the string builder
+# c0161008 fills the pointer list with records c017f414 (0, language), c017f424 (1),
+# c017f42c (2, product), and c017f41c for both 3 and 4 (c0161020 MVK, c016102c/c0161032
+# STDW, c0161036 STW). Stock c017f41c is an empty string (0x302 = bLength 2) whose pointer
+# c0181b20 is never read; only c0161020 references the record (refs.txt, const scan).
+# Windows names a composite function after its first interface's iInterface string, so the
+# audio input shows as "Line (<this text>)". The reply buffer takes 128 bytes (c013533a)
+# and a reply that is a multiple of 64 bytes takes the stock ZLP path (port 13), so
+# 1..62 characters, never 31.
+USB_STR3_RECORD, USB_STR3_STOCK_HDR, USB_STR3_STOCK_PTR = 0xc017f41c, 0x302, 0xc0181b20
+USB_STR3_MAX = 62
+
+
+def usb_string3_patch(data, name, addr):
+    """Point string 3 at addr; returns the bytes to place at addr."""
+    text = name.encode("ascii", "replace")
+    if not name.isascii() or not 1 <= len(text) <= USB_STR3_MAX or len(text) == 31 or any(not 32 <= c <= 126 for c in text):
+        sys.exit("--usb-audio-name: 1..%d printable ASCII characters, not 31" % USB_STR3_MAX)
+    off = CONST_DATA[0] + USB_STR3_RECORD - 0xc016f780
+    hdr, ptr = struct.unpack_from("<II", data, off)
+    if hdr != USB_STR3_STOCK_HDR or ptr != USB_STR3_STOCK_PTR:
+        sys.exit("USB string-3 record %#x is not the stock empty string record" % USB_STR3_RECORD)
+    struct.pack_into("<II", data, off, (3 << 8) | (2 + 2 * len(text)), addr)
+    return text + b"\0"
 
 
 def usb_product_patch(data, name, addr):
@@ -219,7 +243,7 @@ def usb_product_patch(data, name, addr):
     return text + b"\0"
 
 
-def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=None):
+def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=None, usb_audio_name=None):
     base = Path(base_path).read_bytes()
     try:
         kind = base_kind(base, Path(stock_path).read_bytes())
@@ -231,6 +255,11 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
         img += b"\0" * (-len(img) % 4)
         product_addr = lo + len(img)
         img += usb_product.encode("ascii") + b"\0"
+    str3_addr = None
+    if usb_audio_name is not None:
+        img += b"\0" * (-len(img) % 4)
+        str3_addr = lo + len(img)
+        img += usb_audio_name.encode("ascii") + b"\0"
     hooks = HOOKS + (DIAG_HOOKS if diag else []) + (UI_HOOKS if ui else [])
     if lo != CTL_BASE or len(img) > CTL_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
@@ -257,6 +286,10 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
     if product_addr is not None:
         usb_product_patch(data, usb_product, product_addr)
         product_off = CONST_DATA[0] + USB_PRODUCT_RECORD - 0xc016f780
+    str3_off = None
+    if str3_addr is not None:
+        usb_string3_patch(data, usb_audio_name, str3_addr)
+        str3_off = CONST_DATA[0] + USB_STR3_RECORD - 0xc016f780
     padded = img + b"\0" * (-len(img) % 4)
     data += struct.pack("<III", AIS_SECTION_LOAD, lo, len(img)) + padded
     data += base[close_off:]
@@ -266,6 +299,8 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
     allowed = {off + k for _, off, _, _, _ in hooks for k in range(4)}
     if product_off is not None:
         allowed |= set(range(product_off, product_off + 8))
+    if str3_off is not None:
+        allowed |= set(range(str3_off, str3_off + 8))
     if not set(changed) <= allowed:
         sys.exit("unexpected byte changes at %s" % [hex(i) for i in changed if i not in allowed])
     if data[-8:] != base[-8:]:
@@ -290,6 +325,8 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
             vma, stock, struct.unpack_from("<I", data, off)[0], sym, syms[sym]))
     if product_addr is not None:
         print("USB product string %r at %#x" % (usb_product, product_addr))
+    if str3_addr is not None:
+        print("USB string 3 (audio interface name) %r at %#x" % (usb_audio_name, str3_addr))
     print("wrote %s (%d bytes, base %s, SHA-256 %s)" % (
         out_path, len(data), kind,
         hashlib.sha256(data).hexdigest()))
@@ -311,5 +348,8 @@ if __name__ == "__main__":
     ap.add_argument("--usb-product",
                     help="USB product name (Windows MIDI port name), up to 31 characters; "
                          "stored in the controller section")
+    ap.add_argument("--usb-audio-name",
+                    help="USB string 3, the USB-audio interface name Windows shows for the audio "
+                         "input (1..62 characters, not 31); stored in the controller section")
     a = ap.parse_args()
-    build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product)
+    build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product, a.usb_audio_name)
