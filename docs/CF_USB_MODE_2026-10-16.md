@@ -280,3 +280,19 @@ frame 217 in 1 of 15** (s9), as predicted. s1 instead shows frames 935..1798 = a
 (priming zeros included): the capture side delivered its first 864-frame buffer twice. The pedal cannot do that
 (256-frame ring, priming is never re-sent), so it is a PortAudio/WASAPI start artifact, not a stream defect.
 Repeat the same 15 opens on tap2 to confirm the fix.
+
+## Port 13 Code 10 pinned: the pedal STALLs SET_CONFIGURATION (USB trace, 19:12)
+
+`tools/usb_etw_trace.ps1` (elevated; usbhub3 + UCX + xHCI ETW, restarts the device) on tap2, port 13
+(`PCIROOT(0)#PCI(1400)#USBROOT(0)#USB(13)`, ACPI HS13, a motherboard root port; the hub sits on root port 2).
+Trace `build/usb_etw/usb_20261016_191227.etl`. Per attempt, 3 attempts then Code 10 (0xC0000001):
+GET_DESCRIPTOR(device, 64) ok -> reset -> GET_DESCRIPTOR(device, 18) ok -> **SET_CONFIGURATION(1): USBD
+0xC0000004 (STALL PID)** 4 ms later -> "Device Control Transfer Error" -> re-enumerate. Windows used its cached
+configuration descriptor (3 "Descriptor Validation Warning"s, status 0x50) and did not re-fetch it.
+
+Stock SET_CONFIGURATION c0135660: builder (our veneer, A4 = 2, always returns 0) -> find bConfigurationValue ->
+c01357c8 per interface (return ignored) -> **c015af48(128, ...) status ACK, which posts to the USB task queue
+c01387f0 (A4 = 4) and returns its result**; c0135744..c013575a: any result other than 0 / 0xffff8a63 is returned
+-> STALL. c015c804 always returns 0. So the STALL is a failed post of the status stage, not a descriptor check.
+Next: power on WITHOUT slot 1 (USB-audio off, all stock paths) on port 13: if that also fails, it is stock Zoom
+behaviour on this port; if it works, our layer makes the queue busy. Then RE c01387f0's error returns.
