@@ -398,3 +398,13 @@ Fix **8ch-b**: wChannelConfig 0x00ff (eight positions, 7.1 layout) for 8 channel
 
 After flashing, Windows may keep the stale 2-channel endpoint format: remove the MI_02 device node
 (elevated `pnputil /remove-device`) and rescan so the endpoint is rebuilt.
+
+### 8ch-b on hardware (14:12 flash, port 13): works after Windows forgets the old endpoint
+
+Windows kept the endpoint's stored 2-channel format after the descriptor changed. Elevated `pnputil
+/remove-device` on the composite, MI_00 and MI_02 nodes plus `/scan-devices` rebuilt it: new capture endpoint
+`{b9554f77…}`, format 8 ch, 44.1 kHz, 16 bit, mask 0x063f. MME, DirectSound, WASAPI and WDM-KS list 8 inputs.
+`ua_capture8.py` 10 s idle take `build/ua_takes/take8_20261017_142434.wav`: 441,000 frames in 10.1 s on all 8.
+Idle levels: ch1-2 -83 dBFS, ch3 = ch4 -88.7 dBFS (right ADC looks like the same jack), **ch5-6 exactly zero**,
+ch7-8 -88.9 dBFS input-like noise. Lesson: **after any descriptor change, remove the device nodes so Windows
+rebuilds the endpoint**; apps (Reaper, VPB) must reopen the device.
