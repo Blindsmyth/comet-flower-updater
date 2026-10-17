@@ -117,6 +117,50 @@ DELAY_3S never calls into the framework to obtain it — it is pre-populated.
 
 ## D3. Does the effect file declare it needs the buffer?
 
+**Confirmed: no.** Checked both places an effect file could plausibly
+declare a memory need:
+
+1. **ZD2 container header/INFO block.** Parsed all four delay-family ZD2
+   files with `src/zd2tools/parser.py` (existing helper, tagged-block
+   format). The `INFO` block (20 bytes) for all four is: word0=0 (effect
+   class "normal", per `src/zd2tools/models.py`'s `ZD2Info.word0` comment),
+   an 8-byte group-name string `"DLYDELAY"`, and a float `dspload` (declared
+   CPU %: 13.74 for DELAY_3S/ANDLY_3S, 17.43 TAPEECHO, 19.07 MODDELAY — a
+   trusted-but-unverified CPU budget per `models.py`'s comment, nothing about
+   memory). No field anywhere in `ZD2Header` or `ZD2Info` encodes a work-
+   buffer size or a "needs large buffer" flag. Confidence: **confirmed**
+   (direct parse of all 4 delay ZD2 files' INFO blocks).
+2. **The effect's own `Dll_Delay` entry-table constructor**
+   (`DELAY_3S.dis` `.text+0xbec`). This is the function the loader calls once
+   to populate the 36-byte per-slot "entry" struct (recon/14 section 3; a
+   *different* struct from the 20-byte "instance" struct discussed in
+   D1/D2). Traced every store it makes:
+   ```
+   .text+0c00  STB.D1T1 A0,*A4[0]      ; entry[0] (byte)  = 6
+   .text+0c02  STW.D1T2 B0,*A4[1]      ; entry[1] (word)  = 0x80000000 (ptr to .const param table "Delay")
+   .text+0c14  STW.D1T1 A1,*A4[3]      ; entry[3] (word)  = 0x80000150 (ptr to effectTypeImageInfo)
+   .text+0c16  STW.D1T2 B1,*A4[6]      ; entry[6] (word)  = 0x00000104 = Fx_DLY_Delay_time_edit  (callback)
+   .text+0c20  STW.D1T1 A2,*+A4[5]     ; entry[5] (word)  = 0x00000024 = Fx_DLY_Delay_tapmuteMute (callback)
+   ```
+   `entry[7]`/`entry[8]` are left untouched (zero-cleared by the loader per
+   recon/14 section 3, `c0129d80..9daa`). Every field that *is* set is
+   either a byte flag, a `.const` table pointer, or a callback function
+   address (consistent with recon/14's confirmed correction that entry[5..8]
+   are callbacks, not size requests) — **none of them is a numeric size or a
+   "give me the big buffer" flag**. Confidence: **confirmed** (full
+   instruction-level trace of `Dll_Delay`, every store accounted for).
+
+**What happens for an effect that does not declare it / can any effect use
+it:** since D1 shows the framework writes `instance[3]` unconditionally for
+every slot regardless of what Dll_<Name> does, and D3 shows there is no
+flag anywhere an effect could opt in or out of, **any effect loaded into any
+slot automatically has `instance[3]` pointing at that slot's live
+0x81330-byte descriptor** — an effect that ignores it (e.g. a plain gain
+effect) simply never reads/writes that SDRAM region, and nothing checks
+whether it "declared" an intent to use it. Confidence: **confirmed** (follows
+directly from the unconditional D1 loop + the absence of any gating field
+found in D3).
+
 ## D4. Lifetime: zeroed on load? shared/other writers?
 
 ## D5. Recipe for a CF effect
