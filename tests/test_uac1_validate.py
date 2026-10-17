@@ -199,11 +199,11 @@ class TestUac1Validator(unittest.TestCase):
     def test_mutation_check6_audio_streaming(self):
         """Mutation 6: Reduce wMaxPacketSize below required size to trigger audio_streaming violation only."""
         good = bytearray(self.get_good_bytes())
-        # uac_ep1 is at offset 176 (byte 176..184); wMaxPacketSize is at 180..181 (value 180 = 0x00b4)
-        self.assertEqual(good[176:178], b"\x09\x05")
-        self.assertEqual(good[180], 0xb4)
-        good[180] = 100
-        good[181] = 0
+        # uac_ep1 is at offset 179 (byte 179..187); wMaxPacketSize is at 183..184 (value 180 = 0x00b4)
+        self.assertEqual(good[179:181], b"\x09\x05")
+        self.assertEqual(good[183], 0xb4)
+        good[183] = 100
+        good[184] = 0
         violations = validate(good)
         check_ids = {v[0] for v in violations}
         self.assertEqual(check_ids, {"audio_streaming"}, f"Unexpected check_ids: {check_ids}")
@@ -222,9 +222,9 @@ class TestUac1Validator(unittest.TestCase):
     def test_mutation_check8_endpoint_addresses(self):
         """Mutation 8: Duplicate endpoint address across interfaces to trigger endpoint_addresses violation only."""
         good = bytearray(self.get_good_bytes())
-        # uac_ep1 is at offset 176; bEndpointAddress is at 178 (0x81). Interface 1 uses 0x84.
-        self.assertEqual(good[178], 0x81)
-        good[178] = 0x84
+        # uac_ep1 is at offset 179; bEndpointAddress is at 181 (0x81). Interface 1 uses 0x84.
+        self.assertEqual(good[181], 0x81)
+        good[181] = 0x84
         violations = validate(good)
         check_ids = {v[0] for v in violations}
         self.assertEqual(check_ids, {"endpoint_addresses"}, f"Unexpected check_ids: {check_ids}")
@@ -232,10 +232,10 @@ class TestUac1Validator(unittest.TestCase):
     def test_mutation_check9_bandwidth(self):
         """Mutation 9: Set ISO wMaxPacketSize > 1023 to trigger bandwidth violation only."""
         good = bytearray(self.get_good_bytes())
-        # uac_ep1 is at offset 176; wMaxPacketSize is at 180..181. Set to 1024 (0x0400).
-        self.assertEqual(good[180], 0xb4)
-        good[180] = 0x00
-        good[181] = 0x04
+        # uac_ep1 is at offset 179; wMaxPacketSize is at 183..184. Set to 1024 (0x0400).
+        self.assertEqual(good[183], 0xb4)
+        good[183] = 0x00
+        good[184] = 0x04
         violations = validate(good)
         check_ids = {v[0] for v in violations}
         self.assertEqual(check_ids, {"bandwidth"}, f"Unexpected check_ids: {check_ids}")

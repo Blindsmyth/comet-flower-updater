@@ -109,7 +109,11 @@ class UsbAudioPrototypeTests(unittest.TestCase):
 
     def test_configuration_header_and_total_length(self):
         data = self.full_configuration()
-        self.assertEqual(len(data), 192)
+        self.assertEqual(len(data), 195)
+        # Not a multiple of EP0's 64: a 3 x 64 reply to Windows' wLength 255 takes the
+        # stock zero-length-packet ending, after which the pedal STALLed
+        # SET_CONFIGURATION on a root port (Code 10, ETW trace 2026-10-16).
+        self.assertNotEqual(len(data) % 64, 0)
         self.assertEqual(data[:2], b"\x09\x02")
         self.assertEqual(int.from_bytes(data[2:4], "little"), len(data))
         self.assertEqual(data[4], 4)
@@ -126,7 +130,7 @@ class UsbAudioPrototypeTests(unittest.TestCase):
         for requested in list(range(256)) + [65535, 0xffffffff]:
             with self.subTest(requested=requested):
                 count, storage = self.copy(requested=requested)
-                self.assertEqual(count, min(requested, 192))
+                self.assertEqual(count, min(requested, 195))
                 self.assertEqual(storage[:4], b"\xa5" * 4)
                 self.assertEqual(storage[4:4 + count], expected[:count])
                 self.assertEqual(storage[4 + count:], b"\xa5" * (516 - count))
@@ -136,7 +140,7 @@ class UsbAudioPrototypeTests(unittest.TestCase):
         for capacity in range(211):
             with self.subTest(capacity=capacity):
                 count, storage = self.copy(capacity=capacity)
-                self.assertEqual(count, min(capacity, 192))
+                self.assertEqual(count, min(capacity, 195))
                 self.assertEqual(storage[4:4 + count], expected[:count])
                 self.assertEqual(storage[4 + count:], b"\xa5" * (516 - count))
         self.assertEqual(self.lib.usb_audio_copy_descriptors(None, 512, 512), 0)
@@ -151,9 +155,12 @@ class UsbAudioPrototypeTests(unittest.TestCase):
                           for r in endpoints], [(3, 2, 64), (0x84, 2, 64),
                                                 (0x81, 5, 180)])
         self.assertEqual(endpoints[-1][6], 1)  # one full-speed USB frame
-        audio_format = next(r for r in records if r[:4] == b"\x0b\x24\x02\x01")
-        self.assertEqual(audio_format[4:8], bytes([2, 2, 16, 1]))
+        # Type I, 2 ch, 16 bit, continuous range 44100..44100 (bSamFreqType 0): the
+        # one rate, 3 bytes longer than one discrete entry (see the length test).
+        audio_format = next(r for r in records if r[:4] == b"\x0e\x24\x02\x01")
+        self.assertEqual(audio_format[4:8], bytes([2, 2, 16, 0]))
         self.assertEqual(int.from_bytes(audio_format[8:11], "little"), 44100)
+        self.assertEqual(int.from_bytes(audio_format[11:14], "little"), 44100)
         ac = records.index(next(r for r in records if r[1:4] == b"\x04\x02\x00"))
         header, source, sink = records[ac + 1:ac + 4]
         self.assertEqual(int.from_bytes(header[5:7], "little"),

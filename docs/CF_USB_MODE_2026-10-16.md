@@ -296,3 +296,25 @@ c01387f0 (A4 = 4) and returns its result**; c0135744..c013575a: any result other
 -> STALL. c015c804 always returns 0. So the STALL is a failed post of the status stage, not a descriptor check.
 Next: power on WITHOUT slot 1 (USB-audio off, all stock paths) on port 13: if that also fails, it is stock Zoom
 behaviour on this port; if it works, our layer makes the queue busy. Then RE c01387f0's error returns.
+
+## Port 13: normal mode works; fix candidate tap3 (2026-10-17, past midnight)
+
+Replug trace on port 13 without slot 1 (`build/usb_etw/usb_20261016_200752.etl`): 101-byte stock configuration,
+SET_CONFIGURATION accepted, MIDI up. So only USB-audio mode fails there. Windows reads the configuration with
+**wLength 255**; our 192 = 3 x 64 reply is the only one that ends through Zoom's zero-length-packet path
+(stock 101 bytes ends with a short packet), and the next SET_CONFIGURATION is the request that STALLs. Working
+hypothesis: after that path EP0 stays busy (c01387f0: EP0 record word 1 set -> post fails -> STALL), and on a
+root port the next request comes too soon (13 ms in the normal-mode trace); the hub is slower. Not proved
+statically; the hardware test decides.
+
+Fix candidate: the Type I format descriptor lists 44.1 kHz as a continuous range 44100..44100 (bSamFreqType 0,
+14 bytes), so wTotalLength = 195, not a multiple of 64. Tests pin `wTotalLength % 64 != 0` and the new format;
+validator offsets shifted by 3. 370 tests pass.
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB audio tap3** `build/cf_usb_audio_tap3_2026-10-17/` (desktop: `GUITAR AUDIO 3 - Comet Flower USB tap3 TEST.exe`) | `393d1112` | `dcf7cb50` |
+
+tap3 = tap2 (start-splice fix) + the 195-byte descriptor; 19 bytes differ from tap2. Test: flash, power on holding
+slot 1 **directly on port 13**; expect "Line (Comet Flower ZG1X4 MIDI)" and no Code 10. If Windows still shows
+Code 10, run `tools/usb_etw_trace.ps1 -WaitSeconds 120` across a replug.

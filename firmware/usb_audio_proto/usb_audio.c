@@ -254,7 +254,7 @@ int usb_audio_set_alt(u32 alt)
  * this region, to save SDRAM. The "uac_*" fragments and new_config_hdr
  * are recon/17 B5's proposed bytes (design bytes, not recovered from
  * stock firmware) -- their internal self-consistency (bLength vs. byte
- * count, wTotalLength=192, bNumInterfaces=4, AC header fields) was
+ * count, wTotalLength=192 then; 195 since uac_format_i, bNumInterfaces=4, AC header fields) was
  * checked in recon/20 item 1.6 via count_desc.sh.
  * ------------------------------------------------------------------ */
 
@@ -264,7 +264,7 @@ static const u8 device_desc[18] = {
 };
 
 static const u8 new_config_hdr[9] = {
-    0x09, 0x02, 0xc0, 0x00, 0x04, 0x01, 0x00, 0x80, 0xfa
+    0x09, 0x02, 0xc3, 0x00, 0x04, 0x01, 0x00, 0x80, 0xfa
 };
 
 static const u8 stock_if0_ac[9]       = { 0x09,0x04,0x00,0x00,0x00,0x01,0x01,0x00,0x00 };
@@ -287,7 +287,13 @@ static const u8 uac_ot2[9]         = { 0x09,0x24,0x03,0x02,0x01,0x01,0x00,0x01,0
 static const u8 uac_if3_alt0[9]    = { 0x09,0x04,0x03,0x00,0x00,0x01,0x02,0x00,0x00 };
 static const u8 uac_if3_alt1[9]    = { 0x09,0x04,0x03,0x01,0x01,0x01,0x02,0x00,0x00 };
 static const u8 uac_as_general[7]  = { 0x07,0x24,0x01,0x02,0x01,0x01,0x00 };
-static const u8 uac_format_i[11]   = { 0x0b,0x24,0x02,0x01,0x02,0x02,0x10,0x01,0x44,0xac,0x00 };
+/* Type I format, 2 ch, 16 bit, the one rate as a continuous range 44100..44100
+   (bSamFreqType 0): 14 bytes, so wTotalLength is 195. With one discrete rate it
+   was 192 = 3 x 64, and a reply that is a multiple of EP0's 64 bytes, shorter
+   than Windows' wLength 255, ends with the stock zero-length-packet path; after
+   it the pedal STALLed SET_CONFIGURATION on a root port (Code 10, USB ETW trace
+   2026-10-16, docs/CF_USB_MODE_2026-10-16.md). Keep wTotalLength % 64 != 0. */
+static const u8 uac_format_i[14]   = { 0x0e,0x24,0x02,0x01,0x02,0x02,0x10,0x00,0x44,0xac,0x00,0x44,0xac,0x00 };
 static const u8 uac_ep1[9]         = { 0x09,0x05,0x81,0x05,0xb4,0x00,0x01,0x00,0x00 };
 static const u8 uac_cs_ep[7]       = { 0x07,0x25,0x01,0x00,0x00,0x00,0x00 };
 
