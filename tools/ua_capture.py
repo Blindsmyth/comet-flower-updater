@@ -15,8 +15,10 @@ Analysis:
   what the pedal sent. Reports gaps (frames lost, and how many), repeats or backward
   jumps, padding (all-zero frames), and corrupt frames (right channel does not match
   the counter), with their spacing.
-- Any other take (guitar through the normal tap build): level, clipping, all-zero runs,
-  and sample-to-sample jumps far above the signal's own slope (clicks), with spacing.
+- Any other take (guitar through the normal tap build): level, clipping, the leading
+  priming run, and stream defects found by linear prediction (lost / repeated frames,
+  inserted zero runs, sample jumps), "N defects in M min". Below QUIET_RMS (a few LSB of
+  noise) the defect check is skipped: noise cannot be predicted, so it would flag noise.
 """
 import argparse
 import collections
@@ -524,6 +526,9 @@ EVENT_TYPES = (
 )
 
 
+QUIET_RMS = 50   # LSB, about -56 dBFS: below this the defect check is not meaningful
+
+
 def analyse_audio(data):
     n = len(data)
     lines = ["audio take: %d frames (%.2f s)" % (n, n / FS)]
@@ -531,6 +536,13 @@ def analyse_audio(data):
         rms, peak, clipped = _channel_level(data, ch)
         lines.append("%s: rms %.0f (%.1f dBFS), peak %d, clipped frames %d" % (
             name, rms, 20 * np.log10(max(rms, 1e-9) / 32768), peak, clipped))
+    loudest = max(_channel_level(data, ch)[0] for ch in (0, 1))
+    if loudest < QUIET_RMS:
+        # A few LSB of noise has no structure to predict: the detector would
+        # flag noise as repeats and losses (2026-10-16 tap2 takes at rms 4).
+        lines.append("defect check skipped: signal too quiet (rms %.0f < %d LSB); "
+                     "plug in or play the guitar" % (loudest, QUIET_RMS))
+        return lines
     priming, events = detect_glitches(data)
     lines.append("leading zero (priming) frames: %d" % priming)
     for kind, label in EVENT_TYPES:

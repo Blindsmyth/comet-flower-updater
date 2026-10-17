@@ -3,8 +3,10 @@
 # Needs an elevated PowerShell. Touches only the PC: restarting the device is
 # the same as a replug for the pedal.
 #   powershell -ExecutionPolicy Bypass -File tools\usb_etw_trace.ps1 [-InstanceId <id>]
+#   ... -WaitSeconds 45   no restart: trace while the owner power-cycles / replugs the pedal
 param(
     [string]$InstanceId = '',
+    [int]$WaitSeconds = 0,
     [string]$Out = (Join-Path $PSScriptRoot '..\build\usb_etw')
 )
 $ErrorActionPreference = 'Continue'
@@ -14,7 +16,7 @@ $etl = Join-Path $Out "usb_$stamp.etl"
 $log = Join-Path $Out "usb_$stamp.txt"
 Start-Transcript -Path $log | Out-Null
 
-if (-not $InstanceId) {
+if ($WaitSeconds -le 0 -and -not $InstanceId) {
     $d = Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -match '^USB\\VID_1686&PID_04A1\\' } | Select-Object -First 1
     if (-not $d) { Write-Host 'Pedal (VID_1686&PID_04A1) not present'; Stop-Transcript; exit 1 }
     $InstanceId = $d.InstanceId
@@ -29,9 +31,15 @@ logman update trace $name -ets -p '{36DA592D-E43A-4E28-AF6F-4BC57C5A11E8}' 0xfff
 logman update trace $name -ets -p '{30E1D284-5D88-459C-83FD-6345B39B19EC}' 0xffffffffffffffff 0xff | Out-Host  # USB-USBXHCI
 
 Start-Sleep -Seconds 2
-Write-Host 'restarting device'
-pnputil /restart-device "$InstanceId" | Out-Host
-Start-Sleep -Seconds 15
+if ($WaitSeconds -gt 0) {
+    Write-Host "TRACING: power-cycle or replug the pedal now ($WaitSeconds s)"
+    [console]::beep(880, 300)
+    Start-Sleep -Seconds $WaitSeconds
+} else {
+    Write-Host 'restarting device'
+    pnputil /restart-device "$InstanceId" | Out-Host
+    Start-Sleep -Seconds 15
+}
 logman stop $name -ets | Out-Host
 
 Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like '*VID_1686*' } |

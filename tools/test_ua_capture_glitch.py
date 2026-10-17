@@ -227,3 +227,14 @@ def test_multi_defect_take_and_analyse_audio_formatting():
     assert any(ln.startswith("sample jumps: 1, positions") for ln in lines)
     assert lines[-1].startswith("4 defects in ")
     assert lines[-1].endswith(" min")
+
+
+def test_quiet_take_skips_defect_check():
+    rng = np.random.default_rng(3)
+    noise = rng.normal(0, 4, (44100, 2)).round().astype(np.int16)
+    lines = ua_capture.analyse_audio(noise)
+    assert lines[-1].startswith("defect check skipped: signal too quiet")
+    wav_path = ROOT / "build" / "ua_takes" / "starts_tap2" / "s1.wav"
+    if wav_path.exists():  # real take, rms 4 LSB: the detector flagged 19 false events
+        lines = ua_capture.analyse_audio(ua_capture.load_wav(wav_path))
+        assert lines[-1].startswith("defect check skipped")
