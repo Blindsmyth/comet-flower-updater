@@ -100,3 +100,11 @@ Details: `docs/CF_USB_MODE_2026-10-16.md` (last four sections), helper reports `
 - Level: USB follows the digital master volume (MVOL) and patch level (both before the tap). Turn master up to record.
 - 24-bit option: EP1 2 x 512 B fits at 0x140 unchanged (stock uses 320 B of 4 KB FIFO RAM). Not built; owner's call.
 - Astra (Codex) capped until 22:28 2026-10-16.
+
+## Update, 2026-10-17 ~00:30: port 13 cause and tap3
+
+Port 13 Code 10 = the pedal STALLs SET_CONFIGURATION in USB-audio mode only (USB ETW traces, `tools/usb_etw_trace.ps1`).
+Suspect: our 192-byte (3 x 64) configuration descriptor sends Windows' wLength-255 read through the stock ZLP ending.
+**tap3 TEST updater `393d1112`** (desktop `GUITAR AUDIO 3 - Comet Flower USB tap3 TEST.exe`) = tap2 + a 195-byte
+descriptor. Not flashed yet. Test on port 13 with slot 1 held; then the 15-open splice check with the guitar cable
+plugged in (quiet takes are now reported "too quiet to judge").
