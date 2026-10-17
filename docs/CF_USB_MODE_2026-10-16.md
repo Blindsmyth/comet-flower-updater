@@ -408,3 +408,14 @@ Windows kept the endpoint's stored 2-channel format after the descriptor changed
 Idle levels: ch1-2 -83 dBFS, ch3 = ch4 -88.7 dBFS (right ADC looks like the same jack), **ch5-6 exactly zero**,
 ch7-8 -88.9 dBFS input-like noise. Lesson: **after any descriptor change, remove the device nodes so Windows
 rebuilds the endpoint**; apps (Reaper, VPB) must reopen the device.
+
+### First 8-channel identifying take (`build/ua_takes/take8_identify.wav`, 30 s, owner playing)
+- ch1 = ch2 (out), -16 dBFS rms, **peak 0 dBFS, 1374 clipped samples**: output level too hot for USB.
+  Out correlates 0.999 with the DI: this patch is nearly clean.
+- **ch3 == ch4 sample for sample**: the right ADC carries the same guitar jack (both pins wired together, or
+  the codec duplicates it). Channel 4 is free for another use.
+- **ch5-6 (bus 11f03830/70): exactly zero for all 30 s.**
+- **ch7 == ch8** (buses 11f03930 and 11f03970 identical): -36 dBFS, only 0.19 correlated with the DI, band-pass
+  shape relative to the DI (-28 dB at 100 Hz, -9 dB at 1 kHz, -37 dB at 12 kHz), dips every ~10 s, weak
+  0.75 s envelope period. Not a copy of the input. Identity open: exported `build/ua_takes/listen_bus3930.wav`
+  (normalised) for the owner to listen. What the owner ran during the take (drums, looper) to be confirmed.
