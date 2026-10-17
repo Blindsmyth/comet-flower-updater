@@ -274,3 +274,9 @@ ZG1X4 MIDI"`, `make_usb_audio_fw.py --tap`, `make_fs_restore_updater.py --test-c
 build/fw/cfupd_res85.bin --image build/cf_release_2026-10-16/fs_cf.bin`); rebuilding the old source with it gives
 `32afe08d` / `de0925d4` exactly, so tap2 differs only by the fix. **Not flashed yet.** Check after flashing:
 open the stream ~20 times (`ua_capture.py --seconds 3` in a loop) and look for a lost-frame event near frame 217.
+
+Baseline on the old tap build (de0925d4), 15 stream opens x 3 s (`build/ua_takes/starts_tap1/`): **splice at
+frame 217 in 1 of 15** (s9), as predicted. s1 instead shows frames 935..1798 = an exact copy of 71..934
+(priming zeros included): the capture side delivered its first 864-frame buffer twice. The pedal cannot do that
+(256-frame ring, priming is never re-sent), so it is a PortAudio/WASAPI start artifact, not a stream defect.
+Repeat the same 15 opens on tap2 to confirm the fix.
