@@ -337,3 +337,22 @@ Splice check on tap3, port 13, owner strumming (Bm-G-F#-Em loop), 15 opens x 3 s
 levels -22..-28 dBFS rms, peaks to -3.5 dBFS, no clipping; priming 89 frames each; **no event near frame 217 in
 any open** (tap1: 1 in 15). The LP detector flagged 14-89 "lost frames" per take in clusters at strum attacks;
 inspected spots are smooth (no steps): false positives on real playing. Retune: docs/helpers/GLITCH_TUNE_BRIEF_2026-10-17.md.
+
+## tap4: USB left = wet, right = dry input (2026-10-17)
+
+Owner: use the two channels separately: one for the processed sound, the other for the input. tap4 sends
+**left = processed output** (TX left 11f038b0, stock pack math, as before) and **right = dry guitar input**: RX
+unpack 11818b20 (called at 11818bb0 in the same Swi, before the tap) stores SMPY32(codec word, 0x80000000), the
+negated full-scale int32 sample, for the left ADC (MIC3L, guitar jack) at 11f03730 and the right ADC at
+11f03770; the tap sends the high half of 11f03730 (same polarity as the wet path, which processes that value).
+Compiled check: ua_tx_pack_tap loads A4 = 11f038b0, B4 = 11f03730. Host tests: right = dry, TX right ignored.
+370 tests pass.
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB audio tap4 (wet L / dry R)** `build/cf_usb_audio_tap4_2026-10-17/` (desktop: `GUITAR AUDIO 4 - Comet Flower USB tap4 wet-dry TEST.exe`) | `e85eb5b4` | `7f39b55a` |
+
+Unproved on hardware: that 11f03730 still holds this block's input at TX time (nothing found rewriting it),
+that the guitar is on the left ADC, and the DI level (ADC PGA 0 dB). Check: a take with a patch whose sound
+clearly differs from the DI (e.g. heavy drive) and confirm R is the clean guitar, in time with L.
+`ua_capture.py` still analyses L == R takes as one signal; per-channel analysis for wet/dry takes is next.

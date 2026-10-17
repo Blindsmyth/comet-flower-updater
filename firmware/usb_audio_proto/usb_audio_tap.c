@@ -63,6 +63,15 @@
 #define UA_TAP_TX_L ((const volatile int *)0x11f038b0u)
 #define UA_TAP_TX_R ((const volatile int *)0x11f038f0u)
 #endif
+/* Dry input: RX unpack 11818b20 (called at 11818bb0, earlier in the same Swi)
+   stores SMPY32(codec word, 0x80000000), i.e. the negated full-scale int32
+   sample, for the left ADC (MIC3L, the guitar jack) at 11f03730 and the right
+   ADC at 11f03770 (recon/16; 11818b58 MVKH 0x80000000, 11818b84 SUBAW B6,0x10
+   -> 11f03730). The effect chain works on that same value, so its high half
+   keeps the dry input in the wet path's polarity. */
+#ifndef UA_TAP_RX_L
+#define UA_TAP_RX_L ((const volatile int *)0x11f03730u)
+#endif
 #ifndef UA_TAP_STOCK_PACK
 #define UA_TAP_STOCK_PACK() (((void (*)(void))0x11818aa0u)())
 #endif
@@ -221,8 +230,16 @@ static inline u32 ua_tap_sample(int x)
     return ((u32)UA_SSHL(UA_SMPY32(x, UA_TAP_GAIN), 2) >> 16) & 0xffffu;
 }
 
-/* Swi context. Bounded: 16 frames, no waits. */
-void usb_audio_tap_block(const volatile int *l, const volatile int *r)
+/* Dry input word (RX unpack's full-scale int32) -> 16-bit USB sample. */
+static inline u32 ua_tap_dry(int x)
+{
+    return ((u32)x >> 16) & 0xffffu;
+}
+
+/* Swi context. Bounded: 16 frames, no waits. l = processed output (TX left),
+   d = dry input (RX left): USB left = wet, USB right = dry (owner, 2026-10-17:
+   one take gives the pedal's sound and the DI for re-amping / shoot-outs). */
+void usb_audio_tap_block(const volatile int *l, const volatile int *d)
 {
     u32 w, i;
 
@@ -237,7 +254,7 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
         return;
     }
 #ifdef UA_TAP_PATTERN
-    (void)l; (void)r;
+    (void)l; (void)d;
     for (i = 0; i < UA_TAP_BLOCK; i++) {
         usb_audio_ring[(w + i) & UA_TAP_MASK] = (ua_pattern_frame & 0xffffu) |
             ((u32)(unsigned short)ua_pattern_sine[ua_pattern_phase] << 16);
@@ -246,7 +263,7 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
 #else
     for (i = 0; i < UA_TAP_BLOCK; i++)
         usb_audio_ring[(w + i) & UA_TAP_MASK] =
-            ua_tap_sample(l[i]) | (ua_tap_sample(r[i]) << 16);
+            ua_tap_sample(l[i]) | (ua_tap_dry(d[i]) << 16);
 #endif
     usb_audio_tap.ring_wr = w + UA_TAP_BLOCK;     /* publish last */
     usb_audio_tap.blocks++;
@@ -257,7 +274,7 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
 void ua_tx_pack_tap(void)
 {
     UA_TAP_STOCK_PACK();
-    usb_audio_tap_block(UA_TAP_TX_L, UA_TAP_TX_R);
+    usb_audio_tap_block(UA_TAP_TX_L, UA_TAP_RX_L);
 }
 
 /* Hwi context: bounded (at most 45 FIFO writes), never spins, direct EP1

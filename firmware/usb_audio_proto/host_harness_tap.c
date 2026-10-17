@@ -25,12 +25,13 @@ static volatile void *host_register(unsigned int address)
 #define USB_AUDIO_REG16(a) (*(volatile unsigned short *)host_register(a))
 #define USB_AUDIO_REG32(a) (*(volatile unsigned int *)host_register(a))
 
-static int host_tx_l[16], host_tx_r[16];
+static int host_tx_l[16], host_tx_r[16], host_rx_l[16];
 static unsigned int host_pack_calls;
 static void host_stock_pack(void) { host_pack_calls++; }
 
 #define UA_TAP_TX_L ((const volatile int *)host_tx_l)
 #define UA_TAP_TX_R ((const volatile int *)host_tx_r)
+#define UA_TAP_RX_L ((const volatile int *)host_rx_l)
 #define UA_TAP_STOCK_PACK() host_stock_pack()
 
 EXPORT void usb_audio_sof_tick_tap(void);
@@ -55,13 +56,16 @@ EXPORT void host_reset(void)
     host_pack_calls = 0;
 }
 
-/* Sets the 16-frame block the next ua_tx_pack_tap() call will see. */
-EXPORT void host_set_block(const int *l, const int *r)
+/* Sets the 16-frame block the next ua_tx_pack_tap() call will see: l is the
+   processed output (TX left), d the dry input as RX unpack stored it (RX left).
+   TX right gets unrelated values: the tap must not send it. */
+EXPORT void host_set_block(const int *l, const int *d)
 {
     unsigned int i;
     for (i = 0; i < 16; ++i) {
         host_tx_l[i] = l[i];
-        host_tx_r[i] = r[i];
+        host_rx_l[i] = d[i];
+        host_tx_r[i] = ~d[i] ^ 0x5a5a5a5a;
     }
 }
 
