@@ -78,6 +78,9 @@ class UsbAudioTap8Tests(unittest.TestCase):
         recs = descriptors(data)
         it = next(r for r in recs if r[1:3] == b"\x24\x02" and r[0] == 12)
         self.assertEqual(it[7], NCH)
+        # wChannelConfig must name exactly NCH positions, or Windows builds a
+        # 2-channel format and refuses 8-channel streams (hardware 2026-10-17).
+        self.assertEqual(bin(int.from_bytes(it[8:10], "little")).count("1"), NCH)
         fmt = next(r for r in recs if r[:4] == b"\x0e\x24\x02\x01")
         self.assertEqual(fmt[4:7], bytes([NCH, 2, 16]))
         ep = [r for r in recs if r[1] == 5][-1]

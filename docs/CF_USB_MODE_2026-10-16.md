@@ -382,3 +382,19 @@ reads), estimate < 1 % of a block with the SOF writes; ClkT measurement still ow
 Test: flash, power on holding slot 1 (hub and port 13), Windows should list an 8-channel "Line (Comet Flower ZG1X4
 MIDI)". Record with `tools/ua_capture8.py --seconds 30` while (a) playing, (b) running the drum machine, (c)
 recording and playing a loop. The report prints per-channel level and which channels resemble each other.
+
+### 8ch on hardware (13:29, port 13): no go in Reaper and the owner's modeler
+
+Enumerates fine (composite, MI_00, MI_02 OK). The pedal's capture endpoint `{c0c8d579…}` kept a stored format of
+**2 ch**, 44.1 kHz, 16 bit, mask 0x3; PortAudio lists 8 inputs for MME / DirectSound / WDM-KS but 2 for WASAPI;
+8-channel opens fail in WASAPI exclusive ("Invalid number of channels"), MME ("invalid parameter", error 11) and
+WDM-KS. Cause (likely): wChannelConfig named only L|R for 8 channels, so Windows built a 2-channel format.
+Fix **8ch-b**: wChannelConfig 0x00ff (eight positions, 7.1 layout) for 8 channels, 0x0003 kept for 2 (the
+2-channel build is still byte-identical to tap3). Test pins popcount(wChannelConfig) == bNrChannels.
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB audio 8ch-b** (desktop: `GUITAR AUDIO 6 - Comet Flower USB 8ch-b TEST.exe`) | `3f290e3e` | `18840d2a` |
+
+After flashing, Windows may keep the stale 2-channel endpoint format: remove the MI_02 device node
+(elevated `pnputil /remove-device`) and rescan so the endpoint is rebuilt.
