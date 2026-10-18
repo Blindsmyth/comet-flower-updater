@@ -75,6 +75,7 @@ class BenchFrameTests(unittest.TestCase):
             busy.append(self.block(t0 + b * period, slots))
         words = self.capture()
         frames = list(ua_bench.frames(words))
+        self.assertIn("cpu_load_pct", ua_bench.stats(frames))
         self.assertGreaterEqual(len(frames), 2)
         for f in frames[1:]:
             self.assertEqual(f["mask"], 0x1f)
