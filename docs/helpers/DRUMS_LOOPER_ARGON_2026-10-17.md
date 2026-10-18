@@ -114,9 +114,29 @@ Neither the Looper nor the Drum Machine uses `11f03830` or `11f03930`. Both run 
      ```
    - Note: `11817640` does **not** write the stereo float drum mix to a separate buffer before adding `B6` (drum L) and `B4` (drum R) into `11f037b0[i]` / `11f037f0[i]`.
 
+---
+
 ## 3. Separability of Drums and Looper
 
-(in progress)
+**Yes — Drums and Looper are completely separable and are added at two distinct stages of the audio Swi (`confirmed`):**
+
+1. **They are never summed together before hitting `11f037b0`/`11f037f0` (`confirmed`):**
+   - **Looper (`118164c0`)** runs at **Swi Step 6 (`11818bc0`, Pre-effects)** or **Swi Step 14 (`11818c50`, Post-effects)** via dispatcher `11818e60` (`11f03ed0[0..1]`). It always finishes before Step 15 (`11818c54`).
+   - **Drums (`11817640`)** runs inside **Swi Step 15 (`11818c54` -> `11818d60` -> `11817640`)**, after Step 14 (`11818c50`) has already completed and before `11818d60` applies the master output volume `11f03e34`.
+   - Furthermore, the Looper (`118164c0`) runs *before* Drums (`11817640`), which explains why the Looper never records the Drum Machine!
+
+2. **Where each signal exists alone before being summed into `11f037b0`/`11f037f0` (`confirmed`):**
+   - **Looper alone:**
+     - **Stack buffer `B15 + 8` (`64` bytes, `int32_t[16]` mono)** and **`B15 + 72` (`64` bytes, `float[16]` mono)** inside `118164c0` (`11816d18`..`11816f28`, where `B15` was decremented by `136` at `11816528`).
+     - Specifically, at `11816cf0` (`[!A2] ADD.L1X 8,B15,A16`), all 16 signed 32-bit integer looper playback samples (already scaled by the looper playback volume ramp) sit contiguously at `B15 + 8 .. B15 + 71`. And by the end of pass 1 (`11816ee4`), all 16 float looper playback samples sit at `B15 + 72 .. B15 + 135`.
+     - Alternatively, by **algebraic difference on `11f037b0`/`11f037f0`**: when Looper is in Post mode (`11f03ed0[1] = 118164c0`, Step 14 at `11818c50`), `11f037b0`/`11f037f0` holds `Effects` before `11818c50` and `Effects + Looper` immediately after `11818c50` (when `*(11f03c58) != 0` and fade-out multiplier `*+B17[0]` at `11f03c54` is `1.0f`).
+   - **Drums alone:**
+     - **Raw 9-voice PCM buffer at `11f039b0`..`11f03acf` (`288` bytes, `int16_t[9][16]`)**: populated by `11817520` (called at `11817694`) and **still intact at TX pack time (`11818c64`)** because nothing after `11817640` writes to `11f039b0`. However, `11f039b0` is 9 unmixed 16-bit voices before per-voice pan/level (`11f03d24`..`11f03d50`) and rhythm master volume (`11f03d0c`/`11f03d14`/`11f03d20`).
+     - **Mixed stereo float Drums (`drum_L`, `drum_R`)**: inside `11817640`'s sample loop (`11817760`..`118178f8`), `B6` holds `drum_L[i]` at `11817868` (`MPYSP.M2 B7,B6,B6`) and `B4` holds `drum_R[i]` at `11817890` (`MPYSP.M2 B6,B4,B4`) right before `ADDSP` adds `11f037b0[i]` (`11817878`) and `11f037f0[i]` (`11817898`).
+     - Even simpler, **`11817640` is a standalone `CALLP` at `11818d64` (`CALLP.S2 0x11817640,B3`)** whose only effect on the audio stream is:
+       $$\text{buf\_11f037b0}[i] \leftarrow (\text{buf\_11f037b0}[i] + \text{drum\_L}[i]) \times \text{mute\_11f03d08}$$
+       $$\text{buf\_11f037f0}[i] \leftarrow (\text{buf\_11f037f0}[i] + \text{drum\_R}[i]) \times \text{mute\_11f03d08}$$
+       where `*(11f03d08)` (`*+A18[0]` at `118178a4`/`118178bc`) is `1.0f`. Thus if `11f037b0`/`11f037f0` is zeroed before `11817640` (or saved before `11817640` and subtracted after `11817640`), `11817640` writes **pure stereo Drums alone** directly into `11f037b0`/`11f037f0`!
 
 ## 4. Tap Proposal
 
