@@ -69,6 +69,12 @@ G1 header bytes, a 1-bpp 24x30 icon and the group INFO text.
 The default stays at stomphacks' 192 (MS Plus proof). `tools/build_g1.sh` sets 392, the
 contiguous state stock G1 drives use without declaring it (NYC Muff 4 + 388; recon/06).
 
+## Local change 3: knob range limit
+
+`tools/zd2_make_effect.py`: `PARAM_MAX_MAX = int(os.environ.get("ZD2_PARAM_MAX_MAX", 1000))`, used by the
+manifest check "integer max 1..N". The default stays at stomphacks' 1000 (MS Plus). `tools/build_g1.sh` sets
+3018, the Time range of the stock G1 delays (DELAY_3S, ANDLY_3S: `zd2 inspect`), for CF Delay's 2000 ms Time.
+
 ## Shared DSP headers
 
 `effects/common/*.h` (ts808_core.h, ts808_sd.h, ts808_exact.h) are copied into each

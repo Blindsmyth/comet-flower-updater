@@ -1,0 +1,23 @@
+{
+  "name": "CF Delay",
+  "filename": "DLYX",
+  "id": "08000f8b",
+  "version": "1.00",
+  "display": "CF Delay",
+  "badge": "CF",
+  "description": "Comet Flower's DelayMobile: 2 s digital delay with 300 ms tape-style glide on Time, repeats darkened at 3.5 kHz and soft-saturated (ADAA tanh) so high Regen never runs away; stereo from a second tap 20 ms later. TEST: cost not yet measured on the pedal.",
+  "dspload": 20,
+  "allow_any_id": true,
+  "kernel": "delayx.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 32,
+  "scaffold": "cleanroom",
+  "const_blob": { "symbol": "ce2_blob", "words": 1024, "init": "blob.bin" },
+  "params": [
+    { "name": "Time", "max": 2000, "default": 420, "explanation": "Delay time in ms (1..2000); sweeping it glides like tape." },
+    { "name": "Regen", "max": 92, "default": 30, "explanation": "Feedback, 0..0.92." },
+    { "name": "Mix", "max": 100, "default": 30, "explanation": "Echo level (dry 100 - Mix)." }
+  ]
+}

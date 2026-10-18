@@ -19,6 +19,8 @@ export ZD2_EXTRA_LNK_FLAGS="--export=Dll_$EFFECT"
 # (stock NYC Muff: 4 + 388; recon/06). stomphacks caps at 192 (MS Plus proof);
 # its local ZD2_STATE_BYTES_MAX hook raises the cap for G1 builds.
 export ZD2_STATE_BYTES_MAX=392
+# Knob ranges: stomphacks caps max at 1000 (MS Plus); stock G1 delays use Time max 3018.
+export ZD2_PARAM_MAX_MAX=3018
 
 rm -rf "$LAB/effects/$NAME"
 cp -r "$PROJ/effects/$NAME" "$LAB/effects/$NAME"
