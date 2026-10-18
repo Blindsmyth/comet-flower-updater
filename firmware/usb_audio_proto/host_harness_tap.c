@@ -46,6 +46,45 @@ static float host_bus_l[16], host_bus_r[16], host_bus_m[16], host_bus_x[16];
 #define UA_TAP_BUS_X ((const volatile float *)host_bus_x)
 #define UA_TAP_STOCK_PACK() host_stock_pack()
 
+#ifdef UA_STEMS
+/* Stems: the float chain bus and stand-ins for the stock drum mixer and looper,
+   with the arithmetic main.dis shows (bus = (bus + x) * gain). */
+static float host_mix_l[16], host_mix_r[16], host_drum_l[16], host_drum_r[16], host_loop[16];
+static int host_rhythm_on, host_loop_pos;
+static float host_drum_gain = 1.0f, host_loop_gain = 1.0f;
+static unsigned int host_drum_calls, host_looper_calls;
+static void host_stock_drums(void)
+{
+    unsigned int i;
+    host_drum_calls++;
+    if (!host_rhythm_on)
+        return;
+    for (i = 0; i < 16; ++i) {
+        host_mix_l[i] = (host_mix_l[i] + host_drum_l[i]) * host_drum_gain;
+        host_mix_r[i] = (host_mix_r[i] + host_drum_r[i]) * host_drum_gain;
+    }
+}
+static void host_stock_looper(int pos)
+{
+    unsigned int i;
+    host_looper_calls++;
+    if (pos != host_loop_pos)
+        return;
+    for (i = 0; i < 16; ++i) {
+        host_mix_l[i] = (host_mix_l[i] + host_loop[i]) * host_loop_gain;
+        host_mix_r[i] = (host_mix_r[i] + host_loop[i]) * host_loop_gain;
+    }
+}
+#define UA_MIX_L ((volatile float *)host_mix_l)
+#define UA_MIX_R ((volatile float *)host_mix_r)
+#define UA_RHYTHM_ON host_rhythm_on
+#define UA_DRUM_GAIN host_drum_gain
+#define UA_STOCK_DRUMS() host_stock_drums()
+#define UA_STOCK_LOOPER(pos) host_stock_looper(pos)
+EXPORT void ua_drums_tap(void);
+EXPORT void ua_looper_tap(int);
+#endif
+
 EXPORT void usb_audio_sof_tick_tap(void);
 EXPORT void ua_tx_pack_tap(void);
 EXPORT int usb_audio_set_alt(unsigned int);
@@ -66,6 +105,11 @@ EXPORT void host_reset(void)
     usb_audio_tap.underruns = usb_audio_tap.packets45 = 0;
     fifo_count = fifo_overflow = 0;
     host_pack_calls = 0;
+#ifdef UA_STEMS
+    for (i = 0; i < 16; ++i)
+        ua_stem_drum_l[i] = ua_stem_drum_r[i] = ua_stem_loop[i] = 0.0f;
+    host_drum_calls = host_looper_calls = 0;
+#endif
 }
 
 /* Sets the 16-frame block the next ua_tx_pack_tap() call will see. */
@@ -134,3 +178,34 @@ EXPORT unsigned int host_tap_state(unsigned int index)
 }
 
 EXPORT unsigned int host_tap_sample(int x) { return ua_tap_sample(x); }
+
+#ifdef UA_STEMS
+/* which: 0 mix L, 1 mix R, 2 drum L, 3 drum R, 4 looper playback. */
+EXPORT void host_set_stem_buf(unsigned int which, const float *v)
+{
+    float *d = which == 0 ? host_mix_l : which == 1 ? host_mix_r : which == 2 ? host_drum_l :
+               which == 3 ? host_drum_r : host_loop;
+    unsigned int i;
+    for (i = 0; i < 16; ++i)
+        d[i] = v[i];
+}
+EXPORT void host_get_stem_buf(unsigned int which, float *v)
+{
+    const float *s = which == 0 ? host_mix_l : which == 1 ? host_mix_r : which == 2 ? ua_stem_drum_l :
+                     which == 3 ? ua_stem_drum_r : ua_stem_loop;
+    unsigned int i;
+    for (i = 0; i < 16; ++i)
+        v[i] = s[i];
+}
+EXPORT void host_set_stem_ctl(int rhythm_on, float drum_gain, int loop_pos, float loop_gain)
+{
+    host_rhythm_on = rhythm_on;
+    host_drum_gain = drum_gain;
+    host_loop_pos = loop_pos;
+    host_loop_gain = loop_gain;
+}
+EXPORT unsigned int host_stem_calls(void)
+{
+    return host_drum_calls | host_looper_calls << 16;
+}
+#endif

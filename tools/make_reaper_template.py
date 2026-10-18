@@ -44,8 +44,9 @@ def rpp(chmap):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=str(ROOT / "build" / "reaper" / "Comet Flower 8ch.RPP"))
+    ap.add_argument("--map", default=str(MAP_FILE), help="channel map JSON (default tools/ua_channels.json)")
     a = ap.parse_args()
-    chmap = json.loads(MAP_FILE.read_text())
+    chmap = json.loads(Path(a.map).read_text())
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(rpp(chmap))

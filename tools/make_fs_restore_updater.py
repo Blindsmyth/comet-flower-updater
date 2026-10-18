@@ -164,15 +164,18 @@ def strip_usb_audio(old_fw, new_fw):
     tap_site = [p for p in ua.TAP_PATCHES if p[0] == 0x11818c64][0]
     o = ua.vma_offset(old_fw, tap_site[0])
     tap = new_fw[o:o + 4] != old_fw[o:o + 4]
+    # The stems layer (--stems) also retargets the drum-mixer call 11818d64.
+    o = ua.vma_offset(old_fw, 0x11818d64)
+    stems = tap and new_fw[o:o + 4] != old_fw[o:o + 4]
     mvk, veneer = {}, {}
-    for vma, stock, kind, ref, _ in (ua.TAP_PATCHES if tap else ua.PATCHES):
+    for vma, stock, kind, ref, sym in (ua.STEM_PATCHES if stems else ua.TAP_PATCHES if tap else ua.PATCHES):
         o = ua.vma_offset(old_fw, vma)
         old = struct.unpack_from("<I", old_fw, o)[0]
         new = struct.unpack_from("<I", new_fw, o)[0]
         if (stock is not None and old != stock) or not ua.stock_ok(vma, old, kind, ref):
             raise ValueError("USB audio site %#x does not hold its stock word" % vma)
-        if kind == "callp" and vma == tap_site[0]:                     # 11818c64 -> veneer
-            if (old ^ new) & ~(0x1fffff << 7) or ctl.callp_target(vma, new) != ua.TAP_VENEER:
+        if kind == "callp" and isinstance(sym, int):                   # stock call -> its veneer
+            if (old ^ new) & ~(0x1fffff << 7) or ctl.callp_target(vma, new) != sym:
                 raise ValueError("USB audio tap call %#x does not reach its veneer" % vma)
         elif kind == "callp":
             if (old ^ new) & ~(0x1fffff << 7) or not base <= ctl.callp_target(vma, new) < base + size:
@@ -189,7 +192,7 @@ def strip_usb_audio(old_fw, new_fw):
             tmpl = ua.VENEER_MVK if kind == "veneer_lo" else ua.VENEER_MVKH
             if (tmpl ^ new) & ~(0xffff << 7):
                 raise ValueError("USB audio veneer word %#x is not MVK/MVKH B31" % vma)
-            veneer[kind] = ua.mvk_field(new)
+            veneer.setdefault(vma - (0 if kind == "veneer_lo" else 4), {})[kind] = ua.mvk_field(new)
         elif kind == "fixed":
             if new != ref:
                 raise ValueError("USB audio veneer word %#x is not %08x" % (vma, ref))
@@ -199,10 +202,12 @@ def strip_usb_audio(old_fw, new_fw):
     target = (mvk.get("mvk_hi", 0) << 16) | mvk.get("mvk_lo", 0)
     if not base <= target < base + size:
         raise ValueError("USB audio SOF hook %#x is outside its section" % target)
-    if tap:
-        target = (veneer.get("veneer_hi", 0) << 16) | veneer.get("veneer_lo", 0)
+    if tap and ua.TAP_VENEER not in veneer:
+        raise ValueError("USB audio tap layer without its TX veneer")
+    for at, v in veneer.items():
+        target = (v.get("veneer_hi", 0) << 16) | v.get("veneer_lo", 0)
         if not base <= target < base + size:
-            raise ValueError("USB audio TX veneer target %#x is outside its section" % target)
+            raise ValueError("USB audio veneer %#x target %#x is outside its section" % (at, target))
     return bytes(view)
 
 

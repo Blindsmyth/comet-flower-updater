@@ -67,6 +67,27 @@ TAP_PATCHES = [p for p in PATCHES if p[2] not in ("mvk_lo", "mvk_hi")] + [
     (TAP_VENEER + 12, 0, "fixed", VENEER_NOP5, None),
     (0x11818c64, 0x1fffc812, "callp", 0x11818aa0, TAP_VENEER),
 ]
+# --stems (8 channels, drums and looper alone on 5-6 and 8): two more veneers in
+# dead padding, each four zero words after a BNOP B3,5 return, before the next
+# function or fetch packet (11818d48 BNOP | 11818d4c..11818d5c zero | 11818d60;
+# 11818e80 BNOP | 11818e84..11818e9c zero | 11818ea0), and three call sites:
+#   11818d64 CALLP 11817640 (drum mixer, inside 11818d60, parallel with a STW)
+#   11818bc0 CALLP 11818e60 (looper dispatcher, Pre, A4 = 0)
+#   11818c50 CALLP 11818e60 (looper dispatcher, Post, A4 = 1)
+DRUM_VENEER, LOOP_VENEER = 0x11818d4c, 0x11818e84
+
+
+def veneer(at, sym):
+    return [(at + 0, 0, "veneer_lo", None, sym), (at + 4, 0, "veneer_hi", None, sym),
+            (at + 8, 0, "fixed", VENEER_B, None), (at + 12, 0, "fixed", VENEER_NOP5, None)]
+
+
+STEM_PATCHES = TAP_PATCHES + veneer(DRUM_VENEER, "ua_drums_tap") + veneer(LOOP_VENEER, "ua_looper_tap") + [
+    (0x11818d64, 0x1ffd1c12, "callp", 0x11817640, DRUM_VENEER),
+    (0x11818bc0, 0x10005413, "callp", 0x11818e60, LOOP_VENEER),
+    (0x11818c50, 0x10004412, "callp", 0x11818e60, LOOP_VENEER),
+]
+STEM_RETAIN = ["--retain=ua_drums_tap", "--retain=ua_looper_tap"]
 TAP_OUT = ROOT / "build" / "usb_audio_tap"
 TAP_RETAIN = ["--retain=ua_tx_pack_tap", "--retain=usb_audio_sof_tick_tap"]
 
@@ -75,8 +96,8 @@ TAP_RETAIN = ["--retain=ua_tx_pack_tap", "--retain=usb_audio_sof_tick_tap"]
 CALLP_S2_TEMPLATE = 0x1050c512
 
 
-def build_payload(tap=False, pattern=False, nch=2):
-    out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
+def build_payload(tap=False, pattern=False, nch=2, stems=False):
+    out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "stems") if stems else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
     out.mkdir(parents=True, exist_ok=True)
     main = PROTO / ("usb_audio_tap.c" if tap else "usb_audio.c")
     srcs = [main, PROTO / "usb_audio_hooks.asm",
@@ -87,9 +108,10 @@ def build_payload(tap=False, pattern=False, nch=2):
             "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
             *(["--define=UA_TAP_PATTERN"] if pattern else []),
             *(["--define=UA_NCH=8", "--define=UA_AUDIO_STRING=3"] if nch == 8 else []),
+            *(["--define=UA_STEMS"] if stems else []),
             "--compile_only", *srcs)
     elf = out / "usb_audio.elf"
-    ctl.run(ctl.CGT / "bin/lnk6x", "--ram_model", *(TAP_RETAIN if tap else []),
+    ctl.run(ctl.CGT / "bin/lnk6x", "--ram_model", *(TAP_RETAIN if tap else []), *(STEM_RETAIN if stems else []),
             "--map_file=%s" % (out / "usb_audio.map"),
             "--output_file=%s" % elf, *objs, GLUE / "ua.cmd")
     ctl.run(ctl.CGT / "bin/dis6x", elf, out / "usb_audio.dis")
@@ -150,7 +172,9 @@ def decode(vma, word, kind):
     return mvk_field(word)
 
 
-def build(base_path, out_path, tap=False, pattern=False, nch=2):
+def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False):
+    if stems:
+        nch = 8
     tap = tap or pattern or nch == 8
     base = Path(base_path).read_bytes()
     if nch == 8:
@@ -159,7 +183,7 @@ def build(base_path, out_path, tap=False, pattern=False, nch=2):
         off = ctl.CONST_DATA[0] + ctl.USB_STR3_RECORD - 0xc016f780
         if int.from_bytes(base[off:off + 4], "little") == ctl.USB_STR3_STOCK_HDR:
             sys.exit("--tap8 needs a base built with make_controller_fw.py --usb-audio-name")
-    lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch), (UA_BASE, UA_SIZE))
+    lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch, stems), (UA_BASE, UA_SIZE))
     if lo != UA_BASE or len(img) > UA_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (ctl.FREE_SDRAM[0] <= lo and lo + len(img) <= ctl.FREE_SDRAM[1]):
@@ -176,7 +200,7 @@ def build(base_path, out_path, tap=False, pattern=False, nch=2):
 
     data = bytearray(base[:close_off])
     plan = []
-    for vma, stock, kind, ref, sym in (TAP_PATCHES if tap else PATCHES):
+    for vma, stock, kind, ref, sym in (STEM_PATCHES if stems else TAP_PATCHES if tap else PATCHES):
         off = vma_offset(base, vma)
         word = struct.unpack_from("<I", data, off)[0]
         if (stock is not None and word != stock) or not stock_ok(vma, word, kind, ref):
@@ -233,10 +257,13 @@ if __name__ == "__main__":
                     help="real-audio tap build (ROADMAP C3) instead of silence")
     ap.add_argument("--tap8", action="store_true",
                     help="8-channel tap: 1-2 output, 3 DI, 4 right ADC, 5-8 internal mix buses")
+    ap.add_argument("--stems", action="store_true",
+                    help="8-channel tap with drums alone on 5-6 and the looper alone on 8 "
+                         "(1-2 output, 3-4 pre-master mix, 7 DI)")
     ap.add_argument("--tap-pattern", action="store_true",
                     help="diagnostic tap build: counter (L) + 1002 Hz sine (R) instead of the "
                          "pedal audio; analyse captures with tools/ua_capture.py")
     a = ap.parse_args()
-    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8
+    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8 or a.stems
                                else "build/usb_audio/DO_NOT_FLASH_usb_audio_silence.bin"))
-    build(a.base, out, a.tap, a.tap_pattern, 8 if a.tap8 else 2)
+    build(a.base, out, a.tap, a.tap_pattern, 8 if a.tap8 else 2, a.stems)

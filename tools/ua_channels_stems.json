@@ -1,0 +1,63 @@
+{
+  "firmware": "8ch Audio Bridge stems TEST b9f7f449 (fw cd5f3715)",
+  "note": "Channel map of the stems build (make_usb_audio_fw.py --stems). tools/ua_channels.json stays the map of the 8ch build without stems.",
+  "channels": [
+    {
+      "ch": 1,
+      "label": "Pedal Out L",
+      "source": "TX left 11f038b0: full mix incl. drums + looper, post master"
+    },
+    {
+      "ch": 2,
+      "label": "Pedal Out R",
+      "source": "TX right 11f038f0"
+    },
+    {
+      "ch": 3,
+      "label": "Mix L (quieter)",
+      "source": "11f03730: full mix before the output stage 118186e0"
+    },
+    {
+      "ch": 4,
+      "label": "Mix R (quieter)",
+      "source": "11f03770"
+    },
+    {
+      "ch": 5,
+      "label": "Drums L",
+      "source": "drum mixer 11817640 run on a zeroed bus (x gain 11f03d1c), pre master"
+    },
+    {
+      "ch": 6,
+      "label": "Drums R",
+      "source": "same, right"
+    },
+    {
+      "ch": 7,
+      "label": "Guitar DI",
+      "source": "11f03930: clean DI"
+    },
+    {
+      "ch": 8,
+      "label": "Looper",
+      "source": "bus after - before the looper dispatcher 11818e60 (mono; exact while its fade factor is 1)"
+    }
+  ],
+  "stereo_pairs": [
+    [
+      1,
+      2,
+      "Pedal Out"
+    ],
+    [
+      3,
+      4,
+      "Mix (quieter)"
+    ],
+    [
+      5,
+      6,
+      "Drums"
+    ]
+  ]
+}

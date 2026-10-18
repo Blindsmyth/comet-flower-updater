@@ -469,3 +469,38 @@ byte with the old name; use `.venv/Scripts/python.exe`, the system Python lacks 
 
 Expected endpoint: `Line (Comet Flower Audio Bridge)`. After flashing, remove the MI_00/MI_02 device nodes and
 rescan (or replug) so Windows re-reads the name.
+
+## Stems build: drums alone on 5-6, looper alone on 8 (2026-10-17)
+
+Source of the addresses: Argon's static pass `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md` (brief
+`DRUMS_LOOPER_BRIEF_2026-10-17.md`), checked by Claude against main.dis. **Correction to Argon:** the drum
+mixer's gain cell is **11f03d1c** (A18 = 11f03d54 - 0x48 + 0x38 - 0x24 - 4, 118176ec/11817718/11817720/11817740),
+not 11f03d08.
+- Drums: 11817640 (called at 11818d64 inside 11818d60, Swi step 15). Rhythm flag 11f03d54 set: bus 11f037b0/f0
+  = (bus + drum) x m (11817878/11817898 add, 118178b0/118178d0 x *11f03d1c). Flag clear: bus untouched.
+- Looper: 118164c0 via dispatcher 11818e60 at 11818bc0 (A4 = 0, Pre) and 11818c50 (A4 = 1, Post); adds its mono
+  playback to both channels with a level/fade factor (11816db8.., MPYSP after the add).
+- Also explains the listening test: 11f03730/70 are rewritten from the bus by 11818428 (step 16) before
+  the output stage 118186e0 makes 11f038b0/f0 (x4 shift at 11818790), so 3-4 = the mix before that stage;
+  11f03930 is a copy of the conditioned input made at step 7 (118183d0), so 7-8 = clean DI.
+
+Taps (`make_usb_audio_fw.py --stems`, `UA_STEMS` in usb_audio_tap.c):
+- `ua_drums_tap` (veneer 11818d4c..d58, dead padding after the BNOP at 11818d48; CALLP 11818d64 retargeted):
+  rhythm on -> save bus, zero it, run the stock mixer, keep bus as the stem (drum x m), bus = saved x m + stem
+  (= stock (saved + drum) x m; bit-identical for m = 1). Rhythm off -> stock call, stem 0.
+- `ua_looper_tap(pos)` (veneer 11818e84..e90 after the BNOP at 11818e80; both dispatcher calls retargeted):
+  stem += bus after - bus before (left). Exact while the looper's factor is 1; during a fade the stem carries
+  (factor - 1) x bus. Main audio untouched. Cleared after each TX block.
+- Layout: 1-2 out, 3-4 mix (quieter), **5-6 drums L/R**, 7 DI, **8 looper** (float, 1.0 = full scale, pre master).
+  Map `tools/ua_channels_stems.json`; REAPER template `Comet Flower Stems.RPP` (desktop).
+- Packager: the TEST path recognises the stems layer by the 11818d64 site; every call must reach its own veneer
+  and every veneer must point into the USB section (tests/test_usb_audio_candidate.py). Host tests
+  tests/test_usb_audio_stems.py. The 8ch and Audio Bridge builds still reproduce (e329eed8, 46eddead). 306 tests pass.
+- Not measured: CPU cost (three 16-sample loops + 32 float copies per block, small) and the drum/looper levels.
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB Audio Bridge stems** `build/cf_usb_audio_stems_2026-10-17/` (desktop: `GUITAR AUDIO 9 - Comet Flower USB Audio Bridge stems TEST.exe`) | `b9f7f449` | `cd5f3715` |
+
+Test: flash, replug, record with the stems template; drums on 5-6 only, looper on 8 only, guitar absent from both
+(except during looper fades), and 1-2 sound exactly as before.

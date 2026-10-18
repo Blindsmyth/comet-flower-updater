@@ -84,6 +84,30 @@
 #define UA_TAP_BUS_M ((const volatile float *)0x11f03930u)
 #define UA_TAP_BUS_X ((const volatile float *)0x11f03970u)
 #endif
+#if defined(UA_STEMS) && UA_NCH != 8
+#error "the drums/looper stems need the 8-channel layout"
+#endif
+#ifdef UA_STEMS
+/* Drums and looper alone (docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md,
+   checked against main.dis). Both are added in place into the float chain
+   bus 11f037b0 (L) / 11f037f0 (R), 16 samples each, 1.0 = full scale:
+   - drums: 11817640, called at 11818d64 inside 11818d60 (Swi step 15). When
+     the rhythm flag 11f03d54 is set it computes buf = (buf + drum) * m with m
+     the float at 11f03d1c (A18 = 11f03d54 - 0x48 + 0x38 - 0x24 - 4, loaded at
+     118178a4/118178bc); when clear it leaves the bus alone (118176a4..d8).
+   - looper: 118164c0, reached through the dispatcher 11818e60 called at
+     11818bc0 (A4 = 0, Pre) and 11818c50 (A4 = 1, Post); the table 11f03ed0
+     holds it in one slot and a no-op in the other. It adds its mono playback
+     to both channels with a level/fade factor (11816db8..11816e1c). */
+#ifndef UA_MIX_L
+#define UA_MIX_L ((volatile float *)0x11f037b0u)
+#define UA_MIX_R ((volatile float *)0x11f037f0u)
+#define UA_RHYTHM_ON (*(const volatile int *)0x11f03d54u)
+#define UA_DRUM_GAIN (*(const volatile float *)0x11f03d1cu)
+#define UA_STOCK_DRUMS() (((void (*)(void))0x11817640u)())
+#define UA_STOCK_LOOPER(pos) (((void (*)(int))0x11818e60u)(pos))
+#endif
+#endif
 #if UA_NCH == 8 && defined(UA_TAP_PATTERN)
 #error "the pattern diagnostic build is 2-channel only"
 #endif
@@ -274,6 +298,63 @@ static inline u32 ua_tap_float(float x)
 }
 #endif
 
+#ifdef UA_STEMS
+/* Swi only (the audio Swi is not reentrant), so plain statics. */
+static float ua_stem_drum_l[UA_TAP_BLOCK], ua_stem_drum_r[UA_TAP_BLOCK];
+static float ua_stem_loop[UA_TAP_BLOCK];
+static float ua_stem_save_l[UA_TAP_BLOCK], ua_stem_save_r[UA_TAP_BLOCK];
+
+/* Replaces the CALLP 11818e60 at 11818bc0 and 11818c50 (via a veneer).
+   Looper alone = bus after - bus before (left; the looper adds the same mono
+   signal to both). Exact while its level factor is 1; during a fade the
+   stem also carries (factor - 1) x the bus. Only one of the two calls runs
+   the looper, the other adds nothing, so the stem accumulates; the TX tap
+   clears it after each block. The pedal's own audio is not changed. */
+void ua_looper_tap(int pos)
+{
+    u32 i;
+
+    for (i = 0; i < UA_TAP_BLOCK; i++)
+        ua_stem_save_l[i] = UA_MIX_L[i];
+    UA_STOCK_LOOPER(pos);
+    for (i = 0; i < UA_TAP_BLOCK; i++)
+        ua_stem_loop[i] += UA_MIX_L[i] - ua_stem_save_l[i];
+}
+
+/* Replaces the CALLP 11817640 at 11818d64 (via a veneer). With the rhythm on,
+   the drum mixer runs on a zeroed bus, so it leaves drum x m there: that is
+   the stem. The bus then becomes saved x m + stem, which is the stock
+   (saved + drum) x m: bit-identical for m = 1, within one rounding step
+   otherwise. With the rhythm off the stock call runs untouched. */
+void ua_drums_tap(void)
+{
+    u32 i;
+    float m;
+
+    if (!UA_RHYTHM_ON) {
+        UA_STOCK_DRUMS();
+        for (i = 0; i < UA_TAP_BLOCK; i++)
+            ua_stem_drum_l[i] = ua_stem_drum_r[i] = 0.0f;
+        return;
+    }
+    for (i = 0; i < UA_TAP_BLOCK; i++) {
+        ua_stem_save_l[i] = UA_MIX_L[i];
+        ua_stem_save_r[i] = UA_MIX_R[i];
+        UA_MIX_L[i] = 0.0f;
+        UA_MIX_R[i] = 0.0f;
+    }
+    UA_STOCK_DRUMS();
+    m = UA_DRUM_GAIN;
+    for (i = 0; i < UA_TAP_BLOCK; i++) {
+        float dl = UA_MIX_L[i], dr = UA_MIX_R[i];
+        ua_stem_drum_l[i] = dl;
+        ua_stem_drum_r[i] = dr;
+        UA_MIX_L[i] = ua_stem_save_l[i] * m + dl;
+        UA_MIX_R[i] = ua_stem_save_r[i] * m + dr;
+    }
+}
+#endif
+
 /* Swi context. Bounded: 16 frames, no waits. l / r = processed output (TX
    left / right): USB channels 1-2, the pedal's stereo output. With 8 channels
    (owner, 2026-10-17: keep stereo, add the DI and internal sources):
@@ -312,8 +393,13 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
         volatile u32 *f = &usb_audio_ring[((w + i) & UA_TAP_MASK) * UA_WPF];
         f[0] = ua_tap_sample(l[i]) | (ua_tap_sample(r[i]) << 16);
         f[1] = ua_tap_dry(UA_TAP_RX_L[i]) | (ua_tap_dry(UA_TAP_RX_R[i]) << 16);
+#ifdef UA_STEMS
+        f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
+        f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_tap_float(ua_stem_loop[i]) << 16);
+#else
         f[2] = ua_tap_float(UA_TAP_BUS_L[i]) | (ua_tap_float(UA_TAP_BUS_R[i]) << 16);
         f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_tap_float(UA_TAP_BUS_X[i]) << 16);
+#endif
     }
 #endif
 #endif
@@ -327,6 +413,13 @@ void ua_tx_pack_tap(void)
 {
     UA_TAP_STOCK_PACK();
     usb_audio_tap_block(UA_TAP_TX_L, UA_TAP_TX_R);
+#ifdef UA_STEMS
+    {
+        u32 i;
+        for (i = 0; i < UA_TAP_BLOCK; i++)
+            ua_stem_loop[i] = 0.0f;
+    }
+#endif
 }
 
 /* Hwi context: bounded (at most 45 FIFO writes), never spins, direct EP1

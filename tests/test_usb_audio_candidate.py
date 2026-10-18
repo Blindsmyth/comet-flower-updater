@@ -168,6 +168,33 @@ class UsbAudioCandidateBuild(unittest.TestCase):
             with self.assertRaises(ValueError):
                 packager.strip_usb_audio(self.stock, bytes(bad))
 
+    def test_packager_accepts_the_stems_layer_in_test_builds(self):
+        import make_fs_restore_updater as packager
+        with tempfile.TemporaryDirectory() as d:
+            menu = Path(d) / "menu.bin"
+            ctl.build(RES1, menu, RES1, ui=True, usb_product="Comet Flower ZG1X4 MIDI",
+                      usb_audio_name="Comet Flower Audio Bridge")
+            both, plan, _ = ua.build(menu, Path(d) / "stems.bin", stems=True)
+            self.assertEqual(packager.strip_usb_audio(self.stock, both), menu.read_bytes())
+            for vma, off, old, new, kind, sym in plan:
+                bad = bytearray(both)
+                struct.pack_into("<I", bad, off, new ^ (1 << 2))           # outside the target field
+                with self.assertRaises(ValueError, msg=hex(vma)):
+                    packager.strip_usb_audio(self.stock, bytes(bad))
+            for vma in (0x11818d64, 0x11818bc0, 0x11818c50):               # call aimed at the wrong veneer
+                p = [q for q in plan if q[0] == vma][0]
+                bad = bytearray(both)
+                other = ua.TAP_VENEER
+                struct.pack_into("<I", bad, p[1], ctl.callp_retarget(vma, p[3], other))
+                with self.assertRaises(ValueError, msg=hex(vma)):
+                    packager.strip_usb_audio(self.stock, bytes(bad))
+            for at in (ua.DRUM_VENEER, ua.LOOP_VENEER):                    # veneer aimed outside
+                p = [q for q in plan if q[0] == at + 4][0]
+                bad = bytearray(both)
+                struct.pack_into("<I", bad, p[1], ua.mvk_set(p[3], 0xc012))
+                with self.assertRaises(ValueError, msg=hex(at)):
+                    packager.strip_usb_audio(self.stock, bytes(bad))
+
     def test_layers_onto_controller_lifecycle_candidate(self):
         with tempfile.TemporaryDirectory() as d:
             life = Path(d) / "life.bin"
