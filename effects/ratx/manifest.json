@@ -6,7 +6,7 @@
   "display": "CF RAT",
   "badge": "CF",
   "description": "ProCo RAT, port of Comet Flower's circuit model: exact gain legs, 100 pF feedback cap, LM308 slew and bandwidth limits, 1N914 shunt pair, Filter control.",
-  "dspload": 30,
+  "dspload": 55,
   "allow_any_id": true,
   "kernel": "ratx.c",
   "kernel_section": "text",
@@ -14,13 +14,30 @@
   "opt_for_space": null,
   "state_bytes": 220,
   "scaffold": "cleanroom",
-  "const_blob": { "symbol": "rat_blob", "words": 2048, "init": "blob.bin" },
+  "const_blob": {
+    "symbol": "rat_blob",
+    "words": 2048,
+    "init": "blob.bin"
+  },
   "params": [
-    { "name": "Distortion", "max": 100, "default": 50,
-      "explanation": "100k log pot in the op-amp feedback; 0 = clean unity stage." },
-    { "name": "Filter", "max": 100, "default": 60,
-      "explanation": "Tone low-pass, 475 Hz to 32 kHz; up = brighter (Comet Flower convention)." },
-    { "name": "Volume", "max": 100, "default": 80, "curve": "stock_vol",
-      "explanation": "Output level." }
+    {
+      "name": "Distortion",
+      "max": 100,
+      "default": 50,
+      "explanation": "100k log pot in the op-amp feedback; 0 = clean unity stage."
+    },
+    {
+      "name": "Filter",
+      "max": 100,
+      "default": 60,
+      "explanation": "Tone low-pass, 475 Hz to 32 kHz; up = brighter (Comet Flower convention)."
+    },
+    {
+      "name": "Volume",
+      "max": 100,
+      "default": 80,
+      "curve": "stock_vol",
+      "explanation": "Output level."
+    }
   ]
 }

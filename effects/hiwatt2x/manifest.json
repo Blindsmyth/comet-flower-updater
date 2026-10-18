@@ -6,7 +6,7 @@
   "display": "CF Watt2x",
   "badge": "CF",
   "description": "CF Watt (Hiwatt DR103 circuit model) at 2x oversampling instead of 4x: A/B test build for tools/ua_ab.py.",
-  "dspload": 80,
+  "dspload": 69,
   "allow_any_id": true,
   "kernel": "hiwatt2x.c",
   "kernel_section": "text",

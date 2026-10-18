@@ -6,7 +6,7 @@
   "display": "CF CE2",
   "badge": "CF",
   "description": "Boss CE-2 chorus, port of Comet Flower's MN3007 model: BBD with anti-alias and reconstruction filters, 5 ms sweep, hardwired 50/50 sum. State in the slot work buffer. TEST: cost not yet measured on the pedal.",
-  "dspload": 40,
+  "dspload": 19,
   "allow_any_id": true,
   "kernel": "ce2x.c",
   "kernel_section": "text",

@@ -6,7 +6,7 @@
   "display": "CF 808",
   "badge": "CF",
   "description": "Circuit-exact TS808: diode pair (Shockley) and 51 pF cap solved every sample at 8x, real 720 Hz ground leg, input/output couplings. Within 0.04 dB of a 32x circuit simulation below 1 kHz.",
-  "dspload": 80,
+  "dspload": 56,
   "allow_any_id": true,
   "kernel": "drv808x.c",
   "kernel_section": "text",
@@ -14,13 +14,30 @@
   "opt_for_space": null,
   "state_bytes": 316,
   "scaffold": "cleanroom",
-  "const_blob": { "symbol": "tsx_dtab", "words": 6912, "init": "dtab.bin" },
+  "const_blob": {
+    "symbol": "tsx_dtab",
+    "words": 6912,
+    "init": "dtab.bin"
+  },
   "params": [
-    { "name": "Drive", "max": 100, "default": 45,
-      "explanation": "P1, 500k audio taper, in the clipping stage's feedback loop." },
-    { "name": "Tone", "max": 100, "default": 60,
-      "explanation": "Sweeps the tone network's zero from 723 Hz to 33 kHz." },
-    { "name": "Level", "max": 100, "default": 80, "curve": "stock_vol",
-      "explanation": "Output level. 80 matches Green 808." }
+    {
+      "name": "Drive",
+      "max": 100,
+      "default": 45,
+      "explanation": "P1, 500k audio taper, in the clipping stage's feedback loop."
+    },
+    {
+      "name": "Tone",
+      "max": 100,
+      "default": 60,
+      "explanation": "Sweeps the tone network's zero from 723 Hz to 33 kHz."
+    },
+    {
+      "name": "Level",
+      "max": 100,
+      "default": 80,
+      "curve": "stock_vol",
+      "explanation": "Output level. 80 matches Green 808."
+    }
   ]
 }

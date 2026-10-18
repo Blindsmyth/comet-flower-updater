@@ -6,7 +6,7 @@
   "display": "CF Mistrss",
   "badge": "CF",
   "description": "Electric Mistress flanger, port of Comet Flower's model: BBD line (6.4 ms) with clock-ripple anti-imaging, feedback 'Color', Matrix (static) mode. State in the slot work buffer. TEST: cost not yet measured on the pedal.",
-  "dspload": 40,
+  "dspload": 27,
   "allow_any_id": true,
   "kernel": "mistrx.c",
   "kernel_section": "text",
@@ -15,9 +15,29 @@
   "state_bytes": 64,
   "scaffold": "cleanroom",
   "params": [
-    { "name": "Rate", "max": 100, "default": 30, "explanation": "LFO 0.05..10 Hz." },
-    { "name": "Range", "max": 100, "default": 70, "explanation": "Sweep width (static delay in Matrix mode)." },
-    { "name": "Color", "max": 100, "default": 60, "explanation": "Feedback, 0..0.95." },
-    { "name": "Matrix", "max": 1, "default": 0, "explanation": "On: LFO stopped, Range sets a fixed delay." }
+    {
+      "name": "Rate",
+      "max": 100,
+      "default": 30,
+      "explanation": "LFO 0.05..10 Hz."
+    },
+    {
+      "name": "Range",
+      "max": 100,
+      "default": 70,
+      "explanation": "Sweep width (static delay in Matrix mode)."
+    },
+    {
+      "name": "Color",
+      "max": 100,
+      "default": 60,
+      "explanation": "Feedback, 0..0.95."
+    },
+    {
+      "name": "Matrix",
+      "max": 1,
+      "default": 0,
+      "explanation": "On: LFO stopped, Range sets a fixed delay."
+    }
   ]
 }

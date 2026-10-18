@@ -15,9 +15,17 @@
   "state_bytes": 64,
   "scaffold": "cleanroom",
   "params": [
-    { "name": "Sustain", "max": 100, "default": 50,
-      "explanation": "Compression: higher = lower threshold, more sustain." },
-    { "name": "Level", "max": 100, "default": 50,
-      "explanation": "Output level, -20..+20 dB, 50 = 0 dB." }
+    {
+      "name": "Sustain",
+      "max": 100,
+      "default": 50,
+      "explanation": "Compression: higher = lower threshold, more sustain."
+    },
+    {
+      "name": "Level",
+      "max": 100,
+      "default": 50,
+      "explanation": "Output level, -20..+20 dB, 50 = 0 dB."
+    }
   ]
 }

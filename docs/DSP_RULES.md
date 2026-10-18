@@ -74,6 +74,12 @@ not by analysis alone. Solo-only effects are the exception, not the aim.
 - What happens over budget: either the screen freezes and only a power cycle
   helps (probes), or the effect runs every other block and glitches (DR103).
   Neither damages anything, but neither is acceptable.
+- **Process Overflow rule (found 2026-10-18):** the firmware sums the declared `dspload` of the 5 slots
+  and refuses the patch unless the sum is **below 230.0** (main firmware c0141ad8..c0141b60: ADDSP over
+  slots 0..4, `MVKH 0x43660000` = 230.0f, `CMPLTSP`). Declare CF effects on Zoom's own scale, fitted to
+  the 2026-10-18 bench: **dspload = 7 + 3 x measured kcycles** (HW100 21.9k -> 72.7 vs 71.16 declared;
+  TS Drive 10.3k -> 37.9 vs 39.37; COMP 2.3k -> 13.9 vs 13.94). Change a released effect's number with
+  `tools/zd2_set_dspload.py` (only the float and the CRC change), never by rebuilding its code.
 - The declared `dspload` is bookkeeping for "Process Overflow"; it does not
   reserve or limit real CPU.
 - **Static cycle counts (`tools/c6x_cycles.py`) are trustworthy only for
