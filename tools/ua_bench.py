@@ -393,7 +393,16 @@ def main():
     a = ap.parse_args()
     if a.cmd == "measure":
         _, fr = capture(a.seconds)
-        print_stats(a.label, stats(fr))
+        st = stats(fr)
+        print_stats(a.label, st)
+        log = ROOT / "build" / "bench" / "manual.json"    # every manual measurement, for the report
+        log.parent.mkdir(parents=True, exist_ok=True)
+        rows = json.loads(log.read_text()) if log.exists() else []
+        rows.append([a.label, st])
+        log.write_text(json.dumps(rows, indent=1))
+        base = next((r for n, r in rows if n.lower().startswith("empty") and "slot1" in r), None)
+        (log.with_suffix(".md")).write_text("# Manual CPU bench" + chr(10) + chr(10) + table(rows, base))
+        print("saved to", log.with_suffix(".md"))
     elif a.cmd == "decode":
         import ua_capture8
         data = ua_capture8.load(a.wav)
