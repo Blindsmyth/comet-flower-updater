@@ -1,0 +1,171 @@
+<title>CF Watt Blind Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#eef0ec; --panel:#f8f9f6; --ink:#1b211f; --muted:#5f6864; --rule:#d5dad4;
+  --glow:#c2691b; --glow-ink:#fff8f0; --glow-soft:#f3dfc9; --good:#2f7d4f; --bad:#a33b2b;
+  --sans:"IBM Plex Sans Condensed","Arial Narrow",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#121614; --panel:#1a1f1d; --ink:#e4e8e3; --muted:#9aa49f; --rule:#2c3330;
+    --glow:#e8934a; --glow-ink:#1b120a; --glow-soft:#3a2615; --good:#5cbf86; --bad:#e2735f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121614; --panel:#1a1f1d; --ink:#e4e8e3; --muted:#9aa49f; --rule:#2c3330;
+  --glow:#e8934a; --glow-ink:#1b120a; --glow-soft:#3a2615; --good:#5cbf86; --bad:#e2735f;
+  color-scheme:dark;
+}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5}
+.wrap{max-width:640px;margin:0 auto;padding-inline:16px;padding-block:28px 48px;display:grid;gap:22px}
+h1{font-size:30px;line-height:1.1;margin:0;font-weight:700;text-wrap:balance}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--glow)}
+p{margin:0;max-width:62ch;color:var(--muted)}
+p strong{color:var(--ink)}
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:20px;display:grid;gap:18px}
+.meta{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:13px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:600}
+.bar{height:4px;background:var(--rule);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--glow);width:0;transition:width .25s}
+.clip{font-size:22px;font-weight:600}
+.players{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.play{font:600 18px var(--sans);padding:16px 8px;border-radius:8px;border:1px solid var(--rule);background:var(--ground);color:var(--ink);cursor:pointer;display:grid;gap:2px;justify-items:center}
+.play small{font:400 12px var(--mono);color:var(--muted)}
+.play.on{border-color:var(--glow);background:var(--glow-soft)}
+.play:focus-visible,.answer:focus-visible,.ghost:focus-visible{outline:3px solid var(--glow);outline-offset:2px}
+.answers{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.answer{font:700 17px var(--sans);padding:14px;border-radius:8px;border:0;background:var(--glow);color:var(--glow-ink);cursor:pointer}
+.answer:disabled{opacity:.35;cursor:not-allowed}
+.hint{font-family:var(--mono);font-size:12px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--rule)}
+th{font-weight:600;color:var(--muted);font-size:12px;letter-spacing:.05em;text-transform:uppercase}
+.verdict{font-size:20px;font-weight:700}
+.ok{color:var(--good)} .no{color:var(--bad)}
+pre{font-family:var(--mono);font-size:12px;background:var(--ground);border:1px solid var(--rule);border-radius:8px;padding:12px;white-space:pre-wrap;margin:0}
+.ghost{font:600 14px var(--sans);padding:10px 14px;border-radius:8px;border:1px solid var(--rule);background:transparent;color:var(--ink);cursor:pointer}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+@media (max-width:420px){.players{gap:6px}.play{font-size:16px;padding:12px 4px}}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:8px">
+    <span class="kicker">CF Watt · cranked · pedal recordings</span>
+    <h1>Can you hear 4× from 2×?</h1>
+    <p>Each round plays one clip from your two pedal takes (Volume 100, Master 100). <strong>A</strong> is one version, <strong>B</strong> the other, <strong>X</strong> is secretly one of them. Listen as often as you like, then say which one X is. 12 rounds, headphones help. You only see the answers at the end.</p>
+  </header>
+
+  <section class="panel" id="trial" aria-live="polite">
+    <div class="meta"><span>Round <b id="round">1</b> of <b id="total">12</b></span><span id="cliplen"></span></div>
+    <div class="bar"><i id="progress"></i></div>
+    <div class="clip" id="clipname"></div>
+    <div class="players">
+      <button class="play" id="pA" type="button">A<small>play</small></button>
+      <button class="play" id="pB" type="button">B<small>play</small></button>
+      <button class="play" id="pX" type="button">X<small>play</small></button>
+    </div>
+    <div class="answers">
+      <button class="answer" id="ansA" type="button">X is A</button>
+      <button class="answer" id="ansB" type="button">X is B</button>
+    </div>
+    <span class="hint" id="hint">Play X at least once to answer.</span>
+  </section>
+
+  <section class="panel" id="result" hidden>
+    <div class="verdict" id="verdict"></div>
+    <p id="explain"></p>
+    <div style="overflow-x:auto"><table><thead><tr><th>Clip</th><th>Right</th><th>Of</th></tr></thead><tbody id="perclip"></tbody></table></div>
+    <p>Paste this summary into the chat:</p>
+    <pre id="summary"></pre>
+    <div class="row"><button class="ghost" id="copy" type="button">Copy summary</button><span class="hint" id="copied"></span><button class="ghost" id="again" type="button">Run again</button></div>
+  </section>
+
+  <p class="hint">A = CF Watt 4× oversampling, B = CF Watt 2×. Measured: the 2× aliasing floor is 4–14 dB higher on these tones, plus a short noise burst on the 2× sweep. This test asks whether that difference is audible to you.</p>
+</div>
+
+<script>
+const CLIPS = __CLIPS__;
+const ROUNDS_PER_CLIP = 2;
+const urls = {};
+function b64ToUrl(b64){
+  const bin = atob(b64), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([buf], {type: "audio/wav"}));
+}
+CLIPS.forEach(c => { urls[c.id] = {a: b64ToUrl(c.a), b: b64ToUrl(c.b), label: c.label}; });
+
+let trials = [], idx = 0, heardX = false;
+const audio = new Audio();
+const $ = id => document.getElementById(id);
+
+function shuffle(a){ for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function start(){
+  trials = shuffle(CLIPS.flatMap(c => Array.from({length: ROUNDS_PER_CLIP}, () => ({clip: c.id, x: Math.random() < 0.5 ? "a" : "b", answer: null}))));
+  idx = 0; $("total").textContent = trials.length;
+  $("result").hidden = true; $("trial").hidden = false; show();
+}
+function show(){
+  const t = trials[idx];
+  heardX = false; stop();
+  $("round").textContent = idx + 1;
+  $("progress").style.width = (100 * idx / trials.length) + "%";
+  $("clipname").textContent = urls[t.clip].label;
+  $("cliplen").textContent = t.clip === "sweep" ? "4.0 s" : "0.9 s";
+  $("ansA").disabled = $("ansB").disabled = true;
+  $("hint").textContent = "Play X at least once to answer.";
+}
+function stop(){ audio.pause(); document.querySelectorAll(".play").forEach(b => b.classList.remove("on")); }
+function play(which, btn){
+  const t = trials[idx];
+  const src = which === "x" ? urls[t.clip][t.x] : urls[t.clip][which];
+  stop(); audio.src = src; audio.currentTime = 0;
+  audio.play().catch(() => {}); btn.classList.add("on");
+  if (which === "x") { heardX = true; $("ansA").disabled = $("ansB").disabled = false; $("hint").textContent = "Replay any of them, then answer."; }
+}
+audio.addEventListener("ended", stop);
+$("pA").onclick = e => play("a", e.currentTarget);
+$("pB").onclick = e => play("b", e.currentTarget);
+$("pX").onclick = e => play("x", e.currentTarget);
+function answer(v){
+  if (!heardX) return;
+  trials[idx].answer = v; idx++;
+  if (idx < trials.length) show(); else finish();
+}
+$("ansA").onclick = () => answer("a");
+$("ansB").onclick = () => answer("b");
+
+function pAtLeast(k, n){ // one-sided binomial, p = 0.5
+  let s = 0, c = 1;
+  for (let i = 0; i <= n; i++) { if (i >= k) s += c; c = c * (n - i) / (i + 1); }
+  return s / Math.pow(2, n);
+}
+function finish(){
+  stop();
+  $("progress").style.width = "100%";
+  const right = trials.filter(t => t.answer === t.x).length, n = trials.length;
+  const p = pAtLeast(right, n);
+  const heard = p < 0.05;
+  $("verdict").innerHTML = `${right} of ${n} right · <span class="${heard ? "ok" : "no"}">${heard ? "you can hear it" : "not distinguishable"}</span>`;
+  $("explain").textContent = heard
+    ? `Getting ${right} or more of ${n} right by guessing has a ${(p * 100).toFixed(1)} % chance, so this is very likely a real, audible difference.`
+    : `Guessing alone gets ${right} or more of ${n} right ${(p * 100).toFixed(0)} % of the time (it needs under 5 % to count), so on these clips 4× and 2× sound the same to you.`;
+  const per = CLIPS.map(c => { const ts = trials.filter(t => t.clip === c.id); return [c.id, ts.filter(t => t.answer === t.x).length, ts.length]; });
+  $("perclip").innerHTML = per.map(([id, r, of]) => `<tr><td>${id}</td><td>${r}</td><td>${of}</td></tr>`).join("");
+  $("summary").textContent = `ABX CF Watt 4x vs 2x (cranked, pedal takes): ${right}/${n} right, p = ${p.toFixed(3)}\n` + per.map(([id, r, of]) => `  ${id}: ${r}/${of}`).join("\n");
+  $("trial").hidden = true; $("result").hidden = false;
+}
+$("copy").onclick = () => {
+  const txt = $("summary").textContent;
+  navigator.clipboard.writeText(txt).then(() => { $("copied").textContent = "Copied"; }).catch(() => {
+    const r = document.createRange(); r.selectNodeContents($("summary")); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    $("copied").textContent = "Selected: press Ctrl+C";
+  });
+};
+$("again").onclick = start;
+start();
+</script>
