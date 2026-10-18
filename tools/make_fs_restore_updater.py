@@ -167,8 +167,11 @@ def strip_usb_audio(old_fw, new_fw):
     # The stems layer (--stems) also retargets the drum-mixer call 11818d64.
     o = ua.vma_offset(old_fw, 0x11818d64)
     stems = tap and new_fw[o:o + 4] != old_fw[o:o + 4]
+    # The bench layer (--bench) also re-aims the slot veneer 11818eb0.
+    o = ua.vma_offset(old_fw, ua.SLOT_VENEER)
+    bench = stems and new_fw[o:o + 4] != old_fw[o:o + 4]
     mvk, veneer = {}, {}
-    for vma, stock, kind, ref, sym in (ua.STEM_PATCHES if stems else ua.TAP_PATCHES if tap else ua.PATCHES):
+    for vma, stock, kind, ref, sym in (ua.BENCH_PATCHES if bench else ua.STEM_PATCHES if stems else ua.TAP_PATCHES if tap else ua.PATCHES):
         o = ua.vma_offset(old_fw, vma)
         old = struct.unpack_from("<I", old_fw, o)[0]
         new = struct.unpack_from("<I", new_fw, o)[0]
@@ -193,6 +196,11 @@ def strip_usb_audio(old_fw, new_fw):
             if (tmpl ^ new) & ~(0xffff << 7):
                 raise ValueError("USB audio veneer word %#x is not MVK/MVKH B31" % vma)
             veneer.setdefault(vma - (0 if kind == "veneer_lo" else 4), {})[kind] = ua.mvk_field(new)
+        elif kind in ("retarget_lo", "retarget_hi"):                   # stock veneer constant only
+            if (old ^ new) & ~(0xffff << 7):
+                raise ValueError("USB audio patch %#x changed more than its constant" % vma)
+            veneer.setdefault(vma - (0 if kind == "retarget_lo" else 4), {})[
+                "veneer_lo" if kind == "retarget_lo" else "veneer_hi"] = ua.mvk_field(new)
         elif kind == "fixed":
             if new != ref:
                 raise ValueError("USB audio veneer word %#x is not %08x" % (vma, ref))

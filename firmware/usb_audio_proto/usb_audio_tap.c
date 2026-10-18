@@ -84,6 +84,9 @@
 #define UA_TAP_BUS_M ((const volatile float *)0x11f03930u)
 #define UA_TAP_BUS_X ((const volatile float *)0x11f03970u)
 #endif
+#if defined(UA_BENCH) && !defined(UA_FX)
+#error "the bench build extends the FX layout"
+#endif
 #if defined(UA_FX) && !defined(UA_STEMS)
 #error "the guitar-FX pair is part of the stems layout"
 #endif
@@ -306,6 +309,39 @@ static inline u32 ua_tap_float(float x)
 static float ua_stem_drum_l[UA_TAP_BLOCK], ua_stem_drum_r[UA_TAP_BLOCK];
 static float ua_stem_loop[UA_TAP_BLOCK];
 static float ua_stem_save_l[UA_TAP_BLOCK], ua_stem_save_r[UA_TAP_BLOCK];
+#ifdef UA_BENCH
+/* CPU bench (docs/CF_BENCH_2026-10-17.md): TSCL time stamps at fixed points of
+   the audio Swi, sent as one 16-word frame per block on USB channel 8 (instead
+   of the looper). Points: Pre looper call (11818bc0), the start of each slot
+   (the 11818eb0 veneer, called by the slot loop before slot k's callback;
+   slot index at c0184f98, B14 = c0184e00 + 102 x 4), Post looper call
+   (11818c50) and the TX pack (11818c64). The slot loop is skipped while
+   c0184f94 != 0 (tuner mute): the frame's slot mask then says which slots ran. */
+#ifndef UA_TSCL
+extern __cregister volatile unsigned int TSCL;   /* CPU cycle counter (c6x.h), started by stock */
+#define UA_TSCL() TSCL
+#define UA_SLOT_INDEX (*(const volatile int *)0xc0184f98u)
+#define UA_SLOT_CTX ((void *)0x11f03b48u)
+#endif
+#define UA_BENCH_SYNC 0x7e5au
+enum { UA_B_PRE, UA_B_S0, UA_B_POST = UA_B_S0 + 5, UA_B_TX, UA_B_N };
+static u32 ua_bench_t[UA_B_N];
+static u32 ua_bench_mask, ua_bench_seq, ua_bench_prev_pre;
+static u32 ua_bench_frame[UA_TAP_BLOCK];
+
+/* Replaces the 11818eb0 veneer's target c01502cc, which only returns the
+   shared context table 0x11f03b48 (c01502cc: MVK/MVKH A4; BNOP B3,5). */
+void *ua_slot_enter(void)
+{
+    u32 t = UA_TSCL();
+    u32 k = (u32)UA_SLOT_INDEX;
+    if (k < 5u) {
+        ua_bench_t[UA_B_S0 + k] = t;
+        ua_bench_mask |= 1u << k;
+    }
+    return UA_SLOT_CTX;
+}
+#endif
 #ifdef UA_FX
 /* Guitar FX: the bus as the Post looper call (11818c50) finds it, i.e. after
    the slot loop, the patch-level stage 11817a90 (11818c44) and 11818ea0
@@ -324,6 +360,9 @@ static float ua_stem_fx_l[UA_TAP_BLOCK], ua_stem_fx_r[UA_TAP_BLOCK];
 void ua_looper_tap(int pos)
 {
     u32 i;
+#ifdef UA_BENCH
+    ua_bench_t[pos ? UA_B_POST : UA_B_PRE] = UA_TSCL();
+#endif
 
     for (i = 0; i < UA_TAP_BLOCK; i++)
         ua_stem_save_l[i] = UA_MIX_L[i];
@@ -419,7 +458,10 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
         f[0] = ua_tap_sample(l[i]) | (ua_tap_sample(r[i]) << 16);
         f[1] = ua_tap_dry(UA_TAP_RX_L[i]) | (ua_tap_dry(UA_TAP_RX_R[i]) << 16);
 #endif
-#ifdef UA_STEMS
+#ifdef UA_BENCH
+        f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
+        f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_bench_frame[i] << 16);
+#elif defined(UA_STEMS)
         f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
         f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_tap_float(ua_stem_loop[i]) << 16);
 #else
@@ -435,8 +477,37 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
 
 /* Replaces the stock CALLP 11818aa0 at 11818c64 (via the 11818c88 veneer).
    The Swi keeps nothing in scratch registers across that call. */
+#ifdef UA_BENCH
+/* Frame: sync, seq (11 bits) | slot mask << 11, then seven u32 as lo, hi:
+   slot 0..3 = start(k+1) - start(k); slot 4 = Post looper - start(4) (also
+   holds patch level 11817a90 and the output EQ slot, measured with an empty
+   patch); busy = TX - Pre looper; period = Pre looper - previous Pre looper. */
+static void ua_bench_build(void)
+{
+    u32 v[7], k, *t = ua_bench_t;
+
+    for (k = 0; k < 4u; k++)
+        v[k] = t[UA_B_S0 + k + 1] - t[UA_B_S0 + k];
+    v[4] = t[UA_B_POST] - t[UA_B_S0 + 4];
+    v[5] = t[UA_B_TX] - t[UA_B_PRE];
+    v[6] = t[UA_B_PRE] - ua_bench_prev_pre;
+    ua_bench_prev_pre = t[UA_B_PRE];
+    ua_bench_frame[0] = UA_BENCH_SYNC;
+    ua_bench_frame[1] = (ua_bench_seq++ & 0x7ffu) | (ua_bench_mask & 0x1fu) << 11;
+    for (k = 0; k < 7u; k++) {
+        ua_bench_frame[2 + 2 * k] = v[k] & 0xffffu;
+        ua_bench_frame[3 + 2 * k] = v[k] >> 16;
+    }
+    ua_bench_mask = 0;
+}
+#endif
+
 void ua_tx_pack_tap(void)
 {
+#ifdef UA_BENCH
+    ua_bench_t[UA_B_TX] = UA_TSCL();
+    ua_bench_build();
+#endif
     UA_TAP_STOCK_PACK();
     usb_audio_tap_block(UA_TAP_TX_L, UA_TAP_TX_R);
 #ifdef UA_STEMS

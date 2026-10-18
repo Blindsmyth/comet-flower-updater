@@ -84,6 +84,19 @@ static void host_stock_looper(int pos)
 EXPORT void ua_drums_tap(void);
 EXPORT void ua_looper_tap(int);
 #endif
+#ifdef UA_BENCH
+static unsigned int host_tscl;
+static int host_slot_index;
+#define UA_TSCL() host_tscl
+#define UA_SLOT_INDEX host_slot_index
+#define UA_SLOT_CTX ((void *)0x11f03b48)
+EXPORT void *ua_slot_enter(void);
+EXPORT void host_bench_set(unsigned int tscl, int slot)
+{
+    host_tscl = tscl;
+    host_slot_index = slot;
+}
+#endif
 
 EXPORT void usb_audio_sof_tick_tap(void);
 EXPORT void ua_tx_pack_tap(void);
