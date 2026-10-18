@@ -181,12 +181,16 @@ Every iteration `B10 = 0..4` of the slot loop (`11818bf4`..`11818c32`) unconditi
 
 2. **Exact behavior of `0x11818de0` (`main.dis` lines 18445-18474, `confirmed`):**
    - Receives `A4 = &instance[slot]` (`0x11f03ad0 + 0x14 * slot`) and `B4 = 0x11f03b48` (`ctx`).
-   - Loads `B6 = ctx[1] = 0x11f037b0` (`11818de0 LDW *+B4[1],B6`), `B7 = &instance[slot]` (`11818de2 MV A4,B7`), `B4 = ctx[7] = 0x11f03e20` (`11818de4 LDW *+B4[7],B4`), and `A3 = ctx[8] = 0x11f03de0` (`11818de6 LDW *+B4[8],A3`).
-   - Loops 16 times (`A0 = 15..0`, `11818df0`..`11818e44`):
-     - Advances the active parameter ramp: `*( *(0x11f03e20) ) = 0x11f03de0[i]` (`11818e08 LDW *A3++[1],A4; 11818e0c LDW *B4[0],B5; 11818e14 STW A4,*B5[0]`).
-     - Loads `B8 = instance[1][4]` (`coef[4]` at `instance[1] + 4*4 = instance[1] + 0x10`, the per-slot reload fade-in multiplier ramped to `1.0f` by `1180a9e0`): `11818e10 LDW *+B7[1],B5; 11818e18 LDW *+B5[4],B8`.
-     - Scales Left `0x11f037b0[i]` in place by `B8`: `11818dfe` / `11818e30 LDW *B6[0],B5; 11818e24 MPYSP B8,B5,B5; 11818e2a STW B5,*B6[0]`.
-     - Scales Right `0x11f037f0[i]` in place by `B8` and advances `B6 += 4`: `11818e34 LDW *+B6[16],B5; 11818e38 MPYSP B8,B5,B5; 11818e44 STW B5,*B6++[1]`.
+   - Materializes the ramp and bus addresses directly (`11818de0`..`11818e00`):
+     - `B5 = 0x11f03e20` (`MVK 0x3e20,B5; MVKH 0x11f00000,B5`, active ramp target pointer cell `ctx[7]`)
+     - `A4 = 0x11f03de0` (`MVK 0x3de0,A4; MVKH 0x11f00000,A4`, 16-float ramp curve buffer `ctx[8]`)
+     - `B6 = 0x11f037ac` (`MVK 0x37ac,B6; MVKH 0x11f00000,B6`, one word before `0x11f037b0` for pre-increment `*++B6[1]`)
+     - `B7 = instance[1]` (`11818dec MV.L1 A4,A3` parallel with `MVK 0x37ac,B6` copies entry `A4 = &instance[slot]` to `A3`; `11818df4 LDW.D1T2 *+A3[1],B7` loads `instance[1]`, the slot's coefficient array pointer)
+   - Loops 16 times (`A0 = 15..0`, `11818e04`..`11818e44`):
+     - Advances the active parameter ramp: `*( *(0x11f03e20) ) = 0x11f03de0[i]` (`11818e08 LDW *+B5[0],B8; 11818e0c LDW *A4++[1],A3; 11818e14 STW A3,*+B8[0]`).
+     - Loads `B8 = instance[1][4]` (`coef[4]` at `instance[1] + 4*4 = instance[1] + 0x10`, the per-slot reload fade-in multiplier ramped to `1.0f` by `1180a9e0`): `11818e18 LDW.D2T2 *+B7[4],B8`.
+     - Scales Left `0x11f037b0[i]` in place by `B8`: `11818e10 LDW.D2T2 *++B6[1],B4` (`0x11f037ac + 4*(i+1) = 0x11f037b0 + 4*i`), `11818e24 MPYSP.M2 B8,B4,B4`, `11818e2a STW.D2T2 B4,*B6[0]`.
+     - Scales Right `0x11f037f0[i]` in place by `B8`: `11818e2c LDW.D2T2 *+B6[16],B4` (`B6 + 64 = 0x11f037f0 + 4*i`), `11818e38 MPYSP.M2 B8,B4,B4`, `11818e44 STW.D2T2 B4,*+B6[16]`.
    - **Impact on bus:** In steady state (`coef[4] == 1.0f`, `0x3f800000`), `0x11818de0` multiplies each sample in `0x11f037b0` and `0x11f037f0` by `1.0f` in place, leaving all normal/zero audio floats **bit-identical (`out[i] == in[i]`, so `out[i] - in[i] == 0.0f`)**.
 
 ---
@@ -196,9 +200,9 @@ Every iteration `B10 = 0..4` of the slot loop (`11818bf4`..`11818c32`) unconditi
 - When a 2-slot (1U) effect occupies Slot `k`, its companion slot receives `effect_id == 1` (`c0129808 CMPEQ.L2X 1,A3,B0; [B0] BNOP 0xc0129c28,5`).
 - `c0129cc0`..`c0129cca` installs built-in `Dll` constructor **`0xc016d110`**, which sets `entry[1] = 0xc017dea0` (`c016d112`..`c016d126`).
 - `c0165f20` reads `*(0xc017dea0 + 0x58 = 0xc017def8) = 0x11818e4c` and stores **`0x11818e4c`** into `0x118133e0 + 4 * slot` (`confirmed`).
-- `0x11818e4c` (`main.dis` line 18477) is a single instruction:
+- `0x11818e4c` (`main.dis` line 18475) is a single instruction:
   ```
-  11818e4c    000ca020            BNOP.S2       B3,5
+  11818e4c    008ca362            BNOP.S2       B3,5
   ```
 - **Impact on bus:** Does not read or write memory; `0x11f037b0` and `0x11f037f0` are **100% untouched (`out[i] == in[i]`)** (`confirmed`).
 
@@ -231,7 +235,124 @@ There are two sub-cases depending on whether the slot is normally bypassed via i
 |---|---|---|---|
 | **Slot ELF unload/reload in progress** | `1180afc0` (via `c016f660`) writes **`0xc016d184`** to `0x118133e0 + 4 * slot`. | `c016d184` (`main.dis` lines 122197-122215) zeroes `0x11f037b0`..`0x11f037ef` and `0x11f037f0`..`0x11f0382f` while the slot's code/state is being replaced. | `confirmed` |
 | **Early boot / chain reset** | `c0165e98` (`c0165eb4`) or `c0143794` (`c01437b8`) writes **`0xc016d180`** to `0x118133e0[0..4]`. | `c016d180` (`BNOP.S2 B3,5`) returns immediately without touching `0x11f037b0` / `0x11f037f0`. | `confirmed` |
-| **Whole-chain mute (`*(0xc0184f94) != 0`, e.g. Tuner mute)** | At `11818be8 LDW *+B14[101],B0; 11818bec [B0] BNOP 0x11818c44,5`, the entire 5-slot loop (`11818bf4`..`11818c40`) is **skipped**. | None of `slots[0..4]` run; `0x11f037b0` / `0x11f037f0` retain the pre-loop guitar float bus (which is then muted downstream by `11817a90` / `118186e0`). Any per-slot tap hook placed *inside* `11818bf4`..`11818c32` will not execute while `*(0xc0184f94) != 0` unless handled (see Section 4). | `confirmed` |
+| **Whole-chain mute (`*(0xc0184f94) != 0`, e.g. Tuner mute)** | At `11818bd8 LDW *+B14[101],B0; 11818bec [B0] BNOP 0x11818c44,5`, the entire 5-slot loop (`11818bf0`..`11818c40`) is **skipped**. | None of `slots[0..4]` run; `0x11f037b0` / `0x11f037f0` retain the pre-loop guitar float bus (which is then muted downstream by `11817a90` / `118186e0`). Any per-slot tap hook placed *inside* `11818bf0`..`11818c38` will not execute while `*(0xc0184f94) != 0` unless handled (see Section 4). | `confirmed` |
 
 ## 4. Concrete Hook Proposal for Per-Slot & Wet-Only USB Taps
 
+### A. Slots and Audio Stages That Run OUTSIDE the 5-Slot Loop (`11818bd4`..`11818c40`)
+
+Before choosing the hook site, note every DSP processing stage in `g_Swi_AudioProcess` (`11818ba0`) that operates on `0x11f037b0` (L) / `0x11f037f0` (R) **outside** the 5-slot loop (`confirmed`):
+
+1. **Hidden "Slot 5" — Global Master Output EQ (`G_OUT_EQ.BDL` / `B_OUT_EQ.BDL`) at Step 13 (`11818c48`):**
+   - Immediately after the 5-slot loop and `11817a90` (`11818c44`), `11818c48 CALLP.S2 0x11818ea0,B3 || MVK.L1 0,A4` calls `0xc014f594(0)` (`main.dis` lines 92049-92071).
+   - `0xc014f594(0)` executes the exact same per-slot calling convention as the 5-slot loop, but for **index `5 = 0 + 5`** (`c014f5a4 ADD.L1 5,A0,A4`):
+     - `c014f5a0 CALLP 0xc014ff44(5)` returns `&instance[5]` = `0x11f03ad0 + 5 * 20 = 0x11f03ad0 + 0x64 = 0x11f03b34` (`0x11f03b34`..`0x11f03b47`, immediately preceding `ctx` at `0x11f03b48`).
+     - `c014f5a8 CALLP 0xc01502cc()` returns `ctx = 0x11f03b48` (`B4`).
+     - `c014f5b0`..`c014f5cc` loads `A0 = *(0x11813490 + 4 * 0) = *(0x11813490)` and branches to `A0(A4 = 0x11f03b34, B4 = 0x11f03b48)`.
+   - `*(0x11813490)` is written by `c014f1c4` (`c014f238`..`c014f248`, `main.dis` lines 91753-91758) with `*(entry[1] + 0x58)` of **`G_OUT_EQ.BDL`** (loaded by `c014f300` -> `c014f284` into the 40 KiB pool at `0xc00d2800`, descriptor at `0xc00ae610`).
+   - Thus, the G1X Four actually has **5 user patch slots (`0..4`, table `0x118133e0[0..4]`, instances `0x11f03ad0`..`0x11f03b33`) plus 1 hidden post-chain Master Output EQ slot (`slot 5`, pointer `0x11813490`, instance `0x11f03b34`)** (`confirmed`).
+
+2. **Secondary Stereo Return Bus `ctx[2]` (`0x11f03830` L / `0x11f03870` R) at Step 12 (`11818c44 CALLP 0x11817a90`):**
+   - `0x11f03830` (L, 16 floats) and `0x11f03870` (R, 16 floats) are zeroed before the slot loop in `11817940` (`118179c8`..`11817a88`), exposed to effects via `ctx[2]` (`*(0x11f03b48 + 8) = 0x11f03830`), and summed into `0x11f037b0`/`0x11f037f0` after the slot loop in `11817a90` (`11817aa0`..`11817ca8`).
+   - On the G1X Four, there is no split/parallel chain routing and none of the 17 disassembled stock effects touch `ctx[2]`.
+   - **Critical warning for tap staging:** Do **not** use `0x11f03830`..`0x11f038af` as a scratch buffer *during* the 5-slot loop, because `11817a90` at Step 12 will sum whatever is in `0x11f03830`/`0x11f03870` into the pedal's main speaker/headphone bus! Instead, place the tap staging buffers in our `0xc01a8xxx` USB tap region (`confirmed`).
+
+3. **Pre/Post Looper (`11818bc0` / `11818c50`) and Rhythm (`11818c54`):**
+   - **Pre-Looper** (`11818bc0 CALLP 0x11818e60` with `A4 = 0` -> `*(0x11f03ed0)`) runs at Step 6, **before** Slot 0 (so if Looper is in `Pre` mode, its playback is included in the input to Slot 0).
+   - **Post-Looper** (`11818c50 CALLP 0x11818e60` with `A4 = 1` -> `*(0x11f03ed4)`) runs at Step 14, **after** Slot 4 and Master Output EQ (`G_OUT_EQ.BDL`).
+   - **Rhythm / Drums** (`11818c54 CALLP 0x11818d60` -> `11817640`) runs at Step 15, **after** Post-Looper.
+
+---
+
+### B. Comparison of Candidate Hook Mechanisms
+
+| Approach | Patch Site & Size | Pros | Cons / Risks | Verdict |
+|---|---|---|---|---|
+| **Option 1 (Recommended): Hijack the `0x11818eb0` 4-word veneer (`c01502cc` trampoline)** | `0x11818eb0`..`0x11818ebc` (4 × 32-bit words in L2 SRAM, outside any `.fphead` compact packet) | • **Zero edits inside `11818ba0` or any `.fphead` compact fetch packet.**<br>• Intercepts **before** `B5` on slot `N`, can call `B5 = B11[B10]` directly when `B10 == N`, and intercepts **immediately after** `B5` returns before branching to `0x11818c20`.<br>• Single hook handles **both** `"bus after slot N"` and `"slot N wet-only (after - before)"` for any runtime `N = 0..4` (plus `N = -1` dry DI before Slot 0).<br>• Immune to `0x118133e0` table reloads. | None (`0xc01502cc` is a 3-instruction leaf `A4 = 0x11f03b48; BNOP B3,5`). | **Best / Cheapest (`confirmed`)** |
+| **Option 2: Patch `11818c18 ADDKPC 0x11818c20,B3,4` to return via dead padding `11818ed0`..`11818edc`** | `0x11818c18` (1 word inside `.fphead` packet `11818c00`..`11818c1c`) + `0x11818ed0`..`0x11818edc` (4 zero words after `11818ecc`) | • `11818c18` is a 32-bit instruction in the delay slot of `11818c16 BNOP.S2 B5,0`; changing its target from `0x11818c20` to `0x11818ed0` redirects `B3` (where `B5` returns) to `0x11818ed0`. | • Only intercepts *after* `B5` returns (cannot capture Slot `0`'s input for `wet_only` without a second hook before `B5`).<br>• Modifies a word inside a compact `.fphead` fetch packet. | Inferior to Option 1 |
+| **Option 3: Wrap function pointers in `0x118133e0[0..4]`** | Data table `0x118133e0`..`0x118133f3` | • No code patches in `11818ba0`. | • **Fragile / racy:** 5 different functions (`c0165f20`, `c0165e80`, `1180afc0`, `c0143794`, `c0165e98`) overwrite `0x118133e0[slot]` on patch change, effect load, and bypass toggle. | Do not use |
+
+---
+
+### C. Detailed Design of Option 1: Single-Veneer Hook at `0x11818eb0`
+
+#### 1. Why `0x11818eb0` Is the Ideal Hook Point (`confirmed`)
+Look at the per-slot loop body at `11818c00`..`11818c20` (`main.dis` lines 18297-18307) and the veneer at `11818eb0`..`11818ebc` (`main.dis` lines 18501-18504):
+```
+11818c00   01810162           ADDKPC.S2     0x11818c04,B3,0
+11818c04   10005613           CALLP.S2      0x11818eb0,B3
+11818c08   05100fd8 ||        MV.L1         A4,A10
+11818c0c   02ad4ae6           LDW.D2T2      *+B11[B10],B5
+11818c10       9247           MV.L2X        A4,B4
+11818c12       8506           MV.L1         A10,A4
+11818c14       2c6e           NOP           2
+11818c16       02ef           BNOP.S2       B5,0
+11818c18   01888162           ADDKPC.S2     0x11818c20,B3,4
+11818c1c   e6000000           .fphead       n, l, W, BU, nobr, nosat, 0110000b
+11818c20   0200666e           LDW.D2T2      *+B14[102],B4
+```
+And at `0x11818eb0`..`0x11818ebc` (standard 32-bit instructions, no `.fphead`):
+```
+11818eb0   0f81662a           MVK.S2        0x02cc,B31
+11818eb4   0fe00aea           MVKH.S2       0xc0150000,B31
+11818eb8   007c0362           B.S2          B31
+11818ebc   00008000           NOP           5
+```
+When `11818c04 CALLP.S2 0x11818eb0,B3 || MV.L1 A4,A10` reaches `0x11818eb0`:
+- No branches are in flight (`CALLP` completes its 5 delay slots before branching).
+- Live registers at `0x11818eb0`:
+  - `B10` = current slot index `k` (`0, 1, 2, 3, 4`), also stored at `*+B14[102]` (`0x11818298 + 408 = 0x11818430`? Note: `B14 = 0xc0184e00`, so `0xc0184e00 + 102 * 4 = 0xc0184e00 + 0x198 = 0xc0184f98` — wait: `101 * 4 = 0x194 -> 0xc0184f94`, `102 * 4 = 0x198 -> 0xc0184f98`).
+  - `A10` = `&instance[k]` (`0x11f03ad0 + 0x14 * k`, returned by `c014ff44(k)`).
+  - `B11` = `0x118133e0` (base of the 5-slot callback table).
+  - `B3` = `0x11818c0c` (return address into the loop body).
+  - `0x11f037b0` (L, 16 floats) and `0x11f037f0` (R, 16 floats) hold the **exact input to Slot `k`**.
+
+#### 2. Patching `0x11818eb0`..`0x11818ebc` (16 Bytes)
+Overwrite the 4 words at `0x11818eb0`..`0x11818ebc` to jump to `slot_tap_dispatch` in `0xc01a8xxx`:
+```
+11818eb0:  MVKL.S2  slot_tap_dispatch, B31
+11818eb4:  MVKH.S2  slot_tap_dispatch, B31
+11818eb8:  B.S2     B31
+11818ebc:  NOP      5
+```
+
+#### 3. Exact Logic of `slot_tap_dispatch` (in `0xc01a8xxx`)
+Let runtime state in `0xc01a8xxx` consist of:
+- `g_tap_slot` (`int32`, runtime-chosen slot index: `0..4` for Slots `0..4`, or `-1` for pre-Slot-0 dry guitar DI).
+- `g_tap_mode` (`int32`: `0` = **After Slot `N`** cumulative bus; `1` = **Slot `N` Wet-Only** = `after - before`).
+- `g_slot_in_L[16]` and `g_slot_in_R[16]` (128 bytes total, `float32[2][16]`, 8-byte aligned in `0xc01a8xxx`).
+- `g_tap_out_L[16]` and `g_tap_out_R[16]` (128 bytes total, `float32[2][16]` or `int32[2][16]`, 8-byte aligned in `0xc01a8xxx`, read by the USB TX packer hook).
+
+Inside `slot_tap_dispatch`:
+1. **Non-target slot fast path (`B10 != g_tap_slot`):**
+   - If `g_tap_slot == -1` and `B10 == 0`: copy `0x11f037b0`..`0x11f0382f` (32 floats) to `g_tap_out_L`/`g_tap_out_R` (pre-Slot-0 dry DI tap).
+   - Otherwise, execute the original `0xc01502cc` body and return to `B3` (`0x11818c0c`):
+     ```
+     MVKL.S1  0x11f03b48, A4
+     MVKH.S1  0x11f03b48, A4
+     BNOP.S2  B3, 5            ; returns to 0x11818c0c, which runs B11[B10] normally
+     ```
+2. **Target slot path (`B10 == g_tap_slot`, for `N` in `0..4`):**
+   - **Step 2a — Capture Slot `N` Input (only when `g_tap_mode == 1` [Wet-Only]):**
+     - Copy 16 floats from `0x11f037b0`..`0x11f037ef` -> `g_slot_in_L[0..15]` and 16 floats from `0x11f037f0`..`0x11f0382f` -> `g_slot_in_R[0..15]` using 16 `LDDW`/`STDW` pairs (~20 cycles).
+   - **Step 2b — Call Slot `N`'s Effect Callback `B5 = B11[B10]` Directly:**
+     - Load `B5 = *+B11[B10]` (`*(0x118133e0 + 4 * N)`).
+     - Set `A4 = A10` (`&instance[N]`) and `B4 = 0x11f03b48` (`ctx`).
+     - Call `B5` (`BNOP.S2 B5,0` + `ADDKPC.S2 after_slot_N,B3,4`).
+     - *(By the TI C6000 ABI, `B5` preserves `A10..A15` and `B10..B15`, so `B10`, `B11`, `B14`, `B15` remain intact upon return to `after_slot_N`.)*
+   - **Step 2c — Capture Slot `N` Output at `after_slot_N`:**
+     - **If `g_tap_mode == 0` (Bus After Slot `N`):**
+       - Copy the 32 floats from `0x11f037b0`..`0x11f037ef` (L) and `0x11f037f0`..`0x11f0382f` (R) into `g_tap_out_L[0..15]` and `g_tap_out_R[0..15]` (or convert via `MPYSP` by `2147483648.0f` (`0x4f000000`) + `SPTRUNC` directly to `int32`, matching `11818428`).
+     - **If `g_tap_mode == 1` (Slot `N` Wet-Only = `after - before`):**
+       - Loop `i = 0..15`:
+         - `wet_L[i] = SUBSP( *(0x11f037b0 + 4*i), g_slot_in_L[i] )` -> store to `g_tap_out_L[i]`
+         - `wet_R[i] = SUBSP( *(0x11f037f0 + 4*i), g_slot_in_R[i] )` -> store to `g_tap_out_R[i]`
+       - *(Note on mono drives/amps in Wet-Only mode: since an active mono effect overwrites `0x11f037b0`/`0x11f037f0` with `wet_mono[i]`, `after - before` yields `wet_mono[i] - dry[i]`, i.e. the exact nonlinear distortion/filter delta added by Slot `N`. For parallel-mix effects like `DELAY_3S` and `HALL`, where the effect outputs `dry[i] + wet_tail[i]`, `after - before` cancels `dry[i]` exactly and isolates the pure `wet_tail[i]` delay/reverb signal!)*
+   - **Step 2d — Resume `g_Swi_AudioProcess` at `0x11818c20`:**
+     - Branch directly to `0x11818c20` (`MVKL.S2 0x11818c20,B31; MVKH.S2 0x11818c20,B31; BNOP.S2 B31,5`), skipping `11818c0c`..`11818c18` (since `B5` has already been called!) and landing on `11818c20 LDW.D2T2 *+B14[102],B4` to advance `B10` to `N + 1`.
+
+#### 4. Handling Whole-Chain Mute (`*(0xc0184f94) != 0` at `11818bec`) and Optional Slot 5 (`G_OUT_EQ.BDL`)
+- **Whole-chain mute (`*(0xc0184f94) != 0`):** When `*(0xc0184f94) != 0` (`*+B14[101]`), `11818bec [B0] BNOP 0x11818c44,5` skips the 5-slot loop completely. In the USB TX consumer hook (at the end of `g_Swi_AudioProcess`), check `*(0xc0184f94) != 0`; if nonzero, zero the tapped USB channel pair for that block so stale samples from before the mute are never repeated (`confirmed`).
+- **Optional Slot 5 (`G_OUT_EQ.BDL`) tap:** If tapping after the Master Output EQ (`N == 5`) is also desired, the adjacent 4-word veneer at `0x11818ea0`..`0x11818eac` (`main.dis` lines 18497-18500, called at `11818c48`) can be pointed to a tiny wrapper that calls `0xc014f594(0)` and then copies `0x11f037b0`..`0x11f0382f` into `g_tap_out_L`/`g_tap_out_R`.
+
+STATUS: done
