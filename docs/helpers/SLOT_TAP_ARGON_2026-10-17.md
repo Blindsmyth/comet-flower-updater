@@ -356,3 +356,15 @@ Inside `slot_tap_dispatch`:
 - **Optional Slot 5 (`G_OUT_EQ.BDL`) tap:** If tapping after the Master Output EQ (`N == 5`) is also desired, the adjacent 4-word veneer at `0x11818ea0`..`0x11818eac` (`main.dis` lines 18497-18500, called at `11818c48`) can be pointed to a tiny wrapper that calls `0xc014f594(0)` and then copies `0x11f037b0`..`0x11f0382f` into `g_tap_out_L`/`g_tap_out_R`.
 
 STATUS: done
+
+---
+## Claude review (2026-10-17)
+Checked against main.dis: `11818eb0` has exactly one caller (11818c04, the slot loop); its target `c01502cc`
+is `MVK/MVKH 0x11f03b48 -> A4; BNOP B3,5` (changes only A4); `c014ff44` = `0x11f03ad0 + 20 x slot`;
+B14 = c0184e00 (recon/16: B14[101] = c0184f94), so the slot index cell is c0184f98, written 0 at 11818bf4 and
+k+1 at 11818c34 before each next call. No scratch register is live across the 11818c04 CALLP (A10/B10/B11/B14
+callee-saved). So a hook in place of the 11818eb0 veneer sees the bus = input of slot k and must return
+A4 = 0x11f03b48. "After slot k" = input of slot k+1 (slot 4: the bus at 11818c44, before patch level). Wet-only
+of slot k = input(k+1) - input(k). The slot loop is skipped while c0184f94 != 0 (tuner mute): a tap must not
+send stale captures then. Not checked: the section-2 claim that 11816f60 reads 11f038b0 (it contradicts the RX
+unpack at 11818b20 writing 11f03730); irrelevant to the hook.
