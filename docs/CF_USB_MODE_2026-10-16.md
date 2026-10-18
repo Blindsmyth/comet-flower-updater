@@ -545,3 +545,11 @@ pedal's channel count (10 or 8). Device name "Comet Flower Audio Bridge" (confir
 
 Windows sees a new channel count: remove the device's MI_00/MI_02 nodes and rescan, or replug, so it rebuilds the
 endpoint (as with 2 -> 8). Bench measurements need the bench updater (17).
+
+### 10ch on hardware (2026-10-18): Windows keeps the old 8-channel endpoint format
+Updater 18 enumerates: MME, DirectSound and WDM-KS show 10 channels, **WASAPI shows 8** (endpoint
+{5ff4606e-...} property {f19f064d-...},0 = WAVEFORMATEXTENSIBLE 8 ch, mask 0x063f; key owned by SYSTEM).
+Removing MI_00/MI_02 and even the SWD endpoint node and rescanning (elevated pnputil) did **not** reset it: the
+endpoint keeps its GUID and properties. Opening 8 channels then fails ("Invalid device", PaErrorCode -9996).
+Fix: Sound settings > Recording > Line (Comet Flower Audio Bridge) > Properties > Advanced > Default Format:
+choose the 10 channel entry (the audio service rewrites the property). CF Monitor now detects the mismatch.
