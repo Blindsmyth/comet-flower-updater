@@ -50,6 +50,8 @@ typedef struct {
 
 typedef struct {
     float key[6];                    /* vol tre mid bas mas pre the cache was derived from */
+    float fs;                        /* HW_FS_OS it was derived at: the work buffer outlives the
+                                      * slot's effect, and the 2x and 4x builds share this layout */
     HwCoeffs k;
 } HwCoeffCache;
 
@@ -120,12 +122,13 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         /* one hw_coeffs call site: it is force-inlined and ~7 KB of .text */
         HwCoeffCache *c = hw_cache(instance);
         HwCoeffs *dst = c ? &c->k : &k;
-        if (!c || fresh || c->key[0] != s->vol || c->key[1] != s->tre || c->key[2] != s->mid ||
+        if (!c || fresh || c->fs != HW_FS_OS || c->key[0] != s->vol || c->key[1] != s->tre || c->key[2] != s->mid ||
             c->key[3] != s->bas || c->key[4] != s->mas || c->key[5] != s->pre) {
             hw_coeffs(dst, s->vol, s->tre, s->mid, s->bas, s->mas, s->pre);
             if (c) {
                 c->key[0] = s->vol; c->key[1] = s->tre; c->key[2] = s->mid;
                 c->key[3] = s->bas; c->key[4] = s->mas; c->key[5] = s->pre;
+                c->fs = HW_FS_OS;
             }
         }
         if (c) {                     /* to the stack: the sample loops read it as before;
