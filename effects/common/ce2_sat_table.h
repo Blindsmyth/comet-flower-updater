@@ -8,6 +8,13 @@
 #define CE2_SAT_LN2 0.6931471805599453f
 
 /* Each entry contains [c0, c1, c2, c3] for P(t) = c0 + t*(c1 + t*(c2 + t*c3)), t in [0, 1] */
+#ifdef CE2_SAT_BLOB
+/* Pedal build: the same 1024 floats come from the manifest const_blob
+   (effects/ce2x/blob.bin, written from this table), so .const keeps the
+   parameter table first. */
+extern const float ce2_blob[];
+#define ce2_sat_table ((const float (*)[4])ce2_blob)
+#else
 static const float ce2_sat_table[256][4] = {
     { 0.0000000000e+00f, 0.0000000000e+00f, 4.8836066080e-04f, -1.5886297189e-07f },
     { 4.8820179783e-04f, 9.7624473269e-04f, 4.8788357694e-04f, -4.7535023904e-07f },
@@ -266,5 +273,6 @@ static const float ce2_sat_table[256][4] = {
     { 7.2443529470e+00f, 3.1249992030e-02f, 2.4897834489e-10f, -5.0286788622e-12f },
     { 7.2756029392e+00f, 3.1249992513e-02f, 2.3389983006e-10f, -4.7259210434e-12f },
 };
+#endif
 
 #endif /* CE2_SAT_TABLE_H */

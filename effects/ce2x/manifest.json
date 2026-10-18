@@ -1,0 +1,42 @@
+{
+  "name": "CF CE2",
+  "filename": "CE2X",
+  "id": "06000f88",
+  "version": "1.00",
+  "display": "CF CE2",
+  "badge": "CF",
+  "description": "Boss CE-2 chorus, port of Comet Flower's MN3007 model: BBD with anti-alias and reconstruction filters, 5 ms sweep, hardwired 50/50 sum. State in the slot work buffer. TEST: cost not yet measured on the pedal.",
+  "dspload": 40,
+  "allow_any_id": true,
+  "kernel": "ce2x.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 64,
+  "scaffold": "cleanroom",
+  "params": [
+    {
+      "name": "Rate",
+      "max": 100,
+      "default": 30,
+      "explanation": "LFO 0.1..3.5 Hz."
+    },
+    {
+      "name": "Depth",
+      "max": 100,
+      "default": 60,
+      "explanation": "Sweep width, up to 5 ms."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 100,
+      "explanation": "Wet amount (100 = the CE-2's 50/50)."
+    }
+  ],
+  "const_blob": {
+    "symbol": "ce2_blob",
+    "words": 1024,
+    "init": "blob.bin"
+  }
+}

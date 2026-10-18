@@ -1,0 +1,23 @@
+{
+  "name": "CF Dyna",
+  "filename": "DYNACX",
+  "id": "01000f86",
+  "version": "1.00",
+  "display": "CF Dyna",
+  "badge": "CF",
+  "description": "MXR Dyna Comp, port of Comet Flower's DynaCompProcessor: 2 kHz pre/de-emphasis around an 8:1 soft-knee compressor (5 ms attack, 300 ms release) with auto make-up. TEST: cost not yet measured on the pedal.",
+  "dspload": 30,
+  "allow_any_id": true,
+  "kernel": "dynacx.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 64,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Sustain", "max": 100, "default": 50,
+      "explanation": "Compression: higher = lower threshold, more sustain." },
+    { "name": "Level", "max": 100, "default": 50,
+      "explanation": "Output level, -20..+20 dB, 50 = 0 dB." }
+  ]
+}
