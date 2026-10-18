@@ -53,7 +53,7 @@ def record(seconds, nch, device=None):
     if device is None:
         for i, d in enumerate(sd.query_devices()):
             api = sd.query_hostapis(d["hostapi"])["name"]
-            if "Comet Flower" in d["name"] and d["max_input_channels"] >= nch and "WASAPI" in api:
+            if ("Comet Flower" in d["name"] or "CF8" in d["name"]) and d["max_input_channels"] >= nch and "WASAPI" in api:
                 device = i
                 break
         else:

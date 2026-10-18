@@ -8,13 +8,15 @@
 Needs the bench firmware (make_usb_audio_fw.py --bench, docs/CF_BENCH_2026-10-17.md): every
 16-sample audio block, USB channel 8 carries a frame of TSCL (CPU cycle counter) differences:
 sync 0x7e5a, sequence (11 bits) | slots-that-ran mask << 11, then seven u32 (lo, hi): slot 0..4
-cost, busy (Pre looper -> TX pack) and the block period. Slot 4 also holds the patch-level stage
-and the output-EQ slot: the empty-patch baseline is subtracted in `run` reports.
+cost, busy (Pre looper -> TX pack) and the TSCL delta between blocks. Slot 4 also holds the
+patch-level stage and the output-EQ slot: the empty-patch baseline is subtracted in `run` reports.
+TSCL stops while the CPU idles (recon/04, CF ClkT 2026-10-16), so the delta between blocks is the
+CPU's *active* cycles per block (audio Swi + everything else), not the block length. The budget
+is the measured 132,354 cycles per block (SYSCLK1 364.8 MHz x 16 / 44100).
 
-measure: capture, decode, print per-slot cycles (median / 99th percentile / max), busy and the
-period, load % = cycles / period (the period is measured with the same counter, so the
-percentages need no clock assumption), lost frames, and slow blocks (period > 1.5 x median: the
-Swi missed a block, the symptom of an overload).
+measure: capture, decode, print per-slot cycles (median / 99th percentile / max), the audio Swi's
+busy time and the CPU's active cycles per block, each as % of the 132,354-cycle block, and lost
+frames (a gap in the sequence: the Swi or the USB stream dropped a block).
 
 run: for each test of the plan (default: empty baseline, every installed CF and stock counterpart
 alone in slot 1, then the CF effects five times, then the shootout chains), builds a patch with
@@ -40,7 +42,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 SYNC = 0x7E5A
 FRAME = 16
-NAMES = ["slot1", "slot2", "slot3", "slot4", "slot5", "busy", "period"]
+NAMES = ["slot1", "slot2", "slot3", "slot4", "slot5", "busy", "active"]
+BLOCK_CYCLES = 364.8e6 * 16 / 44100     # 132,354: recon/04 CF ClkT run, 2026-10-16
 BENCH_CH = 7            # USB channel 8 (0-based)
 EMPTY_SLOT = bytes([0x01]) + bytes(23)
 # EDTB slot entry (zoom-zt2 decode_preset.py EDTB2), as one little-endian 192-bit number:
@@ -72,10 +75,7 @@ def stats(fr):
         return out
     seq = np.array([f["seq"] for f in fr])
     out["lost_frames"] = int(np.sum((np.diff(seq) - 1) % 2048))
-    period = np.array([f["period"] for f in fr], dtype=float)
-    pmed = float(np.median(period))
-    out["period_median"] = pmed
-    out["slow_blocks"] = int(np.sum(period > 1.5 * pmed))
+    pmed = BLOCK_CYCLES
     ran = [f for f in fr if f["mask"] == 0x1F]
     out["chain_skipped_blocks"] = len(fr) - len(ran)
     for k, name in enumerate(NAMES):
@@ -86,13 +86,17 @@ def stats(fr):
         if len(v) == 0:
             continue
         out[name] = {"median": float(np.median(v)), "p99": float(np.percentile(v, 99)),
-                     "max": float(v.max()), "load_pct": 100.0 * float(np.median(v)) / pmed}
+                     "mean": float(v.mean()), "max": float(v.max()),
+                     "load_pct": 100.0 * float(np.median(v)) / pmed}
+    if "active" in out:      # active cycles per block: the mean is the CPU load
+        out["cpu_load_pct"] = 100.0 * out["active"]["mean"] / pmed
+        out["cpu_peak_pct"] = 100.0 * out["active"]["max"] / pmed
     return out
 
 
 def table(rows, baseline=None):
     """Markdown table; with a baseline (empty patch), slot costs are shown above it."""
-    head = "| test | " + " | ".join(NAMES[:5]) + " | busy | busy % | max busy % | slow | lost |\n"
+    head = "| test | " + " | ".join(NAMES[:5]) + " | Swi busy | Swi % | CPU load % | CPU peak % | lost |\n"
     head += "|---" * 11 + "|\n"
     lines = []
     for name, s in rows:
@@ -103,21 +107,20 @@ def table(rows, baseline=None):
         for k in range(5):
             m = s[NAMES[k]]["median"] - (baseline[NAMES[k]]["median"] if baseline else 0)
             cells.append("%.0f" % m)
-        p = s["period_median"]
-        lines.append("| %s | %s | %.0f | %.1f | %.1f | %d | %d |" % (
-            name, " | ".join(cells), s["busy"]["median"], 100 * s["busy"]["median"] / p,
-            100 * s["busy"]["max"] / p, s["slow_blocks"], s["lost_frames"]))
+        lines.append("| %s | %s | %.0f | %.1f | %.1f | %.1f | %d |" % (
+            name, " | ".join(cells), s["busy"]["median"], 100 * s["busy"]["median"] / BLOCK_CYCLES,
+            s["cpu_load_pct"], s["cpu_peak_pct"], s["lost_frames"]))
     return head + "\n".join(lines) + "\n"
 
 
 def print_stats(label, s):
-    print("== %s: %d frames, period median %.0f cycles, slow blocks %d, lost %d, chain skipped %d"
-          % (label, s["frames"], s.get("period_median", 0), s.get("slow_blocks", 0),
-             s.get("lost_frames", 0), s.get("chain_skipped_blocks", 0)))
+    print("== %s: %d frames, lost %d, chain skipped %d; CPU load %.1f %% (peak %.1f %%) of %.0f cycles/block"
+          % (label, s["frames"], s.get("lost_frames", 0), s.get("chain_skipped_blocks", 0),
+             s.get("cpu_load_pct", 0), s.get("cpu_peak_pct", 0), BLOCK_CYCLES))
     for name in NAMES:
         if name in s:
             v = s[name]
-            print("  %-7s median %8.0f  p99 %8.0f  max %8.0f  (%5.1f %% of the period)"
+            print("  %-7s median %8.0f  p99 %8.0f  max %8.0f  (%5.1f %% of a block)"
                   % (name, v["median"], v["p99"], v["max"], v["load_pct"]))
 
 
@@ -177,6 +180,10 @@ def make_patch(slots, name="CF BENCH"):
     nm = name.encode("ascii")[:10].ljust(10)
     off = raw.find(b"PTCF")
     raw[off + 0x1A:off + 0x24] = nm
+    # The template's stale bytes after the active PTCF length: the pedal stores zeros there
+    # (hardware 2026-10-17), so clear them and the read-back compares whole files.
+    end = off + struct.unpack_from("<I", raw, off + 4)[0]
+    raw[end:] = bytes(len(raw) - end)
     return bytes(raw)
 
 
@@ -215,8 +222,10 @@ def default_plan():
     plan = [{"name": "empty (baseline)", "slots": []}]
     plan += [{"name": e + " alone", "slots": [e]} for e in CF + STOCK]
     plan += [{"name": e + " x5", "slots": [e] * 5} for e in ["DYNACX", "MISTRX", "CE2X"]]
-    plan += [{"name": "shootout stock", "slots": ["COMP", "NYC_MUFF", "HW100_1U", "VINFLNGR", "ANDLY_3S"]},
-             {"name": "shootout CF", "slots": ["DYNACX", "MUFFX", "DR103", "MISTRX", "ANDLY_3S"]}]
+    # Comfortably Numb (backup patch 50 "comfy numb": Comp, NYC Muff, HW100 + companion, ...);
+    # the 2-slot HW100 leaves room for four effects in a 5-entry patch.
+    plan += [{"name": "shootout stock", "slots": ["COMP", "NYC_MUFF", "HW100_1U", "ANDLY_3S"]},
+             {"name": "shootout CF", "slots": ["DYNACX", "MUFFX", "DR103", "ANDLY_3S"]}]
     return plan
 
 
@@ -245,14 +254,38 @@ def load_patch(location, data, ids):
         pedal.patch_upload(location, data)
         if bytes(pedal.patch_download(location)) != data:
             sys.exit("patch %d: read back differs; stopping" % location)
-        pedal.outport.send(mido.Message("program_change", program=location - 1))
-        time.sleep(0.5)
+        # Raw port: the logging wrapper handles SysEx only. Drain whatever the pedal sends
+        # back (it may echo the change) so the current-patch request gets its own reply.
+        pedal.outport._port.send(mido.Message("program_change", program=location - 1))
+        time.sleep(0.8)
+        while pedal.inport._port.poll() is not None:
+            pass
         cur = bytes(pedal.patch_download_current() or b"")
     finally:
         pedal.disconnect()
     if not cur or ids_of(cur) != ids:
-        input("  The pedal did not switch by itself: select patch %d on the pedal, then press Enter. "
-              % location)
+        print("  The pedal did not switch by itself (current patch ids %s)." % (ids_of(cur) if cur else "?"))
+        if not sys.stdin.isatty():
+            sys.exit("  no console to ask on; select patch %d on the pedal and run again" % location)
+        input("  Select patch %d on the pedal, then press Enter. " % location)
+
+
+def upload_current(pedal, data):
+    """Load a patch into the pedal's edit buffer (the format of its own current-patch dump,
+    52 00 6e 64 12 01 <len> <7-bit packed data> <crc32>); no stored location changes unless
+    AUTO SAVE is on, so `run` backs the current patch up first and restores it at the end."""
+    import binascii
+    import mido
+    n = len(data)
+    pkt = bytearray(b"\x52\x00\x6e\x64\x12\x01") + bytes([n & 0x7F, (n >> 7) & 0x7F])
+    pkt += pedal.pack(data)
+    crc = binascii.crc32(data) ^ 0xFFFFFFFF
+    pkt += bytes([crc & 0x7F, (crc >> 7) & 0x7F, (crc >> 14) & 0x7F, (crc >> 21) & 0x7F, (crc >> 28) & 0x0F])
+    pedal.outport.send(mido.Message("sysex", data=pkt))
+    time.sleep(0.3)
+    while pedal.inport._port.poll() is not None:
+        pass
+    return bytes(pedal.patch_download_current() or b"")
 
 
 def ids_of(patch):
@@ -261,14 +294,17 @@ def ids_of(patch):
     return list(struct.unpack_from("<%dI" % n, patch, off))
 
 
-def run(plan, location, seconds):
+def run(plan, first, seconds, wait_minutes=15):
+    """Batches of up to 10 tests in patches first..first+9: back them up, write the tests,
+    measure each test as soon as the pedal is on it (you step with the footswitch), restore."""
     lib = effect_library()
     info = {}
     rows = []
     stamp = time.strftime("%Y%m%d_%H%M%S")
     outdir = ROOT / "build" / "bench"
     outdir.mkdir(parents=True, exist_ok=True)
-    for test in plan:
+    tests = []
+    for n, test in enumerate(plan):
         slots = []
         for e in test["slots"]:
             if e not in lib:
@@ -276,18 +312,63 @@ def run(plan, location, seconds):
             if e not in info:
                 info[e] = zd2_info(lib[e])
             slots.append(info[e])
-        data = make_patch(slots)
-        print("== %s" % test["name"], flush=True)
-        load_patch(location, data, ids_of(data))
-        time.sleep(1.5)                                   # slots load, ramps settle
-        _, fr = capture(seconds)
-        s = stats(fr)
-        print_stats(test["name"], s)
-        rows.append((test["name"], s))
-        (outdir / (stamp + ".json")).write_text(json.dumps(rows, indent=1))
+            if e.upper().endswith("_1U"):      # 2-slot amp: companion entry id 1 next (backup patch 50)
+                slots.append((1, []))
+        if len(slots) > 5:
+            sys.exit("test %s: %d slot entries (2-slot amps count twice), at most 5" % (test["name"], len(slots)))
+        tests.append((test["name"], make_patch(slots, "BENCH %02d" % (n + 1))))
+    for b0 in range(0, len(tests), 10):
+        batch = tests[b0:b0 + 10]
+        locs = list(range(first, first + len(batch)))
+        pedal = pedal_session()
+        backup = {}
+        try:
+            for loc, (name, data) in zip(locs, batch):
+                backup[loc] = bytes(pedal.patch_download(loc))
+                (outdir / ("%s_backup_%02d.ZPTC" % (stamp, loc))).write_bytes(backup[loc])
+            for loc, (name, data) in zip(locs, batch):
+                pedal.patch_upload(loc, data)
+                if bytes(pedal.patch_download(loc)) != data:
+                    raise RuntimeError("patch %d: read back differs" % loc)
+            todo = dict(zip(locs, batch))
+            pedal.pcmode_off()          # PC mode locks the footswitches; the current-patch dump works without it
+            print("\n>>> Batch %d: tests written to patches %d-%d. Go to patch %d, then to patch %d"
+                  " (so the pedal loads the new contents), then step up one patch each time a test says 'done'."
+                  % (b0 // 10 + 1, locs[0], locs[-1], locs[0] - 1, locs[0]),
+                  flush=True)
+            deadline = time.monotonic() + 60 * wait_minutes
+            while todo and time.monotonic() < deadline:
+                cur = bytes(pedal.patch_download_current() or b"")
+                # name + effect ids: the edit-buffer copy need not match the stored bytes exactly
+                hit = next((loc for loc, (nm, data) in todo.items()
+                            if len(cur) > 0x24 and cur[0x1A:0x24] == data[0x1A:0x24]
+                            and ids_of(cur) == ids_of(data)), None)
+                if hit is None:
+                    time.sleep(0.5)
+                    continue
+                name, data = todo.pop(hit)
+                print("== patch %d: %s" % (hit, name), flush=True)
+                time.sleep(1.5)                           # slots load, ramps settle
+                _, fr = capture(seconds)
+                st = stats(fr)
+                print_stats(name, st)
+                rows.append((name, st))
+                (outdir / (stamp + ".json")).write_text(json.dumps(rows, indent=1))
+                print("   done%s" % (": step to patch %d" % min(todo) if todo else ""), flush=True)
+            if todo:
+                print("timed out; not measured: %s" % ", ".join(n for n, d in todo.values()))
+        finally:
+            pedal.pcmode_on()
+            for loc, data in backup.items():
+                pedal.patch_upload(loc, data)
+                ok = bytes(pedal.patch_download(loc)) == data
+                print("  patch %d restored%s" % (loc, "" if ok else " - READ BACK DIFFERS, backup in build/bench"))
+            pedal.pcmode_off()
+            pedal.disconnect()
     base = next((s for n, s in rows if n.startswith("empty") and "slot1" in s), None)
-    md = "# CPU bench %s\n\nCycles above the empty patch (slot 5 includes patch level + output EQ in the " \
-         "baseline). busy %% = Pre looper -> TX pack over the measured block period.\n\n" % stamp
+    md = ("# CPU bench %s\n\nSlot cycles above the empty patch (slot 5 includes patch level + output EQ "
+          "in the baseline). Swi busy = Pre looper -> TX pack. CPU load = mean active (non-idle) "
+          "cycles per block / 132,354; peak = the worst block. Lost = dropped blocks.\n\n" % stamp)
     md += table(rows, base)
     (outdir / (stamp + ".md")).write_text(md)
     print(md)
@@ -302,7 +383,7 @@ def main():
     m.add_argument("--label", default="current patch")
     r = sub.add_parser("run")
     r.add_argument("--plan")
-    r.add_argument("--location", type=int, default=50)
+    r.add_argument("--first", type=int, default=41, help="first of the (up to 10) patch locations used")
     r.add_argument("--seconds", type=float, default=4)
     p = sub.add_parser("patch")
     p.add_argument("out")
@@ -324,7 +405,7 @@ def main():
         print("wrote", a.out)
     else:
         plan = json.loads(Path(a.plan).read_text()) if a.plan else default_plan()
-        run(plan, a.location, a.seconds)
+        run(plan, a.first, a.seconds)
 
 
 if __name__ == "__main__":
