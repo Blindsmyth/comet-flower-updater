@@ -34,6 +34,25 @@ BLOCK = 441                      # 10 ms
 MAPS = ["ua_channels_10.json", "ua_channels_bench.json", "ua_channels_fx.json", "ua_channels_stems.json", "ua_channels.json"]
 
 
+STALE_FORMAT_HINT = ("Windows still has the pedal's old channel count stored (WASAPI shows %d, the pedal has %d). "
+                     "Fix: Sound settings > Recording > Line (Comet Flower Audio Bridge) > Properties > Advanced > "
+                     "Default Format: pick the %d channel entry, OK, then restart CF Monitor.")
+
+
+def stale_format():
+    """(wasapi channels, real channels) when Windows' stored endpoint format lags the pedal, else None."""
+    import sounddevice as sd
+    was, other = 0, 0
+    for d in sd.query_devices():
+        if "Comet Flower" in d["name"] or "CF8" in d["name"]:
+            api = sd.query_hostapis(d["hostapi"])["name"]
+            if "WASAPI" in api:
+                was = max(was, d["max_input_channels"])
+            elif "WDM-KS" in api or "MME" in api:
+                other = max(other, d["max_input_channels"])
+    return (was, other) if was and other and was != other else None
+
+
 def find_input():
     import sounddevice as sd
     for i, d in enumerate(sd.query_devices()):
@@ -72,6 +91,10 @@ class Engine:
         import sounddevice as sd
         dev, name, nch = find_input()
         self.in_name = name
+        st = stale_format()
+        if st:
+            self.status = STALE_FORMAT_HINT % (st[0], st[1], st[1])
+            dev = None
         if dev is not None:
             try:
                 self.inp = sd.InputStream(device=dev, samplerate=FS, channels=NCH, dtype="int16",
@@ -87,7 +110,7 @@ class Engine:
                 except Exception as e2:
                     self.inp = None
                     self.status = "pedal input could not open: %s" % e2
-        else:
+        elif not self.status:
             self.status = "no pedal input found (USB mode on? bench/FX firmware?)"
         try:
             out_dev = sd.default.device[1]
