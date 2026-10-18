@@ -47,6 +47,11 @@ int main(int argc, char** argv)
         coef[SH_PARAM_MIDDLE] = atof(argv[5]) / 100; coef[SH_PARAM_BASS] = atof(argv[6]) / 100;
         coef[SH_PARAM_PRESENCE] = atof(argv[7]) / 100; coef[SH_PARAM_MASTER] = atof(argv[8]) / 100;
     }
+    if (const char* l = std::getenv("AB_LOAD")) {
+        FILE* g = std::fopen(l, "rb"); std::fread(wbuf, 1, sizeof wbuf, g);
+        uint32_t old[128]; std::fread(old, 1, sizeof old, g); std::fclose(g);
+        if (std::getenv("AB_LOAD_STATE")) std::memcpy(state, old, sizeof state);   // state not zeroed
+    }
     FILE* f = std::fopen(argv[1], "rb"); std::vector<float> x;
     float v; while (std::fread(&v, 4, 1, f) == 1) x.push_back(v); std::fclose(f);
     long n = (long)x.size() / 16 * 16;
@@ -56,6 +61,12 @@ int main(int argc, char** argv)
         for (int i = 0; i < 16; ++i) x[b + i] = bus[i];
     }
     f = std::fopen(argv[2], "wb"); std::fwrite(x.data(), 4, n, f); std::fclose(f);
+    // Experiment hooks: AB_DUMP=<file> saves the work buffer + slot state after the run;
+    // AB_LOAD=<file> (set before the run, see below) starts from them, as when a slot's
+    // previous effect left its work buffer and state behind.
+    if (const char* d = std::getenv("AB_DUMP")) {
+        FILE* g = std::fopen(d, "wb"); std::fwrite(wbuf, 1, sizeof wbuf, g); std::fwrite(state, 1, sizeof state, g); std::fclose(g);
+    }
 #endif
     return 0;
 }

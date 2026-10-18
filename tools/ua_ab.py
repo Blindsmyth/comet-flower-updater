@@ -157,6 +157,11 @@ def compare(a_path, b_path, out, labels=None):
     la, lb = labels or (Path(a_path).stem, Path(b_path).stem)
     xa, ma = load_take(a_path)
     xb, mb = load_take(b_path)
+    for lab, x in ((la, xa), (lb, xb)):     # the USB tap saturates at full scale: clipped takes lie
+        n = int(np.sum(np.abs(x) >= 32767 / 32768.0))
+        if n:
+            print("WARNING: %s has %d samples at full scale (clipped in the USB tap): lower the patch level"
+                  " (or a G1 Gain after the effect) on both patches and record again" % (lab, n))
     ra, swa = analyse(xa)
     rb, swb = analyse(xb)
 
