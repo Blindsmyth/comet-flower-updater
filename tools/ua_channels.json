@@ -1,5 +1,5 @@
 {
-  "firmware": "8ch-b TEST 3f290e3e (fw 18840d2a)",
+  "firmware": "8ch Audio Bridge TEST d76d634b (fw 46eddead); same channels as 8ch-b 3f290e3e",
   "note": "USB input channels of the Comet Flower ZG1X4 8-channel build. Edit here when the map changes; tools/ua_capture8.py and tools/make_reaper_template.py read it.",
   "channels": [
     {

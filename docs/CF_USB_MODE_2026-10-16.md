@@ -452,3 +452,20 @@ Owner, by ear, with effects, drums and looper all running (corrected in a second
   mix-vs-DI, not DI-vs-DI.)
 Consequence: the device-name label `CF8 Out1-2 DI3-4 BusA5-6 BusB7-8` is wrong for 3-4 and 7-8; a renamed build
 needs a new updater and flash. ua_channels.json and the REAPER template are updated.
+
+## Renamed: "Comet Flower Audio Bridge" (2026-10-17)
+
+Owner asked for a plain device name; the channel layout lives in `tools/ua_channels.json` and the REAPER template.
+Same 8-channel tap as the named build, only string 3 changed. Recipe (reproduces `e329eed8`/`504707d6` byte for
+byte with the old name; use `.venv/Scripts/python.exe`, the system Python lacks pefile):
+`make_controller_fw.py --base build/fw/res1_cf_usbname.bin --ui --usb-product "Comet Flower ZG1X4 MIDI"
+--usb-audio-name "Comet Flower Audio Bridge"` -> `make_usb_audio_fw.py --tap8` -> `make_fs_restore_updater.py
+<v2.00 updater> "<name> TEST.exe" --test-controller-fw <fw> --presets build/fw/cfupd_res85.bin
+--image build/cf_release_2026-10-16/fs_cf.bin`. 299 tests pass.
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB Audio Bridge** `build/cf_usb_audio_bridge_2026-10-17/` (desktop: `GUITAR AUDIO 8 - Comet Flower USB Audio Bridge TEST.exe`) | `d76d634b` | `46eddead` |
+
+Expected endpoint: `Line (Comet Flower Audio Bridge)`. After flashing, remove the MI_00/MI_02 device nodes and
+rescan (or replug) so Windows re-reads the name.
