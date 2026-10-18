@@ -1,0 +1,63 @@
+{
+  "firmware": "8ch Audio Bridge bench TEST (fw 6e20051c; updaters GUITAR AUDIO 12..16)",
+  "note": "Bench firmware: like ua_channels_fx.json, but channel 8 carries CPU timing frames (tools/ua_bench.py), not audio.",
+  "channels": [
+    {
+      "ch": 1,
+      "label": "Pedal Out L",
+      "source": "output stage words 11f038b0 without the converter gain x2.16: full mix, no USB clipping"
+    },
+    {
+      "ch": 2,
+      "label": "Pedal Out R",
+      "source": "11f038f0, same"
+    },
+    {
+      "ch": 3,
+      "label": "Guitar FX L",
+      "source": "bus 11f037b0 at the Post looper call 11818c50: after slots + patch level, before Post looper, drums, master"
+    },
+    {
+      "ch": 4,
+      "label": "Guitar FX R",
+      "source": "11f037f0, same"
+    },
+    {
+      "ch": 5,
+      "label": "Drums L",
+      "source": "drum mixer 11817640 run on a zeroed bus (x gain 11f03d1c), pre master"
+    },
+    {
+      "ch": 6,
+      "label": "Drums R",
+      "source": "same, right"
+    },
+    {
+      "ch": 7,
+      "label": "Guitar DI",
+      "source": "11f03930: clean DI"
+    },
+    {
+      "ch": 8,
+      "label": "Bench timing (data)",
+      "source": "16-word TSCL frames per block, not audio"
+    }
+  ],
+  "stereo_pairs": [
+    [
+      1,
+      2,
+      "Pedal Out"
+    ],
+    [
+      3,
+      4,
+      "Guitar FX"
+    ],
+    [
+      5,
+      6,
+      "Drums"
+    ]
+  ]
+}
