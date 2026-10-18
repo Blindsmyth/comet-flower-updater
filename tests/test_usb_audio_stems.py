@@ -126,6 +126,70 @@ class UsbAudioStemsTests(unittest.TestCase):
         self.assertEqual(got, exp[128 - PRIME:128 - PRIME + 45])
 
 
+FX_L, FX_R = 5, 6
+
+
+class UsbAudioStemsFxTests(UsbAudioStemsTests):
+    """--fx: 1-2 = output words without the pack gain, 3-4 = guitar FX. The stem tests above
+    run again on this build (inherited), plus the two changed pairs."""
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = build_host_library("host_harness_tap8_fx.c", "usb_audio_stems_fx_HOST_TEST_ONLY")
+        cls.lib.usb_audio_set_alt.argtypes = [ctypes.c_uint]
+        cls.lib.host_take_fifo.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        cls.lib.host_set_stem_ctl.argtypes = [ctypes.c_int, ctypes.c_float, ctypes.c_int, ctypes.c_float]
+        cls.lib.ua_looper_tap.argtypes = [ctypes.c_int]
+
+    def test_fx_is_the_bus_before_the_post_looper(self):
+        for pos in (0, 1):
+            self.lib.host_reset()
+            s_l, s_r, p = self.fl(), self.fl(), self.fl(0.3)
+            self.put(MIX_L, s_l)
+            self.put(MIX_R, s_r)
+            self.put(LOOP, p)
+            self.lib.host_set_stem_ctl(0, 1.0, pos, 1.0)
+            self.lib.ua_looper_tap(0)
+            self.lib.ua_looper_tap(1)
+            if pos == 1:    # Post looper: not in the FX pair
+                self.assertEqual(self.get(FX_L), s_l)
+                self.assertEqual(self.get(FX_R), s_r)
+            else:           # Pre looper plays through the effects (here: added before step 14)
+                self.assertEqual(self.get(FX_L), [f32(a + b) for a, b in zip(s_l, p)])
+
+    def test_packet_layout_and_looper_cleared_per_block(self):
+        self.lib.usb_audio_set_alt(1)
+        exp = []
+        for _ in range(8):
+            l = [self.rng.randrange(-2**31, 2**31) for _ in range(16)]
+            r = [self.rng.randrange(-2**31, 2**31) for _ in range(16)]
+            di = self.fl()
+            z = [0.0] * 16
+            self.lib.host_set_sources(I32(*[0] * 16), I32(*[0] * 16), F32(*z), F32(*z), F32(*di), F32(*z))
+            g_l, g_r = self.fl(), self.fl()
+            self.put(MIX_L, g_l)
+            self.put(MIX_R, g_r)
+            d_l, d_r, p = self.fl(0.3), self.fl(0.3), self.fl(0.3)
+            self.put(DRUM_L, d_l)
+            self.put(DRUM_R, d_r)
+            self.put(LOOP, p)
+            self.lib.host_set_stem_ctl(1, 1.0, 1, 1.0)
+            self.lib.ua_looper_tap(0)
+            self.lib.ua_looper_tap(1)
+            self.lib.ua_drums_tap()
+            self.lib.host_set_block(I32(*l), I32(*r))
+            self.lib.ua_tx_pack_tap()
+            exp += [(dry(l[i]) | dry(r[i]) << 16, fbus(g_l[i]) | fbus(g_r[i]) << 16,
+                     fbus(d_l[i]) | fbus(d_r[i]) << 16, fbus(di[i]) | fbus(p[i]) << 16)
+                    for i in range(16)]
+            self.assertEqual(self.get(LOOP), [0.0] * 16)
+        self.lib.host_set_register(TXCSR, 0)
+        self.lib.usb_audio_sof_tick_tap()
+        buf = (ctypes.c_uint * 256)()
+        n = self.lib.host_take_fifo(buf, 256)
+        got = [tuple(buf[k:k + WPF]) for k in range(0, n, WPF)]
+        self.assertEqual(got, exp[128 - PRIME:128 - PRIME + 45])
+
+
 class StemsBuildTests(unittest.TestCase):
     def test_patch_list(self):
         import make_usb_audio_fw as m

@@ -96,8 +96,8 @@ TAP_RETAIN = ["--retain=ua_tx_pack_tap", "--retain=usb_audio_sof_tick_tap"]
 CALLP_S2_TEMPLATE = 0x1050c512
 
 
-def build_payload(tap=False, pattern=False, nch=2, stems=False):
-    out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "stems") if stems else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
+def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False):
+    out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "stems_fx") if fx else (TAP_OUT / "stems") if stems else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
     out.mkdir(parents=True, exist_ok=True)
     main = PROTO / ("usb_audio_tap.c" if tap else "usb_audio.c")
     srcs = [main, PROTO / "usb_audio_hooks.asm",
@@ -109,6 +109,7 @@ def build_payload(tap=False, pattern=False, nch=2, stems=False):
             *(["--define=UA_TAP_PATTERN"] if pattern else []),
             *(["--define=UA_NCH=8", "--define=UA_AUDIO_STRING=3"] if nch == 8 else []),
             *(["--define=UA_STEMS"] if stems else []),
+            *(["--define=UA_FX"] if fx else []),
             "--compile_only", *srcs)
     elf = out / "usb_audio.elf"
     ctl.run(ctl.CGT / "bin/lnk6x", "--ram_model", *(TAP_RETAIN if tap else []), *(STEM_RETAIN if stems else []),
@@ -172,7 +173,8 @@ def decode(vma, word, kind):
     return mvk_field(word)
 
 
-def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False):
+def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=False):
+    stems = stems or fx
     if stems:
         nch = 8
     tap = tap or pattern or nch == 8
@@ -183,7 +185,7 @@ def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False):
         off = ctl.CONST_DATA[0] + ctl.USB_STR3_RECORD - 0xc016f780
         if int.from_bytes(base[off:off + 4], "little") == ctl.USB_STR3_STOCK_HDR:
             sys.exit("--tap8 needs a base built with make_controller_fw.py --usb-audio-name")
-    lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch, stems), (UA_BASE, UA_SIZE))
+    lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch, stems, fx), (UA_BASE, UA_SIZE))
     if lo != UA_BASE or len(img) > UA_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (ctl.FREE_SDRAM[0] <= lo and lo + len(img) <= ctl.FREE_SDRAM[1]):
@@ -260,10 +262,13 @@ if __name__ == "__main__":
     ap.add_argument("--stems", action="store_true",
                     help="8-channel tap with drums alone on 5-6 and the looper alone on 8 "
                          "(1-2 output, 3-4 pre-master mix, 7 DI)")
+    ap.add_argument("--fx", action="store_true",
+                    help="stems layout with 1-2 = output without the converter gain (no USB clipping) "
+                         "and 3-4 = guitar FX only (no drums, no Post looper)")
     ap.add_argument("--tap-pattern", action="store_true",
                     help="diagnostic tap build: counter (L) + 1002 Hz sine (R) instead of the "
                          "pedal audio; analyse captures with tools/ua_capture.py")
     a = ap.parse_args()
-    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8 or a.stems
+    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8 or a.stems or a.fx
                                else "build/usb_audio/DO_NOT_FLASH_usb_audio_silence.bin"))
-    build(a.base, out, a.tap, a.tap_pattern, 8 if a.tap8 else 2, a.stems)
+    build(a.base, out, a.tap, a.tap_pattern, 8 if a.tap8 else 2, a.stems, a.fx)

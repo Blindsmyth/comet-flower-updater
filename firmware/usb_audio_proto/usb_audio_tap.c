@@ -84,6 +84,9 @@
 #define UA_TAP_BUS_M ((const volatile float *)0x11f03930u)
 #define UA_TAP_BUS_X ((const volatile float *)0x11f03970u)
 #endif
+#if defined(UA_FX) && !defined(UA_STEMS)
+#error "the guitar-FX pair is part of the stems layout"
+#endif
 #if defined(UA_STEMS) && UA_NCH != 8
 #error "the drums/looper stems need the 8-channel layout"
 #endif
@@ -303,6 +306,14 @@ static inline u32 ua_tap_float(float x)
 static float ua_stem_drum_l[UA_TAP_BLOCK], ua_stem_drum_r[UA_TAP_BLOCK];
 static float ua_stem_loop[UA_TAP_BLOCK];
 static float ua_stem_save_l[UA_TAP_BLOCK], ua_stem_save_r[UA_TAP_BLOCK];
+#ifdef UA_FX
+/* Guitar FX: the bus as the Post looper call (11818c50) finds it, i.e. after
+   the slot loop, the patch-level stage 11817a90 (11818c44) and 11818ea0
+   (11818c48), before the Post looper, the drums and the master level
+   (11818d60). A Pre looper (11818bc0) plays through the effects, so it is
+   in here too. */
+static float ua_stem_fx_l[UA_TAP_BLOCK], ua_stem_fx_r[UA_TAP_BLOCK];
+#endif
 
 /* Replaces the CALLP 11818e60 at 11818bc0 and 11818c50 (via a veneer).
    Looper alone = bus after - bus before (left; the looper adds the same mono
@@ -316,6 +327,13 @@ void ua_looper_tap(int pos)
 
     for (i = 0; i < UA_TAP_BLOCK; i++)
         ua_stem_save_l[i] = UA_MIX_L[i];
+#ifdef UA_FX
+    if (pos == 1)
+        for (i = 0; i < UA_TAP_BLOCK; i++) {
+            ua_stem_fx_l[i] = ua_stem_save_l[i];
+            ua_stem_fx_r[i] = UA_MIX_R[i];
+        }
+#endif
     UA_STOCK_LOOPER(pos);
     for (i = 0; i < UA_TAP_BLOCK; i++)
         ua_stem_loop[i] += UA_MIX_L[i] - ua_stem_save_l[i];
@@ -391,8 +409,16 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
 #else
     for (i = 0; i < UA_TAP_BLOCK; i++) {
         volatile u32 *f = &usb_audio_ring[((w + i) & UA_TAP_MASK) * UA_WPF];
+#ifdef UA_FX
+        /* 1-2: the output stage's words (11f038b0/f0) without the pack's
+           x 2.16 converter gain (SMPY32 0x4534fd79, SSHL 2), which clipped
+           on USB (take8_identify: 1374 samples). Same level as 3-4 had. */
+        f[0] = ua_tap_dry(l[i]) | (ua_tap_dry(r[i]) << 16);
+        f[1] = ua_tap_float(ua_stem_fx_l[i]) | (ua_tap_float(ua_stem_fx_r[i]) << 16);
+#else
         f[0] = ua_tap_sample(l[i]) | (ua_tap_sample(r[i]) << 16);
         f[1] = ua_tap_dry(UA_TAP_RX_L[i]) | (ua_tap_dry(UA_TAP_RX_R[i]) << 16);
+#endif
 #ifdef UA_STEMS
         f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
         f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_tap_float(ua_stem_loop[i]) << 16);

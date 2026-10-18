@@ -504,3 +504,25 @@ Taps (`make_usb_audio_fw.py --stems`, `UA_STEMS` in usb_audio_tap.c):
 
 Test: flash, replug, record with the stems template; drums on 5-6 only, looper on 8 only, guitar absent from both
 (except during looper fades), and 1-2 sound exactly as before.
+
+## FX build: no USB clipping on 1-2, guitar FX alone on 3-4 (2026-10-17)
+
+Why 1-2 were hot: take8_identify ch1 / ch3 = x2.16 (+6.7 dB), corr 0.999 = exactly the TX pack's converter
+gain SMPY32(x, 0x4534fd79) then SSHL 2 (0.5407 x 4) applied after the output stage 118186e0; 3-4 were read before
+it. `--fx` (UA_STEMS + UA_FX):
+- **1-2** = the output stage's words 11f038b0/f0, high half, *without* that gain: full mix, 6.7 dB below the old
+  1-2, no clipping from the pack. The pedal's analog output is unchanged (the stock pack still runs).
+- **3-4 = guitar FX** (stereo): copied inside `ua_looper_tap` on the Post call (11818c50) before the looper runs,
+  i.e. after the slot loop, patch level 11817a90 and 11818ea0; before the Post looper, drums and master level.
+  A Pre looper plays through the effects, so it is in 3-4 too. No new hook.
+- 5-6 drums, 7 DI, 8 looper as in `--stems`. Map `tools/ua_channels_fx.json`, template `Comet Flower FX.RPP`.
+- Stems, FX, drums and looper are pre master level; 1-2 are post master.
+- Earlier builds still reproduce (e329eed8, 46eddead, cd5f3715). Host tests: the stem tests run again on the FX
+  build plus FX layout and Pre/Post cases.
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| **USB Audio Bridge FX** `build/cf_usb_audio_fx_2026-10-17/` (desktop: `GUITAR AUDIO 10 - Comet Flower USB Audio Bridge FX TEST.exe`) | `9414881f` | `d9eb45e2` |
+
+Supersedes the stems build for flashing (same stems, two pairs improved). Per-slot taps: Argon brief
+`docs/helpers/SLOT_TAP_BRIEF_2026-10-17.md` running.

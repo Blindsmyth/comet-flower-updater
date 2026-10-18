@@ -108,6 +108,10 @@ EXPORT void host_reset(void)
 #ifdef UA_STEMS
     for (i = 0; i < 16; ++i)
         ua_stem_drum_l[i] = ua_stem_drum_r[i] = ua_stem_loop[i] = 0.0f;
+#ifdef UA_FX
+    for (i = 0; i < 16; ++i)
+        ua_stem_fx_l[i] = ua_stem_fx_r[i] = 0.0f;
+#endif
     host_drum_calls = host_looper_calls = 0;
 #endif
 }
@@ -191,8 +195,14 @@ EXPORT void host_set_stem_buf(unsigned int which, const float *v)
 }
 EXPORT void host_get_stem_buf(unsigned int which, float *v)
 {
+#ifdef UA_FX
+    const float *s = which == 0 ? host_mix_l : which == 1 ? host_mix_r : which == 2 ? ua_stem_drum_l :
+                     which == 3 ? ua_stem_drum_r : which == 5 ? ua_stem_fx_l : which == 6 ? ua_stem_fx_r :
+                     ua_stem_loop;
+#else
     const float *s = which == 0 ? host_mix_l : which == 1 ? host_mix_r : which == 2 ? ua_stem_drum_l :
                      which == 3 ? ua_stem_drum_r : ua_stem_loop;
+#endif
     unsigned int i;
     for (i = 0; i < 16; ++i)
         v[i] = s[i];
