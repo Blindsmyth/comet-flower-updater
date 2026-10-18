@@ -6,14 +6,14 @@
                                                              pedal code (CF Watt 4x vs 2x)
 
 On the pedal: patch A = CF Tone (slot 1) -> effect version A (slot 2); patch B the same with
-version B; identical knobs. `capture` records 14 s (one 12 s program plus margin) of USB channel 3
+version B; identical knobs. `capture` records 26 s (a full 12 s program wherever it starts) of USB channel 3
 (Guitar FX L: after the slots, before the drums and master level, so the master knob does not
 matter) and, with the bench firmware, channel 8's timing frames (slot 2's cycles). Takes are
 saved as build/ab/<name>.wav (+ .json with the cycles).
 
 The CF Tone program (effects/cftone/cftone.c): 0.5 s silence, 1 s tones 82.4/110/220/440/880/
-1760/3520 Hz, 0.5 s silence, 4 s exponential sweep 40 Hz - 16 kHz. `compare` finds the program
-by its tone onset followed 7.5 s later by the sweep onset, then per tone (0.65 s window, 4-term
+1760/3520 Hz, 0.5 s silence, 4 s exponential sweep 40 Hz - 16 kHz. `compare` anchors on a complete
+sweep (a 4 s sound segment) and takes each tone from the program repeat that holds it, then per tone (0.65 s window, 4-term
 Blackman-Harris): harmonics 2..10 in dB re the fundamental, and the non-harmonic floor (every
 bin outside +-4 bins of a harmonic and above 20 Hz: aliasing plus noise) in dB re the
 fundamental; for the sweep a spectrogram, where aliasing shows as lines that fold back down.
@@ -73,27 +73,29 @@ def capture(name, seconds):
 
 
 # ---------------------------------------------------------------- analysis
-def onsets(x, quiet_s=0.3):
-    """Sample indices where the signal starts after >= quiet_s of near silence."""
+def segments(x, quiet_s=0.25):
+    """(start, end) sample ranges of sound separated by >= quiet_s below -50 dB re the peak."""
     peak = np.max(np.abs(x)) or 1.0
-    thr = peak * 10 ** (-50 / 20)
-    loud = np.abs(x) > thr
-    idx = np.flatnonzero(loud)
+    idx = np.flatnonzero(np.abs(x) > peak * 10 ** (-50 / 20))
     if len(idx) == 0:
         return []
     gaps = np.flatnonzero(np.diff(idx) > quiet_s * FS)
     starts = [idx[0]] + [idx[g + 1] for g in gaps]
-    return [s for s in starts if s >= quiet_s * FS]
+    ends = [idx[g] for g in gaps] + [idx[-1]]
+    return list(zip(starts, ends))
 
 
-def find_program(x):
-    """Start of the tone section: an onset followed 7.5 s later (+-20 ms) by the sweep onset."""
-    on = onsets(x)
-    for a in on:
-        for b in on:
-            if abs(b - a - (NT := len(TONES)) * TONE - SIL) < 0.02 * FS:
-                return a
-    raise SystemExit("CF Tone program not found (need one full 12 s program in the take)")
+PERIOD = 2 * SIL + len(TONES) * TONE + SWEEP
+
+
+def find_sweep(x):
+    """Start of a complete sweep: a ~4 s sound segment that does not touch the take's ends.
+    (Its onset is detected a little late, the 40 Hz start is quiet after the amp; the tone
+    windows keep 0.2 s margins.)"""
+    for a, b in segments(x):
+        if a > 0.2 * FS and b < len(x) - 0.2 * FS and 3.5 * FS < b - a < 4.4 * FS:
+            return a
+    raise SystemExit("CF Tone program not found: no complete 4 s sweep in the take (record >= 26 s)")
 
 
 def bh4(n):
@@ -128,12 +130,21 @@ def tone_metrics(seg, f0):
 
 
 def analyse(x):
-    s0 = find_program(x)
+    """Per-tone metrics and the sweep. Anchor: the sweep; each tone is taken from whichever
+    repeat of the 12 s program holds it completely, so the take may start anywhere."""
+    sw0 = find_sweep(x)
+    t0 = sw0 - SIL - len(TONES) * TONE            # tone section of the same program
+    win = int(0.65 * FS)
     res = []
     for k, f0 in enumerate(TONES):
-        a = s0 + k * TONE + int(0.2 * FS)
-        res.append(tone_metrics(x[a:a + int(0.65 * FS)], f0))
-    sw0 = s0 + len(TONES) * TONE + SIL
+        a = t0 + k * TONE + int(0.2 * FS)
+        while a < 0:
+            a += PERIOD
+        if a + win > len(x):
+            a -= PERIOD
+        res.append(tone_metrics(x[a:a + win], f0) if 0 <= a and a + win <= len(x) else None)
+    if any(r is None for r in res):
+        raise SystemExit("take too short: record >= 26 s")
     return res, x[sw0:sw0 + SWEEP]
 
 
@@ -210,7 +221,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("capture")
     c.add_argument("name")
-    c.add_argument("--seconds", type=float, default=14)
+    c.add_argument("--seconds", type=float, default=26)
     m = sub.add_parser("compare")
     m.add_argument("a")
     m.add_argument("b")
