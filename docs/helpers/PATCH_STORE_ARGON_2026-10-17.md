@@ -67,6 +67,54 @@ c0136af0  CALLP.S2 0xc01454f4,B3    ; flash_read(bank_base, stack_buf, 36)
 
 ## 2. Live Store Format (Boot/Select Load & Save/Store)
 
+### 2.1 Flash erase/write/read primitives & Dual-Bank Log-Structured Container (`confirmed`)
+
+#### A. SPI Flash Primitives (`c01451a0..c0145790`, `confirmed`)
+All main-firmware SPI flash operations lock recursive gate `B14[149]` (`c016f160` / `c016d880`) and check only `addr + len < 0x800000` (`1 << 23` = 8 MiB at `c01453e8` and `c014558a`); they do **not** consult `0xc0183660`.
+- **Erase granularity (`c0145568`, `confirmed`):** **4 KiB (`0x1000` bytes)** minimum sector size.
+  - `c0145568(A4=flash_addr, B4=len)` rejects any `flash_addr` not aligned to 4 KiB (`c01455a0 EXTU.S1 A0,20,20,A0; [!A0] BNOP 0xc01455b6`, else returns `-1`).
+  - It issues **4 KiB Sector Erase (SPI opcode `0x20`)** via `c0145270` (`c0145274 MVK 0x0020,B0; STB B0,*+B15[8]`, advancing by `ADDK 4096,A0` at `c0145650`) until `flash_addr` reaches a 64 KiB boundary (`c01455d8 EXTU.S1 A0,16,16,A0`), then issues **64 KiB Block Erase (SPI opcode `0xD8`)** via `c0145378` (`c0145380 MVK 0x00d8,B0; STB B0,*+B15[8]`, advancing by `0x10000` at `c0145658 SET A3,16,16,A3`), and erases any trailing bytes in **4 KiB sectors (`0x20`)** (`(rem + 4095) >> 12` at `c01456f0..c0145724`).
+- **Write (`c01453b4(A4=src_buf, B4=flash_addr, A6=len)`, `confirmed`):** splits into 256-byte (`0x100`) page-aligned chunks (`c0145448 EXTU A0,24,24,A1; c0145450 SUB 0x100,A1,A1`) and for each chunk calls `c0145220` (SPI `0x06` WREN), `c01452ac` (SPI `0x02` Page Program), and `c01451a0` (SPI `0x05` RDSR bit-0 WIP poll).
+- **Read (`c01454f4(A4=flash_addr, B4=dst_buf, A6=len)`, `confirmed`):** calls `c01451a0` (WIP poll) then `c0145320` (SPI `0x0B` Fast Read with 24-bit big-endian address from `c0145254` + 1 dummy byte).
+
+#### B. Dual-Bank Log-Structured DataStore (`0x000C0000` & `0x000E1000`, `confirmed`)
+The live store manages **53 logical records (`record_idx = 0..52`)** across the two `0x21000`-byte (135,168 B = 33 × 4 KiB) banks defined at `0xc0183a50` (Bank 0: `0x000C0000..0x000E0FFF`, Bank 1: `0x000E1000..0x00101FFF`).
+- **Record size table `0x11819be8..0x11819cbc` (`53` × `u32`, accessed by `c01371e4`, `c01367a4`, `11809168`, `1180926c`, `11809310`, `confirmed`):**
+  - **Records `0..49`** (`0x11819be8..0x11819caf`): **`0x000002e0` (736 bytes)** each — the **50 live patches** (0-indexed: patch 10 is `record_idx = 0`, patch 59 is `record_idx = 49`).
+  - **Record `50`** (`0x11819cb0`): **`0x00000014` (20 bytes)** — system/global settings record A.
+  - **Record `51`** (`0x11819cb4`): **`0x00000004` (4 bytes)** — system/global settings record B (e.g. current patch index).
+  - **Record `52`** (`0x11819cb8`): **`0x00000004` (4 bytes)** — system/global settings record C.
+- **36-byte (`0x24`) Bank Header at `bank_base + 0x00..0x23` (`confirmed`):**
+  Templates live at `0x11819cc0..0x11819cef`. NOR flash bytes erase to `0xFF` and transition `0xFF -> 0x00` without erase:
+
+| Offset | Size | Standby bank | Active bank | Migrating (old) bank | Template VMA & Evidence |
+|---|---:|---|---|---|---|
+| `+0x00` | 12 B | `aa` × 12 | `aa` × 12 | `aa` × 12 | `0x11819cc0` (`c0136974`, `c013724c`, checked at `c0136af8`) |
+| `+0x0C` | 8 B | `00` × 8 | `00` × 8 | `00` × 8 | `0x11819cd0` (`c01369a0`, `c0137240`, checked at `c0136b28`) |
+| `+0x14` | 8 B | `ff` × 8 | `00` × 8 | `00` × 8 | `0x11819cd8` (`c0136944`, `c01372a8`, checked at `c0136ba4`) |
+| `+0x1C` | 8 B | `ff` × 8 | `ff` × 8 | `00` × 8 | `0x11819ce8` (`ff`×8) / `0x11819ce0` (`00`×8 written at `c0136834`) |
+
+- **Append-only log & 24-byte (`0x18`) Directory Descriptors (`c0136744`, `11809160`, `confirmed`):**
+  Within the active bank (`*0x11813448` = `0` or `1`), **24-byte directory descriptors grow upward** from `bank_base + 0x24` (`*0x11813440` holds the last written descriptor address; initialized to `bank_base + 0x0C` at `c0136860` / `c01372e4` so the first `+24` pre-increment lands at `bank_base + 0x24`), while **4-byte-aligned record payloads grow downward** from `bank_base + 0x21000` (`*0x11813444` holds the lowest written payload address, decremented by `c0136720(record_size, 4)` before each write).
+  Each write (`c0136744(A4=record_idx, B4=desc_addr, A6=data_addr, B6=src_buf)`) programs the 24-byte descriptor at `desc_addr` and the payload at `data_addr` in 7 sequential `c01453b4` calls:
+
+| Desc Offset | Size | Value written | Template VMA | Meaning / Stage |
+|---|---:|---|---|---|
+| `+0x00` | 4 B | `0x7fffffff` | `0x11819cf0` (`c0136758`) | Stage 1: descriptor slot claimed (`c0136f94` boot forward scan key) |
+| `+0x04` | 4 B | `record_idx` (`0..52`) | stack `B15+4` (`c013676c`) | Stage 2: logical record ID |
+| `+0x08` | 4 B | `data_flash_addr` | stack `B15+8` (`c0136780`) | Stage 3: absolute flash address of payload |
+| `+0x0C` | 4 B | `0xbfffffff` | `0x11819cf8` (`c013678c`) | Stage 4: pointer valid (`c0137030` boot `data_cursor` recovery key) |
+| *(payload)* | `size` | `src_buf[0..size-1]` | `B6` (`c01367b4`) | Stage 5: `record_size` bytes written to `data_flash_addr` |
+| `+0x10` | 4 B | `0xdfffffff` | `0x11819d00` (`c01367c0`) | Stage 6: payload write finished |
+| `+0x14` | 4 B | `0x00000000` | `0x11819d08` (`c01367e0`) | Stage 7: record committed (`c0137150` boot directory populate key) |
+
+- **No CRC/checksum in DataStore (`confirmed`):** Neither `c0136744` (writer), `c0136a18` (boot scanner), nor `118092a0` (reader) computes any CRC or checksum over the descriptor or the 736-byte record payload. Validity is determined solely by `desc[+0x14] == 0x00000000`.
+- **In-RAM directory & wear-levelling compaction (`11809160`, `c01367f8`, `confirmed`):**
+  - `0x11811ff0..0x118120c3` (`53` × `u32`) caches the current `data_flash_addr` for each `record_idx` (`-1` if unwritten).
+  - At boot, `c0136a18` scans descriptors forward from `bank_base + 0x24` while `desc[+0x00] == 0x7fffffff` (`c0136f54..c0136fe8`) to set `*0x11813440`, scans backward for the last `desc[+0x0C] == 0xbfffffff` (`c0137000..c0137110`) to set `*0x11813444`, and scans backward from `*0x11813440` to `bank_base + 0x24` (`c013711a..c01371ba`): for each descriptor with `desc[+0x14] == 0x00000000`, if `0x11811ff0[record_idx] == -1`, it sets `0x11811ff0[record_idx] = desc[+0x08]` (latest committed entry wins).
+  - On each save (`11809160`), if `(*0x11813440 + 72) > (*0x11813444 - aligned_size)` (`118091a4 ADDAD A0,9,A0; 118091aa CMPGTU A0,A1,A0`), `118091c0` calls `c01367f8` (`1180b3b0` veneer), which marks the current bank migrating (`+0x1C` = `00`×8), copies all non-`-1` records in `0..52` into the standby bank via `0x118120c8`, marks the new bank active (`+0x14` = `00`×8), erases the old bank (`c013696c CALLP c0145568`), formats its standby header (`+0x00` = `aa`×12, `+0x0C` = `00`×8), and flips `*0x11813448`. A freshly compacted bank with all 53 records uses `36 + 53*24 + 50*736 + 20 + 4 + 4 = 38,136` B, leaving `97,032` B (~127 single-patch saves) before the next bank switch.
+
+
 ## 3. SysEx `45`/`46` Handlers & Full SysEx Dispatch Table
 
 ## 4. Factory Reset Copy Routine (Factory -> Live)
