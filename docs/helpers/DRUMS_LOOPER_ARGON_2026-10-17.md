@@ -138,8 +138,55 @@ Neither the Looper nor the Drum Machine uses `11f03830` or `11f03930`. Both run 
        $$\text{buf\_11f037f0}[i] \leftarrow (\text{buf\_11f037f0}[i] + \text{drum\_R}[i]) \times \text{mute\_11f03d08}$$
        where `*(11f03d08)` (`*+A18[0]` at `118178a4`/`118178bc`) is `1.0f`. Thus if `11f037b0`/`11f037f0` is zeroed before `11817640` (or saved before `11817640` and subtracted after `11817640`), `11817640` writes **pure stereo Drums alone** directly into `11f037b0`/`11f037f0`!
 
+---
+
 ## 4. Tap Proposal
 
-(in progress)
+### Are Drums-alone and Looper-alone intact in static buffers at TX pack time (`11818c64`)?
+- **No for stereo mixed Drums (`confirmed`)**: `11817640` adds `drum_L` (`B6`) and `drum_R` (`B4`) directly into `11f037b0`/`11f037f0` (`11817878`/`11817898`) without storing the mixed stereo drum signal to a dedicated buffer. Only the raw unmixed 9-voice `int16_t[9][16]` array at **`11f039b0`..`11f03acf`** is still intact in static L1D memory at `11818c64`.
+- **No for Looper-alone in named static L1D (`confirmed`), though its stack buffer is untouched if no ISR preempts**: `118164c0` writes the 16 isolated mono looper playback samples (`int32_t[16]` at `B15 + 8` and `float[16]` at `B15 + 72`, where `B15 = SP_entry - 136`) on the stack before reclaiming the 136-byte frame (`11816f28 ADDK.S2 136,B15`). Because subsequent Swi calls (`11818d60`, `11818428`, `118186e0`, `11818aa0`) use at most 16 bytes of stack frame (`B15 - 16`), `B15 - 136 + 8` (`int32_t[16]`) and `B15 - 136 + 72` (`float[16]`) lie below their stack frames, **unless** a hardware interrupt (Hwi) preempts the Swi between Step 14 (`11818c50`) and Step 18 (`11818c64`) and overwrites the stack below `B15`. Thus relying on dead stack space at `11818c64` is unsafe against Hwi preemption, and a hook before/around Step 14/15 is cleanly deterministic (`confirmed`).
 
-STATUS: in_progress
+### Recommended Concrete Hook Points
+
+#### Option A — Single Wrapper Hook Replacing `11818c54` (`CALLP.S2 0x11818d60,B3`) + Dispatcher Hook at `11818e60` (or Combined `11818c50`/`11818c54` Hook) (`confirmed`)
+
+Because `11818c50` (`CALLP.S2 0x11818e60,B3`, Step 14) and `11818c54` (`CALLP.S2 0x11818d60,B3`, Step 15) are adjacent 32-bit instructions in the audio Swi (`main.dis` lines 18339-18340):
+```
+11818c4e       2626           MVK.L1        1,A4
+11818c50   10004412 ||        CALLP.S2      0x11818e60,B3
+11818c54   10002412           CALLP.S2      0x11818d60,B3
+```
+and `11f03830` (L, 64B) / `11f03870` (R, 64B) is **confirmed unused after `11817a90` (Step 12, `11818c44`)** (and was 100% zeros in the owner's listening test!), `11f03830` and `11f03870` can be used as free 16-sample staging buffers from Step 13 (`11818c48`) all the way through TX pack (`11818c64`)!
+
+1. **Capturing Looper Alone (16 samples, mono `int32_t` or `float`, Works in both Pre and Post modes):**
+   - **Hook point:** Inside `11818e60` (`11818e60`..`11818e80` has 7 trailing `NOP` words at `11818e84`..`11818e9c`, or hook `11816f28` at the epilogue of `118164c0`).
+   - **Earliest code point where Looper exists alone:**
+     - **As `int32_t[16]` mono (Q31 scale, post-looper-volume):** At **`11816cf0`** (or at epilogue **`11816f28`** before `ADDK.S2 136,B15`), buffer **`B15 + 8`** (`64` bytes, `16 × int32_t`) holds the exact 16 mono looper playback samples (`B7` stored via `11816d18 STW.D2T2 B7,*B12++[1]`).
+     - **As `float[16]` mono (`[-1.0, +1.0)` scale, post-looper-volume):** At **`11816e34`** (end of pass 1) or **`11816f28`** (epilogue of `118164c0`), buffer **`B15 + 72`** (`64` bytes, `16 × float`) holds the exact 16 mono float looper playback samples (`A7` stored via `STW.D1T1 A7,*A17++[1]`).
+     - Note: When Looper is bypassed (`*(11f03c58) == 0` at `11816516`), `118164c0` takes the early exit at `1181652c -> 118165a8`, so a hook at `11818e60` (or `118164c0`) should zero the staging buffer (`11f03830`) when `*(11f03c58) == 0`, and copy `B15 + 72` (or `B15 + 8`) to `11f03830` (`64` bytes) when `*(11f03c58) != 0`.
+   - **Alternative zero-patch-inside-`118164c0` method (if Looper is in Post mode, `A4=1`):**
+     - Hook `11818c54` (`CALLP 0x11818d60`): snapshot `11f037b0` before `11818c50` (`CALLP 0x11818e60`) and subtract it from `11f037b0` after `11818c50`:
+       $$\text{Looper\_L}[i] = \text{buf\_11f037b0}_{\text{after } 11818c50}[i] - \text{buf\_11f037b0}_{\text{before } 11818c50}[i]$$
+     - (Hooking `11816f28` or `11818e60` to copy `B15 + 8` / `B15 + 72` is even better because it works in **both Pre and Post** looper modes!)
+
+2. **Capturing Drums Alone (16 samples, stereo `float[2][16]`):**
+   - **Earliest code point where mixed stereo Drums exist alone:** Inside `11818d60` right after `11818d64` (`CALLP.S2 0x11817640,B3`) returns at **`11818d68`**.
+   - **How to capture without touching `11817640`'s pipelined loop:**
+     - Replace `11818c54` (`CALLP.S2 0x11818d60,B3`) with a `CALLP` to a small veneer:
+       1. Save the pre-drum `11f037b0` (L, 64B) and `11f037f0` (R, 64B) into a 128-byte scratch buffer (or zero `11f037b0`/`11f037f0` after saving them).
+       2. Call `11817640` (the drum mixer).
+       3. If `11f037b0`/`11f037f0` was zeroed in step 1: `11f037b0` (L) and `11f037f0` (R) now contain **pure stereo float Drums alone** (`drum_L[0..15]`, `drum_R[0..15]`)! Copy them to the USB drum staging buffer (or `11f03870`), then add the saved pre-drum `11f037b0`/`11f037f0` back into `11f037b0`/`11f037f0` (if `*(11f03d54) != 0` and `*(11f03d08) != 0`).
+       4. Equivalently (without zeroing): let `11817640` run normally on `11f037b0`/`11f037f0`, then compute:
+          $$\text{drum\_L}[i] = \text{buf\_11f037b0}_{\text{after } 11817640}[i] - \text{buf\_11f037b0}_{\text{before } 11817640}[i]$$
+          $$\text{drum\_R}[i] = \text{buf\_11f037f0}_{\text{after } 11817640}[i] - \text{buf\_11f037f0}_{\text{before } 11817640}[i]$$
+       5. Continue with the rest of `11818d60` (`11818d68`..`11818dd4`) so the pedal's main output is 100% bit-identical to stock.
+
+### Summary Table of Tap Signals
+
+| Signal | Producer Function | Earliest Isolated Point | Buffer / Location | Format | Intact at `11818c64` without 2nd hook? |
+|---|---|---|---|---|---|
+| **Looper alone** | `118164c0` (via `11818e60` / `11f03ed0[0..1]`) | `11816cf0` (int32) / `11816e34`..`11816f28` (float) | Stack `B15 + 8` (`int32_t[16]`) & `B15 + 72` (`float[16]`) inside `118164c0` (`*(11f03c58) != 0`) | Mono, 16 samples (`int32` Q31 or `float`) | **No** (stack frame reclaimed at `11816f28`; copy to `11f03830` at `11816f28`) |
+| **Drums alone (raw voices)** | `11817520` (called by `11817640` at `11817694`) | `11817630` (return of `11817520`) | `11f039b0`..`11f03acf` (288 B) | 9 voices × 16 samples, `int16_t[9][16]` planar | **Yes** (`11f039b0` is untouched after `11817520`), but unmixed/unpanned |
+| **Drums alone (stereo mix)** | `11817640` (called by `11818d60` at `11818d64`) | `11817868` (`B6` L) & `11817890` (`B4` R) per sample; or `11818d68` (return of `11817640`) | In-place delta on `11f037b0` (L) / `11f037f0` (R) across `11818d64 CALLP 0x11817640` | Stereo planar `float[2][16]` (64 B L + 64 B R) | **No** (requires hook at `11818c54` / `11818d64` before `11818d68` scales by master vol `11f03e34`) |
+
+STATUS: done
