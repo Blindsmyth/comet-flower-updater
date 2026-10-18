@@ -7,9 +7,14 @@
  *
  * Mono DSP on channel A, written to both channels; bypass crossfade per
  * channel. Guard prologue and output clamp as in stomphacks gain.c.
- * Per block: knobs smoothed, the three networks derived (hiwatt_netgen.h,
- * on the stack, not in state: state stays under the G1's ~392 B), then
- * hw_block.
+ * Per block: knobs smoothed, the three networks derived (hiwatt_netgen.h),
+ * then hw_block. The derived networks (HwCoeffs, 372 B) are cached in the
+ * slot's work buffer (instance[3] -> {base, end, size}, 0x81330 B, as CF
+ * Mistrss / CE2; docs/helpers/DELAY_MEM_SONNET_2026-10-17.md) with the six
+ * smoothed knob values they came from, and re-derived only when one of those
+ * changes or on the first block after a load (bench 2026-10-18: ~5k of the
+ * 39.7k cycles per block). hw_coeffs is a pure function of the knobs, so the
+ * output is bit-identical. Without a valid work buffer: derived every block.
  */
 #include <stdint.h>
 #if defined(__TI_COMPILER_VERSION__)
@@ -42,6 +47,21 @@ typedef struct {
 
 
 #define KNOB_SMOOTH 0.1f
+
+typedef struct {
+    float key[6];                    /* vol tre mid bas mas pre the cache was derived from */
+    HwCoeffs k;
+} HwCoeffCache;
+
+TS_INLINE HwCoeffCache *hw_cache(void **instance)
+{
+    const uint32_t *wb = (const uint32_t *)instance[3];
+    if (!wb)
+        return 0;
+    if ((wb[0] & 7u) || wb[0] == 0u || wb[1] - wb[0] != wb[2] || wb[2] < sizeof(HwCoeffCache))
+        return 0;
+    return (HwCoeffCache *)wb[0];
+}
 
 void SH_AUDIO_FN(void **instance, void **ctx)
 {
@@ -80,7 +100,8 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         return;
     }
 
-    if (s->primed != 1.0f) {
+    unsigned fresh = s->primed != 1.0f;  /* first block after a load: never trust the cache */
+    if (fresh) {
         s->vol = kv; s->tre = kt; s->mid = km; s->bas = kb; s->mas = ks; s->pre = kp;
         s->primed = 1.0f;
     } else {
@@ -95,7 +116,27 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     t0 = TSCL;                       /* read only: if the firmware never started
                                       * the counter, the tone reads 0 Hz */
 #endif
-    hw_coeffs(&k, s->vol, s->tre, s->mid, s->bas, s->mas, s->pre);
+    {
+        /* one hw_coeffs call site: it is force-inlined and ~7 KB of .text */
+        HwCoeffCache *c = hw_cache(instance);
+        HwCoeffs *dst = c ? &c->k : &k;
+        if (!c || fresh || c->key[0] != s->vol || c->key[1] != s->tre || c->key[2] != s->mid ||
+            c->key[3] != s->bas || c->key[4] != s->mas || c->key[5] != s->pre) {
+            hw_coeffs(dst, s->vol, s->tre, s->mid, s->bas, s->mas, s->pre);
+            if (c) {
+                c->key[0] = s->vol; c->key[1] = s->tre; c->key[2] = s->mid;
+                c->key[3] = s->bas; c->key[4] = s->mas; c->key[5] = s->pre;
+            }
+        }
+        if (c) {                     /* to the stack: the sample loops read it as before;
+                                      * volatile so cl6x keeps a loop, not a memcpy call */
+            const volatile uint32_t *src = (const volatile uint32_t *)&c->k;
+            uint32_t *out = (uint32_t *)&k;
+            unsigned w;
+            for (w = 0; w < sizeof(HwCoeffs) / 4u; w++)
+                out[w] = src[w];
+        }
+    }
     cab = kc > 0.5f;
 #if HW_DIAG
     t1 = TSCL;

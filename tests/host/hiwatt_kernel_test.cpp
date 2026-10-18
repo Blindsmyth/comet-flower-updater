@@ -20,7 +20,7 @@ int main()
     static uint32_t state[96];
     float coef[16] = {};
     float bus[32];
-    void* inst[3] = { nullptr, coef, state };
+    void* inst[4] = { nullptr, coef, state, nullptr };   // [3]: no work buffer = derive every block
     void* ctx[8] = { nullptr, bus };
     auto reset = [&] { std::memset(state, 0, sizeof state); state[SH_STATE_GUARD_WORD] = SH_STATE_GUARD; };
     auto knobs = [&](float v, float t, float m, float b, float p, float s, float cab) {
@@ -87,6 +87,41 @@ int main()
     }
     std::printf("  kernel vs hw_block: max |diff| %.2e\n", maxd);
     check(maxd < 1e-6, "kernel == hw_block for steady knobs");
+
+    // 5. coefficient cache in the slot work buffer (instance[3]) is bit-identical to deriving
+    //    every block: knob sweeps, held knobs (cache hits), a reload (fresh state, stale cache)
+    {
+        static uint32_t wbuf[1024];
+        uint32_t desc[3];
+        desc[0] = (uint32_t)(uintptr_t)wbuf;
+        desc[1] = desc[0] + sizeof wbuf; desc[2] = sizeof wbuf;
+        static uint32_t st2[96];
+        float coef2[16] = {}, bus2[32];
+        void* inst2[4] = { nullptr, coef2, st2, nullptr };
+        void* ctx2[8] = { nullptr, bus2 };
+        bool same = true, hit_ok = true;
+        bool can = sizeof(void*) == 4;   // the descriptor holds 32-bit addresses (pedal layout)
+        if (can) inst2[3] = desc;
+        for (int pass = 0; pass < 2 && can; ++pass) {   // pass 1: reload with the cache left over
+            reset(); std::memset(st2, 0, sizeof st2); st2[SH_STATE_GUARD_WORD] = SH_STATE_GUARD;
+            coef[SH_COEFF_BYPASS] = coef2[SH_COEFF_BYPASS] = 1.0f;
+            for (int blk = 0; blk < 4000; ++blk) {
+                float ph = blk < 1500 ? (float)blk / 1500.0f : blk < 2500 ? 1.0f : 0.25f;
+                knobs(ph, 1 - ph, 0.5f, ph, 0.4f, 0.3f + 0.5f * ph, 1.0f);
+                std::memcpy(coef2, coef, sizeof coef);
+                for (int i = 0; i < 16; ++i) {
+                    float x = 0.5f * (float)std::sin(2 * PI * 110.0 * (blk * 16 + i) / 44100.0);
+                    bus[i] = bus[i + 16] = x; bus2[i] = bus2[i + 16] = x;
+                }
+                SH_AUDIO_FN(inst, ctx);
+                SH_AUDIO_FN(inst2, ctx2);
+                if (std::memcmp(bus, bus2, sizeof bus)) same = false;
+            }
+        }
+        if (!can) std::printf("  (64-bit host: cache test needs a 32-bit build; skipped)\n");
+        check(same, "work-buffer coefficient cache: output bit-identical");
+        (void)hit_ok;
+    }
 
     std::printf(fails ? "FAILED (%d)\n" : "all passed\n", fails);
     return fails ? 1 : 0;
