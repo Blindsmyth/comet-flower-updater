@@ -166,5 +166,72 @@ The Zoom G1X Four framework has **no fixed mono-to-stereo transition slot** (`co
 
 ## 3. Bypassed and Empty Slots
 
+Every iteration `B10 = 0..4` of the slot loop (`11818bf4`..`11818c32`) unconditionally invokes `B5 = *(0x118133e0 + 4 * B10)` via `11818c16 BNOP.S2 B5,0` (`confirmed`). There is no per-slot branch around `BNOP.S2 B5,0` inside `11818bf4`..`11818c32`. Instead, empty, companion, bypassed, and transitioning slots are handled through five distinct mechanisms (`confirmed`):
+
+### A. Case 1 — Empty Slot (`effect_id == 0`): Built-in `"BYPASS"` Callback `0x11818de0`
+
+1. **Installation path (`c01297a0` -> `c016d150` -> `c0165f20`, `confirmed`):**
+   - When `c01297a0(slot, effect_id)` (`main.dis` line 55259) is called with `effect_id == 0`, `c0129800 CMPEQ.L1 0,A3,A0; [!A0] BNOP 0xc0129cd0,5` skips ELF loading and installs the built-in empty-slot `Dll` constructor **`0xc016d150`** (`c0129d6c MVKL 0xc016d150,A5; c0129d70 MVKH 0xc016d150,A5; c0129d76 STW A5,*+A4[15]`).
+   - Calling `0xc016d150(entry)` (`main.dis` lines 122179-122191) populates the 24-byte `Fx_tbl` descriptor at `0x11813400 + 24 * slot`:
+     - `entry[0]` = `2` (`c016d150 MVK 2,B4; c016d160 STW B4,*+A4[0]`)
+     - `entry[1]` = **`0xc017de30`** (`c016d152 MVKL 0xc017de30,B5; c016d15a MVKH 0xc017de30,B5; c016d166 STW B5,*+A4[1]`, built-in `"OnOff"` + `"BYPASS"` parameter table)
+     - `entry[2]` = `0`, `entry[4]` = `0`, `entry[5]` = `0` (`zeroed`)
+     - `entry[3]` = `0xc017ae4c` (`c016d156 MVKL 0xc017ae4c,A3; c016d162 MVKH 0xc017ae4c,A3; c016d16c STW A3,*+A4[3]`, 5-float coefficient template `{1.0f, 0.0f, 0.0f, 0.0f, 1.0f}`)
+   - `c0165f20(instance)` (`main.dis` lines 115219-115235) then loads `*(entry[1] + 0x58) = *(0xc017de30 + 0x58 = 0xc017de88) = 0x11818de0` and writes **`0x11818de0`** to `0x118133e0 + 4 * slot`.
+
+2. **Exact behavior of `0x11818de0` (`main.dis` lines 18445-18474, `confirmed`):**
+   - Receives `A4 = &instance[slot]` (`0x11f03ad0 + 0x14 * slot`) and `B4 = 0x11f03b48` (`ctx`).
+   - Loads `B6 = ctx[1] = 0x11f037b0` (`11818de0 LDW *+B4[1],B6`), `B7 = &instance[slot]` (`11818de2 MV A4,B7`), `B4 = ctx[7] = 0x11f03e20` (`11818de4 LDW *+B4[7],B4`), and `A3 = ctx[8] = 0x11f03de0` (`11818de6 LDW *+B4[8],A3`).
+   - Loops 16 times (`A0 = 15..0`, `11818df0`..`11818e44`):
+     - Advances the active parameter ramp: `*( *(0x11f03e20) ) = 0x11f03de0[i]` (`11818e08 LDW *A3++[1],A4; 11818e0c LDW *B4[0],B5; 11818e14 STW A4,*B5[0]`).
+     - Loads `B8 = instance[1][4]` (`coef[4]` at `instance[1] + 4*4 = instance[1] + 0x10`, the per-slot reload fade-in multiplier ramped to `1.0f` by `1180a9e0`): `11818e10 LDW *+B7[1],B5; 11818e18 LDW *+B5[4],B8`.
+     - Scales Left `0x11f037b0[i]` in place by `B8`: `11818dfe` / `11818e30 LDW *B6[0],B5; 11818e24 MPYSP B8,B5,B5; 11818e2a STW B5,*B6[0]`.
+     - Scales Right `0x11f037f0[i]` in place by `B8` and advances `B6 += 4`: `11818e34 LDW *+B6[16],B5; 11818e38 MPYSP B8,B5,B5; 11818e44 STW B5,*B6++[1]`.
+   - **Impact on bus:** In steady state (`coef[4] == 1.0f`, `0x3f800000`), `0x11818de0` multiplies each sample in `0x11f037b0` and `0x11f037f0` by `1.0f` in place, leaving all normal/zero audio floats **bit-identical (`out[i] == in[i]`, so `out[i] - in[i] == 0.0f`)**.
+
+---
+
+### B. Case 2 — Companion Slot of a 2-Slot Effect (`effect_id == 1`): No-Op Callback `0x11818e4c`
+
+- When a 2-slot (1U) effect occupies Slot `k`, its companion slot receives `effect_id == 1` (`c0129808 CMPEQ.L2X 1,A3,B0; [B0] BNOP 0xc0129c28,5`).
+- `c0129cc0`..`c0129cca` installs built-in `Dll` constructor **`0xc016d110`**, which sets `entry[1] = 0xc017dea0` (`c016d112`..`c016d126`).
+- `c0165f20` reads `*(0xc017dea0 + 0x58 = 0xc017def8) = 0x11818e4c` and stores **`0x11818e4c`** into `0x118133e0 + 4 * slot` (`confirmed`).
+- `0x11818e4c` (`main.dis` line 18477) is a single instruction:
+  ```
+  11818e4c    000ca020            BNOP.S2       B3,5
+  ```
+- **Impact on bus:** Does not read or write memory; `0x11f037b0` and `0x11f037f0` are **100% untouched (`out[i] == in[i]`)** (`confirmed`).
+
+---
+
+### C. Case 3 — User-Bypassed Loaded Effect (`OnOff == 0` via Footswitch / Patch State)
+
+There are two sub-cases depending on whether the slot is normally bypassed via its `OnOff` parameter (`0`) or force-bypassed by firmware bitmasks (`c012ee10(slot) != 0`) (`confirmed`):
+
+1. **Standard Footswitch / Parameter Bypass (`OnOff == 0`, `c012ee10(slot) == 0`):**
+   - **`0x118133e0 + 4 * slot` continues to hold the loaded effect's own `Fx_<Name>` function pointer**, and `Fx_<Name>` continues to execute every 16-sample block (`confirmed`).
+   - Toggling the effect OFF invokes its `OnOff` parameter setter (`*(entry[1] + 0x1c)`, e.g. `Fx_DRV_TS_Drive_onf` at `TS_DRIVE.ZD2` `.text+0x0d0` or `Fx_DRV_Squeak_onf` at `SQUEAK.ZD2` `.text+0x1398`), which calls `ctx[3]` (`0x1180a2a8`) to ramp `coef[0]` (`instance[1][0]`) to `0.0f` over `705.6f` samples (`0x44306666`, ~16 ms at 44.1 kHz).
+   - While bypassed (`coef[0] == 0.0f`, `coef[4] == 1.0f`):
+     - **Standard effects (drives, amps, cabs, EQs, compressors, modulations):** `Fx_<Name>` still runs its internal filters/oversamplers on the input so state stays warm (clickless re-engagement), then applies the wet/dry crossfade `(1.0f - coef[0]) * dry + g_wet(coef[0]) * wet` at the end of the loop:
+       - Since `coef[0] == 0.0f` and `g_wet(0.0f) == 0.0f`, the effect writes `1.0f * (1.0f * dry_L[i] + 0.0f) = dry_L[i]` to `0x11f037b0[i]` and `dry_R[i]` to `0x11f037f0[i]`.
+       - Thus in steady-state bypass, **output equals input (`out[i] == in[i]`), and `wet_only = out[i] - in[i] == 0.0f`** (`confirmed`).
+     - **Spillover / Trails effects (e.g. `DELAY_3S.ZD2`, `HALL.ZD2`):**
+       - In `DELAY_3S.ZD2`, `Fx_DLY_Delay_onf` (`.text+0x354`..`0x390`) ramps `coef[0]` (`instance[1][0]`), which scales the **input send** into the delay line (`MPYSP B5,A16,B7` at `.text+0x6b0`), while the delay line readback and wet output mix (`coef[2]` / `coef[3]`) continue to add decaying echoes onto the dry signal (`ADDSP A3,A4,A3` at `.text+0x988` / `ADDSP B4,B5,B5` at `.text+0x9e8`).
+       - Similarly, in `HALL.ZD2`, `Fx_REV_Hall_onf` (`.text+0x07c`..`0x0ac`) ramps `coef[0]` (`instance[1][0]`), which gates the tank input send while the reverb tank tail continues to sum with the dry path (`ADDSP B16,B10,B10` at `.text+0x3ec` / `ADDSP B8,B4,B4` at `.text+0x588`).
+       - **Bonus of `out[i] - in[i]`:** For trails/spillover delays and reverbs bypassed mid-phrase, `out[i] - in[i]` automatically captures the exact decaying wet tail during spillover and decays to `0.0f` once the tail finishes!
+
+2. **Force-Bypassed Slot (`c012ee10(slot) != 0` at `c0143500`..`c014355c`):**
+   - If any of the slot force-bypass masks at `0x118118e0`, `0x118118e4`, `0x118118e8`, or `0x118118f0` has bit `slot` set (`c012ee10`..`c012ee7c`, `main.dis` lines 59751-59784), `c0143558 CALLP 0xc0165e80` overwrites `0x118133e0 + 4 * slot` with **`0x11818de0`** (the same built-in `"BYPASS"` callback used by empty slots).
+
+---
+
+### D. Case 4 — Slot Reload Silence (`0xc016d184`), Boot No-Op (`0xc016d180`), and Whole-Chain Bypass (`11818bec`)
+
+| Condition | Mechanism & Address | Effect on `0x11f037b0` (L) / `0x11f037f0` (R) | Status |
+|---|---|---|---|
+| **Slot ELF unload/reload in progress** | `1180afc0` (via `c016f660`) writes **`0xc016d184`** to `0x118133e0 + 4 * slot`. | `c016d184` (`main.dis` lines 122197-122215) zeroes `0x11f037b0`..`0x11f037ef` and `0x11f037f0`..`0x11f0382f` while the slot's code/state is being replaced. | `confirmed` |
+| **Early boot / chain reset** | `c0165e98` (`c0165eb4`) or `c0143794` (`c01437b8`) writes **`0xc016d180`** to `0x118133e0[0..4]`. | `c016d180` (`BNOP.S2 B3,5`) returns immediately without touching `0x11f037b0` / `0x11f037f0`. | `confirmed` |
+| **Whole-chain mute (`*(0xc0184f94) != 0`, e.g. Tuner mute)** | At `11818be8 LDW *+B14[101],B0; 11818bec [B0] BNOP 0x11818c44,5`, the entire 5-slot loop (`11818bf4`..`11818c40`) is **skipped**. | None of `slots[0..4]` run; `0x11f037b0` / `0x11f037f0` retain the pre-loop guitar float bus (which is then muted downstream by `11817a90` / `118186e0`). Any per-slot tap hook placed *inside* `11818bf4`..`11818c32` will not execute while `*(0xc0184f94) != 0` unless handled (see Section 4). | `confirmed` |
+
 ## 4. Concrete Hook Proposal for Per-Slot & Wet-Only USB Taps
 
