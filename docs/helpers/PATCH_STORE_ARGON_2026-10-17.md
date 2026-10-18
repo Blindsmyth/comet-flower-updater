@@ -37,6 +37,33 @@ c0165e68  LDHU.D2T2 *+B15[2],B0     ; low 16 bits of sum (byte offset +4)
 c0165e70  STW.D2T2 B0,*+B14[21]     ; store at 0xc0184e54
 ```
 
+### 1.2 Live patch store region table at file `0x77F69` -> runtime `0xc0183a50` (`confirmed`)
+The `0x00042000`-byte gap (`0x000C0000..0x00101FFF`) omitted from `0xc0183660` is described by a separate **2-entry `(base, size)` table** in the same `.cinit` record 0 stream at file `0x77F69..0x77F78`, which decompresses to runtime RAM **`0xc0183a50..0xc0183a5f`** (`2 * 8 = 16` bytes):
+
+| Bank index | Runtime VMA | File offset (`.cinit`) | Flash base | Size (bytes) | Flash end (excl.) | Purpose |
+|---:|---|---|---|---|---|---|
+| 0 | `0xc0183a50` | `0x77F69..0x77F70` | `0x000C0000` | `0x00021000` (132 KiB = 33 × 4 KiB) | `0x000E1000` | Live DataStore bank 0 (50 patches + 3 system records) |
+| 1 | `0xc0183a58` | `0x77F71..0x77F78` | `0x000E1000` | `0x00021000` (132 KiB = 33 × 4 KiB) | `0x00102000` | Live DataStore bank 1 (50 patches + 3 system records) |
+
+Together, Bank 0 (`0x000C0000..0x000E0FFF`) and Bank 1 (`0x000E1000..0x00101FFF`) account for the entire `0x000C0000..0x00102000` (`0x00042000` B = 264 KiB) live patch/settings region.
+
+**Instruction evidence (`confirmed`):**
+`c0136a18` (`DataStore` / `MainApp` live-store initializer) loads `0xc0183a50` at `c0136a74..c0136a78`, verifies that the minimum required capacity `A6` fits within both banks' sizes (`*A4[3]` = byte offset `+12` from `0xc0183a48` -> `0xc0183a54` and `0xc0183a5c`, both `0x00021000`), and then reads the 36-byte bank header from each bank's `base` (`0xc0183a50` and `0xc0183a58`):
+```
+c0136a74  MVK.S1   0x3a50,A0
+c0136a78  MVKH.S1  0xc0180000,A0    ; A0 = 0xc0183a50
+c0136a82  ADD.L1   A0,-8,A4         ; A4 = 0xc0183a48
+c0136a84  MV.L1    A1,A11           ; A11 = 0xc0183a50
+c0136a86  MVK.S1   2,A3             ; 2 banks
+c0136a88  LDW.D1T1 *A4[3],A0        ; byte offset +12: 0xc0183a54 (bank 0 size), then 0xc0183a5c (bank 1 size)
+c0136a8a  CMPGTU.L1 A6,A0,A1
+c0136a94  ADD.L1   A4,8,A4          ; advance 8 bytes per bank entry
+...
+c0136ae8  LDW.D2T2 *B4[0],B0        ; B4 = 0xc0183a50 + 8*bank -> B0 = bank flash base (0x000C0000 or 0x000E1000)
+c0136aec  MVK.S1   36,A6            ; 36-byte bank header
+c0136af0  CALLP.S2 0xc01454f4,B3    ; flash_read(bank_base, stack_buf, 36)
+```
+
 
 ## 2. Live Store Format (Boot/Select Load & Save/Store)
 
