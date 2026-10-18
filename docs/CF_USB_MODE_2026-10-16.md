@@ -437,3 +437,16 @@ option unchanged (168d8790).
 | **USB audio 8ch named** (desktop: `GUITAR AUDIO 7 - Comet Flower USB 8ch named TEST.exe`) | `504707d6` | `e329eed8` |
 
 After flashing: remove the device nodes again so Windows re-reads the names.
+
+### 8ch named build on hardware: owner listening test (2026-10-17)
+After the replug Windows shows `CF8 Out1-2 DI3-4 BusA5-6 BusB7-8` and `Line (CF8 Out1-2 DI3-4 BusA5-6 BusB7-8)`
+(both OK): the firmware device-name label works.
+Owner, by ear, with drums and looper running:
+- **ch1-2: effect output + looper + drums.** The TX tap already carries the full pedal mix, so the "move the tap to
+  the packed TX buffer" item is not needed (the earlier "no drums on any channel" note was a take without them).
+- ch3-4 (ADC): guitar, quieter than 1-2.
+- ch5-6: silent.
+- ch7-8: sounds like the DI (measured earlier: band-passed, weakly correlated with ch3; likely the input after
+  some conditioning stage).
+Open: are 3-4 and 7-8 free of drums/looper (expected; would give a clean DI for re-amping), and which of 3-4 or
+7-8 is the better DI? A labelled `ua_capture8.py` take (drums only / loop only / guitar only) answers both.
