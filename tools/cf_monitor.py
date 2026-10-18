@@ -9,9 +9,9 @@ with Windows converting the rate (the pedal's clock and your speakers' are indep
 buffer absorbs the drift by repeating or dropping a few samples, which only affects listening,
 never the recording).
 
-Channel names come from a map in tools/ (ua_channels_bench.json by default: 1-2 mix, 3-4 guitar FX,
-5-6 drums, 7 DI, 8 timing data from the bench firmware, not audio; pick ua_channels_fx.json for the
-FX firmware, where 8 is the looper). Only 1-2 start ticked for listening. Recordings: build/recordings/<time>.wav (all 8 channels) plus one labelled WAV per
+Channel count follows the pedal: 10 with the Audio Bridge firmware (tools/ua_channels_10.json: 1-2 mix,
+3-4 guitar FX, 5-6 drums, 7-8 DI, 9-10 looper), 8 with the bench firmware (ua_channels_bench.json, where
+8 is timing data, not audio). Only 1-2 start ticked for listening. Recordings: build/recordings/<time>.wav (all 8 channels) plus one labelled WAV per
 channel and a .channels.json, as tools/ua_capture8.py writes them.
 """
 import argparse
@@ -29,23 +29,24 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 FS = 44100
-NCH = 8
+NCH = 10                          # opened with what the pedal offers (10, or 8 for the bench build)
 BLOCK = 441                      # 10 ms
-MAPS = ["ua_channels_bench.json", "ua_channels_fx.json", "ua_channels_stems.json", "ua_channels.json"]
+MAPS = ["ua_channels_10.json", "ua_channels_bench.json", "ua_channels_fx.json", "ua_channels_stems.json", "ua_channels.json"]
 
 
 def find_input():
     import sounddevice as sd
     for i, d in enumerate(sd.query_devices()):
         api = sd.query_hostapis(d["hostapi"])["name"]
-        if ("Comet Flower" in d["name"] or "CF8" in d["name"]) and d["max_input_channels"] >= NCH and "WASAPI" in api:
-            return i, d["name"]
-    return None, None
+        if ("Comet Flower" in d["name"] or "CF8" in d["name"]) and d["max_input_channels"] >= 8 and "WASAPI" in api:
+            return i, d["name"], d["max_input_channels"]
+    return None, None, 0
 
 
 def load_map(name):
     m = json.loads((ROOT / "tools" / name).read_text())
-    return [c["label"] for c in m["channels"]][:NCH], m
+    labels = [c["label"] for c in m["channels"]][:NCH]
+    return labels + ["ch %d" % (k + 1) for k in range(len(labels), NCH)], m
 
 
 class Engine:
@@ -69,7 +70,7 @@ class Engine:
     # --- streams
     def start(self):
         import sounddevice as sd
-        dev, name = find_input()
+        dev, name, nch = find_input()
         self.in_name = name
         if dev is not None:
             try:
@@ -363,4 +364,10 @@ if __name__ == "__main__":
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--close-after", type=float, default=0, help=argparse.SUPPRESS)   # smoke test of the window
     a = ap.parse_args()
+    _, _, n = find_input()                 # 10 (FX firmware) or 8 (bench firmware): open what is there
+    if n >= 10:
+        NCH = 10
+    elif n:
+        NCH = 8
+        MAPS.insert(0, MAPS.pop(MAPS.index("ua_channels_bench.json")))
     selftest() if a.selftest else gui(a.close_after)

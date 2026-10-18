@@ -105,7 +105,7 @@ CALLP_S2_TEMPLATE = 0x1050c512
 
 
 def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False):
-    out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "bench") if bench else (TAP_OUT / "stems_fx") if fx else (TAP_OUT / "stems") if stems else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
+    out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "bench") if bench else (TAP_OUT / "ch10") if nch == 10 else (TAP_OUT / "stems_fx") if fx else (TAP_OUT / "stems") if stems else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
     out.mkdir(parents=True, exist_ok=True)
     main = PROTO / ("usb_audio_tap.c" if tap else "usb_audio.c")
     srcs = [main, PROTO / "usb_audio_hooks.asm",
@@ -115,7 +115,7 @@ def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=
             "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
             "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
             *(["--define=UA_TAP_PATTERN"] if pattern else []),
-            *(["--define=UA_NCH=8", "--define=UA_AUDIO_STRING=3"] if nch == 8 else []),
+            *(["--define=UA_NCH=%d" % nch, "--define=UA_AUDIO_STRING=3"] if nch in (8, 10) else []),
             *(["--define=UA_STEMS"] if stems else []),
             *(["--define=UA_FX"] if fx else []),
             *(["--define=UA_BENCH"] if bench else []),
@@ -183,13 +183,13 @@ def decode(vma, word, kind):
 
 
 def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False):
-    fx = fx or bench
+    fx = fx or bench or nch == 10        # the 10-channel layout is the FX layout (stems hooks)
     stems = stems or fx
-    if stems:
+    if stems and nch != 10:
         nch = 8
-    tap = tap or pattern or nch == 8
+    tap = tap or pattern or nch >= 8
     base = Path(base_path).read_bytes()
-    if nch == 8:
+    if nch >= 8:
         # IF2's iInterface names string 3: the base must carry it, or Windows
         # would show an empty audio device name.
         off = ctl.CONST_DATA[0] + ctl.USB_STR3_RECORD - 0xc016f780
@@ -267,6 +267,8 @@ if __name__ == "__main__":
     ap.add_argument("--out")
     ap.add_argument("--tap", action="store_true",
                     help="real-audio tap build (ROADMAP C3) instead of silence")
+    ap.add_argument("--tap10", action="store_true",
+                    help="10 channels, every pair usable: 1-2 mix, 3-4 guitar FX, 5-6 drums, 7-8 DI, 9-10 looper")
     ap.add_argument("--tap8", action="store_true",
                     help="8-channel tap: 1-2 output, 3 DI, 4 right ADC, 5-8 internal mix buses")
     ap.add_argument("--stems", action="store_true",
@@ -282,6 +284,6 @@ if __name__ == "__main__":
                     help="diagnostic tap build: counter (L) + 1002 Hz sine (R) instead of the "
                          "pedal audio; analyse captures with tools/ua_capture.py")
     a = ap.parse_args()
-    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8 or a.stems or a.fx or a.bench
+    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8 or a.stems or a.fx or a.bench or a.tap10
                                else "build/usb_audio/DO_NOT_FLASH_usb_audio_silence.bin"))
-    build(a.base, out, a.tap, a.tap_pattern, 8 if a.tap8 else 2, a.stems, a.fx, a.bench)
+    build(a.base, out, a.tap, a.tap_pattern, 10 if a.tap10 else 8 if a.tap8 else 2, a.stems, a.fx, a.bench)

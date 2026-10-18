@@ -526,3 +526,22 @@ it. `--fx` (UA_STEMS + UA_FX):
 
 Supersedes the stems build for flashing (same stems, two pairs improved). Per-slot taps: Argon brief
 `docs/helpers/SLOT_TAP_BRIEF_2026-10-17.md` running.
+
+## 10-channel Audio Bridge: every pair usable (2026-10-18)
+
+Owner: on the bench firmware, 7-8 as a stereo pair gave the DI plus a squeal (ch 8 = CPU timing frames). Chosen
+layout: **1-2 mix (output words without the x2.16 converter gain), 3-4 guitar FX, 5-6 drums, 7-8 DI (same on both),
+9-10 looper (same on both)**; the timing frames stay in the separate 8-channel bench build (`--bench`).
+`make_usb_audio_fw.py --tap10` (`UA_NCH=10`, FX layout + stems hooks, no bench): wChannelConfig 0x03ff (10
+positions; Windows needs every channel positioned), wMaxPacketSize 900 (<= 1023, one 1024 B FIFO bank), 5 ring
+words per frame, the SOF loop sends the 5th word. Descriptor length still 195. All earlier builds reproduce
+(e329eed8, 46eddead, cd5f3715, d9eb45e2, 6e20051c). Host tests tests/test_usb_audio_tap10.py. Map
+`tools/ua_channels_10.json`, REAPER template `Comet Flower 10ch.RPP` (5 stereo tracks), CF Monitor follows the
+pedal's channel count (10 or 8). Device name "Comet Flower Audio Bridge" (confirmed in Windows with updater 17).
+
+| Updater | SHA-256 (start) | Firmware | Effects |
+|---|---|---|---|
+| **Audio Bridge 10ch** `build/cf_usb10_2026-10-18/` (desktop: `GUITAR AUDIO 18 - Audio Bridge 10ch TEST.exe`) | `6689f536` | `0865f954` | `fs_cfloads.bin` (calibrated loads, as updater 17) |
+
+Windows sees a new channel count: remove the device's MI_00/MI_02 nodes and rescan, or replug, so it rebuilds the
+endpoint (as with 2 -> 8). Bench measurements need the bench updater (17).

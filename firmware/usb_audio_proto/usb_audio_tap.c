@@ -90,7 +90,10 @@
 #if defined(UA_FX) && !defined(UA_STEMS)
 #error "the guitar-FX pair is part of the stems layout"
 #endif
-#if defined(UA_STEMS) && UA_NCH != 8
+#if UA_NCH == 10 && !(defined(UA_FX) && !defined(UA_BENCH))
+#error "the 10-channel layout is the FX layout without the bench frames"
+#endif
+#if defined(UA_STEMS) && UA_NCH != 8 && UA_NCH != 10
 #error "the drums/looper stems need the 8-channel layout"
 #endif
 #ifdef UA_STEMS
@@ -282,7 +285,7 @@ static inline u32 ua_tap_dry(int x)
     return ((u32)x >> 16) & 0xffffu;
 }
 
-#if UA_NCH == 8
+#if UA_NCH >= 8
 #ifdef __TI_COMPILER_VERSION__
 #define UA_SPINT(f) _spint(f)          /* SPINT: round, saturate to int32 */
 #else
@@ -458,7 +461,13 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
         f[0] = ua_tap_sample(l[i]) | (ua_tap_sample(r[i]) << 16);
         f[1] = ua_tap_dry(UA_TAP_RX_L[i]) | (ua_tap_dry(UA_TAP_RX_R[i]) << 16);
 #endif
-#ifdef UA_BENCH
+#if UA_NCH == 10
+        /* every pair usable as a stereo track (owner, 2026-10-18): 7-8 DI on both,
+           9-10 looper on both */
+        f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
+        f[3] = ua_tap_float(UA_TAP_BUS_M[i]) * 0x10001u;
+        f[4] = ua_tap_float(ua_stem_loop[i]) * 0x10001u;
+#elif defined(UA_BENCH)
         f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
         f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_bench_frame[i] << 16);
 #elif defined(UA_STEMS)
@@ -606,6 +615,9 @@ void usb_audio_sof_tick_tap(void)
         USB_EP1_FIFO = f[1];
         USB_EP1_FIFO = f[2];
         USB_EP1_FIFO = f[3];
+#if UA_NCH == 10
+        USB_EP1_FIFO = f[4];
+#endif
     }
     for (i = have * UA_WPF; i < n * UA_WPF; i++)
         USB_EP1_FIFO = 0;

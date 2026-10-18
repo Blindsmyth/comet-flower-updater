@@ -1,0 +1,83 @@
+{
+  "firmware": "10ch Audio Bridge TEST (make_usb_audio_fw.py --tap10)",
+  "note": "10 channels, every pair usable as a stereo track (owner, 2026-10-18). Bench timing data only in the separate bench build (ua_channels_bench.json).",
+  "channels": [
+    {
+      "ch": 1,
+      "label": "Pedal Out L",
+      "source": "output stage words 11f038b0 without the converter gain x2.16"
+    },
+    {
+      "ch": 2,
+      "label": "Pedal Out R",
+      "source": "11f038f0, same"
+    },
+    {
+      "ch": 3,
+      "label": "Guitar FX L",
+      "source": "bus at the Post looper call: after slots + patch level, before looper, drums, master"
+    },
+    {
+      "ch": 4,
+      "label": "Guitar FX R",
+      "source": "same, right"
+    },
+    {
+      "ch": 5,
+      "label": "Drums L",
+      "source": "drum mixer on a zeroed bus"
+    },
+    {
+      "ch": 6,
+      "label": "Drums R",
+      "source": "same, right"
+    },
+    {
+      "ch": 7,
+      "label": "Guitar DI L",
+      "source": "11f03930 clean DI"
+    },
+    {
+      "ch": 8,
+      "label": "Guitar DI R",
+      "source": "same DI (mono on both)"
+    },
+    {
+      "ch": 9,
+      "label": "Looper L",
+      "source": "bus delta around the looper dispatcher (mono)"
+    },
+    {
+      "ch": 10,
+      "label": "Looper R",
+      "source": "same looper (mono on both)"
+    }
+  ],
+  "stereo_pairs": [
+    [
+      1,
+      2,
+      "Pedal Out"
+    ],
+    [
+      3,
+      4,
+      "Guitar FX"
+    ],
+    [
+      5,
+      6,
+      "Drums"
+    ],
+    [
+      7,
+      8,
+      "Guitar DI"
+    ],
+    [
+      9,
+      10,
+      "Looper"
+    ]
+  ]
+}

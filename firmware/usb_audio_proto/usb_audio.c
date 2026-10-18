@@ -50,10 +50,10 @@ typedef unsigned int   u32;
 #ifndef UA_NCH
 #define UA_NCH 2
 #endif
-#if UA_NCH != 2 && UA_NCH != 8
-#error "UA_NCH must be 2 or 8"
+#if UA_NCH != 2 && UA_NCH != 8 && UA_NCH != 10
+#error "UA_NCH must be 2, 8 or 10"
 #endif
-#define UA_PKT_MAX   (45u * 2u * UA_NCH)        /* 180 or 720 bytes */
+#define UA_PKT_MAX   (45u * 2u * UA_NCH)        /* 180, 720 or 900 bytes (<= 1023, one FIFO bank) */
 #if UA_NCH == 2
 #define UA_FIFOSZ    0x15u   /* 2 x 256 B (size code 5 = 256 B, bit 4 double) */
 #else
@@ -312,11 +312,13 @@ static const u8 uac_ac_header[9]   = { 0x09,0x24,0x01,0x00,0x01,0x1e,0x00,0x01,0
    2026-10-17) Windows stored a 2-channel endpoint format and refused 8-channel
    streams in WASAPI, MME and WDM-KS ("invalid number of channels"). */
 #if UA_NCH == 2
-#define UA_CHCFG 0x03u
+#define UA_CHCFG 0x0003u
+#elif UA_NCH == 8
+#define UA_CHCFG 0x00ffu
 #else
-#define UA_CHCFG 0xffu
+#define UA_CHCFG 0x03ffu   /* 10 positions: 7.1 + side L/R (UAC1 bits 0..9) */
 #endif
-static const u8 uac_it1[12]        = { 0x0c,0x24,0x02,0x01,0x03,0x06,0x00,UA_NCH,UA_CHCFG,0x00,0x00,0x00 };
+static const u8 uac_it1[12]        = { 0x0c,0x24,0x02,0x01,0x03,0x06,0x00,UA_NCH,UA_CHCFG & 0xffu,UA_CHCFG >> 8,0x00,0x00 };
 static const u8 uac_ot2[9]         = { 0x09,0x24,0x03,0x02,0x01,0x01,0x00,0x01,0x00 };
 static const u8 uac_if3_alt0[9]    = { 0x09,0x04,0x03,0x00,0x00,0x01,0x02,0x00,0x00 };
 static const u8 uac_if3_alt1[9]    = { 0x09,0x04,0x03,0x01,0x01,0x01,0x02,0x00,0x00 };
