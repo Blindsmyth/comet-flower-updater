@@ -169,8 +169,247 @@ The live store manages **53 logical records (`record_idx = 0..52`)** across the 
     - UI state `7` (Manual `STORE` to `dst_idx`): `c0138d4c` updates `B14[99] = dst_idx`, `c0138d68` calls `c0131138(dst_idx, 0x11811598, src_idx)`, and `c0138d78` calls `c012f878(dst_idx, -1, 1, 1)` (which also updates record `51`).
     - UI state `8` (`SWAP` between `B14[99]` and `other_idx`): `c0138d08` reads `other_idx`'s 736 B `PTCF` into stack (`B15+8`), `c0138d24` saves `0x11811598` into `other_idx` via `c0131138`, and `c0138d30` writes `other_idx`'s old `PTCF` into the original patch slot via `c0131128`.
 
+## 2.4 Spot-check of Argon's report (Sonnet, 2026-10-17)
+
+Picked the claims most load-bearing for everything that follows (if `118092a0` were wrong, all of
+section 2.3's "loading/selecting a patch reads the live DataStore" claims would be wrong too) and
+recomputed two pieces of arithmetic Argon flagged as the error-prone kind.
+
+- **`118092a0` really is the live-DataStore record reader, not the factory mirror (`confirmed`, no error found).**
+  Disassembled it directly instead of trusting the call chain: `118092e8 MVK.S1 0x1ff0,A5; 118092ec MVKH.S1
+  0x11810000,A5` forms `A5 = 0x11811ff0` (Argon's cached `data_flash_addr` array), `118092f2 LDW.D1T1 *A5[A4],A4`
+  loads the cached pointer for `record_idx` (`A4`), and `118092fa CMPEQ A4,-1` branches to a blank-record
+  path (`11809300..1180930c`, `A10=5`) only when that slot has never been written. The non-blank path at
+  `11809310` forms `B1 = 0x11810000 | 0x9be8 = 0x11819be8` (Argon's record-size table) and calls `1180b390`
+  with the record's byte count. No path in this function touches `0xc00fc498` (the factory-preset RAM
+  mirror) or flash `0x28000`. This matters for section 3 below: it means the SysEx `46` download handler,
+  which calls this same function, reads the *live* store, not the factory region, contrary to the
+  hardware-log's current working theory (see 3.3).
+- **`c01409d8`'s factory->live copy loop recomputed arithmetically (`confirmed`, no error found) — see
+  section 4. `50` iterations x one record each, bounded by `c0140a00 MVK.S1 50,A0; c0140a02 CMPLT.L1
+  A1,A0,A0` where `A1 = idx+1` (`c01409f8`), so the loop body runs for `idx = 0..49` inclusive: correct,
+  matches Argon's "50 live patches" record count.
+- **Arithmetic recheck, section 1.2 bank table:** `0x000C0000 + 0x00021000 = 0x000E1000` (bank 0 end) and
+  `0x000E1000 + 0x00021000 = 0x00102000` (bank 1 end) both check out against Argon's stated end addresses.
+  **Arithmetic recheck, section 2.1 compaction budget:** `36 + 53*24 + 50*736 + 20 + 4 + 4` = `36 + 1272 +
+  36800 + 20 + 4 + 4 = 38136`, matching Argon's stated `38,136` B. **Record-size-table recheck, section 2.1:**
+  `0x11819be8 + 50*4 = 0x11819be8 + 0xC8 = 0x11819cb0`, matching Argon's stated address for record 50's size
+  entry. No arithmetic errors found in the three cells checked.
+
+No error found in any of the three claims spot-checked. (Not exhaustive: only the claims most load-bearing
+for sections 3-5 below were checked; the rest of Argon's report was not independently re-verified.)
+
 ## 3. SysEx `45`/`46` Handlers & Full SysEx Dispatch Table
 
-## 4. Factory Reset Copy Routine (Factory -> Live)
+### 3.1 Byte-level SysEx receive state machine and command classifier (`confirmed`)
+The MIDI receive task entry (`c0129118`, per `recon/15`) feeds each received byte through a running-status
+parser at `c0129118..c012932c` (handles system-common/real-time bytes 0xF6/0xF7, the SysEx-start byte 0xF0 =
+240, and a special 5-byte `F0 52 00 <model> 52 F7` "PC mode" toggle recognized inline at `c0129218` /
+`c0129242` via direct `CMPEQ ...,82` checks — this is the brief's `52 00 6e 52` sequence, handled *before*
+reaching the generic command table, which is why it is not in the dispatch table below).
+
+For a general SysEx message, each data byte after the Zoom manufacturer-ID byte (`0x52`) is staged into
+`B14[164..168]` and, for the byte immediately after the manufacturer/model header, the raw **command byte**
+is cached at runtime address **`0xc0183b60`** (confirmed write site `c0127c40..c0127cec`, a two-mode
+store/classify helper; confirmed read site below).
+
+**The command-byte classifier is `c0127cf4` (`confirmed`):**
+```
+c0127d08  MVK.S1 0x3b60,A7 ; MVKH.S1 0xc0180000,A7      ; A7 = 0xc0183b60
+c0127d10  LDHU.D1T1 *A7[0],A5                            ; A5 = cached command byte
+c0127d14  CMPLTU.L1 0x9,A5,A0 ; [!A0] BNOP 0xc0127d4c,5  ; A5<=9  -> jump table @0xc0183b74 (indirect branch, not decoded further)
+c0127d1a..28         A5-40 <=7 (A5 in 40..47)  -> jump table @0xc0183b9c (indirect branch, not decoded further)
+c0127d2a  MVK 69,A0 ; CMPEQ A5,A0,A0 ; [A0] BNOP 0xc0127da2,5   ; A5==69  (0x45) -> CALLP 0xc01276b4,B3
+c0127d30  MVK 70,A0 ; CMPEQ A5,A0,A0 ; [A0] BNOP 0xc0127d94,5   ; A5==70  (0x46) -> CALLP 0xc0127558,B3
+c0127d36  MVK 96,A0 ; CMPEQ A5,A0,A0 ; [A0] BNOP 0xc0127d88,5   ; A5==96  (0x60) -> CALLP 0xc012c914,B3
+c0127d40  MVK 100,A0 ; CMPEQ A5,A0,A0 ; [A0] BNOP 0xc0127d78,5  ; A5==100 (0x64) -> CALLP 0xc016f760,B3 (tail-jumps to 0x11803010)
+c0127d48  BNOP 0xc0127f58,5                                     ; else: return without dispatch (message silently ignored)
+```
+**Correction note for future readers of this file:** an earlier pass by this agent misread the branch
+targets at `c0127d2e`/`c0127d3a` (swapped 0x45 and 0x60's targets). The table above was re-derived
+address-by-address from `grep -n "^c0127d" build/fw/map/main.dis` with explicit line numbers and is
+`confirmed`; the mapping **0x45 -> `c01276b4`, 0x46 -> `c0127558`, 0x60 -> `c012c914`, 0x64 -> `0x11803010`**
+is the one trust.
+
+Everything not in this table (including raw Program Change and the `64 12` "current-patch upload" the
+brief says is ignored) falls through to `c0127d48`'s unconditional return: **confirmed, the firmware
+silently drops any command byte it does not recognize** — matches the brief's "ignored, no reply" note.
+
+### 3.2 `0x46` (download) handler: reads the *live DataStore*, not the factory region (`confirmed`)
+`c0127558(A4=byte, B4=stage 0..5)` is a byte-position state machine. Stages 0-4 store the raw byte at
+`B14[112..117]`; stage 5 combines all five into a 35-bit value via nested `MPYLI` by 5 then 10
+(`c01275ac..c01275e4`, the same `(((b0*128+b1)*128+b2)*5+b3*10+b4)`-style formula Zoom's protocol uses to
+encode bank+location as one index) and checks it against 50:
+```
+c01275e4  CMPLT.L1X A0,B1,A0        ; A0 = (combined_index < 50)
+c01275e6  [!A0] BNOP 0xc01275f0,5   ; invalid -> NAK
+c01277f0  CALLP 0xc0127500,B3 ; A4=10   ; NAK reply, data byte 10 (0x0A)
+```
+On success, completion is dispatched through the big command-*class* table `c0128e54` (keyed on `B14[38]`,
+a value distinct from the raw command byte — see `recon/15`-style per-byte state fields) to the fallback
+default case at `c0129000`, which **recomputes the same combined index from `B14[112..117]` again**
+(`c0129000..c0129046`, identical `*128+... MPYLI by 10, by 50` arithmetic) and calls `c0129028 -> c0128474`:
+```
+c0128480  MVK.S1 50,A0 ; CMPLT A1,A0,A0 ; [!A0] BNOP 0xc0128578,5     ; re-validate idx<50
+c0128488  LDW *+B14[161],A4 ; CALLP 0xc0150b20,B3                     ; take the MIDI-TX semaphore (c0185084, recon/15)
+c0128490  MVK 0x0c78,B10 ; MVKH 0xc0110000,B10                        ; scratch PTCF buffer 0xc0110c78 (SDRAM)
+c0128498  MV B10,B4 ; MV A12,A4 ; CALLP 0xc016f720,B3                 ; 11806258(idx, 0xc0110c78) -> 118092a0 : LIVE DataStore read
+c01284b0  CALLP 0xc013150c,B3                                         ; unpack 736B PTCF -> 904B struct @0xc0110f70
+c01284c8  CALLP 0xc0130e04,B3                                         ; re-pack 904B -> 736B PTCF @0xc0110980
+c01284d4..dc  send F0(240), 0x52(82), model byte, then **0x45 (69)** as the reply's own command byte, ...
+```
+`c016f720` resolves to `11806258`, which (spot-checked above) tail-calls `118092a0` — **the exact same
+record reader Argon documented for boot/patch-select in section 2.3**, reading the live DataStore banks at
+`0x0C0000`/`0x0E1000` via the cached pointer table `0x11811ff0` and record-size table `0x11819be8`. **This
+is `confirmed` by direct instruction trace, and it contradicts the brief's current working premise that
+`45`/`46` hit the factory region at flash `0x28000`.** The pedal's reply to a `46` download is itself tagged
+command byte `0x45` (`69`), i.e. Zoom's "Patch Data Dump" message is bidirectional: the editor sends it to
+*write*, the pedal sends it to *reply to a read request*, same wire format.
+
+### 3.3 `0x45` (upload) handler: validated, but its commit call was not located (`likely` / open)
+`c01276b4(A4=byte, B4=stage 0..7+)` is the write-side counterpart: stages 0-4 store the bank/location bytes
+(same `B14[112..117]`), stages continue through a second 4-byte sub-stage (`B14[37]` = 1..4) that assembles
+a **declared payload length** into `B14[33]`, then validates both fields together:
+```
+c0127794  ADD.L2 B1,B0,B0            ; B0 = combined bank/location index
+c0127796  CMPGT.L1X A0,B0,A0         ; A0 = (50 > B0)      [A0 was MVK'd to 50 at c0127762]
+c0127798  [!A0] BNOP 0xc01277c2,5    ; index >= 50 -> CALLP 0xc0127500,B3 ; A4=10   (NAK, same code as 46's)
+c012779c  MVK 248,B0 ; SET B0,9,9,B0 ; B0 = 760 (0x2F8)
+c01277a2  CMPEQ.L2 B3,B0,B0          ; B3 = declared payload length from the header
+c01277a4  [!B0] BNOP 0xc01277b0,5    ; length != 760 -> CALLP 0xc0127500,B3 ; A4=7    (NAK, different code)
+c01277a8  BNOP 0xc01277cc,5          ; both valid -> fall through, no NAK
+```
+**New finding not in Argon's report, `confirmed`:** the `0x45` handler independently validates that the
+declared packed length equals exactly **760 bytes (0x2F8)** — matching the brief's "760-byte ZPTC" — and
+rejects with a distinct NAK data byte (7 vs. 10) for a bad length vs. a bad bank/location.
+
+Payload bytes (after the 9-byte header) are buffered via a generic 7-bit unpacker at `0xc0110288`
+(SDRAM, the same `0xc0110xxx` scratch region the `46` handler's buffers live in — `c0127840..48`, `CALLP
+0xc012764c,B3`). **I could not, within budget, trace the final "all 760 bytes received, commit this record"
+call.** I exhaustively grepped every caller of the two documented live-DataStore single-record write
+primitives (`CALLP.*0xc0131128`, `CALLP.*0xc0131138`, whole-file) and found exactly **7 call sites**, all
+already accounted for by Argon's section 2.3 and this report's section 4: AUTO SAVE (`c012f820`), the
+manual UI `STORE`/`SWAP` handlers (`c0138ce4`, `c0138d24`, `c0138d30`, `c0138d68`), `c0131138`'s own internal
+call into `c0131128` (`c013117a`, `c01311c2`), and the factory-reset copy loop (`c01409f0`, section 4).
+**None of these is reachable from the SysEx receive path** (`c0127cf4`/`c01276b4`/the `c0128e54` class
+dispatcher) by direct `CALLP` — the commit, wherever it is, is at least one more hop away than I reached.
+
+I also checked whether `0x45` instead writes straight to the SPI flash primitive (`c01453b4`, Argon 2.1A):
+every caller of that primitive outside the DataStore module (`c0136xxx`-`c0137xxx`) is a single generic
+veneer pair (`c0141e50` erase / `c0141e68` write) with only one caller in the whole SysEx-adjacent code
+region (`c012c5b0`), and that caller computes its flash address from two *config/geometry* words at
+`0xc01062bc`/`0xc01062c0` shifted into a sector address — consistent with a firmware/version-table write,
+not a 736-byte patch record (`likely` unrelated; not chased further).
+
+**What this means (`likely`, not `confirmed`):** `0x46` downloads provably read the live DataStore.
+Whatever `0x45` uploads eventually write, it is *not* through either of the two mechanisms this firmware
+uses everywhere else to persist a patch (the log-structured DataStore writer, or the raw SPI primitive via
+an unrelated veneer). The brief's own hardware observation — a `45` write to location 10 persists across
+power cycles, named `"CF test"`, while the on-screen patch list still shows that slot as `Empty` — is
+consistent with `45` committing to a *different* persistent copy than the one the boot/UI path and `46`
+read from. The single most likely remaining candidate, not reached in this trace, is the factory-preset
+mirror (`0xc00fc498` RAM, backed by flash `0x28000`): writing there would (a) explain persistence without
+needing AUTO SAVE, (b) explain why `46`'s *current* "CF test" result could still be real even though it
+reads the live DataStore (if the live DataStore was reseeded from that same factory image by the boot-time
+auto-copy in section 2.3 or by an explicit factory reset, section 4 — which would independently explain the
+discrepancy without `45`/`46` needing to disagree about which store they target), and (c) explain why the
+on-screen list (presumably reading the live DataStore, like `46`) never saw the owner's `45`-written patch
+if it landed in the factory mirror instead. This chain is **plausible and internally consistent, but not
+instruction-level `confirmed`** the way section 3.2's `46`-reads-live-DataStore finding is.
+
+### 3.4 Dispatch table (as decoded; gaps marked)
+| Command byte | Hex | Handler | Purpose | Confidence |
+|---:|---|---|---|---|
+| 69 | 0x45 | `c01276b4` | Patch upload (bank/location + 760B packed `ZPTC`); validates index<50 and length==760; NAK via `c0127500` (codes 10 / 7); final commit call not located | handler+validation `confirmed`, commit target open |
+| 70 | 0x46 | `c0127558` -> (class 0 fallback) `c0129000` -> `c0128474` | Patch download; validates index<50; reads **live DataStore** via `11806258`/`118092a0`; replies as command `0x45` | `confirmed` |
+| 96 | 0x60 | `c012c914` | Unknown; 7-bit-unpacks a short received field, sends an ACK (`c01274cc`); calls `c0141d80`/`c0142028`/`c0141f14`-family effect-parameter routines (not patch-store related) | handler address `confirmed`, purpose `guess` |
+| 100 | 0x64 | tail-jump to `0x11803010` | Sub-dispatches on a further byte; this is the brief's `64 13` (current-patch dump, works) / `64 12` (current-patch upload, ignored) family; sub-opcode split not decoded | entry point `confirmed`, sub-dispatch `guess` |
+| 82 | 0x52 | handled inline in the byte-receive state machine (`c0129218`/`c0129242`), *before* reaching `c0127cf4` | `F0 52 00 <model> 52 F7` "PC mode on/off" 5-byte toggle | `confirmed` (presence/position), semantics per brief |
+| 0-9 | — | indirect jump table at `0xc0183b74` (`A7[A5]`) | not decoded | `guess` |
+| 40-47 | 0x28-0x2F | indirect jump table at `0xc0183b9c` (`(A5-40)*4 + 0xc0183b9c`) | not decoded (possibly SDS/firmware-transfer family, unexplored) | `guess` |
+| anything else | — | `c0127d48`: return, no dispatch | silently ignored (matches brief's "ignored" PC/`64 12` notes) | `confirmed` |
+
+No command byte in this table matches a "reload/select-patch-from-UI" opcode distinct from `45`/`46`/`64`;
+if one exists it is inside the undecoded 0-9 or 40-47 jump tables.
+
+## 4. Factory Reset Copy Routine (Factory -> Live) (`confirmed`)
+
+`c01409d8(A4=select_patch0_and_notify_flag?, B4=notify_flag)` is the exact routine Argon's section 2.3 named
+(called from boot as `c01409d8(1,1)` when `c0136a18` finds neither DataStore bank valid) and is also the
+routine an explicit on-pedal factory reset almost certainly reaches (not independently verified — no caller
+other than the boot path at `c015d4ac` was found by grepping `CALLP.*0xc01409d8`, so **the menu-driven
+"Factory Reset" UI action was not traced to this address and remains unconfirmed** as the same code path;
+it is `likely` given there is no other factory->live copy routine in the file).
+
+```
+c01409d8  CALLP 0xc016e020,A3                         ; take lock
+c01409e4  MVK 0,A10                                   ; idx = 0
+c01409e8  CALLP 0xc016d240,B3                         ; factory_ptr = &factory_mirror[idx]  (0xc00fc498 + 736*idx, backed by flash 0x28000)
+c01409f0  MV A10,A4 ; MV factory_ptr,B4 ; CALLP 0xc0131128,B3   ; **live-DataStore single-record write**, dst_idx=idx, src=factory_ptr (same primitive Argon's 2.3 AUTO SAVE/STORE path uses)
+c01409f8  ADD 1,A1,A10(effectively) ; CMPLT A1,50,A0 ; [A0] BNOP 0xc01409e8,4   ; loop idx = 0..49
+c0140a18  CALLP 0xc0130a80,B3                          ; write DataStore record 51 (current patch index) = 0
+c0140a24  [!A11] BNOP 0xc0140a2c,5 ; CALLP 0xc01369d0,B3  ; conditional notify (only if B4 arg != 0)
+c0140a2c  CALLP 0xc016e000,A3                          ; release lock
+```
+
+**Confirmed, directly answers the brief's task 4:** the factory->live copy is a 50-iteration loop, one
+record at a time, reading an already-`PTCF`-formatted 736-byte record straight from the factory mirror
+(`c016d240`, Argon 2.3) and handing it to **the same `c0131128` live-DataStore single-record writer** that
+AUTO SAVE and the manual UI `STORE`/`SWAP` actions use (Argon 2.3) — not a raw bulk flash copy, and not a
+separate code path. It then resets the "current patch" system record (51) to patch 0. This is strong
+independent confirmation that `c0131128`'s descriptor/payload format (section 2.1) is the one true format
+for a live patch record: the factory-reset path, the AUTO SAVE path, and the manual STORE path all converge
+on it.
 
 ## 5. Recommendation
+
+**Preferred: (b) an update-mode stage that writes a freshly-formatted bank image directly into the live
+region (`0x0C0000`, bank 0, size `0x21000`), built from Argon's `confirmed` section 2.1/2.2 format.** This is
+the only one of the three options with a fully `confirmed`, CRC-free, byte-exact target format already in
+hand, and the project already has the tooling pattern for it (`tools/make_fs_restore_updater.py` already
+patches an arbitrary flash region via a modified updater; `recon/08`/`docs/CF_STOCK_IMAGE_2026-10-15.md`-style
+image builders already assemble `PTCF` records). Concretely:
+
+1. Build `N` 736-byte `PTCF` records (one per generated test patch) satisfying the only three structural
+   checks `c01312c4` enforces (Argon 2.2): leading `"PTCF"` magic, an `"EDTB"` chunk and a `"PPRM"` chunk
+   both present within the declared `active_length` at offset `+0x04`. No CRC exists anywhere in this
+   format (Argon 2.1, confirmed no-checksum finding, and independently confirmed here: the 50-record
+   factory->live copy in section 4 moves these records verbatim with no checksum step).
+2. Lay out bank 0 exactly as Argon's section 2.1 template: 36-byte header at `+0x00` with the **active**
+   byte pattern (`+0x00`=`aa`x12, `+0x0C`=`00`x8, `+0x14`=`00`x8, `+0x1C`=`ff`x8), then one 24-byte
+   directory descriptor per record growing up from `+0x24` (`[+0x00]=0x7fffffff`, `[+0x04]=record_idx`,
+   `[+0x08]=data_flash_addr`, `[+0x0C]=0xbfffffff`, `[+0x10]=0xdfffffff`, `[+0x14]=0x00000000` — all four
+   stage markers set, i.e. write it as already-fully-committed, not as an in-progress log entry), and the
+   736-byte payloads packed down from `+0x21000`. Include system records 50/51/52 (record 51 = the desired
+   boot-selected patch index, 4 bytes) the same way. Leave bank 1 (`0x0E1000`) fully erased (`0xFF`) — an
+   all-`0xFF` bank already reads as "standby" per Argon's header template, so it needs no construction.
+3. This is a **static flash-image edit**, not a firmware code change and not a SysEx session: lower risk
+   than (c), and unlike (a) it does not depend on resolving section 3.3's open question (where `45` actually
+   commits), because it writes the live region directly and bypasses the SysEx path entirely.
+
+**Not recommended as the primary path: (a) a `45` SysEx sequence.** Section 3.3 shows the `45` handler is
+reachable and validates correctly, but this agent could not confirm, within budget, that it commits to the
+live DataStore `46`/boot/UI read from — and the brief's own hardware log (a `45` write persists but the
+on-screen list still shows the slot `Empty`) is itself evidence it may not. Using it as the bench's patch
+loader risks writing to the wrong region.
+
+**Not recommended: (c) a firmware hook.** Strictly more code-change risk than (b) for no format benefit,
+since (b)'s format is already fully `confirmed` and (b) reuses an existing, already-tested patching
+toolchain (`make_fs_restore_updater.py`-style).
+
+**Pedal test (for the owner/user to run — this agent touched no hardware):**
+1. Before building anything: on the **current** hardware, send one `46` download for a bank/location whose
+   content is already known from the current firmware's factory image (e.g. location 10), and diff the
+   736-byte reply against that image's record 9. If they match exactly, that is consistent with the live
+   DataStore currently holding a factory-reseeded copy (section 3.3's working theory) rather than `46`
+   reading flash `0x28000` directly — useful confirmation before touching anything, and it is read-only.
+2. Flash the update-mode image with bank 0 rewritten per steps 1-2 above. Power on **normally** (no
+   button held — the boot-time auto-reseed in section 2.3 only fires when the bank header is *invalid*;
+   this image's header must read as valid so it is *not* overwritten by that auto-copy on first boot).
+3. Confirm normal boot (no stuck logo). On the LCD, open the patch-select screen and confirm the `N` test
+   patches show their real names at their intended slots (not `Empty`, not stale factory names).
+4. Select one, confirm audio reflects its effect chain, power-cycle, and re-check both the LCD and a `46`
+   read-back for persistence.
+5. Run `tools/ua_bench.py` / `docs/CF_BENCH_2026-10-17.md`'s bench against the new patches.
+
+STATUS: done
