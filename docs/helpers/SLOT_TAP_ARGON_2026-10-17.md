@@ -116,6 +116,54 @@ Every slot callback `B5` receives `A4 = &instance[slot]` (`0x11f03ad0 + 0x14 * s
 
 ## 2. Mono / Stereo Bus Topology Across Slots
 
+### A. Pre-Loop Initialization (`11818bb4`..`11818bd0`): Entering Slot 0 as Identical Dual-Mono (`L[i] == R[i]`)
+
+Before the 5-slot loop begins at `11818bd4`, five functions prepare the floating-point effect bus at `0x11f037b0` (Left, 16 floats) and `0x11f037f0` (Right, 16 floats) (`confirmed`):
+
+1. **Step 4 — `11818bb4 CALLP 0x11816f60` (ADC input DC-block + biquad filter, `main.dis` lines 16216-16351):**
+   - Reads the 16 raw mono guitar ADC `int32` samples from `0x11f038b0`, converts to `float32`, applies the input high-pass and biquad stages, converts back to `int32`, and writes **identical** `int32` samples to both `0x11f03730` (Left `int32[16]`, `118170fe STW A3,*+B7[1]`) and `0x11f03770` (Right `int32[16]`, `11817104 STW A3,*+B7[17]`, where `B7` marches across `0x11f0372c`..`0x11f03768` and `17 * 4 = 68 = 0x44`, `0x11f0372c + 0x44 = 0x11f03770`).
+
+2. **Step 5 — `11818bb8 CALLP 0x11818360` (`int32` -> `float32` input bus conversion, `main.dis` lines 17637-17671):**
+   - Sets source `A6 = 0x11f03728 + 8 = 0x11f03730` (`11818360`..`11818368`, reading **only** Left `int32[16]`) and destination base `B4 = 0x11f037a8` (`11818364`..`1181836c`).
+   - Computes destination pointers (`11818372`..`1181837e`):
+     - Left even/odd: `B4 = 0x11f037a8 + 8 = 0x11f037b0` (`ADD.L2 8,B4,B4`), `A4 = 0x11f037a8 + 12 = 0x11f037b4` (`ADD.L1X 12,B4,A4`).
+     - Right even/odd: `B6 = 0x11f037a8 + 72 = 0x11f037f0` (`ADD.S2 72,B4,B6`, `72 = 0x48`), `A3 = 0x11f037a8 + 76 = 0x11f037f4` (`ADD.D1X B4,76,A3`, `76 = 0x4c`).
+   - Loops 8 times (`B0 = 7..0`), converting 2 `int32` samples per iteration via `INTSP` × `2^-31` (`0x30000000` in `B5`) and writing **identical float values** to both Left (`118183c4 STW B7,*B4++[2]`, `118183cc STW A5,*A4++[2]`) and Right (`118183c2 STW B7,*B6++[2]`, `118183c8 STW A5,*A3++[2]`).
+
+3. **Step 6 — `11818bc0 CALLP 0x11818e60` (`A4 = 0`, Pre-Looper hook, `main.dis` lines 18480-18499):**
+   - Calls `*(0x11f03ed0 + 0) = 0x118164c0` when Looper is active with `Pre/Post = Pre` (otherwise `0x11816c5c` no-op).
+   - As proven in `118164c0` (`11816c2c`..`11816c40`), Looper records `0x11f037b0` (Left only) into SDRAM and mixes its mono playback sample identically into both `0x11f037b0` (`*B31[0]`) and `0x11f037f0` (`*+B31[16]`). Thus `L[i] == R[i]` still holds after Step 6.
+
+4. **Step 7 — `11818bc8 CALLP 0x118183d0` (Clean DI / sidechain copy, `main.dis` lines 17672-17700):**
+   - Reads the 16 floats from `0x11f037b0` (`A6 = 0x11f037a8 + 8 = 0x11f037b0`) and writes identical copies into `0x11f03928 + 8 = 0x11f03930` (`B4`/`A4`) and `0x11f03968 + 8 = 0x11f03970` (`B5`/`A3`, which is `ctx[0]`, used as the sidechain/key input by noise gates like `ZNR` when `Detct = GtrIn`). Does not modify `0x11f037b0` or `0x11f037f0`.
+
+5. **Step 9 — `11818bd0 CALLP 0x11817940` (Input mute/trim ramp + `ctx[2]` clear, `main.dis` lines 16912-17010):**
+   - Sets source `A6 = 0x11f037a8 + 8 = 0x11f037b0` (`11817960`..`11817966`, reading Left `float[16]`) and destination pointer `A7 = A6 - 8 = 0x11f037a8` (`11817968 SUB.L1 A6,8,A7`).
+   - Multiplies each of the 16 samples by the input mute/trim scalar `*(0xc011acdc + 8 = 0xc011ace4)` (which ramps between `0.0f` and `1.0f` when `*(0xc0184f98)` input-mute flag changes) and writes the scaled sample **identically to both Left and Right** (8 iterations of 2 samples):
+     - Sample `2k`: `11817988` / `118179f0 STW.D1T1 A5,*++A7[2]` (writes `0x11f037b0 + 8*k`, advancing `A7` to `0x11f037b0 + 8*k`) and `1181798c` / `118179f4 STW.D1T1 A5,*+A7[16]` (writes `A7 + 16*4 = 0x11f037f0 + 8*k`).
+     - Sample `2k+1`: `118179b4` / `11817a0a STW.D1T1 A3,*+A7[1]` (writes `0x11f037b4 + 8*k`) and `118179bc` / `11817a0c STW.D1T1 A3,*+A7[17]` (writes `A7 + 17*4 = 0x11f037f4 + 8*k`).
+     - *(Correction to `RHYTHM_LOOPER_TAP_2026-10-17.md`: `11817940` updates both Left `0x11f037b0` and Right `0x11f037f0`, not Left only.)*
+   - Finally, `118179c8`..`11817a88` zeroes the 128-byte stereo buffer at `0x11f03828 + 8 = 0x11f03830` (`0x11f03830`..`0x11f0386f` L and `0x11f03870`..`0x11f038af` R, which is `ctx[2]`) using `ZERO.L1 A5:A4` + 16 `STDW` stores (`confirmed`).
+
+**Result entering Slot 0 (`11818bd4`):** The effect bus is a **2-channel planar stereo buffer (`float[2][16]`)** at `0x11f037b0` (L) and `0x11f037f0` (R), initialized with **bit-identical dual-mono samples (`L[i] == R[i]` for `i = 0..15`)** (`confirmed`).
+
+---
+
+### B. How Mono vs. Stereo Effects Propagate `L` (`11f037b0`) and `R` (`11f037f0`) Across Slots `0..4`
+
+The Zoom G1X Four framework has **no fixed mono-to-stereo transition slot** (`confirmed`). Every slot `0..4` receives the same 2-channel planar pointer `ctx[1] = 0x11f037b0` (`L = bus[0..15]`, `R = bus[16..31]`), and whether `L` and `R` are identical (`dual-mono`) or distinct (`true stereo`) after Slot `k` depends solely on the effect callbacks that have executed in Slots `0..k`:
+
+| Slot State / Effect Type | How It Reads `L` (`11f037b0`) & `R` (`11f037f0`) | How It Writes `L` (`11f037b0`) & `R` (`11f037f0`) | Effect on Bus Stereo Image | Status |
+|---|---|---|---|---|
+| **Empty slot (`id == 0`, `11818de0`)** or **2-slot companion (`id == 1`, `11818e4c`)** | `11818de0` reads `L[i]` (`*B6[0]`) and `R[i]` (`*+B6[16]`) independently; `11818e4c` does not touch memory. | `11818de0` writes `L[i] * coef[4]` (`1.0f` in steady state) to `*B6[0]` and `R[i] * coef[4]` to `*+B6[16]`. | **Preserves stereo (`L != R` stays `L != R`; `L == R` stays `L == R`).** | `confirmed` |
+| **Active mono effect (`coef[0] == 1.0f`)**<br>*(e.g., `TS_DRIVE`, `GOLD_DRV`, `ZEN_DRV`, `DIST_1`, `NYC_MUFF`, `SQUEAK`, `ACOSIM`, `BGTHRTTL`, `DISTPLUS`, `RCBOOST`, `REDCRUNC`, `SWEETDRV`, `TB_MK15`, `VIOLETDS`, amps/cabs, mono delays)* | Sums Left and Right to mono at the top of the 16-sample loop via **`mono_in[i] = 0.5f * (L[i] + R[i])`**:<br>• `NYC_MUFF.ZD2` (`.text+0x2f8`..`0x310`): `LDW *+B27[0],B4; LDW *+B27[16],A3; ADDSP A3,B4,A3; MPYSPDP A3,0.5`.<br>• `DELAY_3S.ZD2` (`.text+0x648`..`0x690`): `LDW *A17++[1],A16; LDW *B7++[1],B9; ADDSP A16,B9,A16; MPYSP 0.5f,A16,A16`.<br>• `SQUEAK.ZD2` (`.text+0x024`..`0x080`): reads `L` and `R` (`LDNDW` from `ctx[1]` and `ctx[1]+64`), averages `0.5f * (L[i] + R[i])` into the 4× oversampler input buffer while saving separate `dry_L[16]` (`SP+78*4`) and `dry_R[16]` (`SP+94*4`) on the stack. | Evaluates the wet/dry crossfade separately against `dry_L[i]` and `dry_R[i]`:<br>• `L_out[i] = coef[4] * ((1 - coef[0]) * dry_L[i] + g_wet * wet_mono[i])` -> `*+bus[0]`<br>• `R_out[i] = coef[4] * ((1 - coef[0]) * dry_R[i] + g_wet * wet_mono[i])` -> `*+bus[16]`<br>When active (`coef[0] == 1.0f`, `1 - coef[0] == 0.0f`), `(1 - coef[0]) * dry` vanishes, so both `L_out[i]` and `R_out[i]` receive the **exact same `coef[4] * wet_mono[i]`**. | **Collapses stereo to dual-mono (`L_out[i] == R_out[i]`)** when active (`coef[0] == 1.0f`). | `confirmed` |
+| **Bypassed mono effect (`coef[0] == 0.0f`, footswitch OFF)** | Same as above: keeps `dry_L[i]` (`*+bus[0]`) and `dry_R[i]` (`*+bus[16]`) distinct up until the final crossfade store. | In `NYC_MUFF` (`.text+0x920`..`0xa0c`), `SQUEAK` (`.text+0x1306`..`0x136c`), `TS_DRIVE`, etc., when `coef[0] == 0.0f` and `coef[4] == 1.0f`:<br>• `L_out[i] = 1.0f * (1.0f * dry_L[i] + 0.0f * wet_mono[i]) = dry_L[i]`<br>• `R_out[i] = 1.0f * (1.0f * dry_R[i] + 0.0f * wet_mono[i]) = dry_R[i]` | **Preserves stereo even though the effect DSP is mono!** A bypassed mono drive/amp placed after a stereo effect does **not** collapse `L` and `R`. | `confirmed` |
+| **Active stereo effect (`coef[0] == 1.0f`)**<br>*(e.g., `HALL.ZD2`, `DELAY_3S.ZD2` in ping-pong mode, `STEREOCH.ZD2`, `CHORUS.ZD2`)* | Either sums `0.5f * (L[i] + R[i])` into a stereo generator (`DELAY_3S` `.text+0x648`..`0x690`) or reads `L[i]` and `R[i]` into stereo tank/delay lines (`HALL` `.text+0x1b0`..`0x270`). | Writes **distinct** Left and Right wet mixes to `0x11f037b0` and `0x11f037f0`:<br>• `HALL.ZD2`: `STW B10,*+B18[0]` (`.text+0x3f8`, Left) and `STW B4,*+B18[16]` (`.text+0x590`, Right).<br>• `DELAY_3S.ZD2`: `STW A3,*+A23[0]` (`.text+0x990`, Left) and `STW B5,*+A23[16]` (`.text+0x9f4`, Right). | **Produces true stereo (`L_out[i] != R_out[i]`)** on `0x11f037b0` (L) and `0x11f037f0` (R). | `confirmed` |
+
+**Summary for USB Tap Design (`confirmed`):**
+- Both `0x11f037b0` (Left, 16 floats) and `0x11f037f0` (Right, 16 floats) are **always valid, populated, and safe to tap after any slot `0..4`**.
+- `R` (`0x11f037f0`) is bit-identical to `L` (`0x11f037b0`) entering Slot 0 and remains identical through active mono effects; it diverges into true stereo (`L != R`) at the first active stereo effect in the chain (and stays stereo through subsequent bypassed mono effects, empty slots, or stereo effects, unless collapsed by a downstream *active* mono effect).
+
 ## 3. Bypassed and Empty Slots
 
 ## 4. Concrete Hook Proposal for Per-Slot & Wet-Only USB Taps
