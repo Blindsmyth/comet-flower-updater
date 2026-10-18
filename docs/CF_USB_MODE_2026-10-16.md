@@ -441,12 +441,14 @@ After flashing: remove the device nodes again so Windows re-reads the names.
 ### 8ch named build on hardware: owner listening test (2026-10-17)
 After the replug Windows shows `CF8 Out1-2 DI3-4 BusA5-6 BusB7-8` and `Line (CF8 Out1-2 DI3-4 BusA5-6 BusB7-8)`
 (both OK): the firmware device-name label works.
-Owner, by ear, with drums and looper running:
-- **ch1-2: effect output + looper + drums.** The TX tap already carries the full pedal mix, so the "move the tap to
-  the packed TX buffer" item is not needed (the earlier "no drums on any channel" note was a take without them).
-- ch3-4 (ADC): guitar, quieter than 1-2.
+Owner, by ear, with effects, drums and looper all running (corrected in a second report the same day):
+- **ch1-2: full pedal mix (effects + looper + drums)**, hottest. The TX tap already carries the full output, so
+  the "move the tap to the packed TX buffer" item is not needed.
+- **ch3-4 (11f03730/70): the same full mix, quieter than 1-2.** So these are *not* the ADC/dry input: most likely
+  the mix before the master level stage. Consistent with the first take (ch1 vs ch3 corr 0.999).
 - ch5-6: silent.
-- ch7-8: sounds like the DI (measured earlier: band-passed, weakly correlated with ch3; likely the input after
-  some conditioning stage).
-Open: are 3-4 and 7-8 free of drums/looper (expected; would give a clean DI for re-amping), and which of 3-4 or
-7-8 is the better DI? A labelled `ua_capture8.py` take (drums only / loop only / guitar only) answers both.
+- **ch7-8 (11f03930/70): clean DI**, no effects, drums or looper even with all of them on. This is the dry input
+  for re-amping. (Measured earlier as band-passed vs ch3; with ch3 now known to be the mix, that comparison was
+  mix-vs-DI, not DI-vs-DI.)
+Consequence: the device-name label `CF8 Out1-2 DI3-4 BusA5-6 BusB7-8` is wrong for 3-4 and 7-8; a renamed build
+needs a new updater and flash. ua_channels.json and the REAPER template are updated.

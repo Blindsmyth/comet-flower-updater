@@ -5,42 +5,42 @@
     {
       "ch": 1,
       "label": "Pedal Out L",
-      "source": "TX left 11f038b0 (stock pack math); carries drums + looper (owner, 2026-10-17)"
+      "source": "TX left 11f038b0 (stock pack math): full mix incl. drums + looper, master level (owner, 2026-10-17)"
     },
     {
       "ch": 2,
       "label": "Pedal Out R",
-      "source": "TX right 11f038f0; carries drums + looper (owner, 2026-10-17)"
+      "source": "TX right 11f038f0: full mix incl. drums + looper (owner, 2026-10-17)"
     },
     {
       "ch": 3,
-      "label": "Guitar DI",
-      "source": "left ADC 11f03730 (dry input); owner: quieter than 1-2"
+      "label": "Mix L (quieter)",
+      "source": "11f03730: same full mix as ch1-2 incl. drums + looper, lower level (owner, 2026-10-17); not the ADC"
     },
     {
       "ch": 4,
-      "label": "Guitar DI copy",
-      "source": "right ADC 11f03770 (same jack, identical to ch3 on 2026-10-17); owner: quieter than 1-2"
+      "label": "Mix R (quieter)",
+      "source": "11f03770: identical to ch3 on 2026-10-17"
     },
     {
       "ch": 5,
       "label": "Bus A L",
-      "source": "mix bus 11f03830 (silent, confirmed by ear 2026-10-17)"
+      "source": "mix bus 11f03830 (silent, by ear 2026-10-17)"
     },
     {
       "ch": 6,
       "label": "Bus A R",
-      "source": "mix bus 11f03870 (silent, confirmed by ear 2026-10-17)"
+      "source": "mix bus 11f03870 (silent, by ear 2026-10-17)"
     },
     {
       "ch": 7,
-      "label": "Bus B",
-      "source": "mix bus 11f03930 (owner hears the DI; measured band-passed, 0.19 corr with ch3, -36 dBFS)"
+      "label": "Guitar DI",
+      "source": "11f03930: clean DI, no effects/drums/looper even with all running (owner, 2026-10-17)"
     },
     {
       "ch": 8,
-      "label": "Bus C",
-      "source": "bus 11f03970 (identical to ch7; owner hears the DI)"
+      "label": "Guitar DI copy",
+      "source": "11f03970: identical to ch7"
     }
   ],
   "stereo_pairs": [
@@ -48,6 +48,11 @@
       1,
       2,
       "Pedal Out"
+    ],
+    [
+      3,
+      4,
+      "Mix (quieter)"
     ],
     [
       5,
