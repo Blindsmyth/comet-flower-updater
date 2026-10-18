@@ -1,0 +1,66 @@
+{
+  "name": "CF Watt2x",
+  "filename": "DR103X2",
+  "id": "04000f89",
+  "version": "1.00",
+  "display": "CF Watt2x",
+  "badge": "CF",
+  "description": "CF Watt (Hiwatt DR103 circuit model) at 2x oversampling instead of 4x: A/B test build for tools/ua_ab.py.",
+  "dspload": 80,
+  "allow_any_id": true,
+  "kernel": "hiwatt2x.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 320,
+  "scaffold": "cleanroom",
+  "const_blob": {
+    "symbol": "hw_blob",
+    "words": 1024,
+    "init": "blob.bin"
+  },
+  "params": [
+    {
+      "name": "Volume",
+      "max": 100,
+      "default": 50,
+      "explanation": "Normal channel volume, 470k audio taper."
+    },
+    {
+      "name": "Treble",
+      "max": 100,
+      "default": 50,
+      "explanation": "Treble control of the passive tone stack."
+    },
+    {
+      "name": "Middle",
+      "max": 100,
+      "default": 50,
+      "explanation": "Middle control of the passive tone stack."
+    },
+    {
+      "name": "Bass",
+      "max": 100,
+      "default": 50,
+      "explanation": "Bass control of the passive tone stack."
+    },
+    {
+      "name": "Presence",
+      "max": 100,
+      "default": 50,
+      "explanation": "Shunts the negative feedback at high frequencies."
+    },
+    {
+      "name": "Master",
+      "max": 100,
+      "default": 50,
+      "explanation": "Master volume, 220k audio taper, before the phase inverter."
+    },
+    {
+      "name": "Cab",
+      "max": 1,
+      "default": 1,
+      "explanation": "1 = datasheet Fane 4x12 cab, 0 = amp only."
+    }
+  ]
+}

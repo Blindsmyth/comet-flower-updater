@@ -42,12 +42,29 @@
 #include "hiwatt_cab.h"
 #include "hw_blob.h"
 
+/* Oversampling factor (build option; the effect is 4x, CF Watt2x is the 2x
+ * build used to hear and measure what 4x buys, tools/ua_ab.py). The rate-
+ * dependent constants: DC guard 1 - 2 pi 5 / fs, sag 1 - exp(-1 / (tau fs)),
+ * guard LP 1 - exp(-2 pi 30k / fs); the 4x literals are the original ones. */
+#ifndef HW_OS
+#define HW_OS 4
+#endif
+#if HW_OS == 4
 #define HW_FS_OS     176400.0f
-#define HW_IN_SCALE  1.8726591760299625f      /* 2 V full scale * 1M/(1M+68k) */
 #define HW_DC_R      0.9998219051783679f      /* 5 Hz DC guard at 176.4k */
 #define HW_SAG_ATT   0.0011331443546039877f   /* 5 ms at 176.4k */
 #define HW_SAG_REL   0.0002834065447940848f   /* 20 ms */
 #define HW_RESID_A   0.6565002619092772f      /* 30 kHz guard LP */
+#elif HW_OS == 2
+#define HW_FS_OS     88200.0f
+#define HW_DC_R      0.9996438103567359f      /* 5 Hz DC guard at 88.2k */
+#define HW_SAG_ATT   0.002265004693079553f   /* 5 ms at 88.2k */
+#define HW_SAG_REL   0.0005667327703184899f   /* 20 ms */
+#define HW_RESID_A   0.8820079299316048f      /* 30 kHz guard LP */
+#else
+#error "HW_OS must be 2 or 4"
+#endif
+#define HW_IN_SCALE  1.8726591760299625f      /* 2 V full scale * 1M/(1M+68k) */
 #define HW_H1        2.4f                     /* stage input clip points, Vpk */
 #define HW_H2        3.8f
 #define HW_H3        2.4f
@@ -59,7 +76,7 @@
 #define HW_SAG_DEPTH 0.15f
 #define HW_GRID      0.08f                    /* slope above the plate ceiling */
 #define HW_LN2       0.6931471805599453f
-#define HW_NB        64                       /* 4x samples per 16-frame block */
+#define HW_NB        (16 * HW_OS)             /* oversampled samples per 16-frame block */
 
 /* restrict: without it the compiler assumes the block buffers may overlap and
  * serialises the tube fast pass (ii 123 instead of the resource bound) */
@@ -475,8 +492,12 @@ TS_INLINE void hw_block(HwState *s, const HwCoeffs *k, float *io, int cab_on)
     float pre, p0, dp;
     int n, st;
 
+#if HW_OS == 4
     hbi1_up_blk(&s->up1, io, b, 16);                /* 1x -> 2x -> 4x, stage-major */
     hbi2_up_blk(&s->up2, b, a, 32);
+#else
+    hbi1_up_blk(&s->up1, io, a, 16);                /* 1x -> 2x */
+#endif
     {                                               /* jack volts, DC guard, V1 units */
         float dx = s->dcx, dy = s->dcy;
         for (n = 0; n < HW_NB; ++n) {
@@ -514,8 +535,12 @@ TS_INLINE void hw_block(HwState *s, const HwCoeffs *k, float *io, int cab_on)
 
     hw_nfb_block(s, k->bh, b, a, p0, dp);
 
+#if HW_OS == 4
     hbi2_down_blk(&s->dn2, a, b, 32);               /* 4x -> 2x -> 1x, cab */
     hbi1_down_blk(&s->dn1, b, io, 16);
+#else
+    hbi1_down_blk(&s->dn1, a, io, 16);              /* 2x -> 1x, cab */
+#endif
     if (cab_on)
         hw_cab_block(s, io);
 }

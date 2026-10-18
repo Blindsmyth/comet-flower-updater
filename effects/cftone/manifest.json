@@ -1,0 +1,21 @@
+{
+  "name": "CF Tone",
+  "filename": "CFTONE",
+  "id": "07000f8a",
+  "version": "1.00",
+  "display": "CF Tone",
+  "badge": "CF",
+  "description": "Test-signal generator for A/B measurements over USB (tools/ua_ab.py): replaces the guitar with a fixed 12 s program (0.5 s silence, 1 s tones 82/110/220/440/880/1760/3520 Hz, 0.5 s silence, 4 s log sweep 40 Hz-16 kHz), repeating from the moment the patch loads. Put it in slot 1.",
+  "dspload": 8,
+  "allow_any_id": true,
+  "kernel": "cftone.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 32,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Level", "max": 100, "default": 25,
+      "explanation": "Tone peak level, 0..0.5 of full scale (25 = 0.125, about -18 dBFS: guitar level)." }
+  ]
+}
