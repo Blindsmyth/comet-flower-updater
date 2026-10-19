@@ -99,6 +99,21 @@ Result: every Muff loop pipelined; the two clip chains 42 and 47 cycles per over
 loop that did not pipeline); static estimate ~9.8k cycles per block against 14.5k measured before (pedal
 measurement pending); output within 92 dB of the previous version, accuracy bench unchanged.
 
+## 3c. CF Watt (2026-10-19)
+
+- Already chip-shaped (block passes, state in locals, tree sums, branch-free fast pass + fix-up list). Cheap
+  wins taken: the coefficient-cache copy used `volatile` (6 cycles a word, ~560 per block -> ~90 with
+  `restrict`), and the bus loops had the false alias chain (~540 -> ~100). About 0.9k cycles per block.
+- **The NFB loop is the floor:** power stage -> feedback -> phase inverter, one sample late, so every sample
+  waits for the previous one. Fast path ~257 cycles per sample (asm blocks), ~8.2k per block at 2x; the chain
+  holds two tanh evaluations and the ADAA series in series (~200 cycles). Earlier variants that break the
+  chain (residual 2-4 samples late, NFB at 1x) failed the accuracy bench.
+- The preamp tube pass sits at ii 27 against a resource bound of 17: 25 registers live for the whole loop
+  (constants). Worth ~1k per block if the tube code is reshaped; not done yet.
+- **For CF Master:** the NFB loop leaves most units idle for ~200 cycles per sample. Independent work run in
+  the same loop costs almost nothing: the parallel Alembic/RA-200 path (it does not depend on the Hiwatt path)
+  or the delay are candidates. This is the main reason one CF Master kernel can beat separate effects.
+
 ## 4. Workflow for a stage
 
 1. Host reference: the current CF effect or the owner's JUCE code (tests/host).

@@ -68,7 +68,7 @@ TS_INLINE HwCoeffCache *hw_cache(void **instance)
 void SH_AUDIO_FN(void **instance, void **ctx)
 {
     const float *coef = (const float *)instance[1];
-    float *eff        = (float *)ctx[1];
+    float *HW_RESTRICT eff = (float *)ctx[1];   /* only this pointer touches the bus here */
     KernelState *s    = (KernelState *)instance[2];
     HwCoeffs k;
     int i, cab;
@@ -131,11 +131,15 @@ void SH_AUDIO_FN(void **instance, void **ctx)
                 c->fs = HW_FS_OS;
             }
         }
-        if (c) {                     /* to the stack: the sample loops read it as before;
-                                      * volatile so cl6x keeps a loop, not a memcpy call */
-            const volatile uint32_t *src = (const volatile uint32_t *)&c->k;
-            uint32_t *out = (uint32_t *)&k;
+        if (c) {                     /* to the stack: the sample loops read it as before.
+                                      * restrict, not volatile: volatile serialised the loads
+                                      * (6 cycles a word, ~560 per block) */
+            const uint32_t *HW_RESTRICT src = (const uint32_t *)&c->k;
+            uint32_t *HW_RESTRICT out = (uint32_t *)&k;
             unsigned w;
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(sizeof(HwCoeffs) / 4u, sizeof(HwCoeffs) / 4u)
+#endif
             for (w = 0; w < sizeof(HwCoeffs) / 4u; w++)
                 out[w] = src[w];
         }
