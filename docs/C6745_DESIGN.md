@@ -35,7 +35,7 @@ software-pipeline notes. "dep bound" = length in cycles of the feedback chain th
 
 | Effect | Main sample loop | dep / res bound | Result |
 |---|---|---|---|
-| CF Muff | muff_g1.h:229 (4 trips) | 116 / 37 | **not pipelined**: feedback chain 3x the work |
+| CF Muff | muff_g1.h:229 (4 trips) | 116 / 37 | **not pipelined**: feedback chain 3x the work (reworked 2026-10-19, §3b) |
 | CF RAT | rat_g1.h:182 (8 trips) | 31 / 16 | pipelined at ii 31, half the units idle |
 | CF 808 | ts808_exact.h:180 (8 trips) | 57 / 18 | pipelined at ii 61, two thirds idle |
 | CF Watt 2x | hiwatt_amp.h 286/287/371/392, hiwatt_kernel.h:152 | 22/13, 16/6, 22/19, 24/8 | pipelined, all feedback-bound; hiwatt_amp.h:248 not pipelined (control code) |
@@ -76,6 +76,28 @@ before any change to the model itself.
 9. **Measure.** Build report first (each sample loop pipelined, dep close to res), then the pedal bench
    (`tools/ua_bench.py`, updater 17); the bench has the final word. Accuracy against the reference stays as
    strict as before (tests/host).
+
+## 3b. Lessons from the CF Muff rework (2026-10-19)
+
+- **State behind a pointer becomes a memory chain.** Muff's per-oversample state lived in `MuffState *st`;
+  the compiler could not prove that stores to it miss the blob tables, so every oversample waited for the
+  previous one's stores (dep bound 116, not pipelined). Load each state value into its own **scalar local**
+  before the loop and store it back after.
+- **A local struct copy is not enough:** `MuffState l = *st` stayed in memory, and neighbouring fields were
+  loaded/stored as one 64-bit word, which tied two independent filters into one chain. Scalars only.
+- **Write the arithmetic once:** helpers take each state value by pointer (`float *s`); the per-sample path
+  passes struct fields, the block path passes locals. The two paths stay bit-identical
+  (`tests/host/muff_block_test.cpp` checks output and state).
+- **32 registers per side:** two clip solvers with their constants in one loop needed ~37-43 and found no
+  schedule; one loop per solver pipelines. Fusing them would need fewer live constants first.
+- **Masks instead of clamps on the chain:** a table index `(int)t & 0xFF` (table with one spare cell) replaces
+  compare + select and stays in range for any input, NaN included; choose "extrapolate" on the same `t`.
+- **`restrict` on the audio bus pointer** (`float *restrict eff = ctx[1]`): without it the final mix loop
+  carried a false 24-cycle chain plus a run-time alias check.
+
+Result: every Muff loop pipelined; the two clip chains 42 and 47 cycles per oversample (from one 116-cycle
+loop that did not pipeline); static estimate ~9.8k cycles per block against 14.5k measured before (pedal
+measurement pending); output within 92 dB of the previous version, accuracy bench unchanged.
 
 ## 4. Workflow for a stage
 

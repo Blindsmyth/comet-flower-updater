@@ -25,9 +25,10 @@ typedef char muffx_state_fits[(sizeof(KernelState) <= SH_STATE_BYTES) ? 1 : -1];
 void SH_AUDIO_FN(void **instance, void **ctx)
 {
     const float *coef = (const float *)instance[1];
-    float *eff        = (float *)ctx[1];
+    float *restrict eff = (float *)ctx[1];   /* only this pointer touches the bus here */
     KernelState *s    = (KernelState *)instance[2];
     MuffCoeffs k;
+    float wetb[SH_FRAMES];
     int i;
 
     unsigned ok = 1;
@@ -60,9 +61,12 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     }
     muff_coeffs(&k, s->sus, s->tone, TRIM * s->vol);
 
+    /* the whole block through the core, stage by stage (docs/C6745_DESIGN.md) */
+    muff_block(&s->dsp, &k, eff, wetb, SH_FRAMES);
+
     for (i = 0; i < SH_FRAMES; i++) {
         float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
-        float wet = muff_process(&s->dsp, &k, da);
+        float wet = wetb[i];
         float a, b;
         if (!(wet > -8.0f && wet < 8.0f)) wet = 0.0f;
         a = da + fade * (wet - da);
