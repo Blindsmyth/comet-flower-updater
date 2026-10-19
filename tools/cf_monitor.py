@@ -34,9 +34,9 @@ BLOCK = 441                      # 10 ms
 MAPS = ["ua_channels_10.json", "ua_channels_bench.json", "ua_channels_fx.json", "ua_channels_stems.json", "ua_channels.json"]
 
 
-STALE_FORMAT_HINT = ("Windows still has the pedal's old channel count stored (WASAPI shows %d, the pedal has %d). "
-                     "Fix: Sound settings > Recording > Line (Comet Flower Audio Bridge) > Properties > Advanced > "
-                     "Default Format: pick the %d channel entry, OK, then restart CF Monitor.")
+STALE_FORMAT_HINT = ("Windows' WASAPI still has the old channel count stored (%d, the pedal has %d), so WASAPI "
+                     "apps cannot open it until that is fixed (docs/CF_USB_MODE_2026-10-16.md, 10ch section); "
+                     "REAPER: choose WDM Kernel Streaming. (%d ch)")
 
 
 def stale_format():
@@ -54,12 +54,22 @@ def stale_format():
 
 
 def find_input():
+    """(device index, name, channels, api): WASAPI when its stored format matches the pedal, else
+    WDM-KS (kernel streaming, also direct and bit-exact), which always reports what the pedal offers."""
     import sounddevice as sd
+    found = {}
     for i, d in enumerate(sd.query_devices()):
         api = sd.query_hostapis(d["hostapi"])["name"]
-        if ("Comet Flower" in d["name"] or "CF8" in d["name"]) and d["max_input_channels"] >= 8 and "WASAPI" in api:
-            return i, d["name"], d["max_input_channels"]
-    return None, None, 0
+        if ("Comet Flower" in d["name"] or "CF8" in d["name"]) and d["max_input_channels"] >= 8:
+            key = "WASAPI" if "WASAPI" in api else "WDM-KS" if "WDM-KS" in api else None
+            if key and d["max_input_channels"] > found.get(key, (0, 0, 0))[2]:
+                found[key] = (i, d["name"], d["max_input_channels"])
+    w, k = found.get("WASAPI"), found.get("WDM-KS")
+    if w and (not k or w[2] == k[2]):
+        return w + ("WASAPI",)
+    if k:
+        return k + ("WDM-KS",)
+    return None, None, 0, None
 
 
 def load_map(name):
@@ -89,17 +99,17 @@ class Engine:
     # --- streams
     def start(self):
         import sounddevice as sd
-        dev, name, nch = find_input()
-        self.in_name = name
-        st = stale_format()
-        if st:
-            self.status = STALE_FORMAT_HINT % (st[0], st[1], st[1])
-            dev = None
+        dev, name, nch, api = find_input()
+        self.in_name = (name or "") + ("  [%s]" % api if api else "")
+        if api == "WDM-KS":
+            st = stale_format()
+            self.status = ("Using WDM-KS (direct, bit-exact). " + STALE_FORMAT_HINT % (st[0], st[1], st[1])
+                           if st else "Using WDM-KS.")
         if dev is not None:
             try:
                 self.inp = sd.InputStream(device=dev, samplerate=FS, channels=NCH, dtype="int16",
                                           blocksize=BLOCK, callback=self._in_cb,
-                                          extra_settings=sd.WasapiSettings(exclusive=True))
+                                          extra_settings=sd.WasapiSettings(exclusive=True) if api == "WASAPI" else None)
                 self.inp.start()
             except Exception as e:           # exclusive refused (another app holds it): try shared
                 try:
@@ -387,7 +397,7 @@ if __name__ == "__main__":
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--close-after", type=float, default=0, help=argparse.SUPPRESS)   # smoke test of the window
     a = ap.parse_args()
-    _, _, n = find_input()                 # 10 (FX firmware) or 8 (bench firmware): open what is there
+    _, _, n, _ = find_input()              # 10 (FX firmware) or 8 (bench firmware): open what is there
     if n >= 10:
         NCH = 10
     elif n:

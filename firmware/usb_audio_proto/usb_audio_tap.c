@@ -467,6 +467,10 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
         f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
         f[3] = ua_tap_float(UA_TAP_BUS_M[i]) * 0x10001u;
         f[4] = ua_tap_float(ua_stem_loop[i]) * 0x10001u;
+#elif defined(UA_PAIRS8)
+        /* 8 channels, every pair usable (fallback if 10 do not open): 7-8 DI on both, no looper */
+        f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
+        f[3] = ua_tap_float(UA_TAP_BUS_M[i]) * 0x10001u;
 #elif defined(UA_BENCH)
         f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
         f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_bench_frame[i] << 16);

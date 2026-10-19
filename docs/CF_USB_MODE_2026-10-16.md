@@ -553,3 +553,15 @@ Removing MI_00/MI_02 and even the SWD endpoint node and rescanning (elevated pnp
 endpoint keeps its GUID and properties. Opening 8 channels then fails ("Invalid device", PaErrorCode -9996).
 Fix: Sound settings > Recording > Line (Comet Flower Audio Bridge) > Properties > Advanced > Default Format:
 choose the 10 channel entry (the audio service rewrites the property). CF Monitor now detects the mismatch.
+**Correction (same day):** not only WASAPI. Every API fails to open the 10-channel stream at any channel count
+(MME/DirectSound/WDM-KS "Unanticipated host error", WASAPI "Invalid number of channels"/"Invalid device"); pedal on
+xHCI root port 14 (no hub), no system-log errors. Suspect: wChannelConfig 0x03ff (UAC1 L R C LFE Ls Rs Lc Rc **S Sl**,
+no Sr). Rebuilt with the symmetric **0x06ff** (0x00ff of the working 8-ch build + Sl Sr). Fallback `--pairs8`: the
+proven 8-channel descriptor with 1-2 mix, 3-4 guitar FX, 5-6 drums, 7-8 DI on both (no looper).
+
+| Updater | SHA-256 (start) | Firmware |
+|---|---|---|
+| `GUITAR AUDIO 19A - 10ch (mask 6ff) TEST.exe` (`build/cf_usb10b_2026-10-18/`) | `f2cabc10` | `14821e92` |
+| `GUITAR AUDIO 19B - 8ch pairs (fallback) TEST.exe` | `c7407821` | `cbc28a4a` |
+Updater 18 (`6689f536`, mask 0x03ff) withdrawn. Both new ones: calibrated-loads effects. After flashing A, the
+endpoint may still carry the stale 8-ch format: CF Monitor falls back to WDM-KS and says so.

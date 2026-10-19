@@ -316,7 +316,10 @@ static const u8 uac_ac_header[9]   = { 0x09,0x24,0x01,0x00,0x01,0x1e,0x00,0x01,0
 #elif UA_NCH == 8
 #define UA_CHCFG 0x00ffu
 #else
-#define UA_CHCFG 0x03ffu   /* 10 positions: 7.1 + side L/R (UAC1 bits 0..9) */
+/* 10 positions. UAC1 bits: L R C LFE Ls Rs Lc Rc (0x00ff, as the working 8-channel
+   build) + Sl Sr (bits 9, 10) = 0x06ff, a symmetric layout. 0x03ff (with S, bit 8,
+   and Sl but no Sr) enumerated but Windows opened no stream on any API (2026-10-18). */
+#define UA_CHCFG 0x06ffu
 #endif
 static const u8 uac_it1[12]        = { 0x0c,0x24,0x02,0x01,0x03,0x06,0x00,UA_NCH,UA_CHCFG & 0xffu,UA_CHCFG >> 8,0x00,0x00 };
 static const u8 uac_ot2[9]         = { 0x09,0x24,0x03,0x02,0x01,0x01,0x00,0x01,0x00 };
