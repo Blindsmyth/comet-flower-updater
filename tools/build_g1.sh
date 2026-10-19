@@ -10,6 +10,8 @@ LAB="${ZOOMLAB:-/c/Users/z/zoomlab/stomphacks}"
 export ZOOM_TI_CGT="${ZOOM_TI_CGT:-C:/Users/z/ti/ti-cgt-c6000_8.5.0.LTS}"
 
 FILE="$(grep -o '"filename": *"[^"]*"' "$PROJ/effects/$NAME/manifest.json" | cut -d'"' -f4)"
+# Patch slots the effect occupies (manifest "g1_slots", default 1; header 0x58).
+SLOTS="$(grep -o '"g1_slots": *[0-9]*' "$PROJ/effects/$NAME/manifest.json" | grep -o '[0-9]*$' || echo 1)"
 EFFECT="$(grep -o '"name": *"[^"]*"' "$PROJ/effects/$NAME/manifest.json" | head -1 | cut -d'"' -f4 | tr -d ' ')"
 # Every stock G1 effect exports Dll_<Name> in .dynsym. stomphacks omits it
 # (the MS Plus loader is name-blind); export it so we match G1 stock. Needs
@@ -32,7 +34,7 @@ cp "$LAB/effects/$NAME/build/REPORT.md" "$PROJ/build/$FILE.REPORT.md"
 # recompile to assembly, so the ZD2 above is unaffected.
 "$PROJ/.venv/Scripts/python.exe" "$PROJ/tools/c6x_loop_report.py" --compile "$LAB/effects/$NAME" \
     -o "$PROJ/build/$FILE.LOOPS.md" && grep -h "loops," "$PROJ/build/$FILE.LOOPS.md" || true
-"$PROJ/.venv/Scripts/zd2" g1-retarget "$LAB/effects/$NAME/build/$FILE.ZD2" "$PROJ/build/$FILE.ZD2" --label "$LABEL" --pic "$PIC"
+"$PROJ/.venv/Scripts/zd2" g1-retarget "$LAB/effects/$NAME/build/$FILE.ZD2" "$PROJ/build/$FILE.ZD2" --label "$LABEL" --pic "$PIC" --slots "$SLOTS"
 # Each slot loads into a fixed 40 KiB heap with no spill (recon/14); an
 # effect that does not fit must never reach an image.
 if ! "$PROJ/.venv/Scripts/python.exe" "$PROJ/tools/check_slot_mem.py" "$PROJ/build/$FILE.ZD2"; then

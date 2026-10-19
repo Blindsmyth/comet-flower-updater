@@ -163,14 +163,18 @@ def set_slot_picture(elf: bytes, lines: list) -> bytes:
     return bytes(out)
 
 
-def retarget_g1(data: bytes, label: str, pic_lines: list = None) -> bytes:
+def retarget_g1(data: bytes, label: str, pic_lines: list = None, slots: int = 1) -> bytes:
+    """slots: header 0x58. Stock uses 1, or 2 for the double-width effects;
+    other values are for the CF Master loader tests only."""
+    if not 1 <= slots <= 5:
+        raise ValueError("slots must be 1..5")
     patch = parse_zd2(data)
     header = bytearray(data[:HEADER_SIZE])
     header[0x0C:0x10] = struct.pack("<I", G1_TARGET)
     header[0x10:0x59] = bytes(0x59 - 0x10)
     header[0x10] = 0x01
     header[0x18] = 0x80
-    header[0x58] = 0x01
+    header[0x58] = slots
 
     body = b""
     for block in patch.blocks:

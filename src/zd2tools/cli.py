@@ -132,11 +132,13 @@ def audit(directory: str) -> None:
 @click.option('--label', required=True, help='Up to 5 characters drawn on the icon')
 @click.option('--pic', default=None,
               help='Slot picture text, up to two lines split by "/", e.g. GREEN/808')
-def g1_retarget(src: str, dst: str, label: str, pic: str) -> None:
+@click.option('--slots', default=1, type=click.IntRange(1, 5),
+              help='Patch slots the effect occupies (header 0x58; stock: 1, or 2 for double-width)')
+def g1_retarget(src: str, dst: str, label: str, pic: str, slots: int) -> None:
     """Convert a stomphacks DIY ZD2 into G1 Four container form."""
     from .g1 import retarget_g1
     out = retarget_g1(Path(src).read_bytes(), label,
-                      pic.split("/") if pic else None)
+                      pic.split("/") if pic else None, slots)
     Path(dst).write_bytes(out)
     click.echo(_audit_row(Path(dst), parse_zd2(out)))
 

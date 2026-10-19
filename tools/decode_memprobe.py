@@ -86,6 +86,49 @@ def show_clock(w):
     print("  block rises by the load cycles, TSCL stops in IDLE and this is the busy share.")
 
 
+CFM_WB0, CFM_WB_STEP = 0xC0226000, 0x81330      # slot work buffers (recon/14)
+CFM_CODE0, CFM_CODE_STEP = 0xC01F4000, 0xA000    # slot code/const regions (recon/14)
+TIM_PER_BLOCK = 19.2e6 * 16 / 44100              # 6966
+
+
+def slot_of(a, base, step):
+    k, r = divmod(a - base, step)
+    return k if a >= base and 0 <= k < 5 else None
+
+
+def cfm_report(w):
+    """CF M5 / CF M2 probe page (effects/common/cfm_probe.h) -> dict."""
+    if w[1] == 0x43464D30:                       # 'CFM0'
+        blocks = w[3] / TIM_PER_BLOCK
+        return {"page": 0, "calls": w[2], "blocks": blocks,
+                "calls_per_block": w[2] / blocks if blocks else 0.0,
+                "other_instance_calls": w[4], "instance": w[5], "coef": w[6], "state": w[7],
+                "work_base": w[8], "work_size": w[9], "code": w[10],
+                "work_slot": slot_of(w[8], CFM_WB0, CFM_WB_STEP),
+                "code_slot": slot_of(w[10], CFM_CODE0, CFM_CODE_STEP)}
+    knobs = [w[4 + k // 4] >> (24 - 8 * (k % 4)) & 0xFF for k in range(12)]
+    return {"page": 1, "changed": [k for k in range(5) if w[2] >> k & 1],
+            "zero": [k for k in range(5) if w[3] >> k & 1], "knobs": knobs, "sums": w[7:11]}
+
+
+def show_cfm(w):
+    r = cfm_report(w)
+    if r["page"] == 0:
+        print("  CF Master probe, page 0: %d calls over %.0f blocks = %.2f calls per block"
+              % (r["calls"], r["blocks"], r["calls_per_block"]))
+        print("  calls with a different instance than the first: %d" % r["other_instance_calls"])
+        print("  instance 0x%08x  %s" % (r["instance"], region(r["instance"])))
+        print("  coef     0x%08x  %s" % (r["coef"], region(r["coef"])))
+        print("  state    0x%08x  %s" % (r["state"], region(r["state"])))
+        print("  work buffer 0x%08x, %d bytes -> slot %s" % (r["work_base"], r["work_size"], r["work_slot"]))
+        print("  code     0x%08x -> slot region %s" % (r["code"], r["code_slot"]))
+    else:
+        print("  CF Master probe, page 1: work buffers changed since the last page 1: %s"
+              % (r["changed"] or "none"))
+        print("  work buffers whose first 4 KB are all zero: %s" % (r["zero"] or "none"))
+        print("  knobs 1-12 (x100): %s" % " ".join(str(v) for v in r["knobs"]))
+
+
 def read_wav(path):
     d = open(path, "rb").read()
     i, fmt, data = 12, None, None
@@ -228,6 +271,9 @@ def main(a):
     for t, w, ok in frames:
         print("\nframe at %.2f s: %s" % (t, "OK" if ok else "BAD (magic/check mismatch)"))
         if not ok:
+            continue
+        if w[0] == 0xCF0071ED and w[1] in (0x43464D30, 0x43464D31):
+            show_cfm(w)
             continue
         if w[0] == 0xCF0071ED and w[1] == 0x434c4b54:
             show_clock(w)
