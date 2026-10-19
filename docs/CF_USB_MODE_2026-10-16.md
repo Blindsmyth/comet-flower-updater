@@ -593,4 +593,4 @@ Recipe (reproduces 19B byte for byte): `make_controller_fw.py --base build/fw/re
 --base ctl.bin --pairs8|--fx` -> `make_fs_restore_updater.py <v2.00 updater> "<name> TEST.exe" --test-controller-fw
 <fw> --presets build/fw/cfupd_res85.bin --image build/cf_loads_2026-10-18/fs_cfloads.bin`. Bench = updater 17 only.
 **20B flashed (2026-10-18, late):** hub read-back 8 ch / 0x00ff, stream opens (WASAPI 8 ch). Idle take: 1-4 and 7 at
-noise floor (<= 7 LSB), 5-6 and 8 at +-1 LSB (empty drums / looper), no timing frames. Owner: "that works".
+noise floor (<= 7 LSB), 5-6 and 8 at +-1 LSB (empty drums / looper), no timing frames. Owner: "that works"; then tested with playing: works.
