@@ -39,7 +39,7 @@ software-pipeline notes. "dep bound" = length in cycles of the feedback chain th
 | CF RAT | rat_g1.h:182 (8 trips) | 31 / 16 | pipelined at ii 31, half the units idle |
 | CF 808 | ts808_exact.h:180 (8 trips) | 57 / 18 | pipelined at ii 61, two thirds idle |
 | CF Watt 2x | hiwatt_amp.h 286/287/371/392, hiwatt_kernel.h:152 | 22/13, 16/6, 22/19, 24/8 | pipelined, all feedback-bound; hiwatt_amp.h:248 not pipelined (control code) |
-| CF Dyna | dynacx.c:57 | - | **not pipelined**: control code (reworked 2026-10-19, ง3d) |
+| CF Dyna | dynacx.c:57 | - | **not pipelined**: control code (reworked 2026-10-19, ยง3d) |
 | CF Mistrss | mistrx.c:83 | - | **not pipelined**: too many instructions (> 250) |
 | CF CE2 | ce2x.c:81 | - | **not pipelined**: too many instructions (> 250) |
 | CF Delay | delayx.c:78 | - | **not pipelined**: control code |
