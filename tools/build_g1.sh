@@ -28,6 +28,10 @@ cp "$PROJ"/effects/common/*.h "$LAB/effects/$NAME/"   # shared DSP headers
 ( cd "$LAB" && .venv/Scripts/python.exe tools/zd2_make_effect.py "effects/$NAME/manifest.json" | tail -12 )
 mkdir -p "$PROJ/build"
 cp "$LAB/effects/$NAME/build/REPORT.md" "$PROJ/build/$FILE.REPORT.md"
+# What limits each loop on the C6745 (docs/C6745_DESIGN.md): a separate -mw
+# recompile to assembly, so the ZD2 above is unaffected.
+"$PROJ/.venv/Scripts/python.exe" "$PROJ/tools/c6x_loop_report.py" --compile "$LAB/effects/$NAME" \
+    -o "$PROJ/build/$FILE.LOOPS.md" && grep -h "loops," "$PROJ/build/$FILE.LOOPS.md" || true
 "$PROJ/.venv/Scripts/zd2" g1-retarget "$LAB/effects/$NAME/build/$FILE.ZD2" "$PROJ/build/$FILE.ZD2" --label "$LABEL" --pic "$PIC"
 # Each slot loads into a fixed 40 KiB heap with no spill (recon/14); an
 # effect that does not fit must never reach an image.
