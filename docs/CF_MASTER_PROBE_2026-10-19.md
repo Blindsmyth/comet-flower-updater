@@ -4,6 +4,9 @@ Step 3 of the CF Master plan (docs/C6745_DESIGN.md). Before any CF Master DSP: d
 several patch slots load, how is it called, how many knobs reach it, and does it get more memory.
 
 ## The updater
+**Also in updater 22** (`docs/C6745_BENCH_2026-10-19.md`): bench firmware + the C6745 effect rebuilds + these
+probes, one flash for both tests. Updater 21 below is the same probes on the 20B firmware.
+
 `GUITAR AUDIO 21 - CF Master probe TEST.exe` (desktop, `build/cfm_probe_2026-10-18/`), sha256 `2507cf43`.
 It is updater 20B (`7830391d`, same firmware `d9eb45e2`: 8 ch, looper on 8) plus two effects. Rebuilding with
 the 20B image gives 20B byte for byte, so nothing else changes. Image = `fs_cfloads.bin` + `CFM5P.ZD2`
