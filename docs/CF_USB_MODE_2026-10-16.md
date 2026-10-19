@@ -565,3 +565,15 @@ proven 8-channel descriptor with 1-2 mix, 3-4 guitar FX, 5-6 drums, 7-8 DI on bo
 | `GUITAR AUDIO 19B - 8ch pairs (fallback) TEST.exe` | `c7407821` | `cbc28a4a` |
 Updater 18 (`6689f536`, mask 0x03ff) withdrawn. Both new ones: calibrated-loads effects. After flashing A, the
 endpoint may still carry the stale 8-ch format: CF Monitor falls back to WDM-KS and says so.
+
+### 19A on hardware (2026-10-18, later): 10 channels do not open, 8 is the ceiling
+Read back from the hub (IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION, no driver needed): the pedal runs 19A,
+config 195 bytes, input terminal wChannelConfig **0x06ff**, 10 ch 16 bit 44.1 kHz, EP 0x81 iso async
+wMaxPacketSize 900, bInterval 1, **full speed** (root port 13). Still every API fails to open (MME/DS
+"Unanticipated host error", WASAPI "Invalid number of channels"/"Invalid device", WDM-KS "Invalid device" at
+10/8/2 channels; nothing else holds the device; no System-log events). So the mask was not the cause. The only
+differences from the working 8 ch descriptor are the channel count and the 900 B packet, and the firmware side
+(FIFO 0x17 at 0x140) is identical for 8 and 10. Most likely the host refuses that much full-speed iso audio
+(usbaudio.sys is commonly quoted at 8 ch x 16 bit at full speed: 768 B/ms). Not proven (needs an elevated ETW
+USB trace), but 10 ch at full speed is shelved: **flash 19B** (`c7407821`, proven 8 ch descriptor: 1-2 mix,
+3-4 guitar FX, 5-6 drums, 7-8 DI, no timing frames on 7-8). The looper stem would need a pair swapped out.
