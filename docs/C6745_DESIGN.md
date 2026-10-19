@@ -41,7 +41,7 @@ software-pipeline notes. "dep bound" = length in cycles of the feedback chain th
 | CF Watt 2x | hiwatt_amp.h 286/287/371/392, hiwatt_kernel.h:152 | 22/13, 16/6, 22/19, 24/8 | pipelined, all feedback-bound; hiwatt_amp.h:248 not pipelined (control code) |
 | CF Dyna | dynacx.c:57 | - | **not pipelined**: control code (reworked 2026-10-19, §3d) |
 | CF Mistrss | mistrx.c:83 | - | **not pipelined**: too many instructions (> 250) (reworked 2026-10-19, §3e) |
-| CF CE2 | ce2x.c:81 | - | **not pipelined**: too many instructions (> 250) |
+| CF CE2 | ce2x.c:81 | - | **not pipelined**: too many instructions (> 250) (reworked 2026-10-19, §3f) |
 | CF Delay | delayx.c:78 | - | **not pipelined**: control code |
 
 Stock Zoom drives run their sample loops as SPLOOPs at ii 10-14 (recon/11). Every CF effect has headroom
@@ -134,6 +134,12 @@ loops, all pipelined; static ~3.1k cycles per block against 6.6k measured. `.tex
 `"text_extra": 2048` (build_g1.sh reads it; the 40 KiB slot check still applies).
 - General rule: **a delay longer than the block decouples the feedback within a block** (delays, flangers,
   choruses): read the whole block first, then process, then write.
+
+## 3f. CF CE-2 (2026-10-19)
+
+Bit-identical (null test against the committed core: 0 samples differ; accuracy bench PASS). A chorus has no
+feedback: the block's delay pushes come first, then the reads (delay 7.8..17.8 ms, buffer 1024). 10 passes,
+all pipelined, ~114 cycles per sample: static ~2.2k per block against 4.1k measured.
 
 ## 4. Workflow for a stage
 

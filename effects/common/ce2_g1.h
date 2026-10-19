@@ -138,44 +138,58 @@ TS_INLINE float ce2_biquad_process(float x, float b0, float b1, float b2, float 
     return y;
 }
 
-TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
+/* The per-sample work in steps that take each state value by pointer: the
+ * per-sample path (ce2_process) passes the state fields, the block path
+ * (ce2_block) passes scalar locals; the arithmetic is written once and both
+ * are bit-identical (tests/host/ce2_block_test.cpp). */
+
+/* 1 + 2. Pre-emphasis (+15 dB high shelf at 979 Hz), anti-aliasing cascade
+ * (48 Hz HPF + 6.6 kHz 3-pole LP) */
+TS_INLINE float ce2_in_step(float *pv1, float *pv2, float *hp, float *lp1, float *l2v1, float *l2v2, float dry)
 {
-    float dry = x;
+    float bbdIn = ce2_biquad_process(dry, CE2_PRE_B0, CE2_PRE_B1, CE2_PRE_B2, CE2_PRE_A1, CE2_PRE_A2, pv1, pv2);
+    bbdIn = bbdIn - ts_onepole_lp(hp, CE2_AA_HP_G, bbdIn);
+    bbdIn = ts_onepole_lp(lp1, CE2_AA_LP1_G, bbdIn);
+    return ce2_biquad_process(bbdIn, CE2_AA_LP2_B0, CE2_AA_LP2_B1, CE2_AA_LP2_B2, CE2_AA_LP2_A1, CE2_AA_LP2_A2, l2v1, l2v2);
+}
 
-    /* 1. Pre-emphasis (+15 dB high shelf at 979 Hz) */
-    float bbdIn = ce2_biquad_process(dry, CE2_PRE_B0, CE2_PRE_B1, CE2_PRE_B2, CE2_PRE_A1, CE2_PRE_A2, &s->pre_v1, &s->pre_v2);
+/* 3. MN3007 BBD soft saturation (ADAA tanh(0.7x)/0.7); its two table
+ * evaluations are pure, so the block path runs them as passes */
+TS_INLINE float ce2_sat_ad(float bbdIn) { return ce2_ln_cosh(bbdIn * 0.7f) * (1.0f / 0.7f); }
+TS_INLINE float ce2_sat_mid(float bbdIn, float x1) { return ce2_tanh(0.5f * (bbdIn + x1) * 0.7f); }
+TS_INLINE float ce2_sat_mix(float bbdIn, float x1, float ad0, float ad1, float sat_fallback)
+{
+    float diff = bbdIn - x1;
+    float abs_diff = diff < 0.0f ? -diff : diff;
+    float safe_diff = (abs_diff < 1.0e-5f) ? 1.0e-5f : diff;
+    float sat_quot = (ad0 - ad1) * ts_rcp(safe_diff);
+    float sat_out = (abs_diff < 1.0e-5f) ? sat_fallback : sat_quot;
+    return sat_out * (1.0f / 0.7f);
+}
 
-    /* 2. Anti-aliasing cascade (48 Hz HPF + 6.6 kHz 3-pole LP) */
-    bbdIn = bbdIn - ts_onepole_lp(&s->aa_hp_s, CE2_AA_HP_G, bbdIn);
-    bbdIn = ts_onepole_lp(&s->aa_lp1_s, CE2_AA_LP1_G, bbdIn);
-    bbdIn = ce2_biquad_process(bbdIn, CE2_AA_LP2_B0, CE2_AA_LP2_B1, CE2_AA_LP2_B2, CE2_AA_LP2_A1, CE2_AA_LP2_A2, &s->aa_lp2_v1, &s->aa_lp2_v2);
-
-    /* 3. MN3007 BBD soft saturation (ADAA tanh(0.7x)/0.7) */
-    {
-        float ad0 = ce2_ln_cosh(bbdIn * 0.7f) * (1.0f / 0.7f);
-        float diff = bbdIn - s->sat_x1;
-        float abs_diff = diff < 0.0f ? -diff : diff;
-        float safe_diff = (abs_diff < 1.0e-5f) ? 1.0e-5f : diff;
-        float sat_quot = (ad0 - s->sat_ad1) * ts_rcp(safe_diff);
-        float sat_fallback = ce2_tanh(0.5f * (bbdIn + s->sat_x1) * 0.7f);
-        float sat_out = (abs_diff < 1.0e-5f) ? sat_fallback : sat_quot;
-        s->sat_x1 = bbdIn;
-        s->sat_ad1 = ad0;
-        bbdIn = sat_out * (1.0f / 0.7f);
-    }
-
-    /* 4. Delay push */
-    s->delay_buf[s->delay_wp] = bbdIn;
-    s->delay_wp = (s->delay_wp + 1) & 1023;
-
-    /* 5. Triangle LFO smoothed by 72 Hz one-pole */
-    float phi = s->lfo_phase;
+/* 5. Triangle LFO smoothed by 72 Hz one-pole, from the phase before it advances */
+TS_INLINE float ce2_lfo_step(float *smoothed, float phi)
+{
     float lfoTri = (phi < 0.5f) ? (phi * 2.0f) : (2.0f - phi * 2.0f);
     float lfoRaw = lfoTri * 2.0f - 1.0f;
-    s->lfo_smoothed += CE2_LFO_SMOOTH_COEFF * (lfoRaw - s->lfo_smoothed);
-    float lfoMod = s->lfo_smoothed;
+    *smoothed += CE2_LFO_SMOOTH_COEFF * (lfoRaw - *smoothed);
+    return *smoothed;
+}
 
-    /* 6. BBD Delay read (Lagrange 3rd-order fractional read) */
+/* Advance the LFO phase */
+TS_INLINE float ce2_phase_step(float *ph, const Ce2Coeffs *k)
+{
+    float p = *ph + k->phaseInc;
+    p -= (p >= 1.0f) ? 1.0f : 0.0f;
+    *ph = p;
+    return p;
+}
+
+/* 6 + 7a. BBD delay read (Lagrange 3rd-order fractional read; wp = the write
+ * position after this sample's push) and the CTI coefficient: pure. The delay
+ * is 7.8..17.8 ms, so a read never reaches the current block's later pushes. */
+TS_INLINE float ce2_read(const float *buf, int wp, const Ce2Coeffs *k, float lfoMod, float *ctiCoeffOut)
+{
     float delayMs = 12.8f + lfoMod * k->sweepMs;
     float delaySamples = delayMs * 44.1f;
     int M = (int)delaySamples;
@@ -190,11 +204,10 @@ TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
     float L1  = -mu_p1 * mu * mu_m2 * 0.5f;
     float L2  =  mu_p1 * mu * mu_m1 * (1.0f / 6.0f);
 
-    int wp = s->delay_wp;
-    float pm1 = s->delay_buf[(wp - 1 - (M - 1) + 2048) & 1023];
-    float p0  = s->delay_buf[(wp - 1 - M + 2048) & 1023];
-    float p1  = s->delay_buf[(wp - 1 - (M + 1) + 2048) & 1023];
-    float p2  = s->delay_buf[(wp - 1 - (M + 2) + 2048) & 1023];
+    float pm1 = buf[(wp - 1 - (M - 1) + 2048) & 1023];
+    float p0  = buf[(wp - 1 - M + 2048) & 1023];
+    float p1  = buf[(wp - 1 - (M + 1) + 2048) & 1023];
+    float p2  = buf[(wp - 1 - (M + 2) + 2048) & 1023];
     float wet = Lm1 * pm1 + L0 * p0 + L1 * p1 + L2 * p2;
 
     /* 7. CTI dynamic one-pole low pass (swept 3 kHz..7 kHz with BBD clock) */
@@ -207,26 +220,127 @@ TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
     ctiCoeff = ctiCoeff * bbdClockNorm - 1.0591106449e-01f;
     ctiCoeff = ctiCoeff * bbdClockNorm + 3.7168222915e-01f;
     ctiCoeff = ctiCoeff * bbdClockNorm + 3.4781536380e-01f;
-    s->cti_state += ctiCoeff * (wet - s->cti_state);
-    wet = s->cti_state;
+    *ctiCoeffOut = ctiCoeff;
+    return wet;
+}
 
-    /* 8. Reconstruction cascade (14.6 Hz HPF + 6.9 kHz 3-pole LP) */
-    wet = wet - ts_onepole_lp(&s->recon_hp_s, CE2_RECON_HP_G, wet);
-    wet = ts_onepole_lp(&s->recon_lp1_s, CE2_RECON_LP1_G, wet);
-    wet = ce2_biquad_process(wet, CE2_RECON_LP2_B0, CE2_RECON_LP2_B1, CE2_RECON_LP2_B2, CE2_RECON_LP2_A1, CE2_RECON_LP2_A2, &s->recon_lp2_v1, &s->recon_lp2_v2);
+TS_INLINE float ce2_cti_step(float *cti, float ctiCoeff, float wet)
+{
+    *cti += ctiCoeff * (wet - *cti);
+    return *cti;
+}
 
-    /* 9. De-emphasis (-15 dB high shelf at 979 Hz) */
-    wet = ce2_biquad_process(wet, CE2_DE_B0, CE2_DE_B1, CE2_DE_B2, CE2_DE_A1, CE2_DE_A2, &s->de_v1, &s->de_v2);
+/* 8-10. Reconstruction cascade (14.6 Hz HPF + 6.9 kHz 3-pole LP), de-emphasis
+ * (-15 dB high shelf at 979 Hz), dry/wet mix */
+TS_INLINE float ce2_out_step(float *hp, float *lp1, float *l2v1, float *l2v2, float *dv1, float *dv2,
+                             const Ce2Coeffs *k, float wet, float dry)
+{
+    wet = wet - ts_onepole_lp(hp, CE2_RECON_HP_G, wet);
+    wet = ts_onepole_lp(lp1, CE2_RECON_LP1_G, wet);
+    wet = ce2_biquad_process(wet, CE2_RECON_LP2_B0, CE2_RECON_LP2_B1, CE2_RECON_LP2_B2, CE2_RECON_LP2_A1, CE2_RECON_LP2_A2, l2v1, l2v2);
+    wet = ce2_biquad_process(wet, CE2_DE_B0, CE2_DE_B1, CE2_DE_B2, CE2_DE_A1, CE2_DE_A2, dv1, dv2);
+    return dry * 0.5f + wet * k->wetGain;
+}
 
-    /* 10. Dry / wet mix */
-    float out = dry * 0.5f + wet * k->wetGain;
+TS_INLINE float ce2_process(Ce2State *s, const Ce2Coeffs *k, float x)
+{
+    float dry = x, ctiCoeff;
+    float bbdIn = ce2_in_step(&s->pre_v1, &s->pre_v2, &s->aa_hp_s, &s->aa_lp1_s, &s->aa_lp2_v1, &s->aa_lp2_v2, dry);
 
-    /* Advance LFO phase */
-    float p = s->lfo_phase + k->phaseInc;
-    p -= (p >= 1.0f) ? 1.0f : 0.0f;
-    s->lfo_phase = p;
+    {
+        float ad0 = ce2_sat_ad(bbdIn);
+        float out = ce2_sat_mix(bbdIn, s->sat_x1, ad0, s->sat_ad1, ce2_sat_mid(bbdIn, s->sat_x1));
+        s->sat_x1 = bbdIn;
+        s->sat_ad1 = ad0;
+        bbdIn = out;
+    }
 
+    /* 4. Delay push */
+    s->delay_buf[s->delay_wp] = bbdIn;
+    s->delay_wp = (s->delay_wp + 1) & 1023;
+
+    float lfoMod = ce2_lfo_step(&s->lfo_smoothed, s->lfo_phase);
+    float wet = ce2_read(s->delay_buf, s->delay_wp, k, lfoMod, &ctiCoeff);
+    wet = ce2_cti_step(&s->cti_state, ctiCoeff, wet);
+    float out = ce2_out_step(&s->recon_hp_s, &s->recon_lp1_s, &s->recon_lp2_v1, &s->recon_lp2_v2,
+                             &s->de_v1, &s->de_v2, k, wet, dry);
+    ce2_phase_step(&s->lfo_phase, k);
     return out;
+}
+
+/* Block form for the C6745 (docs/C6745_DESIGN.md): the same arithmetic over
+ * n <= 16 samples, stage-major. A chorus has no feedback: the block's pushes
+ * depend on the input only and come first; every read then sees what it saw
+ * per sample (the delay is at least 344 samples, the buffer 1024). */
+#define CE2_BLK_MAX 16
+#if defined(__TI_COMPILER_VERSION__)
+#define CE2_RESTRICT restrict
+#define CE2_LOOP _Pragma("MUST_ITERATE(1, CE2_BLK_MAX)")
+#else
+#define CE2_RESTRICT __restrict
+#define CE2_LOOP
+#endif
+TS_INLINE void ce2_block(Ce2State *CE2_RESTRICT s, const Ce2Coeffs *CE2_RESTRICT k,
+                         const float *CE2_RESTRICT in, float *CE2_RESTRICT out, int n)
+{
+    float bbd[CE2_BLK_MAX], ad[CE2_BLK_MAX], mid[CE2_BLK_MAX], lfo[CE2_BLK_MAX];
+    float wet[CE2_BLK_MAX], cc[CE2_BLK_MAX];
+    int wp0 = s->delay_wp, i;
+    {   /* pre-emphasis and anti-aliasing (four short recurrences) */
+        float pv1 = s->pre_v1, pv2 = s->pre_v2, hp = s->aa_hp_s, lp1 = s->aa_lp1_s;
+        float l2v1 = s->aa_lp2_v1, l2v2 = s->aa_lp2_v2;
+        CE2_LOOP
+        for (i = 0; i < n; ++i)
+            bbd[i] = ce2_in_step(&pv1, &pv2, &hp, &lp1, &l2v1, &l2v2, in[i]);
+        s->pre_v1 = pv1; s->pre_v2 = pv2; s->aa_hp_s = hp; s->aa_lp1_s = lp1;
+        s->aa_lp2_v1 = l2v1; s->aa_lp2_v2 = l2v2;
+    }
+    {   /* BBD saturation: pure passes, then the mix and the pushes */
+        float x1 = s->sat_x1, ad1 = s->sat_ad1;
+        CE2_LOOP
+        for (i = 0; i < n; ++i)
+            ad[i] = ce2_sat_ad(bbd[i]);
+        CE2_LOOP
+        for (i = 0; i < n; ++i)
+            mid[i] = ce2_sat_mid(bbd[i], i ? bbd[i - 1] : x1);
+        CE2_LOOP
+        for (i = 0; i < n; ++i) {
+            float b = bbd[i];
+            s->delay_buf[(wp0 + i) & 1023] = ce2_sat_mix(b, x1, ad[i], ad1, mid[i]);
+            x1 = b;
+            ad1 = ad[i];
+        }
+        s->sat_x1 = x1; s->sat_ad1 = ad1;
+        s->delay_wp = (wp0 + n) & 1023;
+    }
+    {   /* LFO: smoothing of the phase before each advance */
+        float sm = s->lfo_smoothed, ph = s->lfo_phase;
+        CE2_LOOP
+        for (i = 0; i < n; ++i) {
+            lfo[i] = ce2_lfo_step(&sm, ph);
+            ce2_phase_step(&ph, k);
+        }
+        s->lfo_smoothed = sm; s->lfo_phase = ph;
+    }
+    CE2_LOOP
+    for (i = 0; i < n; ++i)                 /* reads and CTI coefficients: pure */
+        wet[i] = ce2_read(s->delay_buf, (wp0 + i + 1) & 1023, k, lfo[i], &cc[i]);
+    {
+        float cti = s->cti_state;
+        CE2_LOOP
+        for (i = 0; i < n; ++i)
+            wet[i] = ce2_cti_step(&cti, cc[i], wet[i]);
+        s->cti_state = cti;
+    }
+    {
+        float hp = s->recon_hp_s, lp1 = s->recon_lp1_s, l2v1 = s->recon_lp2_v1, l2v2 = s->recon_lp2_v2;
+        float dv1 = s->de_v1, dv2 = s->de_v2;
+        CE2_LOOP
+        for (i = 0; i < n; ++i)
+            out[i] = ce2_out_step(&hp, &lp1, &l2v1, &l2v2, &dv1, &dv2, k, wet[i], in[i]);
+        s->recon_hp_s = hp; s->recon_lp1_s = lp1; s->recon_lp2_v1 = l2v1; s->recon_lp2_v2 = l2v2;
+        s->de_v1 = dv1; s->de_v2 = dv2;
+    }
 }
 
 #endif /* CE2_G1_H */

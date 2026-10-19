@@ -36,10 +36,11 @@ TS_INLINE Ce2State *work_state(void **instance)
 void SH_AUDIO_FN(void **instance, void **ctx)
 {
     const float *coef = (const float *)instance[1];
-    float *eff        = (float *)ctx[1];
+    float *restrict eff = (float *)ctx[1];   /* only this pointer touches the bus here */
     KernelState *s    = (KernelState *)instance[2];
     Ce2State *m       = work_state(instance);
     Ce2Coeffs k;
+    float wetb[SH_FRAMES];
     int i;
 
     unsigned ok = m != 0;
@@ -78,9 +79,12 @@ void SH_AUDIO_FN(void **instance, void **ctx)
        0.1..3.5 Hz), Depth 0..1, Mix 0..1 (wet 0.5 x mix, dry 0.5). */
     ce2_coeffs(&k, 0.1f + 7.9f * s->p1, s->p2, s->p3);
 
+    /* the whole block through the core, stage by stage (docs/C6745_DESIGN.md) */
+    ce2_block(m, &k, eff, wetb, SH_FRAMES);
+
     for (i = 0; i < SH_FRAMES; i++) {
         float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
-        float wet = ce2_process(m, &k, da);
+        float wet = wetb[i];
         float a, b;
         if (!(wet > -8.0f && wet < 8.0f)) wet = 0.0f;
         a = da + fade * (wet - da);
