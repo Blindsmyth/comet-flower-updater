@@ -167,64 +167,155 @@ TS_INLINE void dynacomp_coeffs(DynaCompCoeffs *k, float sustain, float output_db
     k->outTrim = dc_exp_db(outDb);
 }
 
-TS_INLINE float dynacomp_process(DynaCompState *s, const DynaCompCoeffs *k, float x)
+/* The per-sample work in steps that take each state value by pointer: the
+ * per-sample path (dynacomp_process) passes the state fields, the block path
+ * (dynacomp_block) passes scalar locals, so the arithmetic is written once and
+ * both are bit-identical (tests/host/dynacomp_block_test.cpp). Only the
+ * envelope and the three filters are recurrences; the gain computer and the
+ * ADAA are pure per sample and pipeline on the units (docs/C6745_DESIGN.md). */
+
+/* 1. Envelope detector: pure select with no side effects in arms */
+TS_INLINE float dc_env_step(float *envp, float x)
 {
-    /* 1. Envelope detector: pure select with no side effects in arms */
     float maxAbs = dc_absf(x);
-    float env = s->envelope;
+    float env = *envp;
     float env_att = DC_ATTACK_COEFF * (env - maxAbs) + maxAbs;
     float env_rel = DC_RELEASE_COEFF * env;
     env_rel = (env_rel < 1.0e-9f) ? 0.0f : env_rel;
     env = (maxAbs > env) ? env_att : env_rel;
-    s->envelope = env;
+    *envp = env;
+    return env;
+}
 
-    /* 2. Gain computer: branch-free soft-knee gain calculation */
+/* 3. Pre-emphasis high shelf (DF2T) */
+TS_INLINE float dc_pre_step(float *v1, float *v2, float x)
+{
+    float v = DC_PRE_B0 * x + *v1;
+    *v1 = DC_PRE_B1 * x - DC_PRE_A1 * v + *v2;
+    *v2 = DC_PRE_B2 * x - DC_PRE_A2 * v;
+    return v;
+}
+
+/* 2 + 4. Gain computer (branch-free soft knee) applied to v, then makeup */
+TS_INLINE float dc_gain_apply(const DynaCompCoeffs *k, float env, float v)
+{
     float ratio = env * k->inv_threshold;
     float ratio_eval = (ratio > DC_KNEE_RATIO) ? ratio : DC_KNEE_RATIO;
     float overDb = dc_20log10(ratio_eval);
     float grDb = dc_gain_reduction_db(overDb);
-    float gr_exp = (grDb < 0.0f) ? dc_exp_db(grDb) : 1.0f;
+    float e_db = dc_exp_db(grDb);    /* always computed, then selected: as a ?: arm cl6x made it a branch */
+    float gr_exp = (grDb < 0.0f) ? e_db : 1.0f;
     float gr = (ratio > DC_KNEE_RATIO) ? gr_exp : 1.0f;
-
-    /* 3. Pre-emphasis high shelf (DF2T) */
-    float v = DC_PRE_B0 * x + s->v1_pre;
-    s->v1_pre = DC_PRE_B1 * x - DC_PRE_A1 * v + s->v2_pre;
-    s->v2_pre = DC_PRE_B2 * x - DC_PRE_A2 * v;
-
-    /* 4. Gain reduction + makeup */
     v *= gr;
     v *= k->autoMakeup;
+    return v;
+}
 
-    /* 5. ADAA tanh(v / 1.2) * 1.2: no division on hot path */
-    {
-        float ad0 = 1.2f * dc_ln_cosh(v * DC_INV_1P2);
-        float diff = v - s->adaa_x1;
-        float abs_diff = dc_absf(diff);
-        float diff_safe = (abs_diff > 1.0e-5f) ? diff : 1.0f;
-        float adaa_secant = (ad0 - s->adaa_ad1) * ts_rcp(diff_safe);
-        float adaa_mid = dc_tanhf(0.5f * (v + s->adaa_x1) * DC_INV_1P2);
-        float adaa_out = (abs_diff > 1.0e-5f) ? adaa_secant : adaa_mid;
-        s->adaa_x1 = v;
-        s->adaa_ad1 = ad0;
-        v = adaa_out * 1.2f;
-    }
+/* 5. ADAA tanh(v / 1.2) * 1.2: no division on hot path. Its two expensive
+ * parts are pure functions (the antiderivative of v, the tanh at the midpoint
+ * with the previous input), so the block path computes them in their own
+ * passes; dc_adaa_mix only combines. */
+TS_INLINE float dc_adaa_ad(float v) { return 1.2f * dc_ln_cosh(v * DC_INV_1P2); }
+TS_INLINE float dc_adaa_mid(float v, float x1) { return dc_tanhf(0.5f * (v + x1) * DC_INV_1P2); }
+TS_INLINE float dc_adaa_mix(float v, float x1, float ad0, float ad1, float adaa_mid)
+{
+    float diff = v - x1;
+    float abs_diff = dc_absf(diff);
+    float diff_safe = (abs_diff > 1.0e-5f) ? diff : 1.0f;
+    float adaa_secant = (ad0 - ad1) * ts_rcp(diff_safe);
+    float adaa_out = (abs_diff > 1.0e-5f) ? adaa_secant : adaa_mid;
+    return adaa_out * 1.2f;
+}
+TS_INLINE float dc_adaa_step(float *x1, float *ad1, float v)
+{
+    float ad0 = dc_adaa_ad(v);
+    float out = dc_adaa_mix(v, *x1, ad0, *ad1, dc_adaa_mid(v, *x1));
+    *x1 = v;
+    *ad1 = ad0;
+    return out;
+}
 
-    /* 6. De-emphasis high shelf (DF2T) */
-    float y_de = DC_DE_B0 * v + s->v1_de;
-    s->v1_de = DC_DE_B1 * v - DC_DE_A1 * y_de + s->v2_de;
-    s->v2_de = DC_DE_B2 * v - DC_DE_A2 * y_de;
+/* 6-8. De-emphasis high shelf (DF2T), output high-pass 80 Hz (OnePoleTPT), trim */
+TS_INLINE float dc_post_step(float *v1, float *v2, float *shp, const DynaCompCoeffs *k, float v)
+{
+    float y_de = DC_DE_B0 * v + *v1;
+    *v1 = DC_DE_B1 * v - DC_DE_A1 * y_de + *v2;
+    *v2 = DC_DE_B2 * v - DC_DE_A2 * y_de;
     v = y_de;
 
-    /* 7. Output high-pass 80 Hz (OnePoleTPT) */
-    float v_hp = (v - s->s_hp) * DC_HP_G;
-    float lp = v_hp + s->s_hp;
-    s->s_hp = lp + v_hp;
+    float v_hp = (v - *shp) * DC_HP_G;
+    float lp = v_hp + *shp;
+    *shp = lp + v_hp;
     v = v - lp;
 
-    /* 8. Output trim */
     v *= k->outTrim;
-
     return v;
+}
+
+TS_INLINE float dynacomp_process(DynaCompState *s, const DynaCompCoeffs *k, float x)
+{
+    float env = dc_env_step(&s->envelope, x);
+    float v = dc_pre_step(&s->v1_pre, &s->v2_pre, x);
+    v = dc_gain_apply(k, env, v);
+    v = dc_adaa_step(&s->adaa_x1, &s->adaa_ad1, v);
+    return dc_post_step(&s->v1_de, &s->v2_de, &s->s_hp, k, v);
+}
+
+/* Block form for the C6745: the same arithmetic over n samples, stage-major,
+ * state in scalar locals. n <= DC_BLK_MAX. */
+#define DC_BLK_MAX 16
+#if defined(__TI_COMPILER_VERSION__)
+#define DC_LOOP _Pragma("MUST_ITERATE(1, DC_BLK_MAX)")
+#else
+#define DC_LOOP
+#endif
+#if defined(__TI_COMPILER_VERSION__)
+#define DC_RESTRICT restrict
+#else
+#define DC_RESTRICT __restrict
+#endif
+TS_INLINE void dynacomp_block(DynaCompState *DC_RESTRICT s, const DynaCompCoeffs *DC_RESTRICT k,
+                              const float *DC_RESTRICT in, float *DC_RESTRICT out, int n)
+{
+    float env[DC_BLK_MAX], v[DC_BLK_MAX];
+    int i;
+    {   /* envelope and pre-emphasis: two independent recurrences in one loop */
+        float e = s->envelope, p1 = s->v1_pre, p2 = s->v2_pre;
+        DC_LOOP
+        for (i = 0; i < n; ++i) {
+            env[i] = dc_env_step(&e, in[i]);
+            v[i] = dc_pre_step(&p1, &p2, in[i]);
+        }
+        s->envelope = e; s->v1_pre = p1; s->v2_pre = p2;
+    }
+    DC_LOOP
+    for (i = 0; i < n; ++i)              /* gain computer: no recurrence */
+        v[i] = dc_gain_apply(k, env[i], v[i]);
+    {   /* ADAA: the pure parts in their own passes (one exp each), then the mix */
+        float ad[DC_BLK_MAX], mid[DC_BLK_MAX];
+        float x1 = s->adaa_x1, ad1 = s->adaa_ad1;
+        DC_LOOP
+        for (i = 0; i < n; ++i)
+            ad[i] = dc_adaa_ad(v[i]);
+        DC_LOOP
+        for (i = 0; i < n; ++i)
+            mid[i] = dc_adaa_mid(v[i], i ? v[i - 1] : x1);
+        DC_LOOP
+        for (i = 0; i < n; ++i) {
+            float vi = v[i];
+            v[i] = dc_adaa_mix(vi, x1, ad[i], ad1, mid[i]);
+            x1 = vi;
+            ad1 = ad[i];
+        }
+        s->adaa_x1 = x1; s->adaa_ad1 = ad1;
+    }
+    {
+        float d1 = s->v1_de, d2 = s->v2_de, hp = s->s_hp;
+        DC_LOOP
+        for (i = 0; i < n; ++i)
+            out[i] = dc_post_step(&d1, &d2, &hp, k, v[i]);
+        s->v1_de = d1; s->v2_de = d2; s->s_hp = hp;
+    }
 }
 
 #endif /* DYNACOMP_G1_H */
