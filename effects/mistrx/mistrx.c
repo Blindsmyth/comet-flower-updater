@@ -35,10 +35,11 @@ TS_INLINE MistressState *work_state(void **instance)
 void SH_AUDIO_FN(void **instance, void **ctx)
 {
     const float *coef = (const float *)instance[1];
-    float *eff        = (float *)ctx[1];
+    float *restrict eff = (float *)ctx[1];   /* only this pointer touches the bus here */
     KernelState *s    = (KernelState *)instance[2];
     MistressState *m  = work_state(instance);
     MistressCoeffs k;
+    float wetb[SH_FRAMES];
     int i;
 
     unsigned ok = m != 0;
@@ -80,9 +81,12 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     mistress_coeffs(&k, 0.05f + 9.95f * s->p1 * s->p1, s->p2, 0.95f * s->p3,
                     kx >= 0.5f ? 1.0f : 0.0f, 1.0f);
 
+    /* the whole block through the core, stage by stage (docs/C6745_DESIGN.md) */
+    mistress_block(m, &k, eff, wetb, SH_FRAMES);
+
     for (i = 0; i < SH_FRAMES; i++) {
         float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
-        float wet = mistress_process(m, &k, da);
+        float wet = wetb[i];
         float a, b;
         if (!(wet > -8.0f && wet < 8.0f)) wet = 0.0f;
         a = da + fade * (wet - da);

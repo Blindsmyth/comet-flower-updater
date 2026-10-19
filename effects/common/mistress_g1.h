@@ -137,18 +137,24 @@ TS_INLINE float mistress_ln_cosh(float z)
     return (a < 1.0e-4f) ? approx : full;
 }
 
-TS_INLINE float mistress_adaa_process(MistressState *s, float x)
+/* the ADAA in parts: ad0 and the small-step mean are pure functions of the
+ * input and the previous input, so the block path runs them as passes */
+TS_INLINE float mistress_adaa_mix(float x, float x1, float ad0, float ad1, float out_small)
 {
-    float x1 = s->adaa_x1;
     float diff = x - x1;
     float ad = diff < 0.0f ? -diff : diff;
-    float ad0 = mistress_ln_cosh(x);
     float safe_diff = (ad < 0.2f) ? 1.0f : diff;
-    float out_large = (ad0 - s->adaa_ad1) * ts_rcp(safe_diff);
-    float out_small = mistress_mean_tanh(x1, 0.5f * diff);
-    float out = (ad < 0.2f) ? out_small : out_large;
-    s->adaa_x1 = x;
-    s->adaa_ad1 = ad0;
+    float out_large = (ad0 - ad1) * ts_rcp(safe_diff);
+    return (ad < 0.2f) ? out_small : out_large;
+}
+
+TS_INLINE float mistress_adaa_step(float *x1p, float *ad1p, float x)
+{
+    float x1 = *x1p;
+    float ad0 = mistress_ln_cosh(x);
+    float out = mistress_adaa_mix(x, x1, ad0, *ad1p, mistress_mean_tanh(x1, 0.5f * (x - x1)));
+    *x1p = x;
+    *ad1p = ad0;
     return out;
 }
 
@@ -164,58 +170,66 @@ TS_INLINE void mistress_coeffs(MistressCoeffs *k, float rate, float depth,
     k->wetGain = mix * 0.5f;
 }
 
-TS_INLINE float mistress_process(MistressState *s, const MistressCoeffs *k, float x)
+/* The per-sample work in steps that take each state value by pointer: the
+ * per-sample path (mistress_process) passes the state fields, the block path
+ * (mistress_block) passes scalar locals; the arithmetic is written once and
+ * both are bit-identical (tests/host/mistress_block_test.cpp). */
+
+/* 1 + 5. Pre-BBD coupling-cap HPF (80 Hz, TPT), then the anti-alias LPF cascade
+ * (12 kHz 1st-order + 12 kHz Q 0.707 biquad); *dry = the high-passed input */
+TS_INLINE float mistress_pre_step(float *hp, float *sa, float *b1, float *b2, float x, float *dry)
 {
-    /* 1. Pre-BBD coupling-cap HPF (80 Hz, TPT) */
-    float v_hp = (x - s->s_preHP) * MISTRESS_G_PRE_HP;
-    float lp_hp = v_hp + s->s_preHP;
-    s->s_preHP = lp_hp + v_hp;
+    float v_hp = (x - *hp) * MISTRESS_G_PRE_HP;
+    float lp_hp = v_hp + *hp;
+    *hp = lp_hp + v_hp;
     float drySample = x - lp_hp;
+    *dry = drySample;
 
-    /* 2. LFO phase accumulator */
-    float lfoPhase = s->lfoPhase + k->phaseInc;
+    float v_preA = (drySample - *sa) * MISTRESS_G_PRE_A;
+    float preFiltered = v_preA + *sa;
+    *sa = preFiltered + v_preA;
+
+    float y_preB = MISTRESS_PRE_B_B0 * preFiltered + *b1;
+    *b1 = MISTRESS_PRE_B_B1 * preFiltered - MISTRESS_PRE_B_A1 * y_preB + *b2;
+    *b2 = MISTRESS_PRE_B_B2 * preFiltered - MISTRESS_PRE_B_A2 * y_preB;
+    return y_preB;
+}
+
+/* 2. LFO phase accumulator */
+TS_INLINE float mistress_phase_step(float *ph, const MistressCoeffs *k)
+{
+    float lfoPhase = *ph + k->phaseInc;
     lfoPhase -= (lfoPhase >= 1.0f) ? 1.0f : 0.0f;
-    s->lfoPhase = lfoPhase;
+    *ph = lfoPhase;
+    return lfoPhase;
+}
 
-    /* 3. Delay time calculation */
+/* 3 + 4. Delay time (samples) and CTI alpha from the phase: pure */
+TS_INLINE float mistress_mod(const MistressCoeffs *k, float lfoPhase, float *ctiAlpha)
+{
     float lfo_shape = mistress_lfo_shape(lfoPhase);
     float shape = k->matrixMode ? 1.0f : lfo_shape;
     float u = shape * k->depth;
     float delayMs = 0.64f + shape * k->depthRangeMs;
     float delayInSamples = delayMs * 44.1f;
 
-    /* 4. CTI cutoff and alpha */
     float ctiCutoff = 8000.0f - 5500.0f * u;
     float z = ctiCutoff * (6.28318530717958647692f / 44100.0f);
-    float ctiAlpha = 1.0f - ts_rcp(ts_exp_pos(z));
+    *ctiAlpha = 1.0f - ts_rcp(ts_exp_pos(z));
+    return delayInSamples;
+}
 
-    /* 5. Pre-BBD anti-alias LPF cascade (12 kHz 1st-order + 12 kHz Q 0.707 biquad) */
-    float v_preA = (drySample - s->s_preA) * MISTRESS_G_PRE_A;
-    float preFiltered = v_preA + s->s_preA;
-    s->s_preA = preFiltered + v_preA;
-
-    float y_preB = MISTRESS_PRE_B_B0 * preFiltered + s->v1_preB;
-    s->v1_preB = MISTRESS_PRE_B_B1 * preFiltered - MISTRESS_PRE_B_A1 * y_preB + s->v2_preB;
-    s->v2_preB = MISTRESS_PRE_B_B2 * preFiltered - MISTRESS_PRE_B_A2 * y_preB;
-    preFiltered = y_preB;
-
-    /* 6. Feedback ADAA tanh clip */
-    float fbSignal = mistress_adaa_process(s, s->feedbackState);
-
-    /* 7. Feedback sum & delay write */
-    float bbdIn = preFiltered + fbSignal * k->feedbackGain;
-    unsigned int wp = (unsigned int)s->wp;
-    s->buf[wp] = bbdIn;
-    wp = (wp + 1u) & MISTRESS_BUF_MASK;
-    s->wp = (int)wp;
-
-    /* 8. Lagrange 3rd-order fractional delay read */
+/* 8. Lagrange 3rd-order fractional delay read; wp = the write position after
+ * this sample's write. The shortest delay is 0.64 ms = 28.2 samples, so a
+ * read never reaches a sample written less than 28 samples earlier. */
+TS_INLINE float mistress_read(const float *buf, unsigned int wp, float delayInSamples)
+{
     int M = (int)delayInSamples;
     float mu = delayInSamples - (float)M;
-    float pm1 = s->buf[(wp - (unsigned int)M) & MISTRESS_BUF_MASK];
-    float p0  = s->buf[(wp - 1u - (unsigned int)M) & MISTRESS_BUF_MASK];
-    float p1  = s->buf[(wp - 2u - (unsigned int)M) & MISTRESS_BUF_MASK];
-    float p2  = s->buf[(wp - 3u - (unsigned int)M) & MISTRESS_BUF_MASK];
+    float pm1 = buf[(wp - (unsigned int)M) & MISTRESS_BUF_MASK];
+    float p0  = buf[(wp - 1u - (unsigned int)M) & MISTRESS_BUF_MASK];
+    float p1  = buf[(wp - 2u - (unsigned int)M) & MISTRESS_BUF_MASK];
+    float p2  = buf[(wp - 3u - (unsigned int)M) & MISTRESS_BUF_MASK];
 
     float m1 = mu - 1.0f;
     float m2 = mu - 2.0f;
@@ -224,35 +238,145 @@ TS_INLINE float mistress_process(MistressState *s, const MistressCoeffs *k, floa
     float L0  =  p1_mu * m1 * m2 * 0.5f;
     float L1  = -p1_mu * mu * m2 * 0.5f;
     float L2  =  p1_mu * mu * m1 * (1.0f / 6.0f);
-    float wetSample = Lm1 * pm1 + L0 * p0 + L1 * p1 + L2 * p2;
+    return Lm1 * pm1 + L0 * p0 + L1 * p1 + L2 * p2;
+}
 
-    /* 9. CTI one-pole low-pass */
-    s->ctiState += ctiAlpha * (wetSample - s->ctiState);
-    wetSample = s->ctiState;
-    s->feedbackState = wetSample;
+/* 9. CTI one-pole low-pass */
+TS_INLINE float mistress_cti_step(float *cti, float alpha, float wet)
+{
+    *cti += alpha * (wet - *cti);
+    return *cti;
+}
 
-    /* 10. Post-BBD DC block HPF (5 Hz) + reconstruction LPF cascade (8 kHz 1st + 8 kHz biquad + 8.5 kHz biquad) */
-    float v_postDc = (wetSample - s->s_postDc) * MISTRESS_G_POST_DC;
-    float lp_postDc = v_postDc + s->s_postDc;
-    s->s_postDc = lp_postDc + v_postDc;
+/* 10 + 11. Post-BBD DC block HPF (5 Hz) + reconstruction LPF cascade (8 kHz 1st
+ * + 8 kHz biquad + 8.5 kHz biquad), then the dry/wet mix */
+TS_INLINE float mistress_post_step(float *dc, float *sa, float *b1, float *b2, float *c1, float *c2,
+                                   const MistressCoeffs *k, float wetSample, float drySample)
+{
+    float v_postDc = (wetSample - *dc) * MISTRESS_G_POST_DC;
+    float lp_postDc = v_postDc + *dc;
+    *dc = lp_postDc + v_postDc;
     float postFiltered = wetSample - lp_postDc;
 
-    float v_postA = (postFiltered - s->s_postA) * MISTRESS_G_POST_A;
-    postFiltered = v_postA + s->s_postA;
-    s->s_postA = postFiltered + v_postA;
+    float v_postA = (postFiltered - *sa) * MISTRESS_G_POST_A;
+    postFiltered = v_postA + *sa;
+    *sa = postFiltered + v_postA;
 
-    float y_postB = MISTRESS_POST_B_B0 * postFiltered + s->v1_postB;
-    s->v1_postB = MISTRESS_POST_B_B1 * postFiltered - MISTRESS_POST_B_A1 * y_postB + s->v2_postB;
-    s->v2_postB = MISTRESS_POST_B_B2 * postFiltered - MISTRESS_POST_B_A2 * y_postB;
+    float y_postB = MISTRESS_POST_B_B0 * postFiltered + *b1;
+    *b1 = MISTRESS_POST_B_B1 * postFiltered - MISTRESS_POST_B_A1 * y_postB + *b2;
+    *b2 = MISTRESS_POST_B_B2 * postFiltered - MISTRESS_POST_B_A2 * y_postB;
     postFiltered = y_postB;
 
-    float y_postC = MISTRESS_POST_C_B0 * postFiltered + s->v1_postC;
-    s->v1_postC = MISTRESS_POST_C_B1 * postFiltered - MISTRESS_POST_C_A1 * y_postC + s->v2_postC;
-    s->v2_postC = MISTRESS_POST_C_B2 * postFiltered - MISTRESS_POST_C_A2 * y_postC;
+    float y_postC = MISTRESS_POST_C_B0 * postFiltered + *c1;
+    *c1 = MISTRESS_POST_C_B1 * postFiltered - MISTRESS_POST_C_A1 * y_postC + *c2;
+    *c2 = MISTRESS_POST_C_B2 * postFiltered - MISTRESS_POST_C_A2 * y_postC;
     postFiltered = y_postC;
 
-    /* 11. Dry/wet mix */
     return drySample * k->dryGain + postFiltered * k->wetGain;
+}
+
+TS_INLINE float mistress_process(MistressState *s, const MistressCoeffs *k, float x)
+{
+    float drySample, ctiAlpha;
+    float preFiltered = mistress_pre_step(&s->s_preHP, &s->s_preA, &s->v1_preB, &s->v2_preB, x, &drySample);
+    float lfoPhase = mistress_phase_step(&s->lfoPhase, k);
+    float delayInSamples = mistress_mod(k, lfoPhase, &ctiAlpha);
+
+    /* 6. Feedback ADAA tanh clip */
+    float fbSignal = mistress_adaa_step(&s->adaa_x1, &s->adaa_ad1, s->feedbackState);
+
+    /* 7. Feedback sum & delay write */
+    float bbdIn = preFiltered + fbSignal * k->feedbackGain;
+    unsigned int wp = (unsigned int)s->wp;
+    s->buf[wp] = bbdIn;
+    wp = (wp + 1u) & MISTRESS_BUF_MASK;
+    s->wp = (int)wp;
+
+    float wetSample = mistress_cti_step(&s->ctiState, ctiAlpha, mistress_read(s->buf, wp, delayInSamples));
+    s->feedbackState = wetSample;
+
+    return mistress_post_step(&s->s_postDc, &s->s_postA, &s->v1_postB, &s->v2_postB,
+                              &s->v1_postC, &s->v2_postC, k, wetSample, drySample);
+}
+
+/* Block form for the C6745 (docs/C6745_DESIGN.md): the same arithmetic over n
+ * <= 16 samples, stage-major. The reads never reach this block's writes
+ * (shortest delay 28 samples), so the only true recurrence left is the CTI
+ * one-pole; the feedback clip runs on the CTI outputs afterwards and the
+ * writes come last. */
+#define MISTRESS_BLK_MAX 16
+#if defined(__TI_COMPILER_VERSION__)
+#define MISTRESS_RESTRICT restrict
+#define MISTRESS_LOOP _Pragma("MUST_ITERATE(1, MISTRESS_BLK_MAX)")
+#else
+#define MISTRESS_RESTRICT __restrict
+#define MISTRESS_LOOP
+#endif
+TS_INLINE void mistress_block(MistressState *MISTRESS_RESTRICT s, const MistressCoeffs *MISTRESS_RESTRICT k,
+                              const float *MISTRESS_RESTRICT in, float *MISTRESS_RESTRICT out, int n)
+{
+    float dry[MISTRESS_BLK_MAX], pre[MISTRESS_BLK_MAX], dly[MISTRESS_BLK_MAX], alpha[MISTRESS_BLK_MAX];
+    float wet[MISTRESS_BLK_MAX], ad[MISTRESS_BLK_MAX], mid[MISTRESS_BLK_MAX];
+    unsigned int wp0 = (unsigned int)s->wp;
+    int i;
+    {   /* pre filters (three short recurrences) */
+        float hp = s->s_preHP, sa = s->s_preA, b1 = s->v1_preB, b2 = s->v2_preB;
+        MISTRESS_LOOP
+        for (i = 0; i < n; ++i)
+            pre[i] = mistress_pre_step(&hp, &sa, &b1, &b2, in[i], &dry[i]);
+        s->s_preHP = hp; s->s_preA = sa; s->v1_preB = b1; s->v2_preB = b2;
+    }
+    {   /* LFO phase, then the modulation (pure) */
+        float ph = s->lfoPhase;
+        MISTRESS_LOOP
+        for (i = 0; i < n; ++i)
+            dly[i] = mistress_phase_step(&ph, k);
+        s->lfoPhase = ph;
+    }
+    MISTRESS_LOOP
+    for (i = 0; i < n; ++i)
+        dly[i] = mistress_mod(k, dly[i], &alpha[i]);
+    MISTRESS_LOOP
+    for (i = 0; i < n; ++i)                 /* reads: older samples only */
+        wet[i] = mistress_read(s->buf, (wp0 + (unsigned int)i + 1u) & MISTRESS_BUF_MASK, dly[i]);
+    {   /* the CTI one-pole: the one recurrence */
+        float cti = s->ctiState;
+        MISTRESS_LOOP
+        for (i = 0; i < n; ++i)
+            wet[i] = mistress_cti_step(&cti, alpha[i], wet[i]);
+        s->ctiState = cti;
+    }
+    {   /* feedback clip of the previous sample's wet: pure passes, then the writes */
+        float fs = s->feedbackState, x1 = s->adaa_x1, ad1 = s->adaa_ad1, g = k->feedbackGain;
+        MISTRESS_LOOP
+        for (i = 0; i < n; ++i)
+            ad[i] = mistress_ln_cosh(i ? wet[i - 1] : fs);
+        MISTRESS_LOOP
+        for (i = 0; i < n; ++i) {
+            float xi = i ? wet[i - 1] : fs, xp = i > 1 ? wet[i - 2] : (i ? fs : x1);
+            mid[i] = mistress_mean_tanh(xp, 0.5f * (xi - xp));
+        }
+        MISTRESS_LOOP
+        for (i = 0; i < n; ++i) {
+            float xi = i ? wet[i - 1] : fs;
+            float fb = mistress_adaa_mix(xi, x1, ad[i], ad1, mid[i]);
+            s->buf[(wp0 + (unsigned int)i) & MISTRESS_BUF_MASK] = pre[i] + fb * g;
+            x1 = xi;
+            ad1 = ad[i];
+        }
+        s->adaa_x1 = x1; s->adaa_ad1 = ad1;
+        s->feedbackState = wet[n - 1];
+        s->wp = (int)((wp0 + (unsigned int)n) & MISTRESS_BUF_MASK);
+    }
+    {   /* post filters and mix */
+        float dc = s->s_postDc, sa = s->s_postA, b1 = s->v1_postB, b2 = s->v2_postB;
+        float c1 = s->v1_postC, c2 = s->v2_postC;
+        MISTRESS_LOOP
+        for (i = 0; i < n; ++i)
+            out[i] = mistress_post_step(&dc, &sa, &b1, &b2, &c1, &c2, k, wet[i], dry[i]);
+        s->s_postDc = dc; s->s_postA = sa; s->v1_postB = b1; s->v2_postB = b2;
+        s->v1_postC = c1; s->v2_postC = c2;
+    }
 }
 
 #endif /* MISTRESS_G1_H */

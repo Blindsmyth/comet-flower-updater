@@ -40,7 +40,7 @@ software-pipeline notes. "dep bound" = length in cycles of the feedback chain th
 | CF 808 | ts808_exact.h:180 (8 trips) | 57 / 18 | pipelined at ii 61, two thirds idle |
 | CF Watt 2x | hiwatt_amp.h 286/287/371/392, hiwatt_kernel.h:152 | 22/13, 16/6, 22/19, 24/8 | pipelined, all feedback-bound; hiwatt_amp.h:248 not pipelined (control code) |
 | CF Dyna | dynacx.c:57 | - | **not pipelined**: control code (reworked 2026-10-19, §3d) |
-| CF Mistrss | mistrx.c:83 | - | **not pipelined**: too many instructions (> 250) |
+| CF Mistrss | mistrx.c:83 | - | **not pipelined**: too many instructions (> 250) (reworked 2026-10-19, §3e) |
 | CF CE2 | ce2x.c:81 | - | **not pipelined**: too many instructions (> 250) |
 | CF Delay | delayx.c:78 | - | **not pipelined**: control code |
 
@@ -122,6 +122,18 @@ mix (27, 18, 6), de-emphasis + high-pass (16). Static ~2.6k cycles per block aga
 - A `cond ? expensive() : 1.0f` became a branch (control code): compute it always, then select.
 - Two exp evaluations in one ADAA body found no schedule; the pure parts got their own passes.
 - `restrict` on the block function's parameters removed a run-time alias check and a 35-cycle false chain.
+
+## 3e. CF Mistress (2026-10-19)
+
+Bit-identical (host null test against the committed core: 0 samples differ; accuracy bench PASS unchanged).
+The key observation: the shortest BBD delay is 0.64 ms = 28 samples, longer than a block, so no read in a
+block touches that block's writes. The flanger's feedback therefore does not chain samples inside a block;
+the only true recurrence left is the CTI one-pole (12 cycles). Passes: pre filters, LFO phase, modulation
+(exp/rcp, pure), Lagrange reads, CTI, feedback ADAA (ln cosh, mean tanh, mix + writes), post filters. 13
+loops, all pipelined; static ~3.1k cycles per block against 6.6k measured. `.text` 18.3 KB: manifest
+`"text_extra": 2048` (build_g1.sh reads it; the 40 KiB slot check still applies).
+- General rule: **a delay longer than the block decouples the feedback within a block** (delays, flangers,
+  choruses): read the whole block first, then process, then write.
 
 ## 4. Workflow for a stage
 

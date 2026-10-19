@@ -7,6 +7,7 @@
   "badge": "CF",
   "description": "Electric Mistress flanger, port of Comet Flower's model: BBD line (6.4 ms) with clock-ripple anti-imaging, feedback 'Color', Matrix (static) mode. State in the slot work buffer. TEST: cost not yet measured on the pedal.",
   "dspload": 27,
+  "text_extra": 2048,
   "allow_any_id": true,
   "kernel": "mistrx.c",
   "kernel_section": "text",

@@ -23,6 +23,10 @@ export ZD2_EXTRA_LNK_FLAGS="--export=Dll_$EFFECT"
 export ZD2_STATE_BYTES_MAX=392
 # Knob ranges: stomphacks caps max at 1000 (MS Plus); stock G1 delays use Time max 3018.
 export ZD2_PARAM_MAX_MAX=3018
+# Extra .text budget over stomphacks' default (manifest "text_extra", bytes; an
+# environment ZD2_TEXT_EXTRA still wins). The slot-memory check below is the hard limit.
+TEXT_EXTRA="$(grep -o '"text_extra": *[0-9]*' "$PROJ/effects/$NAME/manifest.json" | grep -o '[0-9]*$' || true)"
+if [ -z "${ZD2_TEXT_EXTRA:-}" ] && [ -n "$TEXT_EXTRA" ]; then export ZD2_TEXT_EXTRA="$TEXT_EXTRA"; fi
 
 rm -rf "$LAB/effects/$NAME"
 cp -r "$PROJ/effects/$NAME" "$LAB/effects/$NAME"
