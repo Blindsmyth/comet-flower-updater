@@ -1,0 +1,32 @@
+{
+  "name": "CF RA200",
+  "filename": "RA200X",
+  "id": "06000f89",
+  "version": "1.00",
+  "display": "CF RA200",
+  "badge": "CF",
+  "description": "Alembic F-2B tube preamp (two 12AX7 stages, Fender AB763 stack, bright) into a pair of Yamaha RA-200 rotating-speaker cabinets: crossover, three rotating speakers per cabinet (Doppler and directivity), four fixed 12-inch, one mic per cabinet: stereo out. Gilmour's 1979 rig, the path beside the Hiwatts. State in the slot work buffer. TEST: rotor speeds and crossover are starting values; cost not yet measured on the pedal.",
+  "dspload": 30,
+  "text_extra": 6144,
+  "allow_any_id": true,
+  "kernel": "ra200x.c",
+  "kernel_section": "text",
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 64,
+  "scaffold": "cleanroom",
+  "const_blob": {
+    "symbol": "hw_blob",
+    "words": 1024,
+    "init": "blob.bin"
+  },
+  "params": [
+    { "name": "Volume", "max": 100, "default": 50, "explanation": "F-2B 1M volume (audio taper): drive into the second 12AX7 and level." },
+    { "name": "Treble", "max": 100, "default": 60, "explanation": "F-2B treble (250k, AB763 stack)." },
+    { "name": "Middle", "max": 100, "default": 50, "explanation": "F-2B middle (10k)." },
+    { "name": "Bass", "max": 100, "default": 40, "explanation": "F-2B bass (250k)." },
+    { "name": "Bright", "max": 1, "default": 0, "explanation": "F-2B bright switch (120 pF across the volume)." },
+    { "name": "Speed", "max": 100, "default": 40, "explanation": "RA-200 slow rotor speed, 0.4..3 Hz (the hardware's tremolo speed knob)." },
+    { "name": "Rotor", "max": 2, "default": 1, "explanation": "0 off (all to the fixed speakers), 1 slow, 2 fast (6.6 Hz, fixed); the rotors spin up and down." }
+  ]
+}
