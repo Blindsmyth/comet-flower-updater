@@ -195,4 +195,188 @@ TS_INLINE float rat_process(RatState *s, const RatCoeffs *k, float x)
     return x * k->vol;
 }
 
+TS_INLINE void rat_block16(RatState *s, const RatCoeffs *k, const float *in, float *out)
+{
+    float b_a[128];
+    float b_b[128];
+    int i;
+
+    /* 8x Upsampling: 16 -> 32 -> 64 -> 128 */
+    hbi1_up_blk(&s->up1, in, b_a, 16);
+    hbi2_up_blk(&s->up2, b_a, b_b, 32);
+    hbi2_up_blk(&s->up3, b_b, b_a, 64);
+
+    /* Pass 1: AC, Hi, Lo highpass filters + Boost + Feedback SVF lowpass */
+    {
+        float s_ac = s->s_ac;
+        float s_hi = s->s_leghi;
+        float s_lo = s->s_leglo;
+        float fb1  = s->svf_fb_1;
+        float fb2  = s->svf_fb_2;
+        float g_fb = k->g_fb;
+        float h_fb = k->h_fb;
+        float g_fb_r2 = g_fb + 1.41421356f;
+        float b_hi = k->boost_mult_hi;
+        float b_lo = k->boost_mult_lo;
+
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(128, 128, 16)
+#endif
+        for (i = 0; i < 128; ++i) {
+            float x = b_a[i];
+
+            float v_ac = (x - s_ac) * RAT_G_AC;
+            float lp_ac = v_ac + s_ac;
+            s_ac = lp_ac + v_ac;
+            x = x - lp_ac;
+
+            float v_hi = (x - s_hi) * RAT_G_LEGHI;
+            float lp_hi = v_hi + s_hi;
+            s_hi = lp_hi + v_hi;
+            float hi = x - lp_hi;
+
+            float v_lo = (x - s_lo) * RAT_G_LEGLO;
+            float lp_lo = v_lo + s_lo;
+            s_lo = lp_lo + v_lo;
+            float lo = x - lp_lo;
+
+            float boost = b_hi * hi + b_lo * lo;
+
+            float hp_fb = h_fb * (boost - fb1 * g_fb_r2 - fb2);
+            float bp_fb = hp_fb * g_fb + fb1;
+            fb1 = hp_fb * g_fb + bp_fb;
+            float lp_fb = bp_fb * g_fb + fb2;
+            fb2 = bp_fb * g_fb + lp_fb;
+
+            b_a[i] = x + lp_fb;
+        }
+        s->s_ac = s_ac;
+        s->s_leghi = s_hi;
+        s->s_leglo = s_lo;
+        s->svf_fb_1 = fb1;
+        s->svf_fb_2 = fb2;
+    }
+
+    /* Pass 2: Slew Limiter, Op-Amp SVF lowpass, DC blocking filter */
+    {
+        float slew = s->slew;
+        float opa1 = s->svf_opa_1;
+        float opa2 = s->svf_opa_2;
+        float s_dc = s->s_dc;
+        float g_opa = k->g_opa;
+        float h_opa = k->h_opa;
+        float g_opa_r2 = g_opa + 1.41421356f;
+
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(128, 128, 16)
+#endif
+        for (i = 0; i < 128; ++i) {
+            float x = b_a[i];
+
+            float d = ts_clamp(x - slew, -RAT_MAX_DELTA, RAT_MAX_DELTA);
+            slew = slew + d;
+
+            float hp_opa = h_opa * (slew - opa1 * g_opa_r2 - opa2);
+            float bp_opa = hp_opa * g_opa + opa1;
+            opa1 = hp_opa * g_opa + bp_opa;
+            float lp_opa = bp_opa * g_opa + opa2;
+            opa2 = bp_opa * g_opa + lp_opa;
+
+            float v_dc = (lp_opa - s_dc) * 4.45197e-05f;
+            float lp_dc = v_dc + s_dc;
+            s_dc = lp_dc + v_dc;
+
+            b_a[i] = lp_opa - lp_dc;
+        }
+        s->slew = slew;
+        s->svf_opa_1 = opa1;
+        s->svf_opa_2 = opa2;
+        s->s_dc = s_dc;
+    }
+
+    /* Pass 3: Clamp & 1N914 Diode Clipping Table Non-Linearity */
+    {
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(128, 128, 16)
+#endif
+        for (i = 0; i < 128; ++i) {
+            float x = ts_clamp(b_a[i], -4.0f, 4.0f);
+
+            union { float f; unsigned u; } b;
+            b.f = x;
+            unsigned sgn = b.u & 0x80000000u;
+            b.u = b.u & 0x7fffffffu;
+            float abs_x = b.f;
+            
+            float p = abs_x * RAT_DTAB_SCALE;
+            int idx = (int)p;
+            if (idx > RAT_DTAB_N - 2) {
+                idx = RAT_DTAB_N - 2;
+            }
+            float frac = p - (float)idx;
+            float v = rat_dtab[idx] + frac * (rat_dtab[idx + 1] - rat_dtab[idx]);
+            
+            b.f = v;
+            b.u = b.u | sgn;
+            b_a[i] = b.f;
+        }
+    }
+
+    /* Pass 4: Tone Filter SVF & Makeup Gain (1.67x) */
+    {
+        float tn1 = s->svf_tone_1;
+        float tn2 = s->svf_tone_2;
+        float g_tn = k->g_tone;
+        float h_tn = k->h_tone;
+        float g_tn_r2 = g_tn + 1.41421356f;
+
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(128, 128, 16)
+#endif
+        for (i = 0; i < 128; ++i) {
+            float x = b_a[i];
+
+            float hp_tone = h_tn * (x - tn1 * g_tn_r2 - tn2);
+            float bp_tone = hp_tone * g_tn + tn1;
+            tn1 = hp_tone * g_tn + bp_tone;
+            float lp_tone = bp_tone * g_tn + tn2;
+            tn2 = bp_tone * g_tn + lp_tone;
+
+            b_a[i] = lp_tone * 1.67f;
+        }
+        s->svf_tone_1 = tn1;
+        s->svf_tone_2 = tn2;
+    }
+
+    /* 8x Downsampling: 128 -> 64 -> 32 -> 16 */
+    hbi2_down_blk(&s->down3, b_a, b_b, 64);
+    hbi2_down_blk(&s->down2, b_b, b_a, 32);
+    hbi1_down_blk(&s->down1, b_a, out, 16);
+
+    /* Output volume */
+    {
+        float vol = k->vol;
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(16, 16, 16)
+#endif
+        for (i = 0; i < 16; ++i) {
+            out[i] *= vol;
+        }
+    }
+}
+
+TS_INLINE void rat_block(RatState *s, const RatCoeffs *k, const float *in, float *out, int n)
+{
+    while (n >= 16) {
+        rat_block16(s, k, in, out);
+        in += 16;
+        out += 16;
+        n -= 16;
+    }
+    while (n > 0) {
+        *out++ = rat_process(s, k, *in++);
+        n--;
+    }
+}
+
 #endif

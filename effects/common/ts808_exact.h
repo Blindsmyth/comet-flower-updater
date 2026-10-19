@@ -189,4 +189,134 @@ TS_INLINE float tsx_process(TsxState *s, const TsxCoeffs *k, float x)
     return x * k->gain;
 }
 
+TS_INLINE void tsx_block16(TsxState *s, const TsxCoeffs *k, const float *in, float *out)
+{
+    float b_a[128];
+    float b_b[128];
+    int i;
+
+    /* Step 0: Input HP filters (16 samples) */
+    {
+        float hp1 = s->hp1, hp2 = s->hp2;
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(16, 16, 16)
+#endif
+        for (i = 0; i < 16; ++i) {
+            float x = in[i];
+            float v1 = (x - hp1) * X_G_IN1;
+            float lp1 = v1 + hp1;
+            hp1 = lp1 + v1;
+            x = x - lp1;
+
+            float v2 = (x - hp2) * X_G_IN2;
+            float lp2 = v2 + hp2;
+            hp2 = lp2 + v2;
+            b_a[i] = x - lp2;
+        }
+        s->hp1 = hp1;
+        s->hp2 = hp2;
+    }
+
+    /* Step 1: 8x Upsampling: 16 -> 32 -> 64 -> 128 */
+    tsx_up6_blk(&s->s1, b_a, b_b, 16);  /* 16 -> 32 in b_b */
+    tsx_up3_blk(&s->s2, b_b, b_a, 32);  /* 32 -> 64 in b_a */
+    tsx_up3_blk(&s->s3, b_a, b_b, 64);  /* 64 -> 128 in b_b */
+
+    /* Step 2: Diode Clipping Stage (128 samples, Pass 1) */
+    {
+        float vc3 = s->vc3;
+        float igp = s->igp;
+        float q   = s->q;
+        float u   = s->u;
+
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(128, 128, 16)
+#endif
+        for (i = 0; i < 128; ++i) {
+            float x = b_b[i];
+            float ig = (x - vc3 - X_KC3 * igp) * X_INV_R4KC3;
+            float hu = (2.0f * X_ALPHA) * u;
+            float r;
+            vc3 += X_KC3 * (ig + igp);
+            igp = ig;
+            r = (X_R_IG * ig - q) + hu;
+            q = hu - q;
+            u = tsx_dtable(k, r);
+#if TSX_NEWTON
+            {
+                float e = sd_expf(u), ei = sd_expf(-u);
+                u -= (k->c * u + 0.5f * (e - ei) - r) * ts_rcp(k->c + 0.5f * (e + ei));
+            }
+#endif
+            b_a[i] = x + SD_NVT * u;
+        }
+        s->vc3 = vc3;
+        s->igp = igp;
+        s->q = q;
+        s->u = u;
+    }
+
+    /* Step 3: Post Filter & Tone Network (128 samples, Pass 2) */
+    {
+        float spost = s->spost;
+        float ztone = s->ztone;
+        float b0 = k->b0, b1 = k->b1;
+
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(128, 128, 16)
+#endif
+        for (i = 0; i < 128; ++i) {
+            float in_val = b_a[i];
+            float v = (in_val - spost) * X_G_POST8;
+            float y = v + spost;
+            spost = y + v;
+
+            float o = b0 * y + ztone;
+            ztone = b1 * y - X_TONE_A1_8 * o;
+
+            b_b[i] = o;
+        }
+        s->spost = spost;
+        s->ztone = ztone;
+    }
+
+    /* Step 4: Downsampling: 128 -> 64 -> 32 -> 16 */
+    tsx_down3_blk(&s->s3, b_b, b_a, 64); /* 128 -> 64 in b_a */
+    tsx_down3_blk(&s->s2, b_a, b_b, 32); /* 64 -> 32 in b_b */
+    tsx_down6_blk(&s->s1, b_b, b_a, 16); /* 32 -> 16 in b_a */
+
+    /* Step 5: Output DC block & Gain (16 samples) */
+    {
+        float sdc = s->sdc;
+        float gain = k->gain;
+
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(16, 16, 16)
+#endif
+        for (i = 0; i < 16; ++i) {
+            float x = b_a[i];
+            float v = (x - sdc) * TS_G_DC;
+            float lp = v + sdc;
+            sdc = lp + v;
+            out[i] = (x - lp) * gain;
+        }
+        s->sdc = sdc;
+    }
+}
+
+TS_INLINE void tsx_block(TsxState *s, const TsxCoeffs *k, const float *in, float *out, int n)
+{
+    while (n >= 16) {
+        tsx_block16(s, k, in, out);
+        in += 16;
+        out += 16;
+        n -= 16;
+    }
+    while (n > 0) {
+        *out++ = tsx_process(s, k, *in++);
+        n--;
+    }
+}
+
 #endif /* TS808_EXACT_H */
+

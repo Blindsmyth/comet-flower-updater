@@ -64,4 +64,36 @@ TS_INLINE float tsx_down3(TsxHB3 *h, float a, float b)
         + OS3_C2 * (h->oh[6] + h->oh[1]);
 }
 
+TS_INLINE void tsx_up6_blk(TsxHB6 *h, const float *in, float *out, int n)
+{
+    int j;
+    for (j = 0; j < n; ++j) {
+        tsx_up6(h, in[j], &out[2 * j], &out[2 * j + 1]);
+    }
+}
+
+TS_INLINE void tsx_up3_blk(TsxHB3 *h, const float *in, float *out, int n)
+{
+    int j;
+    for (j = 0; j < n; ++j) {
+        tsx_up3(h, in[j], &out[2 * j], &out[2 * j + 1]);
+    }
+}
+
+TS_INLINE void tsx_down3_blk(TsxHB3 *h, const float *in, float *out, int n)
+{
+    int j;
+    for (j = 0; j < n; ++j) {
+        out[j] = tsx_down3(h, in[2 * j], in[2 * j + 1]);
+    }
+}
+
+TS_INLINE void tsx_down6_blk(TsxHB6 *h, const float *in, float *out, int n)
+{
+    int j;
+    for (j = 0; j < n; ++j) {
+        out[j] = tsx_down6(h, in[2 * j], in[2 * j + 1]);
+    }
+}
+
 #endif /* OS_HALFBAND_H */

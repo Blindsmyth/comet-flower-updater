@@ -321,11 +321,41 @@ TS_INLINE int hw_fast_ok(float x, float x1, float bias, float ceil)
 TS_INLINE void hw_tube_block(const float *HW_RESTRICT x, float *HW_RESTRICT y, float *x1,
                              float bias, float kneg, float c0, float dc, float idle)
 {
-    int n, ok;
+    float d_buf[HW_NB], w_buf[HW_NB];
+    int n;
     float prev = *x1;
-    for (n = 0; n < HW_NB; ++n) {                   /* pipelined fast pass */
-        float xp = n == 0 ? prev : x[n - 1], c = c0 + dc * (float)(n + 1);
-        y[n] = hw_tube_fast(x[n], xp, bias, kneg, c, idle, &ok);
+
+    /* Pass 1: input geometry, region selection, and tanh(m) */
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(HW_NB, HW_NB, HW_NB)
+#endif
+    for (n = 0; n < HW_NB; ++n) {
+        float xp = n == 0 ? prev : x[n - 1];
+        float c = c0 + dc * (float)(n + 1);
+        float u1 = xp + bias, du = x[n] - xp;
+        int r1 = u1 < 0.0f ? 0 : (u1 <= c ? 1 : 2);
+        float W = r1 == 0 ? kneg : 1.0f;
+        float A = r1 == 2 ? HW_GRID : 1.0f;
+        float t1 = A * u1 + (r1 == 2 ? c * (1.0f - HW_GRID) : 0.0f);
+        float d = 0.5f * A * du;
+        y[n] = hw_tanh_acc(t1 + d);
+        d_buf[n] = d;
+        w_buf[n] = W;
+    }
+
+    /* Pass 2: tanh(d)/d, atanh(z)/z series, and scaling */
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(HW_NB, HW_NB, HW_NB)
+#endif
+    for (n = 0; n < HW_NB; ++n) {
+        float d = d_buf[n], tm = y[n], W = w_buf[n];
+        float d2 = d * d, z, z2, z4;
+        float tdd = 1.0f - d2 * (1.0f / 3 - d2 * (2.0f / 15 - d2 * (17.0f / 315 - d2 * (62.0f / 2835))));
+        float td = d * tdd, tt = tm * tdd;
+        z = tm * td;
+        z2 = z * z;
+        z4 = z2 * z2;
+        y[n] = W * (tt * ((1.0f + z2 * (1.0f / 3)) + z4 * (1.0f / 5 + z2 * (1.0f / 7)))) - idle;
     }
     /* rare exact fix-ups. The test is recomputed in its own pass, cheaply (no
      * tanh; storing a flag from the fast pass costs it ii 46 instead of 26,

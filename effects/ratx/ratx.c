@@ -28,6 +28,7 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     float *eff        = (float *)ctx[1];
     KernelState *s    = (KernelState *)instance[2];
     RatCoeffs k;
+    float wet[SH_FRAMES];
     int i;
 
     unsigned ok = 1;
@@ -60,13 +61,18 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     }
     rat_coeffs(&k, s->dist * 10.0f, s->filter, TRIM * s->vol);
 
+    rat_block(&s->dsp, &k, eff, wet, SH_FRAMES);
+
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(SH_FRAMES, SH_FRAMES, SH_FRAMES)
+#endif
     for (i = 0; i < SH_FRAMES; i++) {
         float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
-        float wet = rat_process(&s->dsp, &k, da);
+        float w = wet[i];
         float a, b;
-        if (!(wet > -8.0f && wet < 8.0f)) wet = 0.0f;
-        a = da + fade * (wet - da);
-        b = db + fade * (wet - db);
+        if (!(w > -8.0f && w < 8.0f)) w = 0.0f;
+        a = da + fade * (w - da);
+        b = db + fade * (w - db);
         if (!(a > -8.0f && a < 8.0f)) a = 0.0f;
         if (!(b > -8.0f && b < 8.0f)) b = 0.0f;
         eff[i] = a;

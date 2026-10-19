@@ -1,0 +1,31 @@
+{
+  "name": "CFM Amp",
+  "filename": "CFMAMP",
+  "id": "07000f92",
+  "version": "1.00",
+  "display": "CFM Amp",
+  "badge": "CF",
+  "description": "CF Master Split Variant - Amp & Rotary Stage: MXR DDS-1 Delay + Hiwatt DR103 / WEM 4x12 || Alembic F-2B / Yamaha RA-200 Rotating Cabinets (stereo out). 3 patch slots (header 0x58 = 3).",
+  "dspload": 45,
+  "g1_slots": 3,
+  "allow_any_id": true,
+  "kernel": "cfm_amp.c",
+  "kernel_section": "text",
+  "text_extra": 8192,
+  "state_bytes": 192,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Amp Drive", "max": 100, "default": 60, "explanation": "Hiwatt DR103 input gain / volume." },
+    { "name": "Amp Mstr", "max": 100, "default": 80, "explanation": "Hiwatt DR103 master volume and power sag." },
+    { "name": "Amp Treb", "max": 100, "default": 65, "explanation": "Hiwatt DR103 treble tone control." },
+    { "name": "Amp Bass", "max": 100, "default": 55, "explanation": "Hiwatt DR103 bass tone control." },
+    { "name": "Dly Time", "max": 1000, "default": 480, "explanation": "MXR DDS-1 delay time (ms)." },
+    { "name": "Dly Fdbk", "max": 100, "default": 25, "explanation": "Delay feedback / regeneration." },
+    { "name": "Dly Mix", "max": 100, "default": 30, "explanation": "Delay wet level." },
+    { "name": "Cab Sim", "max": 1, "default": 1, "explanation": "WEM 4x12 Fane Crescendo cabinet filter on Hiwatt." },
+    { "name": "Rotor", "max": 2, "default": 1, "explanation": "RA-200 rotor mode (0=Off, 1=Slow, 2=Fast)." },
+    { "name": "Rot Speed", "max": 100, "default": 50, "explanation": "RA-200 slow speed trim (0.4 - 3.0 Hz)." },
+    { "name": "RA200 Mix", "max": 100, "default": 50, "explanation": "RA-200 rotary output level." },
+    { "name": "Rig Blend", "max": 100, "default": 50, "explanation": "Hiwatt / RA-200 stereo blend balance." }
+  ]
+}

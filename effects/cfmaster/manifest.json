@@ -1,0 +1,31 @@
+{
+  "name": "CF Master",
+  "filename": "CFMAST",
+  "id": "07000f90",
+  "version": "1.00",
+  "display": "CF Master",
+  "badge": "CF",
+  "description": "CF Master: 1979 Comfortably Numb studio rig (Ram's Head Muff -> Electric Mistress -> MXR DDS-1 Delay -> Hiwatt DR103/WEM || Alembic F-2B/Yamaha RA-200 Rotary in stereo). 5 patch slots (header 0x58 = 5).",
+  "dspload": 80,
+  "g1_slots": 5,
+  "allow_any_id": true,
+  "kernel": "cfmaster.c",
+  "kernel_section": "text",
+  "text_extra": 8192,
+  "state_bytes": 256,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Muff Sust", "max": 100, "default": 75, "explanation": "Ram's Head Big Muff sustain / fuzz gain." },
+    { "name": "Muff Tone", "max": 100, "default": 50, "explanation": "Big Muff tone tilt filter (mid scoop)." },
+    { "name": "Muff Vol", "max": 100, "default": 70, "explanation": "Fuzz level into the flanger/delay." },
+    { "name": "Mist Rate", "max": 100, "default": 35, "explanation": "Electric Mistress LFO sweep rate." },
+    { "name": "Mist Colr", "max": 100, "default": 65, "explanation": "Electric Mistress BBD feedback / comb depth." },
+    { "name": "Dly Time", "max": 1000, "default": 480, "explanation": "MXR DDS-1 delay time in ms (default 480 ms)." },
+    { "name": "Dly Mix", "max": 100, "default": 30, "explanation": "Delay echo wet mix." },
+    { "name": "Amp Drive", "max": 100, "default": 60, "explanation": "Hiwatt DR103 preamp volume / input drive." },
+    { "name": "Amp Mstr", "max": 100, "default": 80, "explanation": "Hiwatt DR103 master volume and power sag." },
+    { "name": "Rotor", "max": 2, "default": 1, "explanation": "Yamaha RA-200 rotor mode: 0 = Off, 1 = Slow (chorus), 2 = Fast." },
+    { "name": "Rot Speed", "max": 100, "default": 50, "explanation": "RA-200 slow rotor speed adjustment (0.4 - 3.0 Hz)." },
+    { "name": "Rig Blend", "max": 100, "default": 50, "explanation": "Rig balance: 0 = 100% Hiwatt, 100 = 100% RA-200." }
+  ]
+}
