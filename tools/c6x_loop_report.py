@@ -35,6 +35,7 @@ FIELDS = {
     "Known Minimum Iteration Count": "trip_min",
     "Known Maximum Iteration Count": "trip_max",
     "Loop Carried Dependency Bound(^)": "dep",
+    "Loop Carried Dependency Bound": "dep",     # printed without (^) when no chain is marked
     "Partitioned Resource Bound(*)": "res",
     "Total cycles (est.)": "total",
 }

@@ -35,10 +35,11 @@ TS_INLINE DelayState *work_state(void **instance)
 void SH_AUDIO_FN(void **instance, void **ctx)
 {
     const float *coef = (const float *)instance[1];
-    float *eff        = (float *)ctx[1];
+    float *DL_RESTRICT eff = (float *)ctx[1];   /* only this pointer touches the bus here */
     KernelState *s    = (KernelState *)instance[2];
     DelayState *d     = work_state(instance);
     DelayCoeffs k;
+    float wl_b[SH_FRAMES], wr_b[SH_FRAMES];
     int i;
 
     unsigned ok = d != 0;
@@ -75,10 +76,12 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         s->primed = 1.0f;
     }
 
+    /* the whole block through the core, stage by stage (docs/C6745_DESIGN.md) */
+    delay_block(d, &k, eff, wl_b, wr_b, SH_FRAMES);
+
     for (i = 0; i < SH_FRAMES; i++) {
         float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
-        float wl, wr, a, b;
-        delay_process(d, &k, da, &wl, &wr);
+        float wl = wl_b[i], wr = wr_b[i], a, b;
         if (!(wl > -8.0f && wl < 8.0f)) wl = 0.0f;
         if (!(wr > -8.0f && wr < 8.0f)) wr = 0.0f;
         a = da + fade * (wl - da);

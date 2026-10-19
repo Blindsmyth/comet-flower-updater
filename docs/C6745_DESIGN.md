@@ -42,7 +42,7 @@ software-pipeline notes. "dep bound" = length in cycles of the feedback chain th
 | CF Dyna | dynacx.c:57 | - | **not pipelined**: control code (reworked 2026-10-19, §3d) |
 | CF Mistrss | mistrx.c:83 | - | **not pipelined**: too many instructions (> 250) (reworked 2026-10-19, §3e) |
 | CF CE2 | ce2x.c:81 | - | **not pipelined**: too many instructions (> 250) (reworked 2026-10-19, §3f) |
-| CF Delay | delayx.c:78 | - | **not pipelined**: control code |
+| CF Delay | delayx.c:78 | - | **not pipelined**: control code (reworked 2026-10-19, §3g) |
 
 Stock Zoom drives run their sample loops as SPLOOPs at ii 10-14 (recon/11). Every CF effect has headroom
 before any change to the model itself.
@@ -140,6 +140,20 @@ loops, all pipelined; static ~3.1k cycles per block against 6.6k measured. `.tex
 Bit-identical (null test against the committed core: 0 samples differ; accuracy bench PASS). A chorus has no
 feedback: the block's delay pushes come first, then the reads (delay 7.8..17.8 ms, buffer 1024). 10 passes,
 all pipelined, ~114 cycles per sample: static ~2.2k per block against 4.1k measured.
+
+## 3g. CF Delay (2026-10-19)
+
+Bit-identical (null test against the committed core: 0 samples differ; accuracy bench PASS; kernel host test
+passes). When the read head stays at least 17 samples back for the whole block (always, unless Time is near
+0), the reads cannot reach the block's writes and the block runs as passes; otherwise the per-sample code
+runs (the test covers both and the switch between them). ~83 cycles per sample, ~1.3k per block.
+- **Predicated loads chain iterations:** `cond ? buf[i] : 0.0f` became a conditional load that tied each
+  read to the previous iteration (dep 36 instead of the glide's 12). Load always (indices are masked), then
+  select. Found by elimination: compile scratch variants with one part removed and compare the dep bound.
+- **Reuse pure values across samples:** the saturator's `ln cosh(x1)` is the previous sample's `ln cosh(x)`;
+  one pass computes it once per sample (75 -> 12 + 31 cycles).
+- The kernel host test overran its output vectors (88200 is not a multiple of 16): fixed; it had crashed at
+  exit since it was written.
 
 ## 4. Workflow for a stage
 

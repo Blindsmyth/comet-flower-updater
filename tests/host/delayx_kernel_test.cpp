@@ -36,7 +36,7 @@ int main()
     // 1. impulse: echo at 420 ms on L, 440 ms on R; second echo scaled by regen (through LP + tanh)
     std::memset(wbuf, 0x7f, sizeof wbuf);          // garbage in the buffer: must never be heard
     reset(); coef[SH_COEFF_BYPASS] = 1.0f; knobs(420, 50, 50);
-    const long N = 44100 * 2;
+    const long N = 44100 * 2 / 16 * 16;          // whole blocks: 88200 overran L and R by 8 samples
     std::vector<float> L(N), R(N);
     bool finite = true;
     for (long b = 0; b < N; b += 16) {
