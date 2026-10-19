@@ -577,3 +577,18 @@ differences from the working 8 ch descriptor are the channel count and the 900 B
 (usbaudio.sys is commonly quoted at 8 ch x 16 bit at full speed: 768 B/ms). Not proven (needs an elevated ETW
 USB trace), but 10 ch at full speed is shelved: **flash 19B** (`c7407821`, proven 8 ch descriptor: 1-2 mix,
 3-4 guitar FX, 5-6 drums, 7-8 DI, no timing frames on 7-8). The looper stem would need a pair swapped out.
+
+### Back to 8 channels (2026-10-18, late): channel 8 choices
+19B was never flashed (pedal not in update mode); owner rolled back to updater 17 (bench, 8 ch read back from the hub,
+stream opens). Ch 8 timing frames spoil 7-8 as a stereo DI, so two non-bench 8 ch builds with the calibrated-loads
+effects (`build/cf_loads_2026-10-18/fs_cfloads.bin`):
+
+| Desktop | SHA-256 (start) | Firmware | 7 / 8 |
+|---|---|---|---|
+| `GUITAR AUDIO 20A - DI on 7 and 8 TEST.exe` (= 19B) | `c7407821` | `cbc28a4a` (`--pairs8`) | DI / DI |
+| `GUITAR AUDIO 20B - looper on 8 TEST.exe` (`build/cf_usb_looper8_2026-10-18/`) | `7830391d` | `d9eb45e2` (`--fx`, = updater 10's fw) | DI / looper |
+
+Recipe (reproduces 19B byte for byte): `make_controller_fw.py --base build/fw/res1_cf_usbname.bin --ui --usb-product
+"Comet Flower ZG1X4 MIDI" --usb-audio-name "Comet Flower Audio Bridge" --out ctl.bin` -> `make_usb_audio_fw.py
+--base ctl.bin --pairs8|--fx` -> `make_fs_restore_updater.py <v2.00 updater> "<name> TEST.exe" --test-controller-fw
+<fw> --presets build/fw/cfupd_res85.bin --image build/cf_loads_2026-10-18/fs_cfloads.bin`. Bench = updater 17 only.
