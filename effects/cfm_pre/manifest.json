@@ -18,7 +18,7 @@
   "scaffold": "cleanroom",
   "const_blob": {
     "symbol": "muff_blob",
-    "words": 2573,
+    "words": 2093,
     "init": "blob.bin"
   },
   "params": [

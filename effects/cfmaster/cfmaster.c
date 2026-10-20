@@ -10,6 +10,7 @@
 #include <c6x.h>
 unsigned __c6xabi_fixfu(float f) { return (unsigned)(int)f; }
 #endif
+#define MUFF_COMPACT_BLOB
 #include "sh_params.h"
 #include "cfmaster_kernel.h"
 

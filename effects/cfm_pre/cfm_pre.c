@@ -7,6 +7,7 @@
 unsigned __c6xabi_fixfu(float f) { return (unsigned)(int)f; }
 #endif
 #include "sh_params.h"
+#define MUFF_COMPACT_BLOB
 #include "dynacomp_g1.h"
 #include "muff_g1.h"
 #include "mistress_g1.h"

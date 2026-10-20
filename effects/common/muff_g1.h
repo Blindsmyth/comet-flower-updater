@@ -17,7 +17,11 @@
 
 #include "ts808_core.h"         /* TS_INLINE */
 #include "os_hbiir.h"           /* HbiState1, HbiState2 */
+#ifdef MUFF_COMPACT_BLOB
+#include "muff_blob_compact.h"
+#else
 #include "muff_blob.h"
+#endif
 
 typedef struct {
     HbiState1 up1;
@@ -68,6 +72,19 @@ TS_INLINE void muff_coeffs(MuffCoeffs *k, float sustain, float tone, float volum
     k->clip1_hp_g = muff_lerp(MUFF_SUS_G, 129, 128.0f, s);
 
     float t = ts_clamp(tone, 0.0f, 1.0f);
+#ifdef MUFF_COMPACT_BLOB
+    float t_pos = t * 32.0f;
+    int t_i = (int)t_pos;
+    int t_i_cl = t_i < 0 ? 0 : (t_i > 31 ? 31 : t_i);
+    float t_fr = t_pos - (float)t_i_cl;
+    t_fr = t_fr < 0.0f ? 0.0f : (t_fr > 1.0f ? 1.0f : t_fr);
+    const float* tone_tab = MUFF_TONE + t_i_cl * 5;
+    k->t_b0 = tone_tab[0] + (tone_tab[5] - tone_tab[0]) * t_fr;
+    k->t_b1 = tone_tab[1] + (tone_tab[6] - tone_tab[1]) * t_fr;
+    k->t_b2 = tone_tab[2] + (tone_tab[7] - tone_tab[2]) * t_fr;
+    k->t_a1 = tone_tab[3] + (tone_tab[8] - tone_tab[3]) * t_fr;
+    k->t_a2 = tone_tab[4] + (tone_tab[9] - tone_tab[4]) * t_fr;
+#else
     float t_pos = t * 128.0f;
     int t_i = (int)t_pos;
     int t_i_cl = t_i < 0 ? 0 : (t_i > 127 ? 127 : t_i);
@@ -79,6 +96,7 @@ TS_INLINE void muff_coeffs(MuffCoeffs *k, float sustain, float tone, float volum
     k->t_b2 = tone_tab[2] + (tone_tab[7] - tone_tab[2]) * t_fr;
     k->t_a1 = tone_tab[3] + (tone_tab[8] - tone_tab[3]) * t_fr;
     k->t_a2 = tone_tab[4] + (tone_tab[9] - tone_tab[4]) * t_fr;
+#endif
 }
 
 /* Base-rate integration equivalents of filters:
