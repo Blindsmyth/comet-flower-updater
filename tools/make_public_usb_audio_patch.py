@@ -30,6 +30,10 @@ def main():
     parser.add_argument("out_exe", nargs="?",
                         default=str(OUT_DIR / "ZOOM G1X FOUR USB Audio Patch (Comet Flower TEST).exe"),
                         help="Output patched updater path")
+    parser.add_argument("--usb-product", default="ZOOM G Series (Comet Flower)",
+                        help="USB Product / MIDI device name (max 31 chars)")
+    parser.add_argument("--usb-audio-name", default="ZOOM G Series powered by Comet Flower",
+                        help="USB Audio Interface string (shows as 'Line (<name>)')")
     args = parser.parse_args()
 
     official = Path(args.official_updater)
@@ -39,13 +43,15 @@ def main():
     out_exe = Path(args.out_exe)
     out_exe.parent.mkdir(parents=True, exist_ok=True)
 
-    # 1. Controller base with UI menu
+    # 1. Controller base with UI menu and customized USB names
     ctl_bin = ROOT / "build" / "fw" / "res1_public_audio_ctl.bin"
-    print("[1/4] Building controller layer with on-pedal UI menu...")
+    print(f"[1/4] Building controller layer with UI menu and names ({args.usb_product} / {args.usb_audio_name})...")
     subprocess.run([
         sys.executable, str(ROOT / "tools" / "make_controller_fw.py"),
         "--base", str(DEFAULT_BASE),
         "--ui",
+        "--usb-product", args.usb_product,
+        "--usb-audio-name", args.usb_audio_name,
         "--out", str(ctl_bin)
     ], check=True)
 

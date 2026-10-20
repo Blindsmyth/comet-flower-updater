@@ -3,7 +3,7 @@
 **Firmware Build:** Comet Flower USB Audio Tap (Stereo 44.1 kHz 16-bit PCM)  
 **Target Hardware:** Zoom G1 Four / Zoom G1X Four (Hardware Rev 1.00 - 2.00)  
 **Updater Executable:** `build/public_release/ZOOM G1X FOUR USB Audio Patch (Comet Flower TEST).exe`  
-**Updater SHA-256:** `38EA3DC39DFBE166166F430E6E0FA86087DE4871B2DC0D551D2077D6B79A661A`  
+**Updater SHA-256:** `FF52DE98392E4C3A0F8CD47C35F5ED304155727D9BFA49B95700E207C65FF88B`  
 **Safety Classification:** NON-DESTRUCTIVE FIRMWARE-ONLY (Flash `0x33000` only)
 
 ---
@@ -79,12 +79,13 @@ USB Audio is designed to be **off by default** on standard boot to ensure 100% s
 1. Open Windows **Sound Settings** -> **Recording** (or `mmsys.cpl`).
 2. You will see a new recording input device:
    ```
-   Line (ZOOM G Series)
+   Line (ZOOM G Series powered by Comet Flower)
    ```
 3. Set the default format to **2 channel, 16 bit, 44100 Hz (CD Quality)**.
 
 ### In Your DAW or Recording Software (Audacity, OBS, Reaper, etc.):
-- **Input Device:** Select `Line (ZOOM G Series)` (WASAPI, DirectSound, or MME).
+- **Audio Input Device:** Select `Line (ZOOM G Series powered by Comet Flower)` (WASAPI, DirectSound, or MME).
+- **MIDI Port Device:** Shows as `ZOOM G Series (Comet Flower)`.
 - **Channels:** 2 Channels (Stereo).
 - **Sample Rate:** `44,100 Hz`.
 - **Monitoring:** Monitor through the pedal's headphone / output jack for direct zero-latency analog hardware monitoring.
