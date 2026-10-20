@@ -11,7 +11,8 @@
   "allow_any_id": true,
   "kernel": "cfm_amp.c",
   "kernel_section": "text",
-  "text_extra": 8192,
+  "allow_stack": true,
+  "text_extra": 12288,
   "state_bytes": 192,
   "scaffold": "cleanroom",
   "params": [

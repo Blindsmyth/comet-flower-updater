@@ -307,7 +307,7 @@ def grow_resource(data, res_id, payload):
 
 
 def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=None,
-         patch_fw=None, controller_fw=None, test_controller_fw=None):
+         patch_fw=None, controller_fw=None, test_controller_fw=None, fw_only=False):
     if Path(src).resolve() == Path(dst).resolve():
         sys.exit("output must differ from the official updater")
     if patch_fw is not None and (firmware is not None or logo is not None):
@@ -334,7 +334,12 @@ def main(src, dst, image=None, splash=None, presets=None, logo=None, firmware=No
     size = res[FS_RES].directory.entries[0].data.struct.Size
     if size != FS_SIZE:
         sys.exit("resource 0x88 is %d bytes, expected %d" % (size, FS_SIZE))
-    new = [(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES)]
+    if fw_only:
+        if image is not None or presets is not None or splash is not None:
+            sys.exit("--fw-only cannot be combined with --image, --presets or --splash")
+        new = []
+    else:
+        new = [(1, FS_ADDR, FS_SIZE, 0), (2, FS_ADDR, 0, FS_RES)]
     if presets is not None or splash is not None:
         e = res[PRESET_RES].directory.entries[0].data.struct
         if e.Size != PRESET_SIZE:
@@ -446,6 +451,9 @@ if __name__ == "__main__":
     parser.add_argument("src")
     parser.add_argument("dst")
     for key in ("image", "splash", "presets", "logo", "firmware", "patch-fw",
-                "controller-fw", "test-controller-fw"):
-        parser.add_argument("--" + key)
+                "controller-fw", "test-controller-fw", "fw-only"):
+        if key == "fw-only":
+            parser.add_argument("--" + key, dest="fw_only", action="store_true")
+        else:
+            parser.add_argument("--" + key)
     main(**vars(parser.parse_args()))

@@ -11,7 +11,13 @@
   "allow_any_id": true,
   "kernel": "cfmaster.c",
   "kernel_section": "text",
-  "text_extra": 8192,
+  "allow_stack": true,
+  "text_extra": 12288,
+  "const_blob": {
+    "symbol": "muff_blob",
+    "words": 2573,
+    "init": "blob.bin"
+  },
   "state_bytes": 256,
   "scaffold": "cleanroom",
   "params": [

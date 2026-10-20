@@ -8,6 +8,7 @@
 #include <stdint.h>
 #if defined(__TI_COMPILER_VERSION__)
 #include <c6x.h>
+unsigned __c6xabi_fixfu(float f) { return (unsigned)(int)f; }
 #endif
 #include "sh_params.h"
 #include "cfmaster_kernel.h"

@@ -13,7 +13,7 @@
   "kernel_section": "text",
   "allow_stack": true,
   "opt_for_space": null,
-  "text_extra": 12288,
+  "text_extra": 11008,
   "state_bytes": 288,
   "scaffold": "cleanroom",
   "const_blob": {

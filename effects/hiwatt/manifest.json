@@ -10,6 +10,7 @@
   "allow_any_id": true,
   "kernel": "hiwatt.c",
   "kernel_section": "text",
+  "text_extra": 12288,
   "allow_stack": true,
   "opt_for_space": null,
   "state_bytes": 320,
