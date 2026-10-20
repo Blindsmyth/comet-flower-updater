@@ -31,11 +31,11 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     float k_mt = coef[SH_PARAM_MUFF_TONE];
     float k_mv = coef[SH_PARAM_MUFF_VOL];
     float k_fr = coef[SH_PARAM_MIST_RATE];
-    float k_fc = coef[SH_PARAM_MIST_COLOR];
+    float k_fc = coef[SH_PARAM_MIST_COLR];
     float k_dt = coef[SH_PARAM_DLY_TIME];
     float k_dm = coef[SH_PARAM_DLY_MIX];
     float k_ad = coef[SH_PARAM_AMP_DRIVE];
-    float k_am = coef[SH_PARAM_AMP_MASTER];
+    float k_am = coef[SH_PARAM_AMP_MSTR];
     float k_rr = coef[SH_PARAM_ROTOR];
     float k_rs = coef[SH_PARAM_ROT_SPEED];
     float k_rb = coef[SH_PARAM_RIG_BLEND];

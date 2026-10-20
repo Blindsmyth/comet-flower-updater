@@ -11,9 +11,16 @@
   "allow_any_id": true,
   "kernel": "cfm_pre.c",
   "kernel_section": "text",
-  "text_extra": 4096,
-  "state_bytes": 192,
+  "allow_stack": true,
+  "opt_for_space": null,
+  "text_extra": 12288,
+  "state_bytes": 288,
   "scaffold": "cleanroom",
+  "const_blob": {
+    "symbol": "muff_blob",
+    "words": 2573,
+    "init": "blob.bin"
+  },
   "params": [
     { "name": "Muff Sust", "max": 100, "default": 75, "explanation": "Ram's Head Big Muff sustain / fuzz gain." },
     { "name": "Muff Tone", "max": 100, "default": 50, "explanation": "Big Muff tone tilt filter." },

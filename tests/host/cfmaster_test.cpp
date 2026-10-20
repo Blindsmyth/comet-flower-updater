@@ -40,11 +40,11 @@ int main()
     coef[SH_PARAM_MUFF_TONE]   = 0.50f;
     coef[SH_PARAM_MUFF_VOL]    = 0.70f;
     coef[SH_PARAM_MIST_RATE]   = 0.35f;
-    coef[SH_PARAM_MIST_COLOR]  = 0.65f;
+    coef[SH_PARAM_MIST_COLR]   = 0.65f;
     coef[SH_PARAM_DLY_TIME]    = 0.48f; // 480 ms
     coef[SH_PARAM_DLY_MIX]     = 0.30f;
     coef[SH_PARAM_AMP_DRIVE]   = 0.60f;
-    coef[SH_PARAM_AMP_MASTER]  = 0.80f;
+    coef[SH_PARAM_AMP_MSTR]    = 0.80f;
     coef[SH_PARAM_ROTOR]       = 0.50f; // Slow rotor
     coef[SH_PARAM_ROT_SPEED]   = 0.50f;
     coef[SH_PARAM_RIG_BLEND]   = 0.50f;

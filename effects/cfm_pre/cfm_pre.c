@@ -4,6 +4,7 @@
 #include <stdint.h>
 #if defined(__TI_COMPILER_VERSION__)
 #include <c6x.h>
+unsigned __c6xabi_fixfu(float f) { return (unsigned)(int)f; }
 #endif
 #include "sh_params.h"
 #include "dynacomp_g1.h"
@@ -12,7 +13,7 @@
 
 typedef struct {
     MuffState muff;
-    DynaState dyna;
+    DynaCompState dyna;
     float m_sus, m_tone, m_vol;
     float fl_rate, fl_range, fl_color;
     float dy_sens, dy_out;
@@ -89,7 +90,7 @@ void SH_AUDIO_FN(void **instance, void **ctx)
 
     /* 1. Optional DynaComp */
     if (k_don >= 0.5f) {
-        DynaCoeffs dc;
+        DynaCompCoeffs dc;
         dynacomp_coeffs(&dc, s->dy_sens, s->dy_out);
         dynacomp_block(&s->dyna, &dc, eff, buf_a, SH_FRAMES);
     } else {

@@ -27,11 +27,11 @@ void Fx_SFX_CFMASTER(void **instance, void **ctx);
 #define SH_PARAM_MUFF_TONE   2
 #define SH_PARAM_MUFF_VOL    3
 #define SH_PARAM_MIST_RATE   4
-#define SH_PARAM_MIST_COLOR  5
+#define SH_PARAM_MIST_COLR   5
 #define SH_PARAM_DLY_TIME    6
 #define SH_PARAM_DLY_MIX     7
 #define SH_PARAM_AMP_DRIVE   8
-#define SH_PARAM_AMP_MASTER  9
+#define SH_PARAM_AMP_MSTR    9
 #define SH_PARAM_ROTOR       10
 #define SH_PARAM_ROT_SPEED   11
 #define SH_PARAM_RIG_BLEND   12
