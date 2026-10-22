@@ -185,7 +185,64 @@ Across the entire firmware, exactly three loads of `*+B15[128]` exist, all in `e
    - `c01327c8` computes `new_width - old_width = 1 - 1 = 0`, bypassing the filler insertion loop at `c0132824`.
    - The parsed header byte 0x58 stored at `0xc0064528` is completely bypassed by the pedal UI slot management. Every effect is treated as 1 slot.
 
+### Finding 3: In-use flags at 0xc01839f0: complete reader/writer inventory (confirmed)
+The table at `0xc01839f0` is an array of 5 32-bit words (`uint32_t in_use_flags[5]`), one word per physical DSP slot 0..4:
+- Slot 0: `0xc01839f0`
+- Slot 1: `0xc01839f4`
+- Slot 2: `0xc01839f8`
+- Slot 3: `0xc01839fc`
+- Slot 4: `0xc0183a00`
 
+Grep and cross-reference search across `main.dis` and `refs.txt` confirm that exactly three sites write and exactly one site reads this table:
+
+#### Writers:
+1. **`c0129790` (in `effect_slot_install_resources` / `c0129724`) - CONFIRMED:**
+   ```assembly
+   c0129784   029cf828           MVK.S1        0x39f0,A5
+   c0129788   02e00c69           MVKH.S1       0xc0180000,A5    ; A5 = 0xc01839f0
+   c012978c       8586 ||        MV.L1         A11,A4           ; A4 = slot index
+   c012978e       2427 ||        MVK.L2        1,B0             ; B0 = 1
+   c0129790   00148a76           STW.D1T2      B0,*+A5[A4]      ; in_use_flags[slot] = 1
+   ```
+   Called upon loading an effect into physical slot `A11`. It writes 1 to that single slot's flag only.
+
+2. **`c01297fa` (in `effect_slot_load_unload` / `c01297a0`) - CONFIRMED:**
+   ```assembly
+   c01297c0   009cf828           MVK.S1        0x39f0,A1
+   c01297c4   00e00c69           MVKH.S1       0xc0180000,A1    ; A1 = 0xc01839f0
+   ...
+   c01297f0   10591c13           CALLP.S2      0xc01560c0,B3    ; ELF unload
+   c01297f6       0426           MVK.L1        0,A0             ; A0 = 0
+   c01297f8       858e ||        MV.S1         A11,A4           ; A4 = 0xc01839f0 + 4*slot
+   c01297fa       0004           STW.D1T1      A0,*A4[0]        ; in_use_flags[slot] = 0
+   ```
+   Clears `in_use_flags[slot] = 0` when an effect is unloaded.
+
+3. **`c012b202` (in `effect_slot_unload_and_clear` / `c012b1d8`) - CONFIRMED:**
+   ```assembly
+   c012b1ec   1055dc13           CALLP.S2      0xc01560c0,B3    ; ELF unload
+   c012b1f4   029cf828           MVK.S1        0x39f0,A5
+   c012b1f8   02e00c69           MVKH.S1       0xc0180000,A5    ; A5 = 0xc01839f0
+   c012b1fc   02280fd9 ||        MV.L1         A10,A4           ; A4 = slot index
+   c012b200       1876 ||        MVK.D1        0,A0             ; A0 = 0
+   c012b202       8484           STW.D1T1      A0,*A5[A4]       ; in_use_flags[slot] = 0
+   ```
+   Clears `in_use_flags[slot] = 0` during slot delete/shift operations (called e.g. from `c013f960`).
+
+#### Readers:
+1. **`c01297ce` (in `effect_slot_load_unload` / `c01297a0`) - CONFIRMED:**
+   ```assembly
+   c01297c0   009cf828           MVK.S1        0x39f0,A1
+   c01297c4   00e00c69           MVKH.S1       0xc0180000,A1    ; A1 = 0xc01839f0
+   c01297c8       0706 ||        MV.L1         A14,A0           ; A0 = slot index
+   c01297ca       4402           SHL.S1        A0,0x2,A0        ; A0 = 4 * slot
+   c01297cc       2040           ADD.L1        A1,A0,A4         ; A4 = 0xc01839f0 + 4*slot
+   c01297ce       000c           LDW.D1T1      *A4[0],A0        ; A0 = in_use_flags[slot]
+   c01297e0   d010a120    [!A0]  BNOP.S1       0xc0129800,5     ; if 0, skip ELF unload
+   ```
+   Checks whether physical slot `A14` currently has an active ELF loaded. If `in_use_flags[slot] == 0`, the dynamic linker unload call `c01560c0` is skipped.
+
+**Significance:** `in_use_flags` is exclusively an ELF loader bookkeeping device. It has no concept of multi-slot occupancy or span; it tracks whether slot `n` has code loaded in its 40 KiB heap (`0xc01f4000 + n*0xa000`).
 
 ## Answers
 
