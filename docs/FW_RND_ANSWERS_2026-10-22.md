@@ -160,7 +160,7 @@ re-checked the key instructions marked **(Claude)**.
   9-char labels. How many pixels / chars the effect screen shows before
   clipping: **not located** (only the Settings menu's 3x5 / 5x7 fonts and
   ~31 px columns are known). Target 5 chars (see the label-width point below); confirm with a
-  hardware photo shows otherwise.
+  hardware photo.
 - **The LCD effect-edit draw code was not found** (S5's biggest open gap;
   the cluster earlier thought to be it is MIDI/USB, see Q3).
 - **S7 lead (likely, not confirmed):** an UpdateUI-reached row engine:
