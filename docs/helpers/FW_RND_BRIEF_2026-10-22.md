@@ -140,3 +140,19 @@ path reads (recon/20..24, `docs/USB_AUDIO_TAP_CANDIDATE_2026-10-15.md`,
 (C674x IERR/EFR, `NRP`)? Rank the likely crash mechanisms with evidence and
 propose a containment patch (e.g. guard words, stack canary check in the
 slot loop) with its cost and risk.
+
+### S5 - Effect edit screen: labels, pages, sub-menu (Sonnet)
+Report: `docs/helpers/FW_RND_S5_MENU_2026-10-22.md`. Question 7.
+Start from the F1 digest Q7 section (`docs/helpers/FW_RND_DIGEST_FLASH_2026-10-22.md`)
+and `docs/helpers/MENU_RE_ARGON_2026-10-16.md`, `MENU_PAGES_ARGON_2026-10-16.md`,
+`MENU_RE_ASTRA_2026-10-16.md`; verify their addresses before relying on
+them. Hardware/corpus facts: stock 1-slot effects have 4 knobs, 2-slot
+effects 9 (padded with `Dummy`); our CFMPRE has 12 with 9-char labels.
+Answer: (a) in the effect edit screen, how many params per page and what
+sets it (`11807eb8` "4 * c012af98() - r"; what is c012af98 and r for a 1-slot
+vs 2-slot effect?); (b) how the param label is drawn (font, pixel width per
+column, chars before clipping; does it read the 12-byte ELF label
+directly?); (c) can labels change per page (patch at 11808360/118082f8),
+and (d) can one effect open a sub-menu (screen descriptors c0149664 /
+c01495c0). For each: patch site, plan, risk. Leave the slot-count filter and
+the 12-param bound to S1 (`docs/helpers/FW_RND_S1_LIST_PARAMS_2026-10-22.md`).
