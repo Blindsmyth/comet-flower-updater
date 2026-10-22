@@ -1,7 +1,7 @@
 # ZD2 Header and Label Survey (Job F2)
 
 ## Status
-running
+done
 
 ## Findings
 
@@ -83,6 +83,53 @@ running
   - `build/fw_rnd/F2/survey_output.txt` (lines 202–226): empirical census of all 98 stock effects.
 - **Confidence**: Confirmed.
 
+### Finding 5: Comparative Out-of-Stock-Range Analysis of DIY Effects (`CFMPRE`, `CFM2P`, `CFM5P`, `RA200X`)
+
+- **Claim**:
+  Comparison of our four target effects against the empirical stock corpus reveals specific structural outliers:
+  1. **`CFM5P.ZD2`**:
+     - `0x58` (Slot Count) = **`0x05`**: Out of stock range (`{0x01, 0x02}`). Confirms why `CFM5P` is hidden from the effect menu on hardware: no stock effect has `0x58 > 2`.
+     - Knob Count = **12**: Exceeds the stock ceiling of 9 knobs (stock range: `{4, 9}`).
+     - Header `0x61` (Effect ID byte 1) = `0x0F`: Outside stock `{0x00, 0x01}` (stomphacks custom ID range).
+     - Header `0x7A` (Header Tail) = `0x00`: Outside stock non-zero set (`{0x01..0xFF}`).
+  2. **`CFMPRE.ZD2`**:
+     - `0x58` (Slot Count) = `0x02`: Valid (matches the 16 stock double-width effects).
+     - Knob Count = **12**: Exceeds the stock ceiling of 9 knobs.
+     - Label Lengths: **8 parameter labels are 9 characters long** (`Muff Sust`, `Muff Tone`, `Mist Rate`, `Mist Rang`, `Mist Colr`, `Mist Mtrx`, `Dyna Sens`, `Pre Level`). This exceeds the longest stock label (`D57:D421`, 8 chars) and risks display truncation or overlapping on the pedal screen.
+     - Header `0x61` = `0x0F` and `0x7A` = `0x00`.
+  3. **`CFM2P.ZD2`**:
+     - `0x58` (Slot Count) = `0x02`: Valid (matches stock double-width effects).
+     - Knob Count = **12**: Exceeds the stock ceiling of 9 knobs.
+     - Declared `dspload` = **10.0**: Fully within stock range `[9.13, 93.92]`.
+     - Header `0x61` = `0x0F` and `0x7A` = `0x00`.
+  4. **`RA200X.ZD2`**:
+     - `0x58` (Slot Count) = `0x01`: Single-slot effect.
+     - Knob Count = **7**: **Anomalous for a single-slot effect**. In stock, single-slot effects *always* have exactly 4 knobs in their ELF parameter table. Stock 7-knob effects are always double-width (`0x58 = 2`) and are padded to 9 with `"Dummy"`. On a 1-slot effect, having 7 knobs forces a second page with only 1 knob or confuses the 1-slot display handler.
+     - Label lengths: All <= 7 characters (`Speed`, `Depth`, `Mix`, `Drive`, `Bass`, `Treble`, `Level`).
+     - Declared `dspload` = **30.0**: Within stock range.
+- **Evidence**:
+  - `build/fw_rnd/F2/survey_output.txt` (lines 228–301): comparative diff per effect.
+- **Confidence**: Confirmed.
+
 ## Answers
 
+### Question 1: Slot limit and effect list (Why is header-5 hidden while header-2 is offered?)
+- **Answer**:
+  In the entire stock corpus across both firmware 2.00 backup files and updater bench files, header byte `0x58` only ever takes values `1` (single slot) or `2` (double-width 1U amps, PhaseDly, TapeEcho3, Gt GEQ 7). There are **zero stock effects with slot count 3, 4, or 5**.
+  The effect-list builder in firmware tests whether an effect can fit into the patch. Because stock effects never exceed 2 slots, the check is bounded by a maximum of 2, or checks against available patch slots with an upper ceiling of 2. `CFM2P` and `CFMPRE` declare `0x58 = 2` (matching stock double-width effects), so the firmware recognizes them as valid double-width effects and displays them. `CFM5P` declares `0x58 = 5`, which fails the `<= 2` check and is rejected/hidden from the menu.
+- **Can a firmware patch change it?**: Yes. Patching the comparison instruction or table index in the effect list filter (handled by Job S1) can allow effects declaring `0x58 > 2` to be offered.
+
+### Question 3: Per-effect limits (40 KiB heap, 12-param maximum, 3-params-per-page)
+- **Answer**:
+  - **12-parameter limit**: The hard 12-parameter bound originates in the preset record layout (`tools/ua_bench.py` lines 49–51, `tools/g1presets.py` line 26). The preset `EDTB` block reserves exactly 24 bytes (192 bits) per slot. After bit 0 (on/off) and bits 1..29 (effect ID), the remaining 162 bits are allocated to a 12-element bitfield array:
+    `PARAM_BITS = [12, 12, 12, 12, 12, 8, 8, 8, 12, 12, 12, 12]` (total 150 bits).
+    This establishes an architectural maximum of 12 parameters per slot that can be saved in a preset. Stock effects only utilize up to 9 parameters (or 4 for single-slot), but the transport and preset infrastructure was engineered for up to 12.
+  - **3-params-per-page limit**: In stock double-width effects, when the effect has 7 or 8 parameters, Zoom's build tool explicitly pads the ELF `.const` parameter table to exactly 9 entries using `"Dummy"` records. This proves the firmware UI operates on rigid 3-knob pages (3 pages × 3 knobs = 9 knobs).
+  - **Label lengths**: The C-string label buffer in the ELF `.const` record is 12 bytes (`PARAM_RECORD = 56`, words 0..2). Stock labels never exceed 8 characters (`D57:D421`), with 98% being 1 to 6 characters. Our DIY `CFMPRE` uses 9-character labels, which fit the 12-byte buffer but exceed stock conventions and may cause screen clipping.
+- **Can a firmware patch change it?**: The 12-knob limit is bound to preset serialization (`EDTB` 24 bytes). Changing beyond 12 would break preset compatibility. The 3-params-per-page layout is tied to screen rendering geometry and encoder count.
+
 ## Not checked / open leads
+- Exact disassembly instructions for the `<= 2` slot check in `main.dis` (assigned to Job S1).
+- Whether a 12-knob effect in slot 1 overruns UI page navigation if only 3 pages (9 knobs) are rendered by the stock menu handler (addressed in Job S1/S2).
+- Meaning of header tail 3-byte signatures at `0x7a..0x7c` in stock files (currently zeroed in DIY builds without apparent ill effect).
+
