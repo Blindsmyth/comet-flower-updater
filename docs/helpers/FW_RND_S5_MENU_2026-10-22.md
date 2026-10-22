@@ -96,6 +96,87 @@ and I could not confirm from disassembly alone which value stock 1-slot vs 2-slo
 effects actually carry (would need the ZD2's raw parameter bytes, not just the firmware
 side). **Not confirmed**: whether r differs between 1-slot and 2-slot effects.
 
+### Finding 3: parameter labels are read directly from a 56-byte descriptor, inline at offset 0, cross-confirmed with F2
+Read `c012afe0` (`main.dis:42565..42579`), the descriptor accessor `fxparam_row_text`
+(11808360) and `fxparam_fmt_string` (118082f8) call: `c012afe0(A4=slot, B4=idx)`
+computes `base = *(ptr table at 0xc0064404 + slot*36)` then `desc = base + idx*56`
+(`SHL B0,3` then `SHL B0,6` then `SUB` = `idx*8` vs `idx*64`, difference `idx*56`,
+confirmed instruction-by-instruction). In `fxparam_row_text` (`11808360`, read
+`main.dis:10775..10849` directly), the non-value path calls `fxparam_fmt_string(A4, B4=
+outbuf)` right after `desc = c012afe0(slot, col)` (`11808398`) with **no intervening
+write to A4** between the call that returns `desc` in A4 and the `fxparam_fmt_string`
+call at `11808418` -- i.e. the descriptor's own address is passed as the string
+pointer. That only works if the label text is stored **inline at byte offset 0** of
+the 56-byte descriptor, not behind a separate name pointer field.
+This matches job F2's *independent* finding from the ZD2/ELF side (not firmware
+disassembly): `docs/helpers/FW_RND_ZD2_SURVEY_FLASH_2026-10-22.md` Finding 3/4, citing
+`src/zd2tools/elfinfo.py` lines 12-14/108-129: `PARAM_RECORD = 56` bytes, label = bytes
+`0..11` (12-byte NUL-padded C string), longest stock label 8 chars (`"D57:D421"`), our
+`CFMPRE` uses 9-char labels. Two independent methods (firmware disassembly here, ELF
+parsing in F2) agree on the 56-byte record and the label living at its start.
+Confidence: **confirmed** (firmware side: direct disassembly read; corroborated by F2's
+independent tool-side read of the same 56-byte record). This also answers "does it read
+the 12-byte ELF label directly" from the brief: **yes** -- the firmware does not keep
+its own copy or truncate at load time as far as traced; it formats whatever bytes sit
+at descriptor+0 through `fxparam_fmt_string` -> `c016c360` (a generic `"%s"`-style
+copy), so a label longer than the firmware's fixed column width would not be rejected
+at this layer, only clipped or overlapped by the LCD draw step (not located, see
+Finding 4).
+
+### Finding 4: MAJOR CAVEAT -- the whole fxparam_page_size/fxlist_row_text cluster appears to be MIDI-rooted, not LCD-rooted; the real on-screen effect-param draw function was NOT located
+Traced every caller edge up from `11807eb8`/`11808360`/`11808320` using
+`build/fw/map/facts/chunk_*.md` (static call-graph facts, which also tag selected
+functions with a `roots:` field computed from task-entry reachability -- the same
+mechanism that tagged the CHAIN-screen icon draw function `c0145eac` as `roots:
+UpdateUI`, confirmed by checking that entry too):
+```
+fxparam_page_size (11807eb8) and friends (fxparam_last_page, fxparam_entry_valid,
+fxparam_page_start*, fxparam_page_end, fxparam_slot_item, fxparam_row_text,
+fxlist_fmt_effect_name) all funnel through exactly ONE pair of entry points:
+  1180af60 "usbdesc_builder_entry"  (facts: callers (1): 11803514)
+  1180af8c "usbdesc_builder_entry2" (facts: callers (1): 11803514)
+Both are called ONLY from 11803514 ("midi_send_full6_1180", size 508,
+build/fw/map/facts/chunk_00.md:209), whose own calls include:
+  11802a90 "midi_tx_forward_1180"  -> calls c0144dc8 "midi_tx_forward_common"
+                                       (roots: MIDI,MainApp -- confirmed tag)
+  11802b70 "midi_stage_copy_1180"  (roots: MIDI,MainApp -- confirmed tag)
+11803514's own caller, 118037c6 ("midi_table_veneer10"), is itself one of a block of
+similarly-named veneers (midi_table_veneer*) feeding "midi_send_full1_1180" through
+"midi_send_full6_1180" (6 variants), and is referenced as a function-pointer table
+entry (facts: "ptr@: c01840fc") -- i.e. this is reached via an indirect jump table,
+consistent with a MIDI SysEx command dispatcher, not a screen descriptor (which would
+be a different, already-identified table at 0xc018413c, see Finding 0).
+```
+I never found a call edge from `UpdateUI` (`c013c754`) or any of the confirmed menu
+screen draw callbacks (`c0149a68`->desc->w6, `c0154564`, `c0154338`) into this cluster,
+and no font/pixel primitive (`c011e700`, `c011d4d8`, `c011c508`, `c013a7b4`) appears
+anywhere in the `calls` lists of `11807eb8` through `11808440` or their callers up to
+`11803514`. The CHAIN screen (Screen ID 4, the only confirmed on-screen "effect slot"
+page) draws small fixed on/off **icons** per slot (`c014632c` -> `c0145eac` ->
+`c0145e60` -> `c015bc78`/`c015bca4`/`c0145e00`/`c0145e28`), not per-parameter text rows,
+and does not call into the fxparam cluster either.
+**Conclusion: the fxparam_page_size / fxparam_row_text / fxlist_fmt_effect_name
+mechanism that the F1 digest and S1 treated as "the" effect-edit-screen pagination is,
+on the evidence found here, a MIDI SysEx response builder** (plausibly "send the
+currently-displayed effect's parameter name/value text to a PC editor", given 6
+"send_full" variants and the use of the same slot/run/page vocabulary) **rather than
+the code that paints the pedal's own LCD for per-effect parameter editing.** The actual
+on-device "turn a knob, see 3-4 param names/values, flip pages" screen -- the one the
+handoff's hardware tests (CFM2P/CFMPRE knob behavior) actually exercised on the pedal
+-- was **not found** in the time available. It is plausible (not confirmed) that it
+reuses the *same* ZD2 descriptors (Finding 3, so per-effect labels already work there
+regardless) and a *similar* paging rule (hence the matching "3 per page" and "4 knobs"
+numbers against Finding 1's arithmetic and the Settings-menu's confirmed "4 columns = 4
+physical knobs" layout from `MENU_RE_ARGON_2026-10-16.md` A4.1), but this is an
+inference from matching numbers, not a traced call path. Confidence: **confirmed** that
+the fxparam cluster's only static callers are MIDI-rooted; **likely** (not confirmed)
+that the real LCD effect-param screen uses matching per-page-count logic; **not found**:
+the actual LCD draw function(s) for per-effect parameter text.
+This directly weakens the brief's framed patch sites: patching `11807eb8` or
+`11808360`/`118082f8` would most plausibly change what a MIDI-connected PC editor is
+told about the current page, and might do **nothing** to the physical LCD if the LCD
+has its own separate (unlocated) page-size constant.
+
 ## Answers
 
 ## Not checked / open leads
