@@ -229,7 +229,9 @@ void SH_AUDIO_FN(void **instance, void **ctx)
 
             ampH = 1.0f + depth_amp * sine_h;
             ampD = 1.0f + depth_amp * sine_d;
-            wet = x * (1.0f - mix) + (dop * ampH + drumDelayed * ampD) * mix;
+            /* dry from the same baseline delay as the wet bands: an undelayed
+             * dry against the 64-sample wet would comb-filter at partial Mix */
+            wet = (buf_h[idxD] + drumDelayed) * (1.0f - mix) + (dop * ampH + drumDelayed * ampD) * mix;
             if (!(wet > -8.0f && wet < 8.0f)) wet = 0.0f;
 
             {
