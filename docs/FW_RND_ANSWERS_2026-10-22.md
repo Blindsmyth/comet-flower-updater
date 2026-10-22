@@ -245,8 +245,21 @@ CF Rotary `effects/rotx` replacing RA200X (S6; 0 B stack, fixed loops, about
   System_exceptionSpin, i.e. **a fault anywhere halts the core**, audio and
   USB alike. The watchdog catches slow effects only; a faulting effect still
   halts the pedal.
-- **Slot occupancy (S8):** the Sonnet run hit the Claude session limit;
-  rerun on Gemini Flash (report `docs/helpers/FW_RND_S8_OCCUPANCY_2026-10-22.md`).
+- **Slot occupancy (S8, Gemini Flash; key stubs checked by Claude):** in
+  firmware v2.00 the width the UI uses for an effect, c012b2c0, is a stub
+  `MVK 1,A4; B B3` (4 callers: slot-fit c0132658, insert c01327c8, replace
+  c0133254, ...), and c012af98 (width of the slot being replaced) is the same.
+  So **every effect the user places takes one slot on screen, whatever its
+  header 0x58 says**; the "second half" filler (id 1, written by c0132708)
+  only appears when a patch already contains it (31 of 50 factory presets),
+  and then the screen shows the effect double-width. Fillers add 0 to the
+  Process Overflow sum (id 1 is not in the catalogue, c012b2c4 returns 0.0f).
+  **Consequences:** header 0x58 > 1 buys nothing today: no memory (Q2), no
+  extra slot, only the parse ceiling (Q1). Predicted for Updater 26: CF M3
+  and CF M4 listed and shown one slot wide, CF M5 not listed. CF effects
+  should declare 1. A patch making c012b2c0 return the header value would
+  bring back real multi-slot occupancy, but with one slot of resources it
+  is of no use.
 
 ## Open leads
 - The LCD effect-edit screen code (params per page, label font/width): not

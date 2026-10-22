@@ -25,6 +25,11 @@ Prediction: **CF M3 and CF M4 appear in the effect list; CF M5 still does not.**
    whether more effects can still be added after it. Same for CF M4.
 3. Optional: Mode 1 tone report as for CF M2 (`tools/decode_memprobe.py`); expected: slot-0 resources only.
 4. Leave the patch without saving.
+5. Prediction from the firmware (docs/FW_RND_ANSWERS_2026-10-22.md, S8): CF M3 and CF M4 are listed and
+   each shows as **one** slot (the UI's effect-width function is a stub returning 1). Optional check of the
+   same thing with a stock effect: add a stock 2-slot amp (e.g. `BG MK1`, `MS 1959`) to an empty slot from
+   the list; prediction: it also takes one slot (factory presets that show it double-width carry an
+   explicit second-half marker).
 
 ## 3. CFMPRE page layout (photos wanted)
 New order, one stage per page: `Dyn Sens / Dyn Out / Dyn On`, `MuffSust / MuffTone / Muff Vol`,
