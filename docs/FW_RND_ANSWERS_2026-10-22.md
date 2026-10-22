@@ -159,7 +159,7 @@ re-checked the key instructions marked **(Claude)**.
   labels. Stock labels are at most 8 chars (`D57:D421`); CFMPRE uses eight
   9-char labels. How many pixels / chars the effect screen shows before
   clipping: **not located** (only the Settings menu's 3x5 / 5x7 fonts and
-  ~31 px columns are known). Keep labels at 8 chars or fewer until a
+  ~31 px columns are known). Target 5 chars (see the label-width point below); confirm with a
   hardware photo shows otherwise.
 - **The LCD effect-edit draw code was not found** (S5's biggest open gap;
   the cluster earlier thought to be it is MIDI/USB, see Q3).
@@ -170,6 +170,15 @@ re-checked the key instructions marked **(Claude)**.
   drawn by c013a2d8 (centered) with the 6-px-pitch 5x7 font c011d4d8. No
   path from a knob turn to it was traced and the column width (table
   0xc0181508) was not decoded. `docs/helpers/FW_RND_S7_EDITSCREEN_2026-10-22.md`.
+- **Label width (F5, key words checked by Claude):** the table at 0xc0181508
+  is four column centres `17, 48, 79, 110` (pitch 31 px; c012dd40..dd54
+  loads `*B4[col & 3]` and passes it to c013a2d8, which centres the text by
+  `3 x chars`). The 5x7 font c011d4d8 has a fixed 6 px advance
+  (`ADD 6` at c011d524). So a label of **5 chars (30 px) fits a column; 6+
+  spills into the neighbours**. Stock labels agree: 88 of 95 are 5 chars or
+  fewer. If the owner's photos show this screen, CFMPRE's 8-char labels
+  overlap and need cutting to 5 (F4's 8-char limit was too loose). F5's
+  "42 px 3-column" case has no firmware evidence.
 - **Sub-menu:** the Settings-menu mechanism is real and reusable:
   c0149664(screen_id) switches screens via the 36-byte descriptor table at
   c01495c0 / 0xc018413c; dormant screen IDs 1 and 5 sit in writable RAM
