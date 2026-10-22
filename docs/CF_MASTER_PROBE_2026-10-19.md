@@ -56,3 +56,18 @@ report, two alternating pages, about 8 s each (decoder: `tools/decode_memprobe.p
 
 ## Results
 (pending)
+
+
+### Owner session 2026-10-20 (Updaters 24 and 25, bench firmware, `tools/ua_capture8.py`, 30 s)
+
+- **CF M2 (2 slots): loads and is listed.** With Mode 1 set the report decodes cleanly (3 frames, identical on both channels, `build/probe_cfm2p_m1b*.wav`). Mode 0 recorded silent on the output the first time.
+  - 1.00 calls per block (43,164 calls over 43,164 blocks), a single instance.
+  - instance, coef and state in on-chip L1D RAM (`0x11f03ad0`, `0x11f00000`, `0x11f013b0`).
+  - work buffer 529,200 B at `0xc0226000`, slot 0 (the full CF Master buffer was granted).
+  - code `0xc01f41e0`, slot region 0.
+  - knobs 1-12 read back `100 50 3 4 5 6 7 8 9 10 11 12`: all 12 knobs reach the DSP.
+  - work buffers 1-4: first 4 KB all zero (empty).
+- **CF M5 (5 slots): NOT offered by the pedal.** Absent from the effect list on Updater 24 and 25 (CF M2 and CFM Pre are listed). `CFM5P.ZD2` is in both images.
+- **Still open:** code/const heap size for a multi-slot effect, the maximum slot count the pedal lists (3? 4?), and how many slots CF M2 visibly occupies.
+
+**Consequence:** a single 5-slot CF Master cannot be selected as built. Options: the largest accepted slot count (needs 3- and 4-slot probes), split into `cfm_pre` (2 slots) + `cfm_amp` (3 slots), or a firmware patch for the slot count.
