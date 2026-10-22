@@ -48,17 +48,17 @@ void SH_AUDIO_FN(void **instance, void **ctx)
 #endif
 
     float fade = coef[SH_COEFF_BYPASS];
-    float k_ms = coef[SH_PARAM_MSUST];
-    float k_mt = coef[SH_PARAM_MTONE];
-    float k_mv = coef[SH_PARAM_MVOL];
-    float k_mon = coef[SH_PARAM_MUFON];
-    float k_fr = coef[SH_PARAM_FRATE];
-    float k_fg = coef[SH_PARAM_FRANG];
-    float k_fc = coef[SH_PARAM_FCOLR];
-    float k_fx = coef[SH_PARAM_FMTX];
-    float k_ds = coef[SH_PARAM_DSENS];
-    float k_do = coef[SH_PARAM_DOUT];
-    float k_don = coef[SH_PARAM_DYNON];
+    float k_ms = coef[SH_PARAM_MF_SUST];
+    float k_mt = coef[SH_PARAM_MF_TONE];
+    float k_mv = coef[SH_PARAM_MF_VOL];
+    float k_mon = coef[SH_PARAM_MUFF_ON];
+    float k_fr = coef[SH_PARAM_FL_RATE];
+    float k_fg = coef[SH_PARAM_FL_RANG];
+    float k_fc = coef[SH_PARAM_FL_COLR];
+    float k_fx = coef[SH_PARAM_FL_MTX];
+    float k_ds = coef[SH_PARAM_DYN_SENS];
+    float k_do = coef[SH_PARAM_DYN_OUT];
+    float k_don = coef[SH_PARAM_DYN_ON];
     float k_lvl = coef[SH_PARAM_LEVEL];
 
     if (!(fade >= 0.0f && fade <= 1.0f)) ok = 0;
