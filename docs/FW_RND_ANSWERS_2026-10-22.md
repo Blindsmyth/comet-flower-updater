@@ -29,8 +29,9 @@ re-checked the key instructions marked **(Claude)**.
 | audio Swi slot loop | 11818ba0 (dispatch ~11818bec..c44) | confirmed (recon/16, chunk_19) |
 | stereo bus A / B (B = A + SH_CH_B_OFFSET) | 0x11f037b0 / 0x11f037f0 | confirmed |
 | TX-pack sources producer, then output ring (USB tap) | 118186e0 -> 11f038b0/11f038f0 -> 11f03630/11f036b0 | confirmed (S3) |
-| effect param page size `4*c012af98() - r` | 11807eb8 (c012af98 returns 1; r = c012f628(slot)) | confirmed arithmetic |
-| param row text / label | 11808360, 118082f8, value 118082b4, descriptor c012afe0 | likely (see Q7) |
+| param descriptor accessor (56-byte ELF param record, label at +0) | c012afe0 (pointer table 0xc0064404 + slot*36) | confirmed (S5) |
+| `4*c012af98() - r` page math + row text (NOT the LCD screen: reached only from the MIDI/USB string builder 11803514 / 1180af78) | 11807eb8, 11808360, 118082f8 | confirmed callers (S5, Claude) |
+| LCD effect-edit screen (knob -> name/value/page) | not found | open |
 | menu screen switch / descriptor table | c0149664 / c01495c0 (0xc018413c) | confirmed (Argon 10-16) |
 
 ## Answers
@@ -86,12 +87,15 @@ re-checked the key instructions marked **(Claude)**.
   the stomphacks maximum. More than 12 would change the patch format:
   not patchable without breaking patch storage. Note params 6-8 are only
   8 bits (max 255).
-- **Params per page:** `11807eb8` = `4*1 - r`, and one less when the
-  effect has more params than that: **4 per page or 3**, depending on
-  `r = c012f628(slot)` (0/1). Stock 1-slot effects have exactly 4 knobs
-  (one page); 2-slot effects have exactly 9 (3 pages of 3, padded with
-  `Dummy` records) (F2, checked by Claude). The `4` is `SHL A0,2` at 11807ee6.
-  Meaning of r: Q7.
+- **Params per page: the LCD code that sets it is not located.** The
+  `4*c012af98() - r` function at 11807eb8 (named fxparam_page_size in
+  chunk_01) is only reached from the MIDI/USB string builder (callers
+  11807f0e, 1180af78 -> 11803514; fact sheets call the cluster
+  `usbstr_builder*`), so it is not the screen layout (S5, Claude checked
+  the callers). Hard facts are the stock corpus (F2, checked by Claude):
+  1-slot effects have exactly 4 knobs, 2-slot effects exactly 9 (padded
+  with `Dummy` records). Treat 4 per 1-slot effect and 9 per 2-slot effect
+  as the proven-safe layouts; 12 (CFMPRE) is outside anything stock does.
 
 ### Q4. Stack
 - Effects run on the **shared Hwi/Swi stack 0x118134a8..0x11816468
@@ -148,11 +152,24 @@ re-checked the key instructions marked **(Claude)**.
   (< 230), not measured cycles.
 
 ### Q7. Display / menu
-Pending job S5 (`docs/helpers/FW_RND_S5_MENU_2026-10-22.md`). Known so far:
-labels are a 12-byte field in the ELF param record (11 chars + NUL); stock
-labels are at most 8 chars (`D57:D421`), CFMPRE uses eight 9-char labels;
-custom sub-screens can be entered through c0149664 / screen descriptors
-(Argon 10-16, `MENU_PAGES_ARGON_2026-10-16.md`).
+- **Labels:** each param's label is the 12-byte field at offset 0 of its
+  56-byte ELF param record (11 chars + NUL), read through c012afe0 (S5,
+  confirmed; matches F2's parser). Labels are per param, so "different
+  labels per page" needs no firmware patch: each page shows its own params'
+  labels. Stock labels are at most 8 chars (`D57:D421`); CFMPRE uses eight
+  9-char labels. How many pixels / chars the effect screen shows before
+  clipping: **not located** (only the Settings menu's 3x5 / 5x7 fonts and
+  ~31 px columns are known). Keep labels at 8 chars or fewer until a
+  hardware photo shows otherwise.
+- **The LCD effect-edit draw code was not found** (S5's biggest open gap;
+  the cluster earlier thought to be it is MIDI/USB, see Q3).
+- **Sub-menu:** the Settings-menu mechanism is real and reusable:
+  c0149664(screen_id) switches screens via the 36-byte descriptor table at
+  c01495c0 / 0xc018413c; dormant screen IDs 1 and 5 sit in writable RAM
+  (Argon 10-16, addresses verified by S5). Not shown to be the same system
+  the effect-param screen uses, so a per-effect sub-menu (one effect
+  holding a chain) is a medium-size patch with an unknown entry point.
+  Lower-risk alternative: one stage per page with a stage-name param.
 
 ### Q8. Stereo bus
 - One fixed bus pair, A 0x11f037b0, B 0x11f037f0 (= A + SH_CH_B_OFFSET),
@@ -166,8 +183,9 @@ custom sub-screens can be entered through c0149664 / screen descriptors
 ## Recommended order (fits `tools/make_public_usb_audio_patch.py` /
 `tools/make_usb_audio_fw.py`; main partition 0x33000 only; owner flashes)
 1. **No firmware change:** replace RA200X with the leaf mono rotary
-   (< 5k cycles, no stack). Re-lay out CFMPRE pages to match the page size
-   once Q7 is settled.
+   (< 5k cycles, no stack). Re-lay out CFMPRE pages: one stage per page,
+   labels of 8 chars or fewer; photograph the edit screen on the pedal to
+   settle the page size and clipping (Q3/Q7).
 2. **No firmware change, one test updater:** CF M3 and CF M4 probe effects
    (header 3 and 4) to confirm the c0129908 ceiling and see what the patch
    screen does with 3/4-slot effects.
@@ -182,6 +200,8 @@ custom sub-screens can be entered through c0149664 / screen descriptors
    slots instead.
 
 ## Open leads
+- The LCD effect-edit screen code (params per page, label font/width): not
+  located (S5). Next RE target if page layout matters.
 - The effect picker (what the list offers per slot) and who writes the id
   0x1 "second half" for 2-slot effects: not located (S1).
 - SYS/BIOS exception handler policy and vector table: not traced (S4).
