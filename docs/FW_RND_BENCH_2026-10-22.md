@@ -47,3 +47,14 @@ No stack use, about 2.8k cycles static estimate, declared load 16.
 - Which of CF M3 / M4 / M5 are offered, and slots shown used.
 - Photos of the CF Pre pages.
 - CF Rotary: sound OK?, crash test result, bench numbers.
+
+## 5. Updater 26b: bypass-call probe (after the steps above)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 26b - bench + Updater 26 + CF BypTest TEST.exe`
+**SHA-256:** `30c1fc595b829abfb70f5dbeeb39d1f3ca6722bcc8a1f4d9c4cb76b61d227ba7` (short `30c1fc59`); file system
+`fs_bench26b.bin` (`e4aa8cbf`) = fs_bench26 plus `BYPT.ZD2`. Same firmware and stages as 26.
+Question: does the firmware still call an effect that is switched OFF? (Decides whether a CF delay can
+ring out its tail after bypass with no firmware patch; docs/helpers/FW_RND_S9_BYPASS_2026-10-22.md.)
+1. Put `CF BYPT` in slot 1 of an empty patch (Beep 30). Play: with it ON the guitar is unchanged.
+2. Switch it OFF. **A quiet 880 Hz beep while OFF = the firmware keeps calling it** (tails possible).
+   No beep while OFF = it is not called when bypassed (tails need a patch).
+3. Optional: move it to slot 3 with other effects around it; same check. Never save it in a patch.

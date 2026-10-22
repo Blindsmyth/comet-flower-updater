@@ -221,6 +221,33 @@ CFMPRE re-laid out one stage per page with labels of 8 chars or fewer (F4),
 CF Rotary `effects/rotx` replacing RA200X (S6; 0 B stack, fixed loops, about
 2.8k cycles static, host test passes).
 
+## Brief 3 results (2026-10-22)
+- **Bypass / delay tails (S9):** the slot loop 11818c00..c38 calls every
+  slot's function every block; the only gate is one all-slots flag
+  (B14[101]); the veneer 11818eb0 -> c01502cc only fetches the ctx pointer
+  (confirmed). The kernel owns the dry/wet mix with coef[0], so a delay can
+  keep writing its line and let its wet output decay after fade reaches 0:
+  **tails likely need no firmware patch.** Open: c0165e80
+  (effect_slot_callback_reset, called from c0143470) installs the default
+  callback 11818de0 in a slot's table entry; if on/off reaches it, the
+  kernel is not called while OFF. Settled on the pedal by CF BYPT (Updater
+  26b, `docs/FW_RND_BENCH_2026-10-22.md` step 5).
+- **Watchdog (S10, design only):** reuse the bench hook `ua_slot_enter` /
+  `ua_bench_build` (`firmware/usb_audio_proto/usb_audio_tap.c`), which
+  already times every slot; after N overruns in a row, write a no-op
+  callback into that slot's entry of the writable table 0x118133e0 + 4k.
+  No edit to the hand-scheduled Swi loop; about 15-20 instructions per
+  block. Budget from a measured per-slot baseline rather than dspload.
+  Needs a small no-op stub (not written) and care with multi-slot effects.
+- **Exceptions (S10):** the c64p exception dispatcher c0162460..c0162750
+  (EFR/IERR/NTSR checks, full context save) ends in an unconditional jump
+  through the pointer at 0xc0181f90 (filled at run time, .bss): most likely
+  System_exceptionSpin, i.e. **a fault anywhere halts the core**, audio and
+  USB alike. The watchdog catches slow effects only; a faulting effect still
+  halts the pedal.
+- **Slot occupancy (S8):** the Sonnet run hit the Claude session limit;
+  rerun on Gemini Flash (report `docs/helpers/FW_RND_S8_OCCUPANCY_2026-10-22.md`).
+
 ## Open leads
 - The LCD effect-edit screen code (params per page, label font/width): not
   located (S5). Next RE target if page layout matters.
