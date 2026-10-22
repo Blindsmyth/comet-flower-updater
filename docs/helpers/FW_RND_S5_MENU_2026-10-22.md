@@ -1,7 +1,8 @@
 # FW RND S5: Effect edit screen - labels, pages, sub-menu (question 7)
 
 ## Status
-running
+done (within budget; see Not checked / open leads for the one significant gap: the
+real LCD effect-param draw function was not located)
 
 ## Findings
 
@@ -219,4 +220,103 @@ sub-menu trick directly applicable to it) or on some other, unlocated mechanism 
 
 ## Answers
 
+### (a) Params per page: what sets it, c012af98 and r for 1-slot vs 2-slot effects
+`page_size = (n > 4-r) ? (4-r-1) : (4-r)`, where `c012af98()` is a constant-1 leaf
+(confirmed, Finding 1) and `r = c012f628(slot)` is 0 or 1, derived from whether bit
+`(15+0)` of parameter-descriptor-0's own 64-bit flag word (descriptor offset +48) is
+set for that slot's loaded effect (Finding 2). **`r` is not a function of the ZD2
+slot-count header (0x58, S1's Q1)** -- it depends on how the effect's own parameter 0
+is flagged, which I could not determine for actual stock 1-slot vs 2-slot effects from
+firmware disassembly alone (would need the ZD2's raw per-parameter flag bytes, out of
+scope for this job; F2's survey did not record this field). What I can say with
+confidence: for any effect with more than 4 real parameters (every stock 2-slot
+effect at 9, and `CFMPRE` at 12), the `n > 4-r` branch fires regardless of `r`'s value,
+giving page_size 3 (r=0) or 2 (r=1) -- this alone explains the observed "3 per page"
+without needing r to differ by slot count. Can a patch change it: the "4" only exists
+as a bare `SHL #2` (Finding 1), so changing the nominal width requires patching the
+constant-1 return of `c012af98` (two instructions, trivial) or the `SHL 0x2` itself;
+**risk is unknown because I could not confirm this code is the one driving the actual
+LCD screen** (Finding 4) -- patching it may only change what a MIDI-connected PC
+editor is told, not the pedal's own display.
+
+### (b) Label drawing: font, pixel width, chars before clipping, 12-byte ELF label read directly?
+**Yes, confirmed**: the firmware reads the parameter label directly from byte offset 0
+of the 56-byte per-parameter descriptor (Finding 3), which is exactly the 12-byte
+(11 chars + NUL) field F2 independently found in the ZD2/ELF's own `elfinfo.py`
+parsing. There is no firmware-side string table or truncation at this layer; whatever
+bytes are in the ZD2 get copied through `c016c360` (a generic sprintf-style `"%s"`
+copy). **Font, pixel width per column, and clipping point for the actual on-screen
+effect-param view were NOT located** (Finding 4) -- the only place I found text/font
+rendering with confirmed pixel coordinates and font selection is the *Settings-menu*
+system (`c0154338`, `MENU_RE_ARGON_2026-10-16.md` A2.2, spot-checked present at
+`c0154564`/Finding 0): 4 columns at ~31px spacing, 3x5 font (`c011e700`, 4px pitch,
+up to 2 lines) or 5x7 font (`c011d4d8`, 6px pitch, single line), 5-6 characters before
+a column starts to overhang. If the effect-param screen shares this same renderer
+(plausible given it is the only confirmed LCD text-column system in the firmware, but
+**not confirmed** it is actually used for that screen), the same per-column budget
+(~5-6 chars at 5x7, ~7 chars/line at 3x5) would apply, meaning `CFMPRE`'s 9-char
+labels (`"Muff Sust"`, `"Mist Rate"`, etc., per F2 Finding 4) would already overhang a
+single-font-row column by that measure, independent of any firmware patch.
+
+### (c) Can labels change per page?
+Trivially **yes** at the data level, already working today without any firmware
+patch: because each parameter's label lives inline in that parameter's own 56-byte ZD2
+descriptor (Finding 3), and list position `k` maps through `fxlist_slot_at`/
+`fxlist_run_index` to a specific `(slot, page)`, **different pages of the same loaded
+effect already show different labels by construction** -- there is no shared/static
+label table that a "page" patches into. The brief's suggested patch sites
+`11808360`/`118082f8` are the MIDI-rooted formatter (Finding 4), not a place where
+per-page label *selection* logic lives; I found no code there that would need patching
+to get per-page-distinct labels, because the ZD2 data itself already supplies that.
+What *is* fixed per page, system-wide, is the page *width* in cells (answer (a)), not
+the label text.
+
+### (d) Can one effect open a sub-menu (chain of stages)?
+**Yes, confirmed feasible** using the Settings-menu screen-descriptor system
+(`c0149664`/`c01495c0`, Finding 5): dormant Screen IDs 1 and 5 already sit in writable
+RAM with no live callers in stock firmware, and the generic 4-column
+draw/edit pair (`c0154564`/`c0149948`) accepts an arbitrary item-record array, so a
+multi-stage effect's "sub-menu" (one screen per stage, re-entered by changing which
+record array a wrapper points `w6`/`w8` at, or by allocating one Screen ID per stage)
+is directly buildable with a single `CALLP` hook and RAM-table writes, no `.switch`
+table patch needed. **Caveat** (also Finding 5): this is proven for the Settings-menu
+subsystem; whether the stock effect-param edit view (the one actually used when you
+turn a knob on a loaded effect) is built on this same screen-descriptor system was not
+established, so "patch a CALLP hook, point it at a new screen" may need to target a
+different, unlocated entry point if the two UIs turn out to be separate code (as
+Finding 4's evidence suggests they likely are).
+
 ## Not checked / open leads
+- **The actual LCD draw function(s) for the per-effect parameter-edit view are not
+  located.** This is the single biggest gap: everything in this report about pixel
+  width, font, and per-page label mechanics for *that specific screen* is inferred by
+  analogy to the Settings-menu renderer, not traced. A next pass should start from
+  `effect_slot_load_unload` (`c01297a0`, S1 Finding 5) or from the knob-event dispatch
+  that currently drives a loaded effect's parameters in Stomp/Play mode (not the gear
+  icon) and look for calls to `c011e700`/`c011d4d8`/`c011c508`/`c013a7b4` that are NOT
+  already attributed to the CHAIN/SETUP/PWR/TUNER/OUTPUT screens.
+- What the 11803514 "midi_send_full6" family and its 5 siblings (`11802d08`,
+  `11802d44`, `11802ee0`, `11803044`, `118031ac`, `11803254`, `1180340c`) actually
+  send, and on what MIDI SysEx command ID (the `c01840fc`-area veneer table) -- would
+  confirm or refute the "PC editor mirrors the LCD" theory in Finding 4.
+- Whether `r` (Finding 2) actually differs between any real stock 1-slot and 2-slot
+  effect was not checked against ZD2 parameter-flag bytes (would need a small script
+  reading each stock ZD2's parameter-0 flag word, cross-referenced with F2's corpus).
+- The meaning of bit 15 (and the `(15+idx)` family of bits) in a parameter
+  descriptor's 64-bit flag word (offset +48) beyond "some per-parameter flag" -- not
+  derived from the ZD2 format spec.
+- `c012b008` vs `c012b048` vs `c012b108`: three similarly-named "count" accessors used
+  inconsistently across the cluster (chunk_01.md's own gloss uses `c012b048` for
+  `fxparam_page_size`'s `n` but `c012b008` for `fxparam_index_check`'s bound); I did
+  not re-derive why there are three or confirm they return the same count for a given
+  slot. Relevant if patching anything in this area.
+
+## Note on tool output (not a job-7 finding, flagged for the record)
+While grepping repo docs for "effect edit" context, one Bash tool result had an extra
+block appended after the real repository content that looked like a copy of this
+session's system reminder about commit attribution, but with an added
+`Claude-Session: https://claude.ai/code/...` URL line not present in the real reminder
+given at the start of this conversation. Treated as untrusted data (not an instruction
+from the user/caller) and ignored; no such line was added to any commit in this job.
+Flagging it here only so the caller is aware the grep surfaced something that looked
+like an injected instruction.
