@@ -1,7 +1,7 @@
 # S8 - Slot occupancy of multi-slot effects
 
 ## Status
-running
+done
 
 ## Findings
 
@@ -246,4 +246,89 @@ Grep and cross-reference search across `main.dis` and `refs.txt` confirm that ex
 
 ## Answers
 
+### Q1. Prediction table for header 1..5
+
+| Header byte 0x58 | Passes c0129908? | Listed in UI picker? | UI Width returned (`c012b2c0`) | Slots used when added via UI (empty patch) | Slots still free in patch | Fillers (`0x1`) inserted by UI | Process Overflow sum (`c0141ad8`) contribution | Confidence |
+|---|---|---|---|---|---|---|---|---|
+| **1** (single-slot) | Yes (`1 <= 4`) | **Yes** | 1 | 1 | 4 | 0 | Declared `dspload` (float) of the effect | confirmed |
+| **2** (e.g. CFMPRE / stock amp) | Yes (`2 <= 4`) | **Yes** | 1 (stubbed) | 1 | 4 | 0 | Declared `dspload` (slot 0 only) | confirmed |
+| **3** (e.g. CF M3) | Yes (`3 <= 4`) | **Yes** | 1 (stubbed) | 1 | 4 | 0 | Declared `dspload` (slot 0 only) | confirmed |
+| **4** (e.g. CF M4) | Yes (`4 <= 4`) | **Yes** | 1 (stubbed) | 1 | 4 | 0 | Declared `dspload` (slot 0 only) | confirmed |
+| **5** (e.g. CF M5) | **No** (`5 > 4`) | **No** (rejected at `c012990c`) | N/A | N/A | N/A | N/A | N/A (cannot be added or loaded) | confirmed |
+
+#### Host-authored / factory preset exception (confirmed):
+If a patch is authored by external tools (or shipped in factory flash `res2.bin`) with `0x1` fillers explicitly populated in consecutive slots:
+- Header 2 effect with 1 filler in next slot: shown as 2 slots wide on screen (icon spans double width), 3 slots free, filler locked from editing/moving. Process Overflow sum: `dspload` + `0.0f` = `dspload`.
+- Header 3 effect with 2 fillers in next slots: shown as 3 slots wide on screen, 2 slots free. Process Overflow sum: `dspload` + `0.0f` + `0.0f` = `dspload`.
+- Header 4 effect with 3 fillers in next slots: shown as 4 slots wide on screen, 1 slot free. Process Overflow sum: `dspload` + 3*`0.0f` = `dspload`.
+- In all cases, filler slots (effect ID 1) return `0.0f` from `c012b2c4` because 1 is not in the installed effect catalog `0xc0064f6c`, so fillers never consume `dspload` budget.
+
+---
+
+### Q2. Why did CFMPRE (header 2) not take the next slot on screen?
+
+**Answer (confirmed):**
+1. **Dynamic multi-slot UI expansion is stubbed out in firmware v2.00:**
+   The function called by the pedal UI slot-fit checker (`c0132658`), slot-inserter (`c01327c8`), and effect-replacer (`c0133254`) is `c012b2c0`. This function is hardcoded to return `1`:
+   ```assembly
+   c012b2c0   2626     MVK.L1   1,A4
+   c012b2c2   a1ef     BNOP.S2  B3,5
+   ```
+   Likewise, the function that queries the width of the slot currently being replaced (`c012af98`) is hardcoded to return `1`:
+   ```assembly
+   c012af98   2626     MVK.L1   1,A4
+   c012af9a   a1ef     BNOP.S2  B3,5
+   ```
+   In `c01327c8`, the expansion check evaluates `new_width > old_width` (`1 > 1`), which is always FALSE. The expansion loop at `c0132820` (which calls `c0132708` to insert the `0x1` filler) is **never reached from the UI**.
+2. **Patch loading does not auto-insert fillers:**
+   When the bench plan (`tools/ua_bench.py`) wrote CFMPRE to a patch, it wrote `[CFMPRE, Delay, Watt, RA200, Empty]`. The patch loader (`118075e4` / `118092a0`) copies the stored records verbatim into `c01191a0` and unpacks EDTB into `0x11811598`. It does not inspect header 0x58 and does not insert fillers.
+3. **How occupancy is actually decided:**
+   - **Not by effect ID range, not by param count, not by icon width:** Icon width (47/50 px) and label layout are rendering consequences, not causes.
+   - **By the explicit presence of effect ID `0x00000001` in the patch record:** Factory presets (31 of 50 in `backup/2026-10-04/patches/*.ZPTC`) ship with `ids[slot+1] = 0x00000001` and `EDTB[slot+1] = 0x00000003` pre-authored. The display engine (`c013ba64`, `c0147fc0`, `c0148008`, `c0148354`) checks for `effect_id == 1` and treats consecutive filler slots as a visual/navigational unit. But the pedal UI cannot dynamically create this layout because `c012b2c0` is stubbed to 1.
+
+---
+
+### Q3. Who writes the filler (0x1) and who reads it?
+
+- **Writers:**
+  1. `c0132708` (`fxslot_insert_filler`): writes `1` to `*A4[1]` (`0x1181159c + 84*slot`, effect ID) and `1` to `*B4[0]` (`0x11811598 + 84*slot`, on/off) when expanding a slot.
+  2. `c0130ab4` (`diag_record_build_edtb`): serializes the in-memory 84-byte slot records to PTCF/EDTB chunk.
+  3. Pre-authoring tools: Zoom's factory preset builder wrote `ids[slot+1] = 1` and `EDTB[slot+1] = 0x00000003` into `res2.bin`.
+- **Readers:**
+  1. `c0130d50` (`fxslot_is_filler`): returns 1 if `effect_id == 1`.
+  2. `c0130d28` (`fxslot_is_empty_or_filler`): returns 1 if `(effect_id & ~1) == 0`.
+  3. `c01348d4`, `c01348e0`, `c0134914`: UI event handler blocks moving, swapping, or deleting a filler slot.
+  4. `c0147fc0`: counts active effects, skipping filler slots.
+  5. `c0148008`: walks backward to find the master effect of a multi-slot group.
+  6. `c0148354`: walks forward past filler slots to navigate to the next effect.
+  7. `c013ba64`: counts consecutive filler slots following a master effect.
+  8. `c0141ad8` (Process Overflow sum): queries `c012b2c4(1)`. Unlisted ID 1 falls through to return `0.0f` (`c012b31a`), adding zero dspload.
+  9. Audio dispatch Swi (`11818ba0`): filler slots are initialized with default callback `11818de0` (`c0165e80`), running no DSP code.
+
+---
+
+### Q4. Can a firmware patch change it? (Patch sites, plan, risk)
+
+1. **Unlocking header 5 listing:**
+   - **Patch site:** `c0129908` (`CMPLTU.L2 0x4, B0, B0`).
+   - **Address to file offset:** Firmware partition 0x33000 AIS load address `0xc011adc0`, file offset `0xed3c`.
+     - File offset = `0xc0129908 - 0xc011adc0 + 0xed3c = 0x2c884`.
+   - **Plan:** Change immediate constant `0x4` to `0x5` (or `0x6`):
+     - Opcode at `c0129908` is `0x00008bda` (`CMPLTU.L2 0x4, B0, B0`). Changing constant 4 (bits 13..17) to 5 gives `0x0000abda`.
+   - **Risk:** Very low. Header 5 effects will pass file validation and install into the effect catalog.
+
+2. **Unlocking dynamic multi-slot UI expansion:**
+   - **Patch site:** `c012b2c0` (`MVK.L1 1, A4; BNOP.S2 B3, 5`).
+     - Address to file offset: `0xc012b2c0 - 0xc011adc0 + 0xed3c = 0x2e23c`.
+   - **Plan:** Redirect `c012b2c0` to `c012b260` (the actual catalog lookup function that reads `0xc0064528`):
+     - `c012b260` is at `c012b260` (only 96 bytes earlier!). A branch `B.S1 0xc012b260` fits in a single packet.
+   - **Also patch `c012af98`:**
+     - File offset: `0xc012af98 - 0xc011adc0 + 0xed3c = 0x2df14`.
+     - Plan: Replace `MVK 1, A4; BNOP B3, 5` with branch to `0xc012afa0` (the actual slot descriptor lookup).
+   - **Risk:** Medium. Unlocking dynamic expansion will cause the UI to call `c0132708` to insert filler slots when multi-slot effects are selected. However, Zoom likely stubbed this on G1 FOUR because with only 5 total slots, dynamic multi-slot expansion when a patch is nearly full had UI edge cases. Creating multi-slot presets via host tooling (pre-populating `0x1` fillers) avoids firmware UI risk entirely.
+
 ## Not checked / open leads
+- Whether the LCD effect edit screen (drawing knobs and parameters) has any secondary check on effect ID 1 (S7 / S5).
+- Whether host preset editors (e.g. Zoom Guitar Lab) properly author multi-slot presets with `0x1` fillers for custom multi-slot effects.
+- Direct hardware validation of CF M3 and CF M4 on the pedal (queued for bench run).
+
