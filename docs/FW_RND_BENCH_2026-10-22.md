@@ -13,6 +13,11 @@ build/cf_bench_2026-10-17/res1_cf_usb_bench.bin --image fs_bench26.bin`.
 
 Background: `docs/FW_RND_ANSWERS_2026-10-22.md`.
 
+## Results so far (owner, 2026-10-22)
+- CF M3 and CF M4 are listed; placing either gives **PROCESS OVERFLOW!! CHANGE EFFECT** (photos).
+- CF Pre edit pages: 3 params per page, PAGE 1/4..4/4; `Dyn Sens / Dyn Out / Dyn On` read cleanly,
+  `MuffSust / MuffTone / Muff Vol` run together.
+
 ## 1. Flash
 Same as Updater 25: hold both footswitches while connecting USB, run the updater, Execute, wait for
 `Complete!`, reconnect.
@@ -64,11 +69,12 @@ ring out its tail after bypass with no firmware patch; docs/helpers/FW_RND_S9_BY
    No beep while OFF = it is not called when bypassed (tails need a patch).
 3. Optional: move it to slot 3 with other effects around it; same check. Never save it in a patch.
 
-## 6. Updater 27: slot watchdog + CF Delay tail (after 26/26b; TEST build)
-**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 27 - bench watchdog + 26b effects + CF Delay tail TEST.exe`
-**SHA-256:** `17fc2d442211feb99d84fc738bec9e0b4f002a21dc4a66351ee0ab391a939df3` (short `17fc2d44`).
+## 6. Updater 27: slot watchdog + CF Delay tail + CFM Pre labels (after 26/26b; TEST build)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 27 - bench watchdog + CF Delay tail + CFM Pre labels TEST.exe`
+**SHA-256:** `7a4b7835e3397d3509f1a9099208addcb43a9063860733f2a6886cfd74d84f6f` (short `7a4b7835`).
 Firmware `001c3a26` = bench firmware `6e20051c` plus the watchdog (`make_usb_audio_fw.py --watchdog`);
-file system `fs_bench27.bin` (`5255ee3e`) = the 26b effects with the new CF Delay (`DLYX`, 4th knob `Tail`).
+file system `fs_bench27.bin` (`d8fbc587`) = the 26b effects with the new CF Delay (`DLYX`, 4th knob `Tail`) and
+CFM Pre relabelled after the photos (`Dyn Sens`, `Mf Sust`, `Fl Rate`, ... at most 7 letters).
 A slot that takes more than 64k cycles per block for
 16 blocks in a row (about 6 ms) is switched to a do-nothing function: that slot then passes the guitar dry
 until you pick another effect for it or reload the patch. `tools/ua_bench.py` shows bypassed slots as

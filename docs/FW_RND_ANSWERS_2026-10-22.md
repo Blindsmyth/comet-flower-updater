@@ -215,6 +215,19 @@ re-checked the key instructions marked **(Claude)**.
 6. Multi-slot resource widening (Q2): not recommended; split chains across
    slots instead.
 
+## Hardware results (owner photos, Updater 26, 2026-10-22) — these override the static guesses
+- **Labels:** the effect edit page shows **3 params per page** (PAGE 1/4..4/4 for 12 params) in a narrow
+  proportional font. `Dyn Sens` (8 with a space) reads cleanly; `MuffSust` / `MuffTone` (8 letters) run into
+  the next label. Rule: **at most 7 letters, or 8 including a space**; stock's longest is `D57:D421`.
+  F5's "31 px / 6 px font / 5 chars" was another screen (the 4-column 6 px renderer), not this page; the
+  5-char CFMPRE (F6) is superseded by stage-prefixed labels (`Dyn Sens`, `Mf Sust`, `Fl Rate`, ...).
+- **Slot count 3 / 4:** CF M3 and CF M4 pass the c0129908 ceiling and are listed, but placing either gives
+  **PROCESS OVERFLOW!! CHANGE EFFECT**. Static cause (Claude, partial): the header byte is stored per catalogue
+  entry at 0xc0064528 (c0129ab4); c012b260(id) returns it (unlike the width stub c012b2c0); c013b8c0
+  combines it with the used-slot count and the first free slot and fails when the result is above 7
+  (`CMPLTU 7` at c013b8ec), and the UI reports that as a process overflow. So S8's "header > 1 has no
+  effect" is wrong for 3 and 4; the exact formula is not fully traced. Rule unchanged: declare 1.
+
 ## Follow-up done 2026-10-22 (Updater 26, not flashed)
 `docs/FW_RND_BENCH_2026-10-22.md`: CF M3 / CF M4 probes (header 3 / 4, job F3),
 CFMPRE re-laid out one stage per page with labels of 8 chars or fewer (F4),
