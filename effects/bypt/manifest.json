@@ -1,0 +1,22 @@
+{
+  "name": "CF BypTest",
+  "filename": "BYPT",
+  "id": "07000f8b",
+  "version": "1.00",
+  "display": "CF BYPT",
+  "badge": "CF",
+  "description": "Bypass-call probe (docs/helpers/FW_RND_S9_BYPASS_2026-10-22.md): ON passes the guitar unchanged; OFF adds a quiet 880 Hz beep scaled by (1 - fade). A beep while the effect is switched off proves the firmware keeps calling a bypassed effect, so delay tails need no firmware patch. Never save it in a patch.",
+  "dspload": 8,
+  "kernel": "bypt.c",
+  "kernel_section": "text",
+  "state_bytes": 16,
+  "scaffold": "cleanroom",
+  "params": [
+    {
+      "name": "Beep",
+      "max": 100,
+      "default": 30,
+      "explanation": "Beep level heard while the effect is OFF (0 = silent)."
+    }
+  ]
+}
