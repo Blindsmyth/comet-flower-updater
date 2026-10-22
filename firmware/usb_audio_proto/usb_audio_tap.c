@@ -495,6 +495,59 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
    slot 0..3 = start(k+1) - start(k); slot 4 = Post looper - start(4) (also
    holds patch level 11817a90 and the output EQ slot, measured with an empty
    patch); busy = TX - Pre looper; period = Pre looper - previous Pre looper. */
+#ifdef UA_WATCHDOG
+/* Slot watchdog (docs/FW_RND_ANSWERS_2026-10-22.md, S10 design). A slot whose
+   measured time exceeds UA_WD_LIMIT cycles for UA_WD_TRIPS blocks in a row is
+   bypassed: its entry in the live callback table 0x118133e0 (the function the
+   slot loop at 11818c0c loads and calls) is replaced by ua_wd_noop, which
+   leaves the bus untouched (dry). The loader owns the table: when it installs
+   a new function in that slot (the user picks another effect or reloads the
+   patch), the slot is watched again from zero. Only slow effects are caught;
+   a faulting effect still ends in the SYS/BIOS exception halt. The tripped
+   mask goes out in bits 11..15 of the period's high word (period < 2^27). */
+#ifndef UA_SLOT_TABLE
+#define UA_SLOT_TABLE ((void *volatile *)0x118133e0u)
+#endif
+#ifndef UA_WD_LIMIT
+#define UA_WD_LIMIT 64000u      /* cycles per 16-frame block, about 40% of the period */
+#endif
+#ifndef UA_WD_TRIPS
+#define UA_WD_TRIPS 16u         /* blocks in a row, about 6 ms */
+#endif
+static void *ua_wd_seen[5];
+static u32 ua_wd_over[5];
+static u32 ua_wd_tripped;
+
+void ua_wd_noop(void)
+{
+}
+
+static void ua_wd_check(const u32 *v, u32 ran)
+{
+    u32 k;
+    for (k = 0; k < 5u; k++) {
+        void *fn = UA_SLOT_TABLE[k];
+        if (fn == (void *)ua_wd_noop)
+            continue;                           /* bypassed until the loader replaces it */
+        if (fn != ua_wd_seen[k] || (ua_wd_tripped >> k & 1u)) {
+            ua_wd_seen[k] = fn;                 /* a new or reinstalled effect */
+            ua_wd_over[k] = 0;
+            ua_wd_tripped &= ~(1u << k);
+            continue;
+        }
+        if (!(ran >> k & 1u))
+            continue;
+        if (v[k] <= UA_WD_LIMIT) {
+            ua_wd_over[k] = 0;
+        } else if (++ua_wd_over[k] >= UA_WD_TRIPS) {
+            UA_SLOT_TABLE[k] = (void *)ua_wd_noop;
+            ua_wd_tripped |= 1u << k;
+            ua_wd_over[k] = 0;
+        }
+    }
+}
+#endif
+
 static void ua_bench_build(void)
 {
     u32 v[7], k, *t = ua_bench_t;
@@ -505,6 +558,10 @@ static void ua_bench_build(void)
     v[5] = t[UA_B_TX] - t[UA_B_PRE];
     v[6] = t[UA_B_PRE] - ua_bench_prev_pre;
     ua_bench_prev_pre = t[UA_B_PRE];
+#ifdef UA_WATCHDOG
+    ua_wd_check(v, ua_bench_mask);
+    v[6] = (v[6] & 0x07ffffffu) | (ua_wd_tripped & 0x1fu) << 27;
+#endif
     ua_bench_frame[0] = UA_BENCH_SYNC;
     ua_bench_frame[1] = (ua_bench_seq++ & 0x7ffu) | (ua_bench_mask & 0x1fu) << 11;
     for (k = 0; k < 7u; k++) {

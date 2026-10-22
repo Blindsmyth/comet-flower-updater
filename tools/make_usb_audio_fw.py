@@ -104,8 +104,8 @@ TAP_RETAIN = ["--retain=ua_tx_pack_tap", "--retain=usb_audio_sof_tick_tap"]
 CALLP_S2_TEMPLATE = 0x1050c512
 
 
-def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False, pairs8=False):
-    out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "pairs8") if pairs8 else (TAP_OUT / "bench") if bench else (TAP_OUT / "ch10") if nch == 10 else (TAP_OUT / "stems_fx") if fx else (TAP_OUT / "stems") if stems else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
+def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False, pairs8=False, watchdog=False):
+    out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "pairs8") if pairs8 else (TAP_OUT / "bench_wd") if watchdog else (TAP_OUT / "bench") if bench else (TAP_OUT / "ch10") if nch == 10 else (TAP_OUT / "stems_fx") if fx else (TAP_OUT / "stems") if stems else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
     out.mkdir(parents=True, exist_ok=True)
     main = PROTO / ("usb_audio_tap.c" if tap else "usb_audio.c")
     srcs = [main, PROTO / "usb_audio_hooks.asm",
@@ -119,6 +119,7 @@ def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=
             *(["--define=UA_STEMS"] if stems else []),
             *(["--define=UA_FX"] if fx else []),
             *(["--define=UA_BENCH"] if bench else []),
+            *(["--define=UA_WATCHDOG"] if watchdog else []),
             *(["--define=UA_PAIRS8"] if pairs8 else []),
             "--compile_only", *srcs)
     elf = out / "usb_audio.elf"
@@ -183,7 +184,8 @@ def decode(vma, word, kind):
     return mvk_field(word)
 
 
-def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False, pairs8=False):
+def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False, pairs8=False, watchdog=False):
+    bench = bench or watchdog
     fx = fx or bench or pairs8 or nch == 10        # the 10-channel layout is the FX layout (stems hooks)
     stems = stems or fx
     if stems and nch != 10:
@@ -196,7 +198,7 @@ def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=
         off = ctl.CONST_DATA[0] + ctl.USB_STR3_RECORD - 0xc016f780
         if int.from_bytes(base[off:off + 4], "little") == ctl.USB_STR3_STOCK_HDR:
             sys.exit("--tap8 needs a base built with make_controller_fw.py --usb-audio-name")
-    lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch, stems, fx, bench, pairs8), (UA_BASE, UA_SIZE))
+    lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch, stems, fx, bench, pairs8, watchdog), (UA_BASE, UA_SIZE))
     if lo != UA_BASE or len(img) > UA_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (ctl.FREE_SDRAM[0] <= lo and lo + len(img) <= ctl.FREE_SDRAM[1]):
@@ -283,10 +285,14 @@ if __name__ == "__main__":
     ap.add_argument("--bench", action="store_true",
                     help="FX layout with a CPU timing frame per block on USB channel 8 "
                          "(tools/ua_bench.py) instead of the looper")
+    ap.add_argument("--watchdog", action="store_true",
+                    help="--bench plus the slot watchdog (UA_WATCHDOG): a slot over 64k cycles for 16 "
+                         "blocks in a row is bypassed until the loader installs a new effect there; "
+                         "tripped slots in bits 27..31 of the bench period word (TEST builds only)")
     ap.add_argument("--tap-pattern", action="store_true",
                     help="diagnostic tap build: counter (L) + 1002 Hz sine (R) instead of the "
                          "pedal audio; analyse captures with tools/ua_capture.py")
     a = ap.parse_args()
-    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8 or a.stems or a.fx or a.bench or a.tap10 or a.pairs8
+    out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8 or a.stems or a.fx or a.bench or a.watchdog or a.tap10 or a.pairs8
                                else "build/usb_audio/DO_NOT_FLASH_usb_audio_silence.bin"))
-    build(a.base, out, a.tap, a.tap_pattern, 10 if a.tap10 else 8 if a.tap8 else 2, a.stems, a.fx, a.bench, a.pairs8)
+    build(a.base, out, a.tap, a.tap_pattern, 10 if a.tap10 else 8 if a.tap8 else 2, a.stems, a.fx, a.bench, a.pairs8, a.watchdog)

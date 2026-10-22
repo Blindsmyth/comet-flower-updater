@@ -62,8 +62,10 @@ def frames(words):
             continue
         f = w[i:i + FRAME]
         v = [f[2 + 2 * k] | f[3 + 2 * k] << 16 for k in range(7)]
+        # Watchdog builds (make_usb_audio_fw.py --watchdog) put the bypassed-slot mask in
+        # bits 27..31 of the period; it is 0 in plain bench builds (period < 2^27).
         yield {"seq": f[1] & 0x7FF, "mask": f[1] >> 11, "slots": v[:5], "busy": v[5],
-               "period": v[6], "at": i}
+               "period": v[6] & 0x07FFFFFF, "tripped": v[6] >> 27, "at": i}
         i += FRAME
 
 

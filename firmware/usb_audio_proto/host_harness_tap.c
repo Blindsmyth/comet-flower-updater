@@ -96,6 +96,13 @@ EXPORT void host_bench_set(unsigned int tscl, int slot)
     host_tscl = tscl;
     host_slot_index = slot;
 }
+#ifdef UA_WATCHDOG
+static void *volatile host_slot_table[5];
+#define UA_SLOT_TABLE host_slot_table
+EXPORT void ua_wd_noop(void);
+EXPORT void host_slot_table_set(int k, void *fn) { host_slot_table[k] = fn; }
+EXPORT void *host_slot_table_get(int k) { return host_slot_table[k]; }
+#endif
 #endif
 
 EXPORT void usb_audio_sof_tick_tap(void);
@@ -118,6 +125,13 @@ EXPORT void host_reset(void)
     usb_audio_tap.underruns = usb_audio_tap.packets45 = 0;
     fifo_count = fifo_overflow = 0;
     host_pack_calls = 0;
+#ifdef UA_WATCHDOG
+    for (i = 0; i < 5; ++i) {
+        ua_wd_seen[i] = 0;
+        ua_wd_over[i] = 0;
+    }
+    ua_wd_tripped = 0;
+#endif
 #ifdef UA_STEMS
     for (i = 0; i < 16; ++i)
         ua_stem_drum_l[i] = ua_stem_drum_r[i] = ua_stem_loop[i] = 0.0f;
