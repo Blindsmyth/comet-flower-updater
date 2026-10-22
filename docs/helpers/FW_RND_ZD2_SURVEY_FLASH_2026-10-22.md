@@ -47,6 +47,27 @@ running
     - Mean stock dspload: **35.01**
 - **Confidence**: Confirmed. Structure verified in code and empirical binary parse.
 
+### Finding 3: Parameter Storage Architecture and Label Representations
+
+- **Claim**: Effect parameters and labels are stored in four distinct structures across the container, ELF, and preset system:
+  1. **ELF `.const` Parameter Table (Firmware & Pedal UI Source)**: Stored in the TI C6000 ELF `.const` section inside the `DATA` block. The table opens with an `"OnOff\x00"` record and consists of contiguous 56-byte records (`PARAM_RECORD = 56`, 14 little-endian 32-bit words). Its structure is:
+     - Bytes `0..11` (words 0..2): Parameter label as a 12-byte NUL-terminated/padded C-string buffer.
+     - Bytes `12..15` (word 3): Maximum integer value (uint32 LE; e.g. 100, 3018, or `0xFFFFFFFF` for the effect name record).
+     - Bytes `16..19` (word 4): Default integer value (uint32 LE).
+     - Bytes `28..31` (word 7): Edit handler callback function pointer (relocated via ABS32).
+     - Bytes `48..51` (word 12): Flags bitfield (e.g. `0x16` indicating stock volume logarithmic taper).
+     The entry stub `Dll_<Name>` returns a pointer to this table in register `A4[1]`, which the pedal firmware reads directly for display and knob editing. The table has record 0 = `OnOff`, record 1 = effect name header, followed by records 2..N for user knobs.
+  2. **`PRME` Tagged Block (PC / Guitar Lab English Metadata)**: Standalone tagged container block containing JSON: `{"Parameters": [{"name": "...", "explanation": "...", "blackback": bool, "pedal": bool}]}`.
+  3. **`PRMJ` Tagged Block (PC / Guitar Lab Japanese Metadata)**: Standalone tagged container block containing JSON with Japanese text for parameter names and parameter help text.
+  4. **`EDTB` Preset Record (Preset Parameter Storage)**: In pedal preset data (`FLST_SEQ.ZT2` / preset dumps), each of the 5 patch slots occupies 24 bytes (192 bits). Bit 0 is the on/off state, bits 1..29 hold the 29-bit effect ID, and the remaining space encodes up to 12 parameters packed into 150 bits with bit widths `[12, 12, 12, 12, 12, 8, 8, 8, 12, 12, 12, 12]`.
+- **Evidence**:
+  - `src/zd2tools/elfinfo.py` (lines 12–14, 108–129): defines `PARAM_RECORD = 56`, parses 12-byte label, max, default, handler, flags.
+  - `recon/02_g1x4_abi_comparison.md` (lines 20–25): confirms C6000 ABI matching G1 stock and stomphacks stubs (`A4[1]` param table).
+  - `tools/ua_bench.py` (lines 49–51, 135–141) and `tools/g1presets.py` (lines 26, 75–77): defines `PARAM_BITS` for 12 knobs in 24-byte `EDTB`.
+  - `build/fw_rnd/F2/survey_output.txt` (lines 185–201): verified across all stock files.
+- **Confidence**: Confirmed.
+
+
 
 
 ## Answers
