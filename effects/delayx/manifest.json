@@ -18,6 +18,7 @@
   "params": [
     { "name": "Time", "max": 2000, "default": 420, "explanation": "Delay time in ms (1..2000); sweeping it glides like tape." },
     { "name": "Regen", "max": 92, "default": 30, "explanation": "Feedback, 0..0.92." },
-    { "name": "Mix", "max": 100, "default": 30, "explanation": "Echo level (dry 100 - Mix)." }
+    { "name": "Mix", "max": 100, "default": 30, "explanation": "Echo level (dry 100 - Mix)." },
+    { "name": "Tail", "max": 1, "default": 1, "explanation": "1: repeats ring out after the effect is switched off" }
   ]
 }

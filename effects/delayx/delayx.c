@@ -51,10 +51,12 @@ void SH_AUDIO_FN(void **instance, void **ctx)
     float kt   = coef[SH_PARAM_TIME];
     float kr   = coef[SH_PARAM_REGEN];
     float km   = coef[SH_PARAM_MIX];
+    float ktail = coef[SH_PARAM_TAIL];
     if (!(fade >= 0.0f && fade <= 1.0f)) ok = 0;
     if (!(kt >= 0.0f && kt <= 1.0f)) ok = 0;
     if (!(kr >= 0.0f && kr <= 1.0f)) ok = 0;
     if (!(km >= 0.0f && km <= 1.0f)) ok = 0;
+    if (!(ktail >= 0.0f && ktail <= 1.0f)) ok = 0;
     if (!ok) {
         for (i = 0; i < SH_FRAMES; i++) {
             eff[i] = 0.0f;
@@ -76,19 +78,50 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         s->primed = 1.0f;
     }
 
-    /* the whole block through the core, stage by stage (docs/C6745_DESIGN.md) */
-    delay_block(d, &k, eff, wl_b, wr_b, SH_FRAMES);
+    if (ktail < 0.5f) {
+        /* Tail 0: exactly today's code path (bit-identical output) */
+        delay_block(d, &k, eff, wl_b, wr_b, SH_FRAMES);
 
-    for (i = 0; i < SH_FRAMES; i++) {
-        float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
-        float wl = wl_b[i], wr = wr_b[i], a, b;
-        if (!(wl > -8.0f && wl < 8.0f)) wl = 0.0f;
-        if (!(wr > -8.0f && wr < 8.0f)) wr = 0.0f;
-        a = da + fade * (wl - da);
-        b = db + fade * (wr - db);
-        if (!(a > -8.0f && a < 8.0f)) a = 0.0f;
-        if (!(b > -8.0f && b < 8.0f)) b = 0.0f;
-        eff[i] = a;
-        eff[i + SH_CH_B_OFFSET] = b;
+        for (i = 0; i < SH_FRAMES; i++) {
+            float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
+            float wl = wl_b[i], wr = wr_b[i], a, b;
+            if (!(wl > -8.0f && wl < 8.0f)) wl = 0.0f;
+            if (!(wr > -8.0f && wr < 8.0f)) wr = 0.0f;
+            a = da + fade * (wl - da);
+            b = db + fade * (wr - db);
+            if (!(a > -8.0f && a < 8.0f)) a = 0.0f;
+            if (!(b > -8.0f && b < 8.0f)) b = 0.0f;
+            eff[i] = a;
+            eff[i + SH_CH_B_OFFSET] = b;
+        }
+    } else {
+        /* Tail 1: signal into line scaled by fade; wet repeats output full level on dry */
+        float in_scaled[SH_FRAMES];
+        float mix = s->mix;
+        float dry_a_scale = 1.0f - fade * mix;
+        float dry_cross   = fade * (1.0f - mix);
+        float dry_b_scale = 1.0f - fade;
+
+        for (i = 0; i < SH_FRAMES; i++)
+            in_scaled[i] = eff[i] * fade;
+
+        k.dry = 0.0f;
+        delay_block(d, &k, in_scaled, wl_b, wr_b, SH_FRAMES);
+
+        for (i = 0; i < SH_FRAMES; i++) {
+            float da = eff[i], db = eff[i + SH_CH_B_OFFSET];
+            float wl = wl_b[i], wr = wr_b[i];
+            float dry_a = da * dry_a_scale;
+            float dry_b = db * dry_b_scale + da * dry_cross;
+            float a, b;
+            if (!(wl > -8.0f && wl < 8.0f)) wl = 0.0f;
+            if (!(wr > -8.0f && wr < 8.0f)) wr = 0.0f;
+            a = dry_a + wl;
+            b = dry_b + wr;
+            if (!(a > -8.0f && a < 8.0f)) a = 0.0f;
+            if (!(b > -8.0f && b < 8.0f)) b = 0.0f;
+            eff[i] = a;
+            eff[i + SH_CH_B_OFFSET] = b;
+        }
     }
 }
