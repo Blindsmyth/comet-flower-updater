@@ -261,6 +261,16 @@ CF Rotary `effects/rotx` replacing RA200X (S6; 0 B stack, fixed loops, about
   bring back real multi-slot occupancy, but with one slot of resources it
   is of no use.
 
+- **CF Delay tail (F7, checked by Claude):** `Tail` knob in effects/delayx:
+  Tail 0 bit-identical to before; Tail 1 feeds the line with `input x fade`
+  and always outputs the wet repeats on top of the dry signal, so the
+  repeats ring out after OFF (if the firmware keeps calling it, CF BYPT).
+  +16 cycles; host test passes. In Updater 27.
+- **CFMPRE 5-char labels (F6):** built, `build/fw_rnd_2026-10-22/CFMPRE_5char.ZD2`
+  (`1824ade4`), not in an updater yet (waiting for the page photos).
+- **Slot watchdog (Claude):** implemented, `make_usb_audio_fw.py --watchdog`,
+  firmware `001c3a26`, in Updater 27; 6 host tests.
+
 ## Open leads
 - The LCD effect-edit screen code (params per page, label font/width): not
   located (S5). Next RE target if page layout matters.

@@ -64,11 +64,12 @@ ring out its tail after bypass with no firmware patch; docs/helpers/FW_RND_S9_BY
    No beep while OFF = it is not called when bypassed (tails need a patch).
 3. Optional: move it to slot 3 with other effects around it; same check. Never save it in a patch.
 
-## 6. Updater 27: slot watchdog (after 26/26b; TEST build)
-**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 27 - bench watchdog + Updater 26b effects TEST.exe`
-**SHA-256:** `30eb32d4d5c71bcc2a42ab0f48b463650247f6671f26fc4d27face22219b3b3e` (short `30eb32d4`).
+## 6. Updater 27: slot watchdog + CF Delay tail (after 26/26b; TEST build)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 27 - bench watchdog + 26b effects + CF Delay tail TEST.exe`
+**SHA-256:** `17fc2d442211feb99d84fc738bec9e0b4f002a21dc4a66351ee0ab391a939df3` (short `17fc2d44`).
 Firmware `001c3a26` = bench firmware `6e20051c` plus the watchdog (`make_usb_audio_fw.py --watchdog`);
-file system `fs_bench26b.bin` (same effects as 26b). A slot that takes more than 64k cycles per block for
+file system `fs_bench27.bin` (`5255ee3e`) = the 26b effects with the new CF Delay (`DLYX`, 4th knob `Tail`).
+A slot that takes more than 64k cycles per block for
 16 blocks in a row (about 6 ms) is switched to a do-nothing function: that slot then passes the guitar dry
 until you pick another effect for it or reload the patch. `tools/ua_bench.py` shows bypassed slots as
 `tripped` (bit k = slot k+1).
@@ -77,3 +78,6 @@ until you pick another effect for it or reload the patch. `tools/ua_bench.py` sh
    USB audio keeps running, the crash was a cycle overrun and the watchdog contains it. If the pedal or USB
    still dies, RA200X faults (bad memory access), which only fixing the effect can cure.
 3. Bench capture while doing step 2 shows the tripped bit.
+4. **CF Delay tail** (only meaningful if step 5's CF BYPT beeped while OFF): CF Delay, Tail 1 (new default),
+   Regen ~60. Play a note, switch the delay OFF: the repeats should ring out instead of stopping. Tail 0 =
+   the old behaviour. Old saved patches with CF Delay load Tail 0.
