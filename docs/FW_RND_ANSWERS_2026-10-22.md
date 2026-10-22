@@ -163,6 +163,13 @@ re-checked the key instructions marked **(Claude)**.
   hardware photo shows otherwise.
 - **The LCD effect-edit draw code was not found** (S5's biggest open gap;
   the cluster earlier thought to be it is MIDI/USB, see Q3).
+- **S7 lead (likely, not confirmed):** an UpdateUI-reached row engine:
+  c013c060 (row dispatch, jump-table stub c013c0ba) -> c013c044 ->
+  c012e5a8 (row render hub, calls c012afe0 directly) -> c012dca4 (name,
+  literal "Dummy"), c012e164, c012e330 (page counter "%1d/%1d"). Labels are
+  drawn by c013a2d8 (centered) with the 6-px-pitch 5x7 font c011d4d8. No
+  path from a knob turn to it was traced and the column width (table
+  0xc0181508) was not decoded. `docs/helpers/FW_RND_S7_EDITSCREEN_2026-10-22.md`.
 - **Sub-menu:** the Settings-menu mechanism is real and reusable:
   c0149664(screen_id) switches screens via the 36-byte descriptor table at
   c01495c0 / 0xc018413c; dormant screen IDs 1 and 5 sit in writable RAM
@@ -198,6 +205,12 @@ re-checked the key instructions marked **(Claude)**.
 5. **Watchdog / auto-bypass in the slot loop** (Q5), after step 4's numbers.
 6. Multi-slot resource widening (Q2): not recommended; split chains across
    slots instead.
+
+## Follow-up done 2026-10-22 (Updater 26, not flashed)
+`docs/FW_RND_BENCH_2026-10-22.md`: CF M3 / CF M4 probes (header 3 / 4, job F3),
+CFMPRE re-laid out one stage per page with labels of 8 chars or fewer (F4),
+CF Rotary `effects/rotx` replacing RA200X (S6; 0 B stack, fixed loops, about
+2.8k cycles static, host test passes).
 
 ## Open leads
 - The LCD effect-edit screen code (params per page, label font/width): not
