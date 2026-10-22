@@ -99,6 +99,126 @@ candidate than S5's (it is UpdateUI-direct per Finding 1, not MIDI/USB-table-onl
 it is **not** a confirmed trace to the knob-turn trigger. Confidence: confirmed (call
 edges); **not found** (the knob-turn -> screen trigger itself).
 
+### Finding 5: label font — c012dca4 draws through c013a2d8=ui_text_draw_centered_6px, whose only callee is the SAME font function Argon/S5 already confirmed (c011d4d8, 5x7, 6px pitch)
+`c012dca4=ui_row_render_name`'s calls list (`chunk_05.md:23`) includes
+`c013a2d8=ui_text_draw_centered_6px`. That function's own facts entry
+(`chunk_07.md:581-585`) shows it has exactly **one** callee: `c011d4d8=unk_d4d8` — the
+font function `MENU_RE_ARGON_2026-10-16.md` independently confirmed (and S5's Answer (b)
+cited) as the 5x7 glyph set at 6px pitch, single line. Read `c013a2d8`'s own 80-byte
+disassembly directly (`main.dis:63700..63728`): it walks a string with a byte-fetch loop
+(`SPLOOPW`, `LDB.D1T1 *++A4[1],A3`) then does `MVK.L2 3,B1 ; MPYLI.M2 B1,B0,B1:B0`
+(multiply the scanned length by 3) before combining it with the caller-supplied width
+(`SUB.L2 B7,B0,B0`) — i.e. "half of 6px per character" used as a centering offset,
+which matches the function's own `_6px` name and Argon's figure. Confidence:
+**confirmed** that `c013a2d8`'s only callee is the Argon-confirmed font function;
+**likely** (not fully hand-verified) for the `x3 = half-of-6px` centering-math reading,
+since `SPLOOPW` software-pipelined loop epilogues are easy to misread (the brief's own
+pitfall list) and I did not step through every pipeline stage.
+
+### Finding 6: the specific column pixel width / max-label-chars for THIS row renderer is not located (open, same gap as S5's Answer (b), narrowed but not closed)
+Traced the call site of `c013a2d8` inside `c012dca4` (`main.dis:46492..46499`): the
+width/box argument fed into it (register B4 at the call) is loaded from
+`ADDAW.D2 B15,0x4,B4` (a stack-frame address, i.e. a local buffer), not a bare
+immediate, and an earlier value of the same register chain was built from
+`MVK.S1 0x1508,A15 ; MVKH.S1 0xc0180000,A15` (pointer `0xc0181508`) combined with a
+`SUB`/`ANDN` bit-masking sequence I did not fully decode in the time available. So the
+actual pixel box width for this specific renderer could not be pinned to a constant.
+**Not found**: the column width / char-clip point for this row. Best available number
+remains S5's Answer (b) by analogy (Settings-menu columns: ~31 px, ~5-6 chars at 6px
+pitch, same font) since Finding 5 confirms the same font function is used — but this is
+carried over by analogy, not independently measured for this renderer. Confidence:
+not found (own attempt, abandoned for time, not "nothing is there").
+
+### Finding 7: side-check — the expression-pedal-to-param pipeline is a different, unrelated path (noted to avoid confusing future jobs)
+While grepping for other callers of `c012afe0`, found `c014aef4=analog_cc_apply_to_effect_params`
+(roots MainApp, `chunk_11.md:417-421`) called by `c015ff60=ad_value_calibrate_scale` /
+`c016004c=ad_value_calibrate_scale_ch2` — this is the analog expression-pedal-position
+-> assigned-MIDI-CC -> `c0141684=effect_param_value_store` pipeline (writes a param
+value from pedal position), not the 4-knob on-screen editor. It also touches
+`c012afe0`, which is a reminder that this accessor is heavily multiplexed across MIDI,
+USB, expression-pedal and (candidate) screen uses; a patch at `c012afe0` itself would
+hit all of them. Confidence: confirmed (direct read of calls list; distinct caller set
+from Findings 2-4's chain).
+
+### Finding 8: ui_settings_screen_render (c013c0f4) is a sibling per-FIELD-type dispatcher, not part of the row-dispatch chain — correcting my own mis-association
+Initially suspected `c013c0f4=ui_settings_screen_render`'s calls list included
+`c013c0c8` (the row-dispatch entry point); re-reading its facts line
+(`chunk_08.md:427-432`, 17 calls) shows it does not — `c013c54c=ui_settings_screen_build`
+calls `c013c0c8` directly, `c013c0f4` is a sibling called BY `c013c54c` too but dispatches
+separately. Read `c013c0f4`'s full 272-byte body (`main.dis:66358..66446`): it loops an
+index register (A10) calling `c016f2b0(A10)` for a per-field flags word, then bit-tests
+individual bits to select among ~13 widget-draw callees (`ui_settings_draw_backdrop`,
+`ui_settings_draw_output`, `ui_settings_mode_dispatch` x3, `ui_assignment_panel_dispatch`,
+`ui_assignment_alias_draw`, two icon-draw functions, four `ui_settings_field_*`
+functions). This confirms the Settings-screen has its own, separate per-field bitmask
+dispatch (distinct from the per-row-kind jump table of Finding 3) — i.e. there are at
+least two different "which widget to draw" mechanisms layered in this one screen family.
+The loop's exact termination condition (how many fields / what c016f2b0 returns at the
+end) was **not resolved**: the visible branch structure always eventually jumps back to
+the loop-continue point regardless of the flag bits tested in this excerpt, so the real
+bound must be inside `c016f2b0` (unread). Confidence: confirmed (own disassembly read)
+for the bit-dispatch structure; not found for the loop bound; this finding is reported
+mainly to correct the mis-association and flag the loop bound as a concrete open lead
+for whoever resumes this.
+
+### Finding 9: overall assessment — a better-targeted, still-unconfirmed candidate
+Net result: Findings 1-4 identify a call chain from `UpdateUI` (confirmed direct, not
+pointer-only, unlike S5's cluster) through a generic on-screen row renderer that
+genuinely fetches the ZD2 param descriptor and renders the known "Dummy" placeholder and
+a page-counter — a much better match to "the LCD effect-edit screen" than S5's MIDI/USB
+cluster. But its three confirmed static callers (Settings-screen build/dispatch,
+MIDI-param-assign UI, Rhythm/Settings popups) do not include anything nameable as "the
+per-effect knob-turn editor in Stomp/Play mode." Two explanations remain open and
+undistinguished: (A) the stock firmware's per-effect param editor really is implemented
+as one more caller of this same generic row-dispatch engine, reached through a call
+edge this job did not find (e.g. another indirect/pointer-based entry, or a caller inside
+one of the many `.calls` lists truncated by the fact-sheet generator at a fixed count —
+several entries above literally ended in `...`); or (B) it is a genuinely separate,
+still-unlocated piece of code (S5's original conclusion), and the matching "Dummy"/
+page-counter evidence here is coincidental reuse of the same low-level widgets for a
+different screen. Confidence: likely for (A) being plausible and worth a follow-up job
+that specifically re-reads the truncated `calls (42)`/`calls (54)` lists in full from
+`main.dis` rather than the fact-sheet summaries; not confirmed either way.
+
 ## Answers
+
+### (a) Params per page, what decides it — for this (candidate) UpdateUI-direct path
+**Not located**, same bottom line as S5's Answer (a), now for a different, more
+UpdateUI-direct candidate chain (Findings 1-4) that S5 did not have. No equivalent of
+the `4*c012af98()-r` arithmetic was found on this path: `c012e5a8`/`c013c044` render ONE
+row at a time, dispatched through the per-row-kind table (Finding 3); any "how many
+rows fit on this screen" decision would live in whatever loop calls `c013c060` per
+visible row, which was not traced. The page-counter widget (`c012e330`,
+`"%1d/%1d"`) gets its count from `c015ad98=usbdesc_page_count_helper` — a name that, by
+the same auto-naming pattern that mis-tagged S5's MIDI-rooted cluster as "fxparam", may
+itself be shared between the confirmed-USB caller (`c01359e4`) and this candidate
+on-screen caller; not independently verified as screen-only. Patch site: none proposed
+(would be patching a shared widget with an unconfirmed screen target). Risk: unknown.
+
+### (b) Label drawing: font, pixel width, chars before clipping
+**Font: likely** the 5x7 font at 6px pitch via `c011d4d8`, independently reached from
+`c012dca4=ui_row_render_name` through `c013a2d8=ui_text_draw_centered_6px` (Finding 5) —
+this is the SAME font function already confirmed by the Argon menu report and cited in
+S5, now shown to also be reachable from a param-descriptor-driven row renderer, not only
+the Settings-menu's already-documented renderer. **Pixel width per column / chars before
+clipping for this specific renderer: not located** (Finding 6) — the box-width argument
+traces to a stack buffer and an undeciphered table at `0xc0181508`. No better number than
+S5's analogy-based "~5-6 chars at 6px pitch" is available. Patch site for the font/width
+itself (if ever confirmed to be the right screen): inside `c013a2d8` or its caller's
+width argument; risk high because `c011d4d8` and `c013a2d8` are shared by at least a
+dozen other screens (`chunk_02.md:149-152` lists 13 callers of `c011d4d8` alone,
+including tuner, save-slot, field-editor, and rhythm-row renderers) — any patch here is
+not effect-param-exclusive.
+
+### (c) Can labels change per page?
+Same answer as S5: **yes, trivially**, because each parameter's label lives inline in
+its own 56-byte ZD2 descriptor (S5 Finding 3), and this job additionally confirms
+(Finding 2) that the NEW candidate renderer (`c012e5a8`/`c012dca4`) also fetches through
+`c012afe0` directly — so even if this candidate turns out to be the real screen, the
+same "no patch needed, it's data-driven" conclusion holds.
+
+### (d) Sub-menu
+Out of scope for S7 (the brief assigns this to S5; see S5 Finding 5 and its Answer (d)).
+Not re-investigated here.
 
 ## Not checked / open leads
