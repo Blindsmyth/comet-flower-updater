@@ -1,7 +1,9 @@
 # FW RND S7: Locate the LCD effect-edit screen
 
 ## Status
-running
+done (within budget; see "Not checked / open leads" for the central gap: the exact
+knob-turn -> screen call edge is still not found, though a materially better candidate
+chain than S5's was identified)
 
 ## Findings
 
@@ -222,3 +224,25 @@ Out of scope for S7 (the brief assigns this to S5; see S5 Finding 5 and its Answ
 Not re-investigated here.
 
 ## Not checked / open leads
+- **The exact trigger that shows the per-effect param screen when a knob is turned in
+  Stomp/Play mode was not found.** Finding 9 lists the two live hypotheses. Next step:
+  re-read the full, untruncated `calls` lists (not the fact-sheet summaries, which cut
+  off at `...` for the largest functions, e.g. `c012e5a8`'s 42 calls and
+  `mainapp_frame_update`'s 54) directly from `main.dis` for `c012e5a8`, `c013c060`, and
+  `mainapp_frame_update` (`c01341e4`), looking specifically for a slot-index argument
+  that varies 0..4 (the physical effect slot) rather than a settings-field index.
+- The per-row-kind jump table's exact bounds (Finding 3: is it 7 or 8 entries, and is
+  `0xc0184398`/`0xc01843bc/c0` really a separate adjacent table or does the compiler
+  interleave two switches for a reason that matters here) — not resolved.
+- `c013a2d8`'s `SPLOOPW` body (Finding 5): the "x3 = half of 6px" reading is from a
+  partial, not fully pipelined-stage-by-stage, read; a careful re-derivation would firm
+  up "likely" to "confirmed."
+- The box-width argument's ultimate source for `ui_row_render_name`'s call into
+  `c013a2d8` (Finding 6): traces to a stack buffer and a table at `0xc0181508`,
+  neither decoded — this is what would answer "max label chars" precisely if the
+  candidate chain is ever confirmed to be the right screen.
+- `c016f2b0`'s own body and `ui_settings_screen_render`'s loop bound (Finding 8): not
+  read.
+- `c015ad98=usbdesc_page_count_helper`'s own body, to check whether its "%1d/%1d" count
+  is screen-specific or shared with the confirmed-MIDI/USB caller path (Answer (a)):
+  not read.
