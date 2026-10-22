@@ -1,7 +1,7 @@
 # S4 - Fault containment: why a bad effect kills USB audio
 
 ## Status
-running
+done
 
 ## Findings
 
@@ -158,7 +158,156 @@ Swi's typical call depth or its minimum. So "plenty of headroom" is likely
 but not proven for every call site.
 
 ## Answers
-(none yet)
+
+### Question 5 — fault handling: why does a bad effect crash the USB audio driver, what can it corrupt, is there exception handling, containment proposal
+
+**Ranked crash mechanisms** (most to least likely, with confidence):
+
+1. **Cycle-budget blowout from RA200X's data-dependent solver loops (likely).**
+   F4: RA200X is the only one of 5 compared kernels (CE2X, Delay, DR103,
+   Mistress, RA200X) with ANY loop whose trip count the build tool could
+   not statically bound (20 such loops, all inlined MNA-solver loops in
+   `mna_ss.h`); the others have zero. The handoff already measured RA200X
+   at 3.5x its expected cycle cost (14.1k vs 4k) in the one bench it ran
+   in. A data-dependent solver can, for some parameter/state combination
+   (or the heavier `fresh`-frame derive, `ra200x.c:97`), run far longer
+   than that already-high average. The handoff records a 105% peak block
+   load elsewhere with no warning, meaning the firmware does not visibly
+   guard this case. I did not trace what the firmware does when a block's
+   cycle budget is blown this far (EDMA ping-pong overrun, SOF/Swi timing
+   collision) — that mechanism is S3's question (Q6); I am citing it only
+   as the trigger that most plausibly explains why *adding more effects
+   after* RA200X (which only adds more cycles to the same already-overrun
+   block) is what tips it into a USB-visible failure, rather than RA200X
+   alone (which the handoff shows is merely silent, not crashing, when it
+   is the last/only effect).
+2. **SYS/BIOS Exception module halts the single shared DSP core (likely
+   infrastructure, guess that RA200X trips it).** F6: the firmware links
+   `ti.sysbios.family.c64p.Exception` (confirmed strings
+   `build/fw/map/strings.txt:610-611,680`), and the USB Swi and audio Swi
+   are different priorities on the *same* core (`recon/18_round3.md:107`).
+   If anything in the chain dereferences a bad/misaligned pointer, the
+   C674x exception path fires; in a typical SYS/BIOS production
+   configuration (print disabled) that usually ends in a halt/spin, which
+   would stop the USB Swi too — not because the USB driver itself is
+   buggy, but because the one core it also runs on is wedged. I could not
+   confirm this is what actually happens here (no vector table / live
+   handler traced — see Not checked), and read-through of `ra200x.c`
+   found no obvious out-of-bounds pointer (its own bounds/clamps are
+   correct per F5), so this is **plausible supporting infrastructure, not
+   a proven trigger**.
+3. **Stack overflow from RA200X's own frame (evidence-based rejection as
+   primary cause, kept as a residual possibility).** F2: RA200X's audio-fn
+   frame is 1064 B, *smaller* than DR103's proven-safe-on-hardware 1428 B
+   frame, so frame size alone does not explain a RA200X-specific failure.
+   F7 shows large nominal L2 headroom (~11.5 KB) past the measured call
+   depth, but that is one static sample, not an exhaustive bound, so a
+   residual possibility (worst-case/fresh-frame call depth combined with
+   whatever else is live on that stack at the same moment) is not fully
+   excluded — rated low confidence given F2's direct counter-evidence.
+4. **Channel-B corruption reaching the USB tap via downstream processing
+   (unlikely as *crash* cause, kept as an audio-quality explanation).** F5:
+   RA200X's channel-B write is bounds-correct and sits against, but does
+   not overrun into, `ctx[2]`; the exact same write pattern is proven safe
+   in CE2x/Delay (F3), including with other effects running after them in
+   the same bench. The USB tap reads a buffer two stages downstream, not
+   RA200X's bus directly (F5). This could explain audible weirdness if a
+   later effect is not stereo-aware, but there is no evidence it causes a
+   driver crash specifically.
+
+**Most likely root cause in RA200X (guess, not confirmed — flagging the
+open lead for a future job):** the "no audio" symptom is most likely a
+numerical/logic bug in the inlined MNA network solve or rotor-coefficient
+derivation (`ra200_g1.h`/`mna_ss.h`) that legitimately produces an
+out-of-range or structurally-zero `outL`/`outR` every call, which
+`ra200x.c:108-109`'s own `-8..8` clamp then correctly zeroes — i.e. the
+kernel's safety clamps are working exactly as written, and the bug is
+upstream of them in the math. I did not trace `ra200_g1.h`/`mna_ss.h`
+line-by-line (out of budget); `work_state()`'s own gating
+(`ra200x.c:37`) is unlikely to be the cause since the firmware's per-slot
+work-buffer descriptors are confirmed always-populated for all 5 slots
+(`recon/14_effect_memory.md` section 2/startup zeroing). The *crash*
+(mechanism 1/2 above) looks like a separate issue from the *silence*, not
+the same bug.
+
+**Can a firmware patch change this / contain it?** Yes, at the per-slot
+dispatch point in the audio Swi, independent of which exact mechanism
+above is the real trigger:
+
+**Containment patch proposal — per-slot cycle-and-guard watchdog**
+- **Site:** the slot-call loop in the audio Swi, `11818bec`..`11818c44`
+  (identified by `docs/helpers/SLOT_TAP_ARGON_2026-10-17.md:16-34`, which
+  already shows the per-slot `BNOP`/`CALLP` veneer structure), reachable by
+  file offset via `tools/make_usb_audio_fw.py`'s `vma_offset()`
+  (`tools/make_usb_audio_fw.py:132-137`, which maps any firmware VMA to an
+  AIS section file offset — confirmed present and usable for this purpose,
+  not newly verified for this exact address).
+- **Mechanism:** read a cycle counter (TSCL; already used elsewhere for
+  on-device timing per `recon/14_effect_memory.md`'s probe measurements)
+  immediately before and after each slot's effect call. If the delta
+  exceeds a generous multiple (e.g. 4x) of that slot's own declared
+  `dspload`-derived cycle budget, OR a planted guard word just below the
+  effect's expected worst-case stack use reads back wrong after the call,
+  mark that slot index "faulted" in a small fixed RAM table (5 bytes) and,
+  for all subsequent blocks, skip calling that slot's effect function and
+  substitute the existing dry-bypass path (already present in firmware
+  for user-triggered bypass) instead of calling the kernel again.
+- **Cost:** 2 TSCL reads + 1 compare + 1 conditional branch, and 1 guard
+  read + compare, per slot per block — a handful of cycles against a
+  ~2048-cycle block budget; 5 bytes of new fixed RAM state.
+- **Risk:** (a) false positives auto-bypassing a legitimately expensive
+  effect if the multiplier/ceiling is too tight — mitigate by sizing the
+  ceiling per-effect from its own declared `dspload`, not one global
+  constant; (b) the guard-word check is probabilistic (an overflow can
+  miss a single planted word) — treat it as a cheap second signal, not a
+  proof; (c) inserting code into the audio Swi's hand-scheduled,
+  software-pipelined slot loop risks disturbing its own cycle budget or
+  its delay-slot structure (brief's own C6000 pitfalls: branches resolve
+  5 packets later, do not fold code after an epilogue) — must be added as
+  whole correctly-delay-slotted packets and bench-measured (never
+  flashed by this job) before being trusted; (d) this does not fix *why*
+  RA200X is silent, only prevents a bad slot from taking the rest of the
+  chain and USB audio down with it.
+- **Lower-risk complementary/alternative action (not a firmware patch):**
+  the handoff's own planned next step — replace RA200X with a simple
+  mono rotary kernel, no stack, under 5k cycles (`HANDOFF_2026-10-22_FW_RND.md`
+  "Open on the effect side") — removes the suspect kernel instead of
+  hardening the dispatcher, and is strictly lower-risk since it touches
+  no firmware code at all. I'd recommend doing that first, and treating
+  the firmware watchdog above as a longer-term, effect-agnostic hardening
+  once the slot-loop addresses are independently confirmed (S1/S2's
+  domain) rather than a prerequisite to unblocking RA200X specifically.
 
 ## Not checked / open leads
-(none yet)
+- **Exception vector table / live `Exception_handler` policy.** Confirmed
+  the SYS/BIOS Exception module is linked (F6) but did not locate or
+  trace the actual vector table, ISTP wiring for the NMI/exception event,
+  or what the handler does when invoked (halt vs. reset vs. resume) in
+  THIS image. `recon/25_boot_safety.md:107` independently flags this same
+  gap. This is the single biggest open item for confirming mechanism #2.
+- **`ra200_g1.h`/`mna_ss.h` numerics not traced line-by-line.** I did not
+  verify why the MNA solve/rotor-coefficient derivation produces an
+  always-clamped-to-zero output (the "no audio" root cause is a guess).
+  This would need someone to read the F-2B network topology and the
+  solver's convergence behavior against the manifest's default knob
+  values.
+- **Whether the audio Swi's slot loop fully unwinds its stack between
+  slots within one block**, and what else (if anything) shares the
+  ~12 KB L2 stack region concurrently with the audio Swi at the moment an
+  effect runs — I inferred "likely yes, per-slot call/return" from the
+  veneer structure in `docs/helpers/SLOT_TAP_ARGON_2026-10-17.md` but did
+  not independently re-derive it; S3 owns this (Q4).
+- The address of the per-effect dispatch loop (`11818bec`..`11818c44`),
+  used as my proposed patch site, was taken from
+  `docs/helpers/SLOT_TAP_ARGON_2026-10-17.md` and not independently
+  re-verified against `main.dis` by me in this job; S1/S2 cover the
+  loader/dispatch map in depth.
+- **What the firmware actually does on a cycle-budget overrun** (skip,
+  corrupt an EDMA ping-pong index, or something else) is explicitly S3's
+  question (Q6); I only cited the handoff's already-measured 14.1k/4k
+  cycle numbers as supporting evidence for ranking mechanism #1, I did
+  not trace the overrun-handling path myself.
+- Did not attempt to reproduce or further measure RA200X's cycle cost
+  under non-default parameter values (would help confirm/refute the
+  data-dependent-loop-runaway theory in mechanism #1) — static analysis
+  only, no pedal access per the hard rules.
