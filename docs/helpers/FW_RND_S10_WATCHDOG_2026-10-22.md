@@ -103,6 +103,89 @@ Finding 1), confirming a function already exists that reads a given slot's
 declared dspload float and could be called once at patch-load time to seed
 the watchdog's per-slot budget table (not inside the realtime hook).
 
+### Finding 6: the real SYS/BIOS c64p exception dispatcher is found and disassembled (goes further than S4's gap)
+**Confirmed (the function exists and its early structure), likely (its final
+policy).** `grep -n "EFR\|IERR\|NRP\|ECR\b" build/fw/map/main.dis` turns up a
+dense cluster at `c01625e0..c0162710` that I disassembled in full
+(`main.dis` lines 116755-116845). It is unmistakably a compiled
+`ti.sysbios.family.c64p.Exception` dispatcher:
+```
+c01625e4  MVC.S2 EFR,B1 ; CMPEQ 1,B1,B1 ; [B1] B.S2 NRP      ; early-exit #1 (return from NMI)
+c0162608  MVC NTSR,B0 ; MVC IERR,B1 ; SHR2 B0,5,B0 ; XOR B0,B1,B0
+c0162618  [!B0] MVC NRP,B0                                    ; early-exit #2
+c0162620  MVC ISTP,B1 ; XOR B1,B0,B0 ; CLR B0,5,9,B0
+c016262c  MVC EFR,B1 ; SUB B1,0x2,B0(cond) ; [!B0] B.S2 NRP   ; early-exit #3
+c0162640  [!B0] MVC B1,ECR                                    ; else: record exception cause in ECR
+...
+c0162654  LDW *+A1[0],B15   ; A1 = 0xc0181fa8 -> switch SP to a SEPARATE exception stack
+c0162660..c01626cc            ; full save: A0-A31, B0-B31 (every GP register)
+c01626d0  MVC EFR,B0 / MVC IERR,B1 -> push             ; plus EFR, IERR, ITSR, NTSR, IRP, NRP,
+c01626dc..c0162708                                        AMR, SSR, ILC, RILC  (the full ExcContext)
+c016270c  MVC B0,AMR (=0)    ; DINT at c016274c
+c0162730  B.S2 0xc0140e20 (call, ADDKPC sets return)    ; helper: re-reads EFR/NRP/NTSR (likely
+                                                           Exception_decode/log -- matches strings
+                                                           c01723d7 "use ROV or set enablePrint=true"
+                                                           and c017243b "E_exceptionMax: pc=.., sp=..")
+c0162750  BNOP.S2 B10,5      ; ***indirect jump*** (no return address set) through a function
+                               pointer read from RAM cell 0xc0181f90 (loaded at c016272c)
+```
+Reached from two sites, `c0166430` and `c01689b0`, both `[!A0] B.S1 0xc0162460`
+(a plain conditional branch, not a CALLP) -- consistent with an interrupt
+vector stub shape (ISR entries are typically wired as branches, not normal
+calls), though I did not trace back further to an actual ISTP-relative
+vector table to prove these two sites ARE the hardware vector entries
+themselves (open lead). `c0162460` is the function's prologue (register
+save) immediately preceding the EFR cluster.
+
+### Finding 7: the final handler target (cell 0xc0181f90) is zero-initialized RAM not present in the flashed image -- final policy not directly provable from this image alone
+**Confirmed (the cell is absent from the binary), likely (what it probably
+resolves to).** Ran `tools/fwmap/ais.py` `sections()` against
+`build/fw/res1_493412.bin` and looked up VMA `0xc0181f90`: **no loaded
+section contains this address** (my script found zero matching sections),
+meaning it is pure `.bss` -- its contents are not shipped in the flash
+image and must be written by XDC/SYS-BIOS startup code at boot, which I did
+not locate (only reads of `0x1f90`/`0x1f94` were found in `main.dis`, no
+writes -- consistent with a data-driven `.cinit` unpack table rather than
+an explicit `STW` instruction, which would need a different search
+strategy I did not have budget for). I therefore **cannot directly prove**
+which function this cell ends up holding. What I CAN say: the jump at
+`c0162750` is an unconditional `BNOP` with no `ADDKPC`/return-address setup
+beforehand (unlike the call to `c0140e20` two lines earlier, which does set
+one) -- i.e. **this is a true tail jump, not a call that returns into the
+dispatcher**. Nothing in the traced path afterward restores the saved
+register context or resumes the original Swi. This matches the textbook
+SYS/BIOS pattern (`Exception_m_dispatch` -> build `ExcContext` -> call the
+decode/log hook -> jump through the configured `System.exceptionFxn`,
+whose stock default is `System_exceptionSpin`, an infinite loop) far more
+than it matches any kind of per-task resume. Combined with the production
+hint in the adjacent string (`"...or set enablePrint = true"`, implying it
+ships `false`), I rate **"halts/spins the whole core on an unrecovered
+exception" as likely, not confirmed** -- the same honest gap S4 flagged
+(`recon/25_boot_safety.md:107`), but now backed by an actual disassembled
+dispatcher rather than only the module-linkage strings.
+
+### Finding 8: the exception path, even if it is "halt", is architecturally separate from (and not addressed by) the cycle-based watchdog
+**Confirmed (by construction of both mechanisms).** The TSCL-based slot
+watchdog proposed below only runs *between* slot calls (inside
+`ua_slot_enter`, Finding 1). A genuine illegal-memory/illegal-instruction
+fault happens **inside** a slot kernel's call and (per Finding 6/7) is
+caught by this SYS/BIOS path instead, which -- if it is indeed
+"spin forever" -- never returns control to `ua_slot_enter` for the next
+slot at all. So the two containment ideas in the brief (TSCL watchdog vs.
+exception handling) protect against **different failure classes**: "too
+slow but otherwise valid" (watchdog can catch it, between calls) vs.
+"illegal operation / bad address" (only the exception path sees it, and
+that path's own policy, not my hook, decides what happens next). A design
+that wanted the exception path itself to "catch a fault and bypass just
+that slot" would need to replace the cell at `0xc0181f90` (or whatever
+ultimately writes it) with a custom recovery routine that, instead of
+spinning, identifies the faulting PC/slot from the saved `ExcContext` and
+performs a non-standard partial unwind back into the audio Swi's loop at a
+known-good resume point (e.g. `11818c20`, the per-slot loop-continue
+address from Finding 1) -- a substantially deeper, higher-risk change than
+the TSCL watchdog, and **not recommended within this job's scope** (listed
+only as a longer-term idea under Open leads).
+
 ## Answers
 
 ## Not checked / open leads
