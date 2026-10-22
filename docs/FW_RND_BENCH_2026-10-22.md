@@ -58,3 +58,17 @@ ring out its tail after bypass with no firmware patch; docs/helpers/FW_RND_S9_BY
 2. Switch it OFF. **A quiet 880 Hz beep while OFF = the firmware keeps calling it** (tails possible).
    No beep while OFF = it is not called when bypassed (tails need a patch).
 3. Optional: move it to slot 3 with other effects around it; same check. Never save it in a patch.
+
+## 6. Updater 27: slot watchdog (after 26/26b; TEST build)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 27 - bench watchdog + Updater 26b effects TEST.exe`
+**SHA-256:** `30eb32d4d5c71bcc2a42ab0f48b463650247f6671f26fc4d27face22219b3b3e` (short `30eb32d4`).
+Firmware `001c3a26` = bench firmware `6e20051c` plus the watchdog (`make_usb_audio_fw.py --watchdog`);
+file system `fs_bench26b.bin` (same effects as 26b). A slot that takes more than 64k cycles per block for
+16 blocks in a row (about 6 ms) is switched to a do-nothing function: that slot then passes the guitar dry
+until you pick another effect for it or reload the patch. `tools/ua_bench.py` shows bypassed slots as
+`tripped` (bit k = slot k+1).
+1. Normal patches: nothing changes (no effect we have comes near 64k; the heaviest median is 31k).
+2. **RA200X crash re-test:** CF Pre, Watt, RA200X, then one more effect. If RA200X's slot goes dry and
+   USB audio keeps running, the crash was a cycle overrun and the watchdog contains it. If the pedal or USB
+   still dies, RA200X faults (bad memory access), which only fixing the effect can cure.
+3. Bench capture while doing step 2 shows the tripped bit.
