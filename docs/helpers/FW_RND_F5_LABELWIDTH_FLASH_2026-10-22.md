@@ -1,6 +1,6 @@
 # FW RND F5: Label column width data
 ## Status
-running (step 2: glyph advance widths of 5x7 font)
+running (step 3: column width capacity table and manifest label widths)
 
 ## Findings
 
@@ -23,6 +23,30 @@ running (step 2: glyph advance widths of 5x7 font)
   - Disassembly `build/fw/map/main.dis:46485..46510` (`c012dd40..c012dd68`) and `build/fw/map/main.dis:63705..63725` (`c013a2f8..c013a320`).
   - Reference index `build/fw/map/refs.txt:c01815*`.
 - **Confidence**: Confirmed.
+
+### Finding 2: Glyph advance of the 5x7 font drawn by c011d4d8 is strictly fixed 6 px (monospace) for all printable characters
+- **Claim**:
+  1. The 5x7 font table starts at address `0xc01787e0` in flash/SDRAM (file offset `0x6c768` in `build/fw/res1_493412.bin`). The printable ASCII range `0x20..0x7e` begins at `0xc01788a0` (`0xc01787e0 + 0x20 * 6`).
+  2. Each character cell consists of 6 contiguous bytes (1 vertical column of 8 bits per byte; 7 rows active). Columns 0..4 contain the 5-pixel glyph pattern; column 5 is always `0x00` (blank 1 px inter-character spacing).
+  3. The string renderer `c011d4d8` loops over the input string and advances the X coordinate in register `A22`:
+     - Printable characters: line `c011d524` executes `ADD.L1 6, A22, A22` unconditionally. The advance is **strictly fixed at 6 pixels per character**. It is NOT proportional.
+     - Exception 1: ASCII `0x09` (`\t`) advances 3 px (`c011d54c: ADD.L1 3, A22, A22`).
+     - Exception 2: ASCII `0x0c` (`\f`) advances 5 px (`c011d534: ADD.L1 5, A22, A22`).
+  4. Character advance values:
+     - `A-Z`: **6 px** fixed (5 px ink + 1 px blank space).
+     - `a-z`: **6 px** fixed (5 px ink + 1 px blank space).
+     - `0-9`: **6 px** fixed (5 px ink + 1 px blank space).
+     - ` ` (space): **6 px** fixed (`00 00 00 00 00 00`, 0 px ink + 6 px space).
+     - `.` (period): **6 px** fixed (`00 60 60 00 00 00`, 2 px ink + 4 px space).
+     - `:` (colon): **6 px** fixed (`00 36 36 00 00 00`, 2 px ink + 4 px space).
+  5. The centering wrapper `c013a2d8=ui_text_draw_centered_6px` independently confirms fixed 6 px pitch: it multiplies character count by 3 (`MPYLI.M2 3, B0, B1:B0` at `c013a30c`) to compute the half-width before subtracting from the column center coordinate.
+- **Evidence**:
+  - Disassembly `build/fw/map/main.dis:22798..22860` (`c011d4d8..c011d554`).
+  - Disassembly `build/fw/map/main.dis:22744..22765` (`c011d438..c011d470`: base `0xc01787e0`, index `char * 6`).
+  - Binary inspection of glyph bytes in `build/fw/res1_493412.bin` at offset `0x6c768 + char * 6`.
+  - Disassembly `build/fw/map/main.dis:63700..63725` (`c013a2d8`).
+- **Confidence**: Confirmed.
+
 
 
 ## Answers
