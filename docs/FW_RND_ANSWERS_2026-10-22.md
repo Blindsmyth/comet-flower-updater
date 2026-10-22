@@ -228,6 +228,11 @@ re-checked the key instructions marked **(Claude)**.
   (`CMPLTU 7` at c013b8ec), and the UI reports that as a process overflow. So S8's "header > 1 has no
   effect" is wrong for 3 and 4; the exact formula is not fully traced. Rule unchanged: declare 1.
 
+- **Bypass (CF BYPT, Updater 26b):** beep heard while OFF, clean while ON: **the firmware keeps calling a
+  bypassed effect with coef[0] near 0** (the default-callback path c0165e80 is not the on/off path).
+  Delay tails work with no firmware patch; CF Delay `Tail` (F7) relies on this.
+- **CF Rotary (S6):** good alone and after comp + RAT on the pedal.
+
 ## Follow-up done 2026-10-22 (Updater 26, not flashed)
 `docs/FW_RND_BENCH_2026-10-22.md`: CF M3 / CF M4 probes (header 3 / 4, job F3),
 CFMPRE re-laid out one stage per page with labels of 8 chars or fewer (F4),

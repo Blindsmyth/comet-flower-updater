@@ -17,6 +17,10 @@ Background: `docs/FW_RND_ANSWERS_2026-10-22.md`.
 - CF M3 and CF M4 are listed; placing either gives **PROCESS OVERFLOW!! CHANGE EFFECT** (photos).
 - CF Pre edit pages: 3 params per page, PAGE 1/4..4/4; `Dyn Sens / Dyn Out / Dyn On` read cleanly,
   `MuffSust / MuffTone / Muff Vol` run together.
+- **CF BYPT (26b): the beep is heard while the effect is OFF; ON passes the guitar clean.** The firmware
+  keeps calling a bypassed effect, so delay tails need no firmware patch (CF Delay `Tail`, Updater 27).
+- **CF Rotary:** good alone in slot 1, and good after a comp and a RAT. Still open: an effect placed
+  AFTER CF Rotary (the RA200X crash case) and bench numbers.
 
 ## 1. Flash
 Same as Updater 25: hold both footswitches while connecting USB, run the updater, Execute, wait for
