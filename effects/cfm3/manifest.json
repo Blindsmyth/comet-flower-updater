@@ -1,0 +1,31 @@
+{
+  "name": "CF M3",
+  "filename": "CFM3P",
+  "id": "07000f8e",
+  "version": "1.00",
+  "display": "CF M3",
+  "badge": "CF",
+  "description": "CF Master loader probe, 3 patch slots (header 0x58 = 3). Mode 0 passes audio scaled by Gain; Mode 1 mutes the guitar and reports by tone code how it is called, where it lives, which slot work buffers change and the 12 knob values (tools/decode_memprobe.py). Never save it in a patch.",
+  "dspload": 10,
+  "g1_slots": 3,
+  "allow_any_id": true,
+  "kernel": "cfm3.c",
+  "kernel_section": "text",
+  "opt_for_space": null,
+  "state_bytes": 128,
+  "scaffold": "cleanroom",
+  "params": [
+    { "name": "Mode", "max": 1, "default": 0, "explanation": "0 = pass audio x Gain, 1 = tone-code report." },
+    { "name": "Gain", "max": 100, "default": 50, "explanation": "Mode 0 level: 0 = silent, 50 = unity, 100 = 2x." },
+    { "name": "P3", "max": 100, "default": 3, "explanation": "Unused knob 3, reported in page 1." },
+    { "name": "P4", "max": 100, "default": 4, "explanation": "Unused knob 4, reported in page 1." },
+    { "name": "P5", "max": 100, "default": 5, "explanation": "Unused knob 5, reported in page 1." },
+    { "name": "P6", "max": 100, "default": 6, "explanation": "Unused knob 6, reported in page 1." },
+    { "name": "P7", "max": 100, "default": 7, "explanation": "Unused knob 7, reported in page 1." },
+    { "name": "P8", "max": 100, "default": 8, "explanation": "Unused knob 8, reported in page 1." },
+    { "name": "P9", "max": 100, "default": 9, "explanation": "Unused knob 9, reported in page 1." },
+    { "name": "P10", "max": 100, "default": 10, "explanation": "Unused knob 10, reported in page 1." },
+    { "name": "P11", "max": 100, "default": 11, "explanation": "Unused knob 11, reported in page 1." },
+    { "name": "P12", "max": 100, "default": 12, "explanation": "Unused knob 12, reported in page 1." }
+  ]
+}
