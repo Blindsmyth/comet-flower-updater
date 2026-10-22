@@ -177,6 +177,46 @@ This directly weakens the brief's framed patch sites: patching `11807eb8` or
 told about the current page, and might do **nothing** to the physical LCD if the LCD
 has its own separate (unlocated) page-size constant.
 
+### Finding 5: sub-menu / custom-screen mechanism (confirmed menu-system side, from MENU_PAGES_ARGON, addresses spot-checked)
+`MENU_PAGES_ARGON_2026-10-16.md` P3/P4 (addresses spot-checked against `main.dis` in
+Finding 0) establishes a generic, already-working mechanism for adding a custom
+screen/sub-page to the Settings-menu system, independent of whether it is wired to the
+stock "SETTING" gear icon or to something else:
+- `c0149664(screen_id)` is the *sole* writer of the active-screen pointer
+  (`*+B14[120]`); it looks up a 36-byte descriptor (`w0..w8`: id, 3 icon bitmaps,
+  on_enter, on_exit, draw, on_poll, on_event) via `c01495c0(screen_id)`, which indexes
+  a 15-entry `.switch` table at `0xc018413c..0xc0184174` for `screen_id < 15`.
+- Three of those 15 descriptors (`Screen ID 0, 1, 5` at `0xc01833dc`, `0xc0183400`,
+  `0xc0183740`) live in **writable RAM** (`.cinit`-decompressed at boot), and Screen
+  IDs `1` and `5` are **provably dormant** in stock firmware (no code path ever passes
+  `screen_id=1` to `c0149664`; `c0149820()`'s exit-gate special-cases only `{0,1,9}`).
+  Overwriting their `w6`/`w8` fields in RAM (draw/event callbacks) and/or their 4-item
+  record tables lets a patch add an arbitrary custom page reachable by calling
+  `c0149664(1)` or `c0149664(5)` from a hook, with **no flash-code patch needed for the
+  descriptor tables themselves** (only the hook call site, e.g.
+  `c0156de0: CALLP.S2 0xc01496d0,B3`, a single 32-bit `CALLP`).
+- The generic 4-column page renderer (`c0154564` -> `c0154338`) and the generic 4-knob
+  editor (`c0149948`) both take a plain item-record array pointer as an argument, so a
+  "sub-menu for one multi-stage effect" (one screen per stage, 4 knobs each, reusing
+  `c0149948`) is buildable with this exact mechanism: point a dormant screen's `w6` at
+  a thin wrapper calling `c0154564(4, stage_records, x_table, "STAGE 1", 0, 1)` and its
+  `w8` at a wrapper calling `c0149948(4, ev, stage_records)`, then flip `stage_records`
+  (or re-enter with a different screen id) to move between stages.
+I did not re-derive this mechanism myself end-to-end (budget), but spot-checked its
+load-bearing addresses in Finding 0 and it is internally consistent with the
+descriptor layout I independently re-derived for the fxparam cluster's accessor
+pattern in Findings 1-3 (function-pointer table + RAM-resident per-item records is the
+same idiom used in both subsystems). Confidence: **likely** (addresses confirmed
+present and are real functions; the full mechanism is carried over from
+MENU_PAGES_ARGON's report, not re-verified instruction-by-instruction here).
+**Important scope note**: this sub-menu mechanism is proven for the **Settings-menu
+screen-descriptor system** (`c0149664`/`c01495c0`), which Finding 4 shows is a
+*different* subsystem from the (MIDI-rooted, not LCD-confirmed) fxparam cluster that
+actually renders per-effect parameter text. Whether the stock per-effect "turn a knob"
+edit view is *itself* built on the `c0149664` screen-descriptor system (making this
+sub-menu trick directly applicable to it) or on some other, unlocated mechanism was
+**not determined**.
+
 ## Answers
 
 ## Not checked / open leads
