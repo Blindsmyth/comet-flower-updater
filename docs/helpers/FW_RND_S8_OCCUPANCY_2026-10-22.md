@@ -136,6 +136,56 @@ c013babc   ecd08000           .fphead       n, l, W, BU, br, nosat, 1100110b
 c013bac0   2ff8a120    [ B0]  BNOP.S1       0xc013bab0,5     ; loop
 ```
 
+### Finding 2: Fate of the slot-count header byte (header 0x58) after c0129908 (confirmed)
+The ZD2 header copy resides at stack offset `B15+40`. Header offset `0x58` (88 decimal) is at `B15+40+88 = B15+128` (`*+B15[128]`).
+
+Across the entire firmware, exactly three loads of `*+B15[128]` exist, all in `effect_slot_load_unload` (`c01297a0`):
+
+1. **Ceiling check (`c0129904`) - CONFIRMED:**
+   ```assembly
+   c0129904   0000809e           LDBU.D2T2     *+B15[128],B0    ; B0 = header byte 0x58
+   c0129908   00008bda           CMPLTU.L2     0x4,B0,B0        ; B0 = (4 < B0)
+   c012990c   2120a120    [ B0]  BNOP.S1       0xc0129b40,5     ; reject if B0 > 4
+   ```
+   If header 0x58 is 5, it branches to `c0129b40` (load error/rejection). Thus header 5 is never added to the effect catalog.
+
+2. **Unused argument to loader (`c0129a6c`) - CONFIRMED:**
+   ```assembly
+   c0129a64       cc5b           CALLP.S2      0xc0129724,B3    ; install slot resources
+   c0129a6c   0300809e ||        LDBU.D2T2     *+B15[128],B6    ; B6 = header byte 0x58
+   ```
+   `c0129724` accepts arguments in `A4`, `B4`, `A6`, `B6`. Tracing all instructions inside `c0129724` (`c0129724..c0129798`) confirms register `B6` is **never read or stored**. It allocates single-slot heap and state based solely on scalar slot index `A11`.
+
+3. **Storage into effect catalog table (`c0129ab4`) - CONFIRMED:**
+   ```assembly
+   c0129ab0   00148a34           STB.D1T1      A0,*+A5[A4]
+   c0129ab4   0000809c           LDBU.D2T1     *+B15[128],A0    ; A0 = header byte 0x58
+   c0129ab8   02229428           MVK.S1        0x4528,A4
+   c0129abc   e1000000           .fphead       n, l, W, BU, nobr, nosat, 0001000b
+   c0129ac0   02600368           MVKH.S1       0xc0060000,A4    ; A4 = 0xc0064528
+   c0129ac6       8684           STB.D1T1      A0,*A5[A4]       ; 0xc0064528[catalog_idx] = 0x58
+   ```
+   The slot-count byte is stored in a byte table at `0xc0064528 + catalog_idx`. (On error/fallback paths, it is forced to 1 at `c0129b86`, `c0129c64`, `c0129d12`).
+
+4. **Access to `0xc0064528` and the hardcoded UI stub - CONFIRMED:**
+   The byte table at `0xc0064528` is accessed by:
+   - `c0129680` / `c0129698`: shifts entries during catalog add/remove.
+   - `c012b260(effect_id)`: searches `0xc0064f6c` for `effect_id` and reads `0xc0064528[catalog_idx]`. Called by `c013b690` and `c013b8c0`.
+   
+   **CRUCIAL FINDING**: In the pedal UI effect picker (`c0132658`), slot inserter (`c01327c8`), and effect replacer (`c0133254`), the firmware does NOT call `c012b260`. Instead, it calls `c012b2c0` and `c012af98`:
+   ```assembly
+   c012b2c0       2626           MVK.L1        1,A4             ; HARDCODED RETURN 1!
+   c012b2c2       a1ef           BNOP.S2       B3,5
+   ...
+   c012af98       2626           MVK.L1        1,A4             ; HARDCODED RETURN 1!
+   c012af9a       a1ef           BNOP.S2       B3,5
+   ```
+   Both functions unconditionally return constant `1`. Consequently:
+   - `c0132658` evaluates candidate effect width as 1 for every effect.
+   - `c01327c8` computes `new_width - old_width = 1 - 1 = 0`, bypassing the filler insertion loop at `c0132824`.
+   - The parsed header byte 0x58 stored at `0xc0064528` is completely bypassed by the pedal UI slot management. Every effect is treated as 1 slot.
+
+
 
 ## Answers
 
