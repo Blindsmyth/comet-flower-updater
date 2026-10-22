@@ -1,0 +1,40 @@
+{
+  "name": "CF Rotary",
+  "filename": "ROTX",
+  "id": "06000f8a",
+  "version": "1.00",
+  "display": "CF Rotary",
+  "badge": "CF",
+  "description": "Simple mono Leslie-style rotary, replacing RA200X (no audio, crashed USB audio with effects after it). 1-pole 800 Hz crossover; horn band gets a short modulated (Doppler) delay plus AM, drum band AM only; independent horn/drum spin-up. Delay line in the slot work buffer (fails to silence if absent, as CE2X/DLYX do). TEST: cost and work-buffer availability not yet measured on the pedal.",
+  "dspload": 16,
+  "allow_any_id": true,
+  "kernel": "rotx.c",
+  "scaffold": "cleanroom",
+  "state_bytes": 40,
+  "params": [
+    {
+      "name": "Speed",
+      "max": 1,
+      "default": 0,
+      "explanation": "0 = slow (chorale), 1 = fast (tremolo)."
+    },
+    {
+      "name": "Depth",
+      "max": 100,
+      "default": 70,
+      "explanation": "Doppler + AM depth, horn and drum."
+    },
+    {
+      "name": "Ramp",
+      "max": 100,
+      "default": 50,
+      "explanation": "Spin-up/down glide time (0 fast, 100 slow)."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 80,
+      "explanation": "Wet amount."
+    }
+  ]
+}
