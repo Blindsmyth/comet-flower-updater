@@ -67,8 +67,21 @@ running
   - `build/fw_rnd/F2/survey_output.txt` (lines 185–201): verified across all stock files.
 - **Confidence**: Confirmed.
 
+### Finding 4: Parameter Limits, Label Lengths, and Page Alignment in Stock Effects
 
-
+- **Claim**:
+  1. **Maximum Parameter Count is 9**: The absolute maximum parameter count across all 98 stock effects is **9**. Zero stock effects have more than 9 knobs.
+     - Single-slot effects (82 effects, `0x58 = 1`): **Every single one has exactly 4 knobs** in its ELF parameter table.
+     - Double-width effects (16 effects, `0x58 = 2`): **Every single one has exactly 9 knobs** in its ELF parameter table.
+     - **Padding with `Dummy`**: When a double-width effect has only 7 real parameters (e.g. `BGMK1_1U`, `FDBMAN1U`, `HW100_1U`, `MS800_1U`, etc.) or 8 real parameters (e.g. `FD_TWR1U`, `GTGEQ71U`, `PHASDL1U`, `TPEC3_3S`, etc.), Zoom's build tool explicitly pads the ELF table to exactly 9 entries with records labeled `"Dummy"`. In contrast, the `PRME` JSON block lists only the 7 or 8 real parameters.
+     - **Hardware Cause**: The G1 Four user interface arranges multi-page effect controls in pages of **3 parameters per page**. A 2-slot effect is allocated exactly 3 pages of 3 parameters (3 × 3 = 9). The padding guarantees that every page has 3 valid record pointers.
+  2. **Longest Label is 8 Characters**: The longest parameter label across the entire stock corpus is **8 characters**: `"D57:D421"` (used in 13 cabinet models to denote dual mic selection Shure SM57 / Sennheiser MD421).
+     - Label character length distribution: length 1: 1 label (`W`), length 2: 2 labels (`Hi`, `Lo`), length 3: 20 labels, length 4: 30 labels, length 5: 35 labels, length 6: 6 labels (`MidCut`, `DryMix`, `Manual`, etc.), length 7: 0 labels, length 8: 1 label (`D57:D421`).
+     - No stock effect ever uses a 9-character or longer label, even though the record buffer is 12 bytes.
+  3. **Parameter Max Values**: Range from `1` (binary toggle/bypass switches) to `3018` (millisecond delay time in `DELAY_3S`, `ANDLY_3S`, `MODDELAY`). The top distinct maximum values are: 3018, 3006, 2014, 1503, 1411, 1005, 931, 562, 199, 110, 101, 100.
+- **Evidence**:
+  - `build/fw_rnd/F2/survey_output.txt` (lines 202–226): empirical census of all 98 stock effects.
+- **Confidence**: Confirmed.
 
 ## Answers
 
