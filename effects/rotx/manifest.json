@@ -9,6 +9,7 @@
   "dspload": 16,
   "allow_any_id": true,
   "kernel": "rotx.c",
+  "kernel_section": "text",
   "scaffold": "cleanroom",
   "state_bytes": 40,
   "params": [

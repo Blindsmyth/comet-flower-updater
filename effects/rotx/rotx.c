@@ -43,6 +43,14 @@
 #include "sh_params.h"
 #include "ts808_core.h"   /* TS_INLINE, ts_onepole_lp (no other use: no libm, no divide) */
 
+/* plain C99 "restrict" is not a C++ keyword; the host kernel test includes
+ * this file from a .cpp, so guard it exactly as delay_g1.h's DL_RESTRICT does */
+#if defined(__TI_COMPILER_VERSION__)
+#define ROT_RESTRICT restrict
+#else
+#define ROT_RESTRICT __restrict
+#endif
+
 typedef struct {
     float lp_s;                 /* crossover 1-pole state */
     float phase_h, phase_d;     /* LFO phases, 0..1 */
@@ -53,12 +61,19 @@ typedef struct {
 
 typedef char rotx_state_fits[(sizeof(KernelState) <= SH_STATE_BYTES) ? 1 : -1];
 
-/* the short Doppler delay line: lives in the slot work buffer, cleared only at
- * (re)init, like CE2X's manual zero loop (no memset call in the kernel) */
+/* the short delay lines: live in the slot work buffer, cleared only at (re)init,
+ * like CE2X's manual zero loop (no memset call in the kernel). Two lines, one per
+ * band, pushed together from the SAME write pointer: the horn line is read back
+ * with a modulated (Doppler) offset, the drum line with that same offset held
+ * fixed (no modulation). Reading both bands at the same past index reconstructs
+ * x exactly at Depth 0 (the crossover identity horn+drum==x holds at every
+ * sample, so it still holds after an equal delay) -- a single shared baseline
+ * delay, not an unmatched one, is what keeps Mix 100 / Depth 0 at unity gain. */
 #define ROT_LINE_LEN   128u             /* 2.9 ms at 44.1 kHz, power of two */
 #define ROT_LINE_MASK  ((int)ROT_LINE_LEN - 1)
 typedef struct {
-    float buf[ROT_LINE_LEN];
+    float buf_h[ROT_LINE_LEN];      /* horn band: Doppler-modulated read */
+    float buf_d[ROT_LINE_LEN];      /* drum band: fixed read, same baseline */
     uint32_t wp;
 } RotLine;
 
@@ -82,8 +97,11 @@ typedef struct {
 #define ROT_STEP_D_SLOW 0.0004f   /* drum: full swing in ~4.4 s */
 
 /* Doppler: base read offset and max swing, in samples (both << ROT_LINE_LEN,
- * so the fractional linear read never catches this block's own writes) */
+ * so the fractional linear read never catches this block's own writes).
+ * ROT_DOP_BASE is an exact integer: the drum line's fixed read needs no
+ * fractional interpolation. */
 #define ROT_DOP_BASE   64.0f
+#define ROT_DOP_BASE_I 64
 #define ROT_DOP_SWING  48.0f
 
 TS_INLINE RotLine *work_line(void **instance)
@@ -107,7 +125,7 @@ TS_INLINE float rot_lfo(float phase)
 void SH_AUDIO_FN(void **instance, void **ctx)
 {
     const float *coef = (const float *)instance[1];
-    float *restrict eff = (float *)ctx[1];   /* only this pointer touches the bus here */
+    float *ROT_RESTRICT eff = (float *)ctx[1];   /* only this pointer touches the bus here */
     KernelState *s = (KernelState *)instance[2];
     RotLine *rl = work_line(instance);
     int i;
@@ -174,7 +192,8 @@ void SH_AUDIO_FN(void **instance, void **ctx)
         float dop_swing = ROT_DOP_SWING * s->dp;  /* Doppler swing, samples */
         float mix = s->mp;
         int wp = (int)rl->wp;
-        float *restrict buf = rl->buf;
+        float *ROT_RESTRICT buf_h = rl->buf_h;
+        float *ROT_RESTRICT buf_d = rl->buf_d;
 
         _Pragma("MUST_ITERATE(16,16)")
         for (i = 0; i < SH_FRAMES; i++) {
@@ -182,10 +201,11 @@ void SH_AUDIO_FN(void **instance, void **ctx)
             float y = ts_onepole_lp(&lp, ROT_XOVER_G, x);  /* drum band (LP) */
             float horn = x - y;                            /* horn band (HP) */
             float drum = y;
-            float sine_h, sine_d, delaySamples, mu, a, b, dop, ampH, ampD, wet;
-            int M, idx0, idx1;
+            float sine_h, sine_d, delaySamples, mu, a, b, dop, drumDelayed, ampH, ampD, wet;
+            int M, idx0, idx1, idxD;
 
-            buf[wp] = horn;
+            buf_h[wp] = horn;
+            buf_d[wp] = drum;
             wp = (wp + 1) & ROT_LINE_MASK;
 
             ph_h += inc_h; ph_h -= (ph_h >= 1.0f) ? 1.0f : 0.0f;
@@ -193,17 +213,23 @@ void SH_AUDIO_FN(void **instance, void **ctx)
             sine_h = rot_lfo(ph_h);
             sine_d = rot_lfo(ph_d);
 
+            /* horn: the same baseline offset, Doppler-modulated, fractional */
             delaySamples = ROT_DOP_BASE + dop_swing * sine_h;
             M = (int)delaySamples;
             mu = delaySamples - (float)M;
             idx0 = (wp - 1 - M + 2 * (int)ROT_LINE_LEN) & ROT_LINE_MASK;
             idx1 = (idx0 - 1 + (int)ROT_LINE_LEN) & ROT_LINE_MASK;
-            a = buf[idx0]; b = buf[idx1];
+            a = buf_h[idx0]; b = buf_h[idx1];
             dop = a + (b - a) * mu;
+
+            /* drum: the SAME baseline offset, held fixed (no Doppler, no
+             * interpolation needed: ROT_DOP_BASE_I is an exact integer) */
+            idxD = (wp - 1 - ROT_DOP_BASE_I + 2 * (int)ROT_LINE_LEN) & ROT_LINE_MASK;
+            drumDelayed = buf_d[idxD];
 
             ampH = 1.0f + depth_amp * sine_h;
             ampD = 1.0f + depth_amp * sine_d;
-            wet = x * (1.0f - mix) + (dop * ampH + drum * ampD) * mix;
+            wet = x * (1.0f - mix) + (dop * ampH + drumDelayed * ampD) * mix;
             if (!(wet > -8.0f && wet < 8.0f)) wet = 0.0f;
 
             {
