@@ -1,7 +1,7 @@
 # S2 - Loader allocation for multi-slot effects
 
 ## Status
-running
+done
 
 ## Findings
 
@@ -193,3 +193,24 @@ with real risk):** physically plausible, logically nontrivial.
   constraints (no pedal access from this job).
 
 ## Not checked / open leads
+- The full free-slot-search algorithm (loop at `c0129680..c0129706`) that
+  decides which slot index a new effect gets was read only far enough to
+  rule out a count-based loop (F2); the reader(s) of the `0xc01839f0`
+  "in use" flag table were not enumerated, so F9 is "likely," not
+  "confirmed."
+- Did not search outside the listed loader/module-creation address ranges
+  for a read of ZD2 header byte 0x58; it may be read by the effect-list/UI
+  code that S1 owns. This job treats that as S1's finding, not its own.
+- Did not check whether the `c01834ac` descriptor (the `0x2b1100`-byte
+  region right after the 5 work buffers, recon/14 section 2) is used by
+  anything that a multi-slot patch would also need to avoid colliding
+  with — flagged as a risk note above but not traced.
+- Did not verify the "out of memory: heap=0x%x, size=%u" /
+  "out of memory: handle=0x%x, size=%u" strings (`c01722ae`, `c01725cd`,
+  found via `build/fw/map/strings.txt`) are reachable from this path; a
+  quick search for their address being loaded via MVK/MVKH found no hits,
+  so they may belong to a different (non-custom) heap/handle subsystem.
+  Noted as a loose end, not relied on for any claim above.
+- Did not attempt the stack or fault-handling questions (S3/S4's scope)
+  or the effect-list/param-limit questions (S1's scope); this report only
+  speaks to question 2 as assigned.
