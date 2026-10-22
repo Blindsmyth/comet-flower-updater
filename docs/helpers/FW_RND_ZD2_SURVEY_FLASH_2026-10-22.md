@@ -34,6 +34,20 @@ running
 
 - **Confidence**: Confirmed. Exhaustive census of all available stock files.
 
+### Finding 2: Declared DSP Load (`dspload`) Field Location and Distribution
+
+- **Claim**: The declared DSP load (`dspload`) is located in the tagged block `INFO` at payload offset `0x10..0x13` (bytes 16..19 of the block payload, immediately following the 4-byte class word and 12-byte group label). It is encoded as a 32-bit IEEE 754 little-endian float (`struct.unpack('<f')`). Every stock file possesses an `INFO` block with a payload length of exactly 20 bytes.
+- **Evidence**:
+  - `tools/zd2_set_dspload.py` (lines 18–35): locates tag `b"INFO"`, reads `offset + 8 + 16`, and packs/unpacks `<f`.
+  - `src/zd2tools/models.py` (lines 25–29, 44–51): parses `word0` (`<I` at 0..4), `group_text` (latin-1 at 4..16), and `dspload` (`<f` at 16..20).
+  - `build/fw_rnd/F2/survey_output.txt` (lines 168–180): exhaustive analysis of all 98 stock effects confirms:
+    - Minimum stock dspload: **9.13** (`PDL_VOL.ZD2`, pedal volume)
+    - Maximum stock dspload: **93.92** (`UK30A_1U.ZD2`, Vox AC30 amp model)
+    - Median stock dspload: **22.76** (`MA2X12.ZD2`, cabinet model)
+    - Mean stock dspload: **35.01**
+- **Confidence**: Confirmed. Structure verified in code and empirical binary parse.
+
+
 
 ## Answers
 
