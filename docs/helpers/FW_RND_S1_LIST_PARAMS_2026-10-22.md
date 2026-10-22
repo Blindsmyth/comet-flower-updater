@@ -1,7 +1,7 @@
 # S1 - Effect list filter, slot-count byte, param limits
 
 ## Status
-running
+done (stopped near the ~2h budget; see Not checked / open leads for what remains)
 
 ## Findings
 
@@ -147,4 +147,85 @@ not traced in the time available.
 
 ## Answers
 
+### Question 1: effect list filter / why header 5 is hidden, header 2 is offered
+- **Where the header slot-count is read and checked:** the strongest candidate found is
+  `effect_slot_load_unload` (c01297a0), in its ZDLF/INFO header-validation block
+  (c0129904..c012990c, Finding 5): a byte from the parsed header is compared `>4` and, if
+  so, branches away from the normal accept path. This threshold sits exactly between the
+  hardware-observed accepted value (2) and rejected value (5). **Likely**, not confirmed:
+  the byte's provenance as literal file-offset 0x58 was not proven, and the branch target
+  renders ZD2's own "BYPASS"/"BPS" tag strings rather than an obvious error message, so it
+  may instead be ordinary ZDLF chunk-tag dispatch rather than a reject-this-effect path.
+- **Is the limit the header value, the patch slot count, or something else?** Not settled.
+  No separate "how many free slots remain from here to slot 5" arithmetic was found feeding
+  into a List candidate filter; the one numeric cap found (c0129904's >4 test) is a flat
+  per-header ceiling, independent of where in the patch the slot sits.
+- **Can it be raised (to 5, or beyond)?** Unknown/not confirmed. *If* Finding 5's check is
+  really the gate, raising the `CMPLTU 0x4` immediate at c0129908 to `CMPLTU 0x5` (one
+  halfword) is a one-instruction patch candidate -- but given the confidence level, this
+  should be tried on a throwaway updater and observed, not trusted from static analysis
+  alone. Risk: if B15[128] is actually a different field (not slot-count), this patch could
+  silently change unrelated validation (e.g. the BYPASS/BPS dispatch path) instead of what
+  is wanted.
+- **The actual "pick an effect to add to this slot" browse-list builder was not located.**
+  Candidates ruled out: `fx_cat_edit_*` (c0148b80 family) is a generic settings-value-edit
+  dispatcher (24-entry category table for numeric/field edits across many unrelated
+  screens, e.g. rhythm tempo, patch name), not an effect picker. `patchlist_screen_build`
+  (c012a8bc) and its FLST_SEQ.ZT2 readers build the **patch** browser (50 patches), not the
+  per-slot **effect** browser. The real effect-picker screen (if distinct from
+  `effect_slot_load_unload` reused in a "probe" mode) was not found in the time available.
+
+### Question 3: 12-param maximum and 3-params-per-page layout
+- **3-per-page:** `fxparam_page_size` (0x11807eb8, Finding 2) computes
+  `page_size = (n > 4*X - r) ? (4*X - r - 1) : (4*X - r)`, X confirmed ==1 (Finding 3). For
+  the ordinary case (r==0, n>4) this is **3**, matching the observed layout. The literal
+  "4" is a bare `SHL #2` (times-4), not a named constant; there is no single instruction to
+  point to as "the 4" beyond that shift. **Confirmed** arithmetic; **likely** that this
+  specific function drives the on-screen 3-per-page behavior (the screen-draw call site
+  that consumes its return value was not traced).
+- **Can the page layout be changed?** If Finding 2 is really the driving function, the
+  patch site is the `SHL A0,0x2,A0` at (recorded address) 11807ee6 in L2 code -- changing
+  the shift amount changes the multiplier (e.g. `0x2`->`0x3` for 8 slots/page instead of 4).
+  Risk: unknown downstream assumptions about page width (fixed-size UI row-draw tables,
+  physical widget count) could break; not verified against the actual screen-draw code.
+- **12-param maximum: not found as a firmware constant.** (Finding 6). The repo's own
+  `docs/CF_MASTER_PROBE_2026-10-19.md` already attributes "12" to the **stomphacks build
+  tool**, not to a measured firmware limit ("Stock effects have at most 9 knobs ... 12 is
+  the stomphacks maximum"). No loop bound, array size, or MVK/CMP against 12 was found tied
+  to per-effect param count in the functions checked (slot_knobcount_ui_update family,
+  slot_knob_index_clamp_and_dispatch, the generic table accessors c012afe0/b008/b048). The
+  one fixed-4 loop found (c013f6d0, two 4-entry function-pointer tables at 0xc0183a30/a40)
+  is a UI-widget-count constant, not a param-count ceiling. Whether the ELF Dll entry
+  struct's descriptor-array field has its own fixed capacity (vs. being sized from the
+  loaded file) was not checked -- see Not checked below. **Can it be changed?** No firmware
+  patch site identified; if 12 truly comes only from the stomphacks build tool, the limit
+  (if any) is in that tool's own python/ELF-emission code, not in this firmware image.
+
 ## Not checked / open leads
+- The real effect-picker ("add effect to slot") browse-list function: not located. This is
+  the highest-value remaining lead for Q1 -- whichever screen draws the scrollable list of
+  candidate effects for an empty/replaceable slot must call *something* per-candidate; that
+  call site was not found in the time budget. Suggested next step: search for the UI screen
+  reached from the slot's "edit"/footswitch-hold gesture (distinct from `fx_cat_edit_*`),
+  or instrument `effect_slot_load_unload`'s callers to see if any is reached while merely
+  scrolling (not confirming) a candidate.
+- Byte-exact provenance of `B15[128]` in `effect_slot_load_unload` back to ZD2 file offset
+  0x58: not traced. The "INFO" tag-match loop copies into `B15+8` progressively; mapping
+  that to local offset 128 (implying ~120 bytes of struct before the checked field, vs. the
+  documented file offset 0x58=88) was not reconciled. This is the key gap keeping Finding 5
+  at "likely" instead of "confirmed".
+- `c012ee80` (called by both c012f628/Finding 4 and the page-start/entry-valid functions in
+  chunk_01) was not disassembled; it looks like the actual per-param-descriptor flag test
+  underlying several of the param-paging functions and would likely resolve Finding 4's
+  "guess" if read.
+- Whether the Dll entry struct's 56-byte-descriptor array (c012afe0) has a firmware-declared
+  fixed capacity (a real candidate location for a true "12" cap) vs. being sized purely from
+  the loaded ELF/ZD2 file content: not checked.
+- `effect_slot_list_update`'s caller-side retry loop (c0141b74..c0141bc4, which re-calls the
+  Process Overflow check c0141ac8 while clearing bits of a slot-bitmask) was seen but not
+  fully traced; it looks like "find which slot to drop to get under 230," tangential to Q1/Q3
+  but noted here in case it is useful to S2/S3/S4's slot-loop work.
+- Stopped at roughly the 2-hour budget; did not reach a firmware-level re-verification of the
+  `docs/CF_MASTER_PROBE_2026-10-19.md` "11 table entries" structural-capacity claim for
+  param descriptors, nor cross-checked F2's (parallel job) ZD2-file-side survey, which may
+  independently confirm or refute the header-offset mapping question above once it lands.
