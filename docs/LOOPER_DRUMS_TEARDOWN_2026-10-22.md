@@ -12,7 +12,9 @@ State at snapshot `drums_on_blues2_124_v80` (owner: drums on, pattern Blues 2, 1
 | address | seen | meaning | confidence |
 |---|---|---|---|
 | 0x11812f78 | 124 | tempo, BPM | likely (matches; to confirm by changing tempo) |
-| 0x11812f50, 0x11812f5c | 80, 80 | drum volume (two cells) | guess (to confirm by changing volume) |
+| 0x11812f50, 0x11812fbc | 80 -> 60 when the owner set volume 60 | **drum volume setting, 0..100** (two copies, 0x6c apart) | confirmed (seen) |
+| 0x11f03d14 | float 0.8 -> 0.6 at the same time | drum gain used by the audio path = volume / 100 | confirmed (seen) |
+| 0x11812f5c | 80, unchanged by the volume change | something else that was 80 | seen |
 | 0x11812f4c | 44 | pattern number (Blues 2?) | guess |
 | 0x11812fb8..fc8 | 44, 80, .., 80 | second copy of the f4c..f5c block, 0x6c later | guess |
 | 0x11812f0c, 0xc01181e8 | 124 | other tempo copies | guess |
@@ -23,6 +25,9 @@ State at snapshot `drums_on_blues2_124_v80` (owner: drums on, pattern Blues 2, 1
 | 0x11f03d64, 6c, 78 | count up steadily | voice sample addresses or long counters | guess |
 | 0x118133ac | counts up fast, always | free-running counter (not drum specific) | seen |
 | 0xc011ada4 | changes every read, idle too | counter (NOT the pattern index of watch list v1) | seen |
+
+Side effects of the probe itself (ignore in diffs): MIDI TX ring around 0xc0117d60 holds our
+CFPR replies; 0x11815a00.. is stack; 0x11f039b0.. audio buffers.
 
 ## Looper
 
