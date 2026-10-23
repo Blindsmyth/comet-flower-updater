@@ -17,6 +17,38 @@ Host bytes sent to the pedal over USB MIDI OUT are received by the USB endpoint 
   - `c01596e8 CALLP.S2 0xc0155ac0, B3; c01596ec LDW *+B14[147], A4; c01596f0 MVK 1, B4` (`Event_post(B14[147], 1)`).
 - **Consumer**: MIDI task `c0129118` blocks on `c0129130 CALLP 0xc0144580, B3` (`Event_pend(B14[147], 1, 0, -1)`). On wakeup, it compares `B14[39]` against `B14[40]` (`c0129146 CMPEQ A4, B0, A0`) and loads incoming bytes from `*A4[A5]` (`0xc010f288 + read_index`) at `c0129152 LDBU *A4[A5], A0`. Read index is committed at `c012934c STW B0, *+B14[39]`.
 
+### 2. SysEx Parser State Machine and Assembly Buffer (confirmed)
+The MIDI task (`c0129118`) parses incoming bytes with a 5-state machine driven by table `0xc01844a8`, collecting Zoom SysEx messages into global metadata and a 1024-byte payload buffer at `0x1180ff20`.
+- **Status Byte Detection**:
+  - `c0129160 MVK 128, A0; CMPLT A6, A0, A0; [!A0] BNOP 0xc01292f6, 5` branches on status bytes (MSB=1).
+  - Realtime bytes (`>= 0xf8` / 248) are ignored at `c01292f6..c01292fa`.
+  - Non-realtime status bytes reset state `*+B14[167] = 0` at `c0129304`.
+  - On `0xf0` (SysEx start): stores status byte in `*+B14[164]` at `c0129318`.
+  - On `0xf7` (EOX): clears `*+B14[164] = 0` at `c0129320` and invokes the command dispatcher via `c0129324 CALLP.S2 0xc0128e54, B3`.
+- **State Machine Table (`0xc01844a8`)**:
+  - **State 0 (`c0129242`) - Manufacturer ID**: checks incoming byte against `0x52` (Zoom) or `0x7e` (Universal SysEx). Stores byte in `*+B14[165]`. On `0x52`, advances state `B14[167] = 1`, zeroes `B14[43] = 0`.
+  - **State 1 (`c0129214`) - Device ID**: stores device ID (`0x00`) in `*+B14[168]`. For Zoom ID (`B6 == 82`), advances state `B14[167] = 2`.
+  - **State 2 (`c0129276`) - Model ID**: receives model byte (e.g. `0x6e` for G1/G1X Four) in `*+B14[166]`. Advances state `B14[167] = 3`, zeroes byte counter `B14[43] = 0`.
+  - **State 3 (`c01291f0`) - Payload Data**: increments `B14[43] = B14[43] + 1`, calls `c0127cf4(A4=byte, B4=count)`.
+- **Payload Assembly Buffer at `0x1180ff20` (max 1024 B)**:
+  - When `B14[43] == 1` (first payload byte): `c0127df0` stores the command byte as halfword at `0xc0183b60` (`STH A1, *+A7[0]`). If recognized, it sets internal command ID `*+B14[38]`.
+  - When `B14[43] > 1` (subsequent payload bytes): bulk commands (cmd `>= 9`, routed through default branch `c0127d78 CALLP 0xc016f760`) jump to `11803010`.
+  - Disassembly at `11803010`:
+    ```text
+    11803010 MV.L1    A4,A0
+    11803012 MVK.S2   0,B0
+    11803014 SET.S2   B0,10,10,B0        ; B0 = 1024 (0x400)
+    11803016 CMPLT.L2 B4,B0,B0           ; check payload byte offset < 1024
+    11803018 [!B0] BNOP.S1 0x1180302a,5  ; drop if overflow
+    11803020 MVK.S2   0xffffff20,B5
+    11803024 MVKH.S2  0x11800000,B5      ; B5 = 0x1180ff20
+    11803028 STB.D2T1 A0,*B4[B5]         ; store data byte
+    1180302a MVK.L1   1,A4
+    1180302c BNOP.S2  B3,5
+    ```
+  - This proves the SysEx payload is assembled in L2 SRAM at `0x1180ff20`, bounded strictly at **1024 bytes** (1 KiB).
+
+
 
 ## Answers
 ### Step 1: USB MIDI OUT receive & SysEx assembly
