@@ -43,6 +43,8 @@ Steady-state static cost per 16-sample block (2x oversampled, HW_NB = 32 samples
 2. **Plain waveshaping on V3a**: Reverted. Failed 1 of 36 tests (`cranked_f1760_a070`: alias -28.8 dB vs shipped -35.1 dB, 0.3 dB over tolerance).
 3. **Plain waveshaping on PI**: Reverted. Failed 12 of 36 tests (strong harmonic distortion changes on pushed signals).
 4. **Linear input decomposition of NFB loop (`hw_nfb_block`)**: Kept. Decomposed back-half network into input-driven pass $x_A$ (pipelined over 32 samples) and residual-driven serial loop $x_B$. Removes $u_0, s_0$ partials from serial feedback loop. PASS 36/36, STRETCH 0.00 dB. Slot memory 36368 B (4592 free).
+5. **Streamlined `hw_mean_tanh` and Pass 2 series, removed redundant polynomial from `hw_tanh_acc`**: Kept. Evaluated table accuracy across $[0, 0.25]$ showing max absolute error $3.9 \times 10^{-8}$ (below float32 epsilon). Truncated unneeded $d^6, d^8, z^6$ terms and removed polynomial evaluation from `hw_tanh_acc`. Saved 512 bytes of `.text`, slot memory uses 35,856 B. PASS 36/36, STRETCH 0.00 dB.
+6. **Software-pipelined preamp tube fix-up check (Pass 3)**: Kept. Replaced unpipelined indexed array write (`idx[cnt++]`, ii=37) with pipelined boolean check (`bad[n]`, ii=6). Pass 3 cycles per stage dropped from 1,179 to 308 (saving 2,613 cycles across 3 stages). Slot memory 36,272 B (4,688 free). Steady-state loop cycles dropped from 20,178 to 17,891. PASS 36/36, STRETCH 0.00 dB.
 
 ## Scores
 ### Baseline (Unchanged core)
@@ -58,6 +60,13 @@ STRETCH (worst character deviation, dB): 0.00
 ACCURACY: PASS
 Steady-state cost estimate: 19,850 cycles
 Date/Time: 2026-10-23 01:54:00-07:00
+
+### Change 5 & 6: Streamlined tanh/mean_tanh + Pipelined Pass 3
+failing tests: 0 of 36
+STRETCH (worst character deviation, dB): 0.00
+ACCURACY: PASS
+Steady-state cost: 18,093 cycles (17,891 loop + 202 entry)
+Date/Time: 2026-10-23 02:07:00-07:00
 
 ## Cost
 Baseline: 20,380 cycles per 16-sample block (steady-state static estimate).
