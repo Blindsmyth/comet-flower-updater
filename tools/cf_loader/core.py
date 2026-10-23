@@ -1172,3 +1172,298 @@ def build_factory_restore_updater(
         report_lines.append(f"\nSTATUS: FAILED ({e})")
         report_file.write_text("\n".join(report_lines), encoding="utf-8")
         raise
+
+
+# ===========================================================================
+# Comet Flower Installer Integration & Re-exports
+# ===========================================================================
+from tools.cf_loader.backups import (
+    BackupInfo,
+    scan_backups,
+    delete_backup,
+    create_backup_destination,
+    build_backup_commands,
+)
+from tools.cf_loader.catalog import (
+    UnifiedEffect,
+    load_stock_catalog,
+    scan_cf_effects,
+    assemble_unified_catalog,
+    calculate_filesystem_usage,
+    FS_TOTAL_BYTES,
+    FS_TOTAL_DATA_BLOCKS,
+    FS_MAX_DIR_SLOTS,
+)
+from tools.cf_loader.patches import (
+    PatchSlot,
+    PatchRecord,
+    decode_patch_bytes,
+    make_blank_patch,
+    scan_backup_patches,
+    build_presets_command,
+    build_id_name_map,
+    write_patch_live,
+)
+from tools.cf_loader.profiles import (
+    Profile,
+    load_profiles,
+    save_profile,
+    save_profiles,
+    delete_profile,
+    rename_profile,
+    set_default_profile,
+    get_default_profile,
+    get_default_fallback_profile,
+)
+from tools.cf_loader.build_engine import (
+    parse_next_version,
+    find_default_firmware_bin,
+    find_default_official_updater,
+    calculate_sha256,
+    append_installer_log,
+    build_make_g1_image_cmd,
+    build_make_splash_cmd,
+    build_make_fs_restore_updater_cmd,
+    parse_updater_stages,
+    INSTALLER_LOG_PATH,
+)
+
+
+def execute_cf_installer_build(
+    official_updater_path: Union[str, Path],
+    firmware_bin_path: Union[str, Path],
+    selected_stock_effects: List[str],
+    selected_cf_effects: List[Union[str, Path, UnifiedEffect]],
+    version: str,
+    presets_bin_path: Optional[Union[str, Path]] = None,
+    patch_records: Optional[List[PatchRecord]] = None,
+    do_backup: bool = True,
+    factory_image_path: Optional[Union[str, Path]] = None,
+    on_output: Optional[Callable[[str], None]] = None,
+    is_cancelled: Optional[Callable[[], bool]] = None,
+    base_output_dir: Optional[Path] = None,
+) -> Dict[str, Union[Path, str, List[str]]]:
+    """Execute the complete Comet Flower Installer build recipe.
+
+    Steps:
+    1. (Optional) Run pedal backup if requested.
+    2. Build 3 MB filesystem image with make_g1_image.py (--clean, --keep for stock, CF files).
+    3. Build splash screen PNG with make_splash.py.
+    4. Build or locate presets 0xB000 region.
+    5. Build installer .exe with make_fs_restore_updater.py.
+    6. Check updater stages with check_updater_stages.py.
+    7. Calculate SHA-256 and stages summary.
+    8. Append to build/installer_log.json.
+    """
+    v = verify_official_updater(official_updater_path)
+    if not v.valid:
+        raise ValueError(f"Official updater invalid: {v.message}")
+
+    fw_path = Path(firmware_bin_path).resolve()
+    if not fw_path.exists():
+        raise FileNotFoundError(f"Firmware binary not found at {fw_path}")
+
+    # Determine factory image
+    factory_img = Path(factory_image_path or (REPO_ROOT / "build" / "fw" / "res3_3137536.bin")).resolve()
+    if not factory_img.exists():
+        raise FileNotFoundError(f"Factory filesystem image not found at {factory_img}")
+
+    # Extract CF paths
+    cf_paths: List[Path] = []
+    cf_unified: List[UnifiedEffect] = []
+    for item in selected_cf_effects:
+        if isinstance(item, UnifiedEffect):
+            cf_unified.append(item)
+            if item.path and Path(item.path).exists():
+                cf_paths.append(Path(item.path).resolve())
+        elif isinstance(item, (str, Path)):
+            p = Path(item).resolve()
+            if p.exists():
+                cf_paths.append(p)
+
+    # Pre-flight check on filesystem space
+    stock_catalog = load_stock_catalog(factory_img)
+    checked_stock_unified = [stock_catalog[k.upper()] for k in selected_stock_effects if k.upper() in stock_catalog]
+    all_checked_unified = checked_stock_unified + cf_unified
+    total_bytes, total_blocks, free_blocks, fits, msg = calculate_filesystem_usage(all_checked_unified, factory_img)
+    if not fits:
+        raise ValueError(f"Filesystem space check failed: {msg}")
+
+    # Create timestamped build output directory
+    out_dir = create_output_folder("cf_build_", base_dir=base_output_dir)
+    report_file = out_dir / "report.txt"
+    failed_marker = out_dir / "FAILED"
+    py = str(get_python_exe())
+    report_lines: List[str] = [
+        "Comet Flower Installer Build Report",
+        f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Version: {version}",
+        f"Official updater: {official_updater_path} ({v.size} B, CRC32: {v.crc32})",
+        f"Firmware: {fw_path} ({fw_path.stat().st_size} B, SHA256: {calculate_sha256(fw_path)[:8]})",
+        f"Factory image: {factory_img}",
+        f"Stock kept ({len(selected_stock_effects)}): {', '.join(selected_stock_effects)}",
+        f"CF effects added ({len(cf_paths)}): {', '.join(p.name for p in cf_paths)}",
+        f"Filesystem usage: {total_bytes:,} / {FS_TOTAL_BYTES:,} bytes ({free_blocks} blocks free)",
+        "",
+        "Tool Execution:",
+    ]
+
+    try:
+        # Step 0: Backup pedal if requested
+        if do_backup:
+            if on_output:
+                on_output("> Step 0: Backing up pedal prior to build...")
+            backup_dest = create_backup_destination()
+            cmds = build_backup_commands(backup_dest, python_exe=Path(py))
+            for bcmd in cmds:
+                if on_output:
+                    on_output(f"  EXEC: {' '.join(bcmd)}")
+                report_lines.append("EXEC: " + subprocess.list2cmdline(bcmd))
+                res = run_tool(bcmd, on_output=on_output, is_cancelled=is_cancelled)
+                report_lines.append(f"Backup exit code: {res.exit_code}\n{res.stdout}")
+                # We do not fail the build if pedal is disconnected/offline
+                if res.exit_code != 0:
+                    if on_output:
+                        on_output("  Notice: Pedal not connected or backup skipped; continuing build.")
+
+        # Step 1: tools/make_g1_image.py
+        fs_img_out = out_dir / "cf_g1_image.bin"
+        cmd_img = build_make_g1_image_cmd(
+            factory_img=factory_img,
+            out_img=fs_img_out,
+            keep_stock=selected_stock_effects,
+            cf_effect_paths=cf_paths,
+            clean=True,
+            python_exe=Path(py),
+        )
+        if on_output:
+            on_output(f"\n> Step 1: Building filesystem image: {' '.join(cmd_img)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd_img))
+        res_img = run_tool(cmd_img, on_output=on_output, is_cancelled=is_cancelled)
+        report_lines.append(f"make_g1_image.py exit code: {res_img.exit_code}\n{res_img.stdout}")
+        if res_img.exit_code != 0:
+            raise RuntimeError(f"make_g1_image.py failed with exit code {res_img.exit_code}")
+
+        # Step 2: tools/make_splash.py
+        splash_png_out = out_dir / "splash.png"
+        cmd_splash = build_make_splash_cmd(
+            version=version,
+            out_png=splash_png_out,
+            title="CF-ZGX4",
+            tag="TEST",
+            python_exe=Path(py),
+        )
+        if on_output:
+            on_output(f"\n> Step 2: Generating start-up screen: {' '.join(cmd_splash)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd_splash))
+        res_splash = run_tool(cmd_splash, on_output=on_output, is_cancelled=is_cancelled)
+        report_lines.append(f"make_splash.py exit code: {res_splash.exit_code}\n{res_splash.stdout}")
+        if res_splash.exit_code != 0:
+            raise RuntimeError(f"make_splash.py failed with exit code {res_splash.exit_code}")
+
+        # Step 3: Presets binary
+        presets_target: Optional[Path] = None
+        if presets_bin_path and Path(presets_bin_path).exists():
+            presets_target = Path(presets_bin_path).resolve()
+        elif patch_records:
+            # g1presets.py can only blank and rename (no .ZPTC composition yet): a "default set"
+            # built from names alone would be 50 empty patches wearing the owner's names. Keep the
+            # CF presets until the composer exists (docs/helpers/GEMINI_INSTALLER_2026-10-23.md 5).
+            if on_output:
+                on_output("\n> Step 3: default patch set not supported yet (g1presets.py cannot compose "
+                          "patches); keeping the CF factory presets.")
+            report_lines.append("Presets: default patch set skipped (no composer); CF presets kept")
+        if not presets_target or not presets_target.exists():
+            # Fallback to CF presets or factory presets
+            cf_presets = REPO_ROOT / "build" / "fw" / "cfupd_res85.bin"
+            if cf_presets.exists():
+                presets_target = cf_presets
+
+        # Step 4: tools/make_fs_restore_updater.py
+        safe_name = f"Comet Flower ZG1X4 {version} TEST.exe"
+        exe_out = out_dir / safe_name
+        cmd_updater = build_make_fs_restore_updater_cmd(
+            official_updater=Path(official_updater_path).resolve(),
+            out_exe=exe_out,
+            test_controller_fw=fw_path,
+            fs_image=fs_img_out,
+            presets_bin=presets_target,
+            splash_png=splash_png_out,
+            python_exe=Path(py),
+        )
+        if on_output:
+            on_output(f"\n> Step 4: Packaging installer .exe: {' '.join(cmd_updater)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd_updater))
+        res_updater = run_tool(cmd_updater, on_output=on_output, is_cancelled=is_cancelled)
+        report_lines.append(f"make_fs_restore_updater.py exit code: {res_updater.exit_code}\n{res_updater.stdout}")
+        if res_updater.exit_code != 0:
+            raise RuntimeError(f"make_fs_restore_updater.py failed with exit code {res_updater.exit_code}")
+
+        # Step 5: tools/check_updater_stages.py
+        cmd_check = [py, str(REPO_ROOT / "tools" / "check_updater_stages.py"), str(exe_out)]
+        if on_output:
+            on_output(f"\n> Step 5: Checking updater stages: {' '.join(cmd_check)}")
+        report_lines.append("EXEC: " + subprocess.list2cmdline(cmd_check))
+        res_check = run_tool(cmd_check, on_output=on_output, is_cancelled=is_cancelled)
+        report_lines.append(f"check_updater_stages.py exit code: {res_check.exit_code}\n{res_check.stdout}")
+        if not stages_verified(res_check):
+            raise RuntimeError("check_updater_stages.py failed or refused stages")
+
+        # Step 6: Hash & Summary
+        sha256_full = calculate_sha256(exe_out)
+        sha256_short = sha256_full[:8]
+        stages = parse_updater_stages(res_updater.stdout)
+
+        report_lines.append(f"\nOUTPUT EXECUTABLE: {exe_out.name}")
+        report_lines.append(f"SHA-256: {sha256_full} (short: {sha256_short})")
+        report_lines.append("STAGES:")
+        for st in stages:
+            report_lines.append(f"  {st}")
+        report_lines.append("\nSTATUS: SUCCESS")
+        report_file.write_text("\n".join(report_lines), encoding="utf-8")
+
+        # Step 7: Append to build/installer_log.json
+        log_entry = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "version": version,
+            "output_exe": str(exe_out),
+            "sha256": sha256_full,
+            "sha256_short": sha256_short,
+            "firmware": str(fw_path.name),
+            "fs_image": str(fs_img_out.name),
+            "presets": str(presets_target.name) if presets_target else "none",
+            "splash": str(splash_png_out.name),
+            "stages": stages,
+            "effects_count": len(selected_stock_effects) + len(cf_paths),
+        }
+        append_installer_log(log_entry, log_path=INSTALLER_LOG_PATH)
+
+        if on_output:
+            on_output(f"\nSUCCESS: Comet Flower Installer successfully built!")
+            on_output(f"File: {exe_out}")
+            on_output(f"SHA-256: {sha256_full}")
+            on_output("\nStages written:")
+            for st in stages:
+                on_output(f"  {st}")
+            on_output("\n[IMPORTANT INSTRUCTIONS]")
+            on_output("Never flash automatically over MIDI. To update your pedal:")
+            on_output("1. Disconnect USB / power down the Zoom G1X Four.")
+            on_output("2. Hold down BOTH footswitches and plug in the USB cable (UPDATE MODE).")
+            on_output(f"3. Run '{exe_out.name}' on your PC and click Execute.")
+
+        return {
+            "out_dir": out_dir,
+            "exe_path": exe_out,
+            "sha256": sha256_full,
+            "sha256_short": sha256_short,
+            "stages": stages,
+            "version": version,
+        }
+
+    except Exception as e:
+        failed_marker.write_text(f"Installer build failed: {e}\n", encoding="utf-8")
+        report_lines.append(f"\nSTATUS: FAILED ({e})")
+        report_file.write_text("\n".join(report_lines), encoding="utf-8")
+        if on_output:
+            on_output(f"\nERROR: Installer build failed: {e}")
+        raise

@@ -1,6 +1,13 @@
-"""Tkinter desktop interface for CF Loader (tools/cf_loader/app.py).
+"""Comet Flower Installer (tools/cf_loader/app.py).
 
-Standard library only (tkinter + ttk).
+Desktop app for Zoom G1X Four:
+- Backups management
+- Stock & Comet Flower effects selection
+- Patch decoding and factory presets composition
+- Firmware & installer packaging (make_fs_restore_updater.py)
+- Profiles persistence ("set a default so when you update you can set")
+
+Standard library Tkinter/ttk and Pillow only.
 Non-blocking UI: all subprocess operations run in worker threads.
 """
 
@@ -17,1024 +24,1305 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Optional, Set
 
+from PIL import Image, ImageTk
+
 from tools.cf_loader import core
+from tools.cf_loader.theme import (
+    ACCENT_GOLD,
+    BG_DARK,
+    BORDER_COLOR,
+    BORDER_MUTED,
+    DANGER_RED,
+    GOLD_HOVER,
+    PANEL_BG,
+    SELECTION_BG,
+    SELECTION_FG,
+    SURFACE_BG,
+    TEXT_DARK,
+    TEXT_MUTED,
+    TEXT_WHITE,
+    setup_theme,
+    tint_and_scale_image,
+)
 
 REPO_ROOT = core.REPO_ROOT
-TIGHT_SLOT_FREE = 2048          # amber row: less slot heap left than this
-TESTED_STAGES = ("audio-pass", "cost-measured", "ok-save")
+LOGO_PATH = REPO_ROOT / "assets" / "logo_comet_flower.png"
+SPLASH_PATH = REPO_ROOT / "assets" / "splash_comet_flower.png"
 
 
 class CFLoaderApp(tk.Tk):
-    """Main application window for CF Loader."""
+    """Main application window for Comet Flower Installer."""
 
     def __init__(self):
         super().__init__()
-        self.title("CF Loader - G1X Four Effects Loader")
-        self.minsize(960, 640)
-        self.geometry("1024x700")
+        self.title("Comet Flower Installer")
+        self.minsize(980, 680)
+        self.geometry("1060x740")
 
         # Application state
         self.config_data = core.load_config()
-        self.status_data = core.load_status()
-        self.scanned_effects: List[core.EffectInfo] = []
-        self.selected_filenames: Set[str] = set()
+        self.active_backup: Optional[core.BackupInfo] = None
+        self.backups_list: List[core.BackupInfo] = []
+        self.effects_catalog: List[core.UnifiedEffect] = []
+        self.displayed_effects: List[core.UnifiedEffect] = []
+        self.patches_list: List[core.PatchRecord] = []
+        self.profiles: Dict[str, core.Profile] = {}
+        self.active_profile: core.Profile = core.get_default_fallback_profile()
+
+        # Worker & threading state
         self.active_worker: Optional[threading.Thread] = None
         self.worker_cancel_requested = False
         self.busy = False
         self.log_queue: queue.Queue = queue.Queue()
 
-        # Options state
+        # UI variables
+        self.nav_selection = tk.StringVar(value="Effects")
+        self.effects_filter_text = tk.StringVar(value="")
+        self.effects_source_filter = tk.StringVar(value="all")
         self.official_updater_var = tk.StringVar(value=self.config_data.get("official_updater", ""))
-        self.clean_mode_var = tk.BooleanVar(value=self.config_data.get("clean_mode", True))
-        self.add_probe10_var = tk.BooleanVar(value=self.config_data.get("add_probe10", False))
-        self.empty_patches_var = tk.BooleanVar(value=self.config_data.get("empty_patches", False))
-        self.splash_path_var = tk.StringVar(value=self.config_data.get("splash_path", ""))
-        self.keep_stock_var = tk.StringVar(value=self.config_data.get("keep_stock", ""))
+        self.firmware_bin_var = tk.StringVar(value="")
+        self.presets_bin_var = tk.StringVar(value="")
+        self.version_var = tk.StringVar(value="")
+        self.auto_backup_var = tk.BooleanVar(value=True)
+        self.splash_screen_var = tk.BooleanVar(value=True)
+        self.selected_profile_name = tk.StringVar(value="")
 
+        # Setup styling and UI
+        self.style = ttk.Style(self)
+        setup_theme(self.style, self)
+        self._load_window_branding()
         self._build_ui()
         self._poll_log_queue()
 
-        # Initial library scan and pre-flight check
-        self.rescan_library()
-        self.refresh_preflight()
+        # Initial data loading
+        self._initialize_data()
 
     # -----------------------------------------------------------------------
-    # UI Construction
+    # Window Branding & Icons
+    # -----------------------------------------------------------------------
+
+    def _load_window_branding(self):
+        """Tint white logo pixels gold and configure icon and header assets."""
+        try:
+            # Create tinted icon
+            self.icon_image_pil = tint_and_scale_image(
+                LOGO_PATH, gold_rgb=(212, 175, 55), scale=1, transparent_bg=True
+            )
+            self.tk_icon = ImageTk.PhotoImage(self.icon_image_pil)
+            self.iconphoto(True, self.tk_icon)
+
+            # Create header banner logo scaled 2x
+            self.header_logo_pil = tint_and_scale_image(
+                LOGO_PATH, gold_rgb=(212, 175, 55), scale=2, bg_rgb=(22, 22, 22)
+            )
+            self.tk_header_logo = ImageTk.PhotoImage(self.header_logo_pil)
+        except Exception as e:
+            self.tk_header_logo = None
+
+    # -----------------------------------------------------------------------
+    # UI Layout Construction
     # -----------------------------------------------------------------------
 
     def _build_ui(self):
-        style = ttk.Style(self)
-        try:
-            style.theme_use("clam")
-        except Exception:
-            pass
-        style.configure("Accent.TButton", font=("Segoe UI", 9, "bold"), foreground="#ffffff", background="#2a6fb0")
-        style.map("Accent.TButton",
-                  background=[("disabled", "#b8c4d0"), ("active", "#1f5a92")],
-                  foreground=[("disabled", "#eeeeee")])
+        # 1. Top Header Bar
+        header = ttk.Frame(self, style="Panel.TFrame", padding=(12, 10))
+        header.pack(fill=tk.X, side=tk.TOP)
 
-        # Top banner / title
-        header_frame = ttk.Frame(self, padding=(10, 8))
-        header_frame.pack(fill=tk.X)
+        if self.tk_header_logo:
+            logo_lbl = ttk.Label(header, image=self.tk_header_logo, style="Panel.TLabel")
+            logo_lbl.pack(side=tk.LEFT, padx=(4, 12))
+
+        title_box = ttk.Frame(header, style="Panel.TFrame")
+        title_box.pack(side=tk.LEFT, fill=tk.Y)
         ttk.Label(
-            header_frame,
-            text="Comet Flower Effects Loader (G1X Four)",
+            title_box,
+            text="Comet Flower Installer",
+            style="GoldHeader.TLabel",
             font=("Segoe UI", 13, "bold"),
-        ).pack(side=tk.LEFT)
+        ).pack(anchor="w")
         ttk.Label(
-            header_frame,
-            text="Safe update-mode flash engine",
-            font=("Segoe UI", 9, "italic"),
-            foreground="#555555",
-        ).pack(side=tk.LEFT, padx=12)
+            title_box,
+            text="Zoom G1X Four Backup, Effects & Custom Firmware Packager",
+            style="Muted.TLabel",
+        ).pack(anchor="w")
 
-        # Notebook tabs
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-
-        self.tab_library = ttk.Frame(self.notebook, padding=10)
-        self.tab_build = ttk.Frame(self.notebook, padding=10)
-        self.tab_test = ttk.Frame(self.notebook, padding=10)
-        self.tab_recovery = ttk.Frame(self.notebook, padding=10)
-        self.tab_log = ttk.Frame(self.notebook, padding=10)
-        self.tab_advanced = ttk.Frame(self.notebook, padding=10)
-
-        self.notebook.add(self.tab_library, text="Library")
-        self.notebook.add(self.tab_build, text="Build image")
-        self.notebook.add(self.tab_test, text="Test (Wizard)")
-        self.notebook.add(self.tab_recovery, text="Recovery")
-        self.notebook.add(self.tab_log, text="Log")
-        self.notebook.add(self.tab_advanced, text="Advanced")
-
-        self._init_library_tab()
-        self._init_build_tab()
-        self._init_test_tab()
-        self._init_recovery_tab()
-        self._init_log_tab()
-        self._init_advanced_tab()
-
-    # -----------------------------------------------------------------------
-    # Tab 1: Library
-    # -----------------------------------------------------------------------
-
-    def _init_library_tab(self):
-        desc = ttk.Label(
-            self.tab_library,
-            text="Effects built in build/*.ZD2. Select effects to package into the file-system image. "
-            "Refuses effects exceeding 40 KiB slot heap or colliding with stock IDs.",
-            wraplength=900,
-        )
-        desc.pack(anchor=tk.W, pady=(0, 6))
-
-        # Table of effects
-        cols = ("sel", "file", "name", "id", "size", "text", "state", "slot", "stage")
-        self.lib_tree = ttk.Treeview(self.tab_library, columns=cols, show="headings", height=14)
-        self.lib_tree.heading("sel", text="Select")
-        self.lib_tree.heading("file", text="File")
-        self.lib_tree.heading("name", text="Effect Name")
-        self.lib_tree.heading("id", text="Effect ID")
-        self.lib_tree.heading("size", text="File Size")
-        self.lib_tree.heading("text", text=".text")
-        self.lib_tree.heading("state", text="State")
-        self.lib_tree.heading("slot", text="Slot Heap (40 KiB)")
-        self.lib_tree.heading("stage", text="Stage")
-
-        self.lib_tree.column("sel", width=55, anchor=tk.CENTER)
-        self.lib_tree.column("file", width=95, anchor=tk.W)
-        self.lib_tree.column("name", width=110, anchor=tk.W)
-        self.lib_tree.column("id", width=95, anchor=tk.W)
-        self.lib_tree.column("size", width=75, anchor=tk.E)
-        self.lib_tree.column("text", width=70, anchor=tk.E)
-        self.lib_tree.column("state", width=65, anchor=tk.E)
-        self.lib_tree.column("slot", width=130, anchor=tk.W)
-        self.lib_tree.column("stage", width=95, anchor=tk.CENTER)
-
-        tree_scroll = ttk.Scrollbar(self.tab_library, orient=tk.VERTICAL, command=self.lib_tree.yview)
-        self.lib_tree.configure(yscrollcommand=tree_scroll.set)
-
-        self.lib_tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y, in_=self.lib_tree)
-
-        self.lib_tree.bind("<Double-1>", self._on_tree_double_click)
-        self.lib_tree.bind("<space>", self._on_tree_space_toggle)
-        self.lib_tree.bind("<<TreeviewSelect>>", self._on_tree_select_changed)
-        self.lib_tree.tag_configure("rejected", foreground="#b00000", background="#fbe9e9")
-        self.lib_tree.tag_configure("tight", background="#fff4d6")
-        self.lib_tree.tag_configure("tested", foreground="#006400")
-        self.lib_tree.tag_configure("selected_row", font=("Segoe UI", 9, "bold"))
-
-        ttk.Label(
-            self.tab_library,
-            text="Double-click or press Space to select.   Red = cannot be selected   "
-            f"Amber = under {TIGHT_SLOT_FREE // 1024} KiB slot heap left   Green = audio-pass or later   "
-            "Bold = selected",
-            font=("Segoe UI", 8),
-            foreground="#555555",
-        ).pack(anchor=tk.W, pady=(4, 0))
-        self.lib_summary_var = tk.StringVar(value="")
-        ttk.Label(self.tab_library, textvariable=self.lib_summary_var, font=("Segoe UI", 9)).pack(anchor=tk.W)
-
-        # Status & Safety banner
-        self.stage_info_var = tk.StringVar(
-            value="Status: built | in image | audio-pass | cost-measured | ok-save"
-        )
-        ttk.Label(
-            self.tab_library,
-            textvariable=self.stage_info_var,
-            font=("Segoe UI", 9, "bold"),
-            foreground="#333333",
-        ).pack(anchor=tk.W, pady=(6, 2))
-
-        self.safety_banner_var = tk.StringVar(
-            value="[!] DO NOT save patches with unverified DIY effects on the pedal."
-        )
-        self.safety_banner_lbl = ttk.Label(
-            self.tab_library,
-            textvariable=self.safety_banner_var,
-            font=("Segoe UI", 9, "bold"),
-            foreground="#bb0000",
-        )
-        self.safety_banner_lbl.pack(anchor=tk.W, pady=(0, 6))
-
-        # Bottom buttons
-        btn_frame = ttk.Frame(self.tab_library)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Rescan build/", command=self.rescan_library).pack(side=tk.LEFT, padx=4)
-        ttk.Button(btn_frame, text="Toggle Selection", command=self._toggle_selected_row).pack(side=tk.LEFT, padx=4)
-        ttk.Button(btn_frame, text="Inspect Details...", command=self._show_effect_details).pack(side=tk.LEFT, padx=4)
-
-    # -----------------------------------------------------------------------
-    # Tab 2: Build Image
-    # -----------------------------------------------------------------------
-
-    def _init_build_tab(self):
-        # 1. Official updater selection
-        f1 = ttk.LabelFrame(self.tab_build, text="1. Official Zoom Updater (v2.00 G1X FOUR)", padding=8)
-        f1.pack(fill=tk.X, pady=(0, 8))
-
-        row1 = ttk.Frame(f1)
-        row1.pack(fill=tk.X)
-        ttk.Entry(row1, textvariable=self.official_updater_var, width=70).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
-        ttk.Button(row1, text="Browse...", command=self._browse_official_updater).pack(side=tk.RIGHT)
-
-        self.updater_status_var = tk.StringVar(value="Not selected")
-        self.updater_status_lbl = ttk.Label(f1, textvariable=self.updater_status_var, font=("Segoe UI", 9))
-        self.updater_status_lbl.pack(anchor=tk.W, pady=(4, 0))
-
-        # 2. Base filesystem configuration
-        f2 = ttk.LabelFrame(self.tab_build, text="2. Base Filesystem & Options", padding=8)
-        f2.pack(fill=tk.X, pady=(0, 8))
-
-        ttk.Radiobutton(
-            f2,
-            text="Clean test environment: remove stock effects, keep system files (proven safe, compact directory)",
-            variable=self.clean_mode_var,
-            value=True,
-            command=self.refresh_preflight,
-        ).pack(anchor=tk.W)
-
-        r_stock = ttk.Frame(f2)
-        r_stock.pack(fill=tk.X, pady=2)
-        ttk.Radiobutton(
-            r_stock,
-            text="Keep stock effects (enter comma-separated effects to keep, or leave empty for all):",
-            variable=self.clean_mode_var,
-            value=False,
-            command=self.refresh_preflight,
-        ).pack(side=tk.LEFT)
-        ttk.Entry(r_stock, textvariable=self.keep_stock_var, width=30).pack(side=tk.LEFT, padx=6)
-
-        opts_row = ttk.Frame(f2)
-        opts_row.pack(fill=tk.X, pady=(6, 0))
-        ttk.Checkbutton(
-            opts_row,
-            text="Add PROBE10 (cost benchmark)",
-            variable=self.add_probe10_var,
-            command=self.refresh_preflight,
-        ).pack(side=tk.LEFT, padx=(0, 15))
-        ttk.Checkbutton(
-            opts_row,
-            text="Empty patch presets (factory resource)",
-            variable=self.empty_patches_var,
-            command=self.refresh_preflight,
-        ).pack(side=tk.LEFT, padx=(0, 15))
-
-        splash_row = ttk.Frame(f2)
-        splash_row.pack(fill=tk.X, pady=(6, 0))
-        ttk.Label(splash_row, text="Startup splash PNG (128x32, 1-bit, optional):").pack(side=tk.LEFT)
-        ttk.Entry(splash_row, textvariable=self.splash_path_var, width=45).pack(side=tk.LEFT, padx=6)
-        ttk.Button(splash_row, text="Browse...", command=self._browse_splash).pack(side=tk.LEFT)
-
-        # 3. Pre-flight checks panel
-        f3 = ttk.LabelFrame(self.tab_build, text="3. Pre-Flight Verification (7 Checks)", padding=8)
-        f3.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
-
-        self.preflight_text = tk.Text(f3, height=8, wrap=tk.WORD, font=("Consolas", 9), relief=tk.FLAT)
-        pf_scroll = ttk.Scrollbar(f3, orient=tk.VERTICAL, command=self.preflight_text.yview)
-        self.preflight_text.configure(yscrollcommand=pf_scroll.set)
-        pf_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.preflight_text.pack(fill=tk.BOTH, expand=True)
-        self.preflight_text.tag_config("pass", foreground="#007700")
-        self.preflight_text.tag_config("fail", foreground="#cc0000", font=("Consolas", 9, "bold"))
-        self.preflight_text.configure(state=tk.DISABLED)
-
-        # 4. Action bar
-        act_frame = ttk.Frame(self.tab_build)
-        act_frame.pack(fill=tk.X)
-        self.btn_build = ttk.Button(
-            act_frame,
-            text="Build Image and Patched Updater",
-            command=self._start_build_image,
+        # Quick action on top right: "Update with Default"
+        btn_box = ttk.Frame(header, style="Panel.TFrame")
+        btn_box.pack(side=tk.RIGHT, padx=6)
+        self.btn_quick_update = ttk.Button(
+            btn_box,
+            text="★ Update with Default",
             style="Accent.TButton",
+            command=self._on_quick_update_with_default,
         )
-        self.btn_build.pack(side=tk.LEFT, padx=4)
+        self.btn_quick_update.pack(side=tk.RIGHT)
 
-        self.btn_cancel_build = ttk.Button(act_frame, text="Cancel Build", command=self._cancel_build, state=tk.DISABLED)
-        self.btn_cancel_build.pack(side=tk.LEFT, padx=4)
-        self.build_progress = ttk.Progressbar(act_frame, mode="indeterminate", length=120)
-        self.build_progress.pack(side=tk.LEFT, padx=6)
+        # 2. Main Center Body (Left Nav Rail + Right Pages Deck)
+        body = ttk.Frame(self)
+        body.pack(fill=tk.BOTH, expand=True, side=tk.TOP)
 
-        self.build_status_var = tk.StringVar(value="Ready")
-        ttk.Label(act_frame, textvariable=self.build_status_var, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=10)
+        # Left Navigation Rail
+        self.nav_frame = ttk.Frame(body, style="Panel.TFrame", width=190, padding=(8, 12))
+        self.nav_frame.pack(side=tk.LEFT, fill=tk.Y)
+        self.nav_frame.pack_propagate(False)
 
-    # -----------------------------------------------------------------------
-    # Tab 3: Test (Wizard)
-    # -----------------------------------------------------------------------
-
-    def _init_test_tab(self):
-        desc = ttk.Label(
-            self.tab_test,
-            text="On-Pedal Test Wizard (DSP_RULES §4 and §5). Complete each step in order. "
-            "Never save patches holding an effect that has not passed both audio and cost tests.",
-            wraplength=900,
-        )
-        desc.pack(anchor=tk.W, pady=(0, 6))
-
-        # Target effect selector
-        sel_row = ttk.Frame(self.tab_test)
-        sel_row.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(sel_row, text="Effect under test:").pack(side=tk.LEFT, padx=(0, 6))
-        self.test_effect_combo = ttk.Combobox(sel_row, state="readonly", width=30)
-        self.test_effect_combo.pack(side=tk.LEFT)
-        self.test_effect_combo.bind("<<ComboboxSelected>>", self._on_test_effect_selected)
-
-        # Wizard container
-        wiz_frame = ttk.LabelFrame(self.tab_test, text="Test Checklist & Safety Protocol", padding=10)
-        wiz_frame.pack(fill=tk.BOTH, expand=True, pady=4)
-
-        # Steps unlock in order; Record Audio Pass needs all five and an effect
-        # that has been packaged into an image (stage past 'built').
-        steps = (
-            "1. Pedal AUTO SAVE is turned OFF (Global settings -> AUTO SAVE -> OFF)",
-            "2. Entered update mode: hold both footswitches while connecting USB ('FIRMWARE UPDATE' screen)",
-            "3. Flashed patched updater by hand: MIDI IN/OUT = 'ZOOM G Series' -> wait for 'Version update completed'",
-            "4. Power cycle the pedal (unplug USB, plug back in). Boots to clean/normal screen",
-            "5. Placed effect alone in an empty patch (no other effects in chain)",
-        )
-        self.wizard_vars = []
-        self.wizard_checks = []
-        for text in steps:
-            var = tk.BooleanVar(value=False)
-            cb = ttk.Checkbutton(wiz_frame, text=text, variable=var, command=self._refresh_wizard)
-            cb.pack(anchor=tk.W, pady=3)
-            self.wizard_vars.append(var)
-            self.wizard_checks.append(cb)
-        (self.chk_autosave_var, self.chk_updatemode_var, self.chk_flashed_var,
-         self.chk_powercycled_var, self.chk_alone_var) = self.wizard_vars
-
-        # Audio pass section
-        audio_frame = ttk.LabelFrame(wiz_frame, text="6. Audio Pass Check", padding=6)
-        audio_frame.pack(fill=tk.X, pady=6)
-        ttk.Label(audio_frame, text="Audio passes cleanly with no stutter, glitch, or DC offset:").pack(side=tk.LEFT, padx=4)
-        self.btn_audio_pass = ttk.Button(audio_frame, text="Record Audio Pass", command=self._record_audio_pass,
-                                         state=tk.DISABLED)
-        self.btn_audio_pass.pack(side=tk.LEFT, padx=8)
-        self.audio_status_lbl = ttk.Label(audio_frame, text="Not passed", foreground="#888888")
-        self.audio_status_lbl.pack(side=tk.LEFT, padx=4)
-        self.wizard_hint_var = tk.StringVar(value="")
-        ttk.Label(wiz_frame, textvariable=self.wizard_hint_var, foreground="#555555").pack(anchor=tk.W)
-
-        # Cost test section
-        cost_frame = ttk.LabelFrame(wiz_frame, text="7. CPU measurement pending", padding=6)
-        cost_frame.pack(fill=tk.X, pady=6)
         ttk.Label(
-            cost_frame,
-            text="Probe 10 freeze load does not yield a calibrated cycle cost.\n"
-            "Record a direct TSCL measurement and validate the full patch before authorizing a save.",
-        ).pack(anchor=tk.W)
-        self.cost_result_var = tk.StringVar(value="No reading recorded")
-        ttk.Label(cost_frame, textvariable=self.cost_result_var, font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
+            self.nav_frame,
+            text="NAVIGATION",
+            style="Panel.TLabel",
+            foreground=ACCENT_GOLD,
+            font=("Segoe UI", 8, "bold"),
+        ).pack(anchor="w", padx=10, pady=(4, 10))
 
-        # Final approval section
-        final_frame = ttk.LabelFrame(wiz_frame, text="8. Patch Save Authorization", padding=6)
-        final_frame.pack(fill=tk.X, pady=6)
-        self.btn_mark_ok = ttk.Button(
-            final_frame,
-            text="Authorize 'OK to Save Patches'",
-            command=self._mark_ok_save,
-            state=tk.DISABLED,
+        self.nav_buttons: Dict[str, ttk.Button] = {}
+        pages = [
+            ("Backups", "Backups"),
+            ("Effects", "Effects"),
+            ("Patches", "Patches"),
+            ("Firmware & Build", "Firmware & Build"),
+            ("Profiles", "Profiles"),
+        ]
+        for key, label in pages:
+            btn = ttk.Button(
+                self.nav_frame,
+                text=label,
+                style="Nav.TButton",
+                command=lambda k=key: self._switch_page(k),
+            )
+            btn.pack(fill=tk.X, pady=3)
+            self.nav_buttons[key] = btn
+
+        # Status footer inside nav rail
+        ttk.Separator(self.nav_frame).pack(fill=tk.X, pady=(20, 10))
+        self.lbl_nav_status = ttk.Label(
+            self.nav_frame,
+            text="Source Backup:\nNone (Factory)",
+            style="Muted.TLabel",
+            wraplength=170,
         )
-        self.btn_mark_ok.pack(side=tk.LEFT, padx=6)
-        self.test_warning_lbl = ttk.Label(
-            final_frame,
-            text="[!] Blocked: requires both audio pass and cost measurement.",
-            foreground="#cc0000",
+        self.lbl_nav_status.pack(anchor="w", padx=8, side=tk.BOTTOM, pady=6)
+
+        # Right Pages Container
+        self.page_container = ttk.Frame(body, padding=(12, 10))
+        self.page_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.pages: Dict[str, ttk.Frame] = {}
+        self.pages["Backups"] = self._build_page_backups(self.page_container)
+        self.pages["Effects"] = self._build_page_effects(self.page_container)
+        self.pages["Patches"] = self._build_page_patches(self.page_container)
+        self.pages["Firmware & Build"] = self._build_page_firmware_build(self.page_container)
+        self.pages["Profiles"] = self._build_page_profiles(self.page_container)
+
+        # 3. Bottom Streaming Log Pane
+        self._build_bottom_log_pane()
+
+        # Show initial page
+        self._switch_page("Effects")
+
+    def _switch_page(self, page_name: str):
+        """Switch active page on the right view deck."""
+        self.nav_selection.set(page_name)
+        for name, frame in self.pages.items():
+            if name == page_name:
+                frame.pack(fill=tk.BOTH, expand=True)
+            else:
+                frame.pack_forget()
+
+        # Update nav button styles
+        for name, btn in self.nav_buttons.items():
+            if name == page_name:
+                btn.configure(style="NavActive.TButton")
+            else:
+                btn.configure(style="Nav.TButton")
+
+    # -----------------------------------------------------------------------
+    # Bottom Log Pane
+    # -----------------------------------------------------------------------
+
+    def _build_bottom_log_pane(self):
+        log_panel = ttk.Frame(self, style="Panel.TFrame", padding=(10, 6))
+        log_panel.pack(fill=tk.X, side=tk.BOTTOM)
+
+        log_hdr = ttk.Frame(log_panel, style="Panel.TFrame")
+        log_hdr.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(
+            log_hdr,
+            text="Console & Build Output",
+            style="Panel.TLabel",
+            foreground=ACCENT_GOLD,
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side=tk.LEFT)
+
+        self.lbl_worker_busy = ttk.Label(
+            log_hdr, text="", style="Panel.TLabel", foreground=GOLD_HOVER, font=("Segoe UI", 9, "italic")
+        )
+        self.lbl_worker_busy.pack(side=tk.LEFT, padx=12)
+
+        self.btn_copy_log = ttk.Button(log_hdr, text="Copy Log", command=self._on_copy_log)
+        self.btn_copy_log.pack(side=tk.RIGHT, padx=4)
+        self.btn_clear_log = ttk.Button(log_hdr, text="Clear Log", command=self._on_clear_log)
+        self.btn_clear_log.pack(side=tk.RIGHT)
+
+        self.log_text = tk.Text(
+            log_panel,
+            height=6,
+            background="#0a0a0a",
+            foreground="#dddddd",
+            insertbackground=ACCENT_GOLD,
+            selectbackground=SELECTION_BG,
+            selectforeground=SELECTION_FG,
+            font=("Consolas", 8),
+            relief="solid",
+            borderwidth=1,
+            state="disabled",
+            wrap="word",
+        )
+        self.log_text.pack(fill=tk.X, side=tk.TOP)
+
+    # -----------------------------------------------------------------------
+    # Page 1: Backups
+    # -----------------------------------------------------------------------
+
+    def _build_page_backups(self, parent: ttk.Frame) -> ttk.Frame:
+        p = ttk.Frame(parent)
+
+        # Header
+        hdr = ttk.Frame(p)
+        hdr.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(hdr, text="Pedal Backups", style="PageTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            hdr,
+            text="Read-only backups of all effects and 50 patches from your Zoom G1X Four over USB.",
+            style="SubTitle.TLabel",
+        ).pack(anchor="w")
+
+        # Action bar
+        act_bar = ttk.Frame(p, style="Panel.TFrame", padding=(10, 8))
+        act_bar.pack(fill=tk.X, pady=(0, 10))
+
+        self.btn_backup_now = ttk.Button(
+            act_bar,
+            text="▶ Back Up Pedal Now",
+            style="Accent.TButton",
+            command=self._on_backup_now,
+        )
+        self.btn_backup_now.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.chk_auto_backup = ttk.Checkbutton(
+            act_bar,
+            text="Automatically back up pedal before building installer",
+            variable=self.auto_backup_var,
+            style="Panel.TCheckbutton",
+        )
+        self.chk_auto_backup.pack(side=tk.LEFT, padx=10)
+
+        self.btn_refresh_backups = ttk.Button(
+            act_bar, text="Refresh", command=self._refresh_backups_list
+        )
+        self.btn_refresh_backups.pack(side=tk.RIGHT)
+
+        # Table of existing backups
+        cols = ("date", "effects", "patches", "size", "path")
+        self.tree_backups = ttk.Treeview(p, columns=cols, show="headings", height=10)
+        self.tree_backups.heading("date", text="Date / Timestamp")
+        self.tree_backups.heading("effects", text="Effects")
+        self.tree_backups.heading("patches", text="Patches")
+        self.tree_backups.heading("size", text="Size")
+        self.tree_backups.heading("path", text="Directory")
+
+        self.tree_backups.column("date", width=160, anchor="w")
+        self.tree_backups.column("effects", width=80, anchor="center")
+        self.tree_backups.column("patches", width=80, anchor="center")
+        self.tree_backups.column("size", width=100, anchor="center")
+        self.tree_backups.column("path", width=380, anchor="w")
+
+        self.tree_backups.pack(fill=tk.BOTH, expand=True)
+        self.tree_backups.bind("<<TreeviewSelect>>", self._on_backup_selected)
+
+        # Action bar for selected backup
+        sel_bar = ttk.Frame(p, style="Panel.TFrame", padding=(10, 8))
+        sel_bar.pack(fill=tk.X, pady=(10, 0))
+
+        self.btn_use_backup = ttk.Button(
+            sel_bar,
+            text="✓ Use As Active Source",
+            style="Accent.TButton",
+            command=self._on_use_backup_as_source,
+            state="disabled",
+        )
+        self.btn_use_backup.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.btn_open_backup_folder = ttk.Button(
+            sel_bar,
+            text="Open Folder",
+            command=self._on_open_backup_folder,
+            state="disabled",
+        )
+        self.btn_open_backup_folder.pack(side=tk.LEFT, padx=5)
+
+        self.btn_delete_backup = ttk.Button(
+            sel_bar,
+            text="Delete Backup",
+            command=self._on_delete_backup,
+            state="disabled",
+        )
+        self.btn_delete_backup.pack(side=tk.RIGHT)
+
+        return p
+
+    # -----------------------------------------------------------------------
+    # Page 2: Effects
+    # -----------------------------------------------------------------------
+
+    def _build_page_effects(self, parent: ttk.Frame) -> ttk.Frame:
+        p = ttk.Frame(parent)
+
+        # Header
+        hdr = ttk.Frame(p)
+        hdr.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(hdr, text="Effects Library & Selection", style="PageTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            hdr,
+            text="Select stock Zoom and Comet Flower effects to install on the pedal. Checked effects will be packaged into the installer.",
+            style="SubTitle.TLabel",
+        ).pack(anchor="w")
+
+        # Filter & Toggle Bar
+        filt_bar = ttk.Frame(p, style="Panel.TFrame", padding=(10, 8))
+        filt_bar.pack(fill=tk.X, pady=(0, 8))
+
+        ttk.Label(filt_bar, text="Filter:", style="Panel.TLabel").pack(side=tk.LEFT, padx=(0, 6))
+        ent_filter = ttk.Entry(filt_bar, textvariable=self.effects_filter_text, width=20)
+        ent_filter.pack(side=tk.LEFT, padx=(0, 14))
+        self.effects_filter_text.trace_add("write", lambda *_: self._filter_effects_display())
+
+        # Toggle: All / Zoom / CF
+        ttk.Label(filt_bar, text="Source:", style="Panel.TLabel").pack(side=tk.LEFT, padx=(0, 6))
+        for val, lbl in (("all", "All"), ("Zoom", "Zoom Only"), ("CF", "CF Only")):
+            r = ttk.Radiobutton(
+                filt_bar,
+                text=lbl,
+                value=val,
+                variable=self.effects_source_filter,
+                style="Panel.TCheckbutton",
+                command=self._filter_effects_display,
+            )
+            r.pack(side=tk.LEFT, padx=4)
+
+        # Quick select buttons
+        self.btn_sel_all = ttk.Button(filt_bar, text="Select All", command=self._on_select_all_effects)
+        self.btn_sel_all.pack(side=tk.RIGHT, padx=4)
+        self.btn_sel_none = ttk.Button(filt_bar, text="Select None", command=self._on_select_none_effects)
+        self.btn_sel_none.pack(side=tk.RIGHT, padx=4)
+
+        # Effects Treeview
+        cols = ("checked", "name", "file", "group", "source", "dspload", "on_pedal")
+        self.tree_effects = ttk.Treeview(p, columns=cols, show="headings", selectmode="browse", height=12)
+        self.tree_effects.heading("checked", text="Install?")
+        self.tree_effects.heading("name", text="Effect Name")
+        self.tree_effects.heading("file", text="Filename")
+        self.tree_effects.heading("group", text="Group")
+        self.tree_effects.heading("source", text="Source")
+        self.tree_effects.heading("dspload", text="DSP Load")
+        self.tree_effects.heading("on_pedal", text="On Pedal")
+
+        self.tree_effects.column("checked", width=65, anchor="center")
+        self.tree_effects.column("name", width=180, anchor="w")
+        self.tree_effects.column("file", width=140, anchor="w")
+        self.tree_effects.column("group", width=70, anchor="center")
+        self.tree_effects.column("source", width=70, anchor="center")
+        self.tree_effects.column("dspload", width=80, anchor="center")
+        self.tree_effects.column("on_pedal", width=80, anchor="center")
+
+        self.tree_effects.pack(fill=tk.BOTH, expand=True)
+        self.tree_effects.bind("<space>", self._on_toggle_effect_checked)
+        self.tree_effects.bind("<ButtonRelease-1>", self._on_click_effect_row)
+
+        # Running Total / Space Meter Card
+        meter_card = ttk.Frame(p, style="Panel.TFrame", padding=(10, 8))
+        meter_card.pack(fill=tk.X, pady=(8, 0))
+
+        self.lbl_space_summary = ttk.Label(
+            meter_card,
+            text="Filesystem Space: Calculating...",
+            style="Panel.TLabel",
+            foreground=ACCENT_GOLD,
             font=("Segoe UI", 9, "bold"),
         )
-        self.test_warning_lbl.pack(side=tk.LEFT, padx=6)
+        self.lbl_space_summary.pack(anchor="w", pady=(0, 4))
 
-    # -----------------------------------------------------------------------
-    # Tab 4: Recovery
-    # -----------------------------------------------------------------------
-
-    def _init_recovery_tab(self):
-        desc = ttk.Label(
-            self.tab_recovery,
-            text="Pedal Recovery: Restore factory effect file system without touching boot program.\n"
-            "Builds a safe restore updater from Zoom's official updater (proven on 2026-10-06 incident).",
-            wraplength=900,
+        self.prog_space = ttk.Progressbar(
+            meter_card,
+            orient="horizontal",
+            mode="determinate",
+            maximum=core.FS_TOTAL_BYTES,
         )
-        desc.pack(anchor=tk.W, pady=(0, 8))
+        self.prog_space.pack(fill=tk.X)
 
-        rec_btn_frame = ttk.Frame(self.tab_recovery)
-        rec_btn_frame.pack(fill=tk.X, pady=(0, 10))
-        self.btn_restore = ttk.Button(
-            rec_btn_frame,
-            text="Build Factory Restore Updater",
-            command=self._start_build_restore,
+        return p
+
+    # -----------------------------------------------------------------------
+    # Page 3: Patches
+    # -----------------------------------------------------------------------
+
+    def _build_page_patches(self, parent: ttk.Frame) -> ttk.Frame:
+        p = ttk.Frame(parent)
+
+        # Header
+        hdr = ttk.Frame(p)
+        hdr.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(hdr, text="Patch Management & Factory Presets", style="PageTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            hdr,
+            text="Inspect all 50 patches from your active backup. Composed presets are written to flash region 0x28000 and appear only after factory reset.",
+            style="SubTitle.TLabel",
+        ).pack(anchor="w")
+
+        # Top notice box
+        notice = ttk.Frame(p, style="Panel.TFrame", padding=(8, 6))
+        notice.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(
+            notice,
+            text="ℹ Note: The installer builds factory presets. Live pedal patches (0x0C0000) are never touched by update mode.",
+            style="Panel.TLabel",
+            foreground=ACCENT_GOLD,
+            font=("Segoe UI", 9),
+        ).pack(anchor="w")
+
+        # Patches Treeview
+        cols = ("idx", "name", "slots")
+        self.tree_patches = ttk.Treeview(p, columns=cols, show="headings", height=11)
+        self.tree_patches.heading("idx", text="#")
+        self.tree_patches.heading("name", text="Patch Name")
+        self.tree_patches.heading("slots", text="Effect Slots (1 - 5)")
+
+        self.tree_patches.column("idx", width=45, anchor="center")
+        self.tree_patches.column("name", width=140, anchor="w")
+        self.tree_patches.column("slots", width=550, anchor="w")
+
+        self.tree_patches.pack(fill=tk.BOTH, expand=True)
+        self.tree_patches.bind("<<TreeviewSelect>>", self._on_patch_selected)
+
+        # Patch Actions Toolbar
+        patch_bar = ttk.Frame(p, style="Panel.TFrame", padding=(10, 8))
+        patch_bar.pack(fill=tk.X, pady=(8, 0))
+
+        self.btn_backup_patch = ttk.Button(
+            patch_bar, text="Back Up .ZPTC", command=self._on_backup_single_patch, state="disabled"
+        )
+        self.btn_backup_patch.pack(side=tk.LEFT, padx=(0, 6))
+
+        self.btn_load_patch = ttk.Button(
+            patch_bar, text="Load .ZPTC", command=self._on_load_single_patch, state="disabled"
+        )
+        self.btn_load_patch.pack(side=tk.LEFT, padx=6)
+
+        self.btn_remove_patch = ttk.Button(
+            patch_bar, text="Clear / Blank Patch", command=self._on_blank_single_patch, state="disabled"
+        )
+        self.btn_remove_patch.pack(side=tk.LEFT, padx=6)
+
+        # Untested MIDI Action button
+        self.btn_write_midi_patch = ttk.Button(
+            patch_bar,
+            text="Write to Pedal (MIDI) [UNTESTED]",
+            command=self._on_write_live_patch_midi,
+            state="disabled",
+        )
+        self.btn_write_midi_patch.pack(side=tk.RIGHT, padx=6)
+
+        return p
+
+    # -----------------------------------------------------------------------
+    # Page 4: Firmware & Build
+    # -----------------------------------------------------------------------
+
+    def _build_page_firmware_build(self, parent: ttk.Frame) -> ttk.Frame:
+        p = ttk.Frame(parent)
+
+        # Header
+        hdr = ttk.Frame(p)
+        hdr.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(hdr, text="Firmware & Installer Build", style="PageTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            hdr,
+            text="Build the official update-mode executable (.exe) containing selected firmware, effects image, and presets.",
+            style="SubTitle.TLabel",
+        ).pack(anchor="w")
+
+        # Configuration Card
+        cfg_card = ttk.Labelframe(p, text="Build Configuration", padding=12)
+        cfg_card.pack(fill=tk.X, pady=(0, 8))
+
+        # Row 1: Official Updater
+        r1 = ttk.Frame(cfg_card, style="Panel.TFrame")
+        r1.pack(fill=tk.X, pady=4)
+        ttk.Label(r1, text="Official Updater .exe:", style="Panel.TLabel", width=20).pack(side=tk.LEFT)
+        self.ent_updater = ttk.Entry(r1, textvariable=self.official_updater_var)
+        self.ent_updater.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
+        ttk.Button(r1, text="Browse...", command=self._browse_official_updater).pack(side=tk.RIGHT)
+
+        # Row 2: Firmware Binary
+        r2 = ttk.Frame(cfg_card, style="Panel.TFrame")
+        r2.pack(fill=tk.X, pady=4)
+        ttk.Label(r2, text="Firmware .bin:", style="Panel.TLabel", width=20).pack(side=tk.LEFT)
+        self.combo_fw = ttk.Combobox(r2, textvariable=self.firmware_bin_var)
+        self.combo_fw.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
+        ttk.Button(r2, text="Browse...", command=self._browse_firmware_bin).pack(side=tk.RIGHT)
+
+        # Row 3: Presets Binary
+        r3 = ttk.Frame(cfg_card, style="Panel.TFrame")
+        r3.pack(fill=tk.X, pady=4)
+        ttk.Label(r3, text="Presets Region (.bin):", style="Panel.TLabel", width=20).pack(side=tk.LEFT)
+        self.ent_presets = ttk.Entry(r3, textvariable=self.presets_bin_var)
+        self.ent_presets.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
+        ttk.Button(r3, text="Browse...", command=self._browse_presets_bin).pack(side=tk.RIGHT)
+
+        # Row 4: Version & Splash
+        r4 = ttk.Frame(cfg_card, style="Panel.TFrame")
+        r4.pack(fill=tk.X, pady=4)
+        ttk.Label(r4, text="Version (0.X.Y):", style="Panel.TLabel", width=20).pack(side=tk.LEFT)
+        self.ent_version = ttk.Entry(r4, textvariable=self.version_var, width=15)
+        self.ent_version.pack(side=tk.LEFT, padx=6)
+
+        self.chk_splash = ttk.Checkbutton(
+            r4,
+            text="Generate Start-up Screen with Version (tools/make_splash.py)",
+            variable=self.splash_screen_var,
+            style="Panel.TCheckbutton",
+        )
+        self.chk_splash.pack(side=tk.LEFT, padx=12)
+
+        # Build Action & Safety Banner
+        action_card = ttk.Frame(p, style="Panel.TFrame", padding=10)
+        action_card.pack(fill=tk.X, pady=6)
+
+        self.btn_build_installer = ttk.Button(
+            action_card,
+            text="🔨 Build Comet Flower Installer (.exe)",
             style="Accent.TButton",
+            command=self._on_build_installer,
         )
-        self.btn_restore.pack(side=tk.LEFT, padx=4)
+        self.btn_build_installer.pack(side=tk.LEFT, padx=(0, 12))
 
-        self.btn_cancel_restore = ttk.Button(rec_btn_frame, text="Cancel Build", command=self._cancel_build, state=tk.DISABLED)
-        self.btn_cancel_restore.pack(side=tk.LEFT, padx=4)
-        self.restore_progress = ttk.Progressbar(rec_btn_frame, mode="indeterminate", length=120)
-        self.restore_progress.pack(side=tk.LEFT, padx=6)
-        self.rec_status_var = tk.StringVar(value="")
-        ttk.Label(rec_btn_frame, textvariable=self.rec_status_var, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=10)
-
-        # Numbered checklist from RECOVERY_G1.md
-        f_steps = ttk.LabelFrame(self.tab_recovery, text="Recovery Procedure (RECOVERY_G1.md)", padding=8)
-        f_steps.pack(fill=tk.BOTH, expand=True)
-
-        steps_text = (
-            "WHAT FIXED IT:\n"
-            "1. Obtain Zoom's official 'ZOOM G1X FOUR System v2.00 Updater.exe' (from G1X_FOUR_v2.00_Win_E.zip).\n"
-            "2. Click 'Build Factory Restore Updater' above.\n"
-            "3. Enter update mode on the pedal: hold BOTH footswitches while connecting USB until 'FIRMWARE UPDATE' screen appears.\n"
-            "4. Run the produced restore updater copy by hand. Select 'ZOOM G Series' for MIDI IN and OUT, then Execute.\n"
-            "5. Do NOT disconnect until the screen shows 'Version update completed'.\n"
-            "6. Unplug USB and power on normally. Pedal boots with factory effects.\n\n"
-            "WHAT DOES NOT FIX IT:\n"
-            "- Zoom's official updater without patch: writes boot/firmware only, never writes the effect file system.\n"
-            "- Factory reset (hold MEMORY/STOMP/EDIT): resets patches only, does not touch the file system."
+        self.btn_cancel_build = ttk.Button(
+            action_card, text="Cancel Build", command=self._on_cancel_build, state="disabled"
         )
-        t = tk.Text(f_steps, height=12, wrap=tk.WORD, font=("Consolas", 9), relief=tk.FLAT)
-        t.insert("1.0", steps_text)
-        t.configure(state=tk.DISABLED)
-        t.pack(fill=tk.BOTH, expand=True)
+        self.btn_cancel_build.pack(side=tk.LEFT)
 
-    # -----------------------------------------------------------------------
-    # Tab 5: Log
-    # -----------------------------------------------------------------------
-
-    def _init_log_tab(self):
-        desc = ttk.Label(
-            self.tab_log,
-            text="Subprocess execution log. Every command, output line, and exit code is recorded to build/loader/loader.log.",
+        # Safety Label
+        safety_lbl = ttk.Label(
+            action_card,
+            text="SAFETY GUARANTEE: Never flashes directly. The app only creates the .exe installer.",
+            style="Panel.TLabel",
+            foreground=ACCENT_GOLD,
+            font=("Segoe UI", 9, "bold"),
         )
-        desc.pack(anchor=tk.W, pady=(0, 6))
+        safety_lbl.pack(side=tk.RIGHT)
 
-        self.log_text = tk.Text(self.tab_log, wrap=tk.WORD, font=("Consolas", 9), background="#1e1e1e", foreground="#d4d4d4")
-        log_scroll = ttk.Scrollbar(self.tab_log, orient=tk.VERTICAL, command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=log_scroll.set)
+        # Build Output / Result Card
+        self.res_card = ttk.Labelframe(p, text="Build Output & Stages", padding=10)
+        self.res_card.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
-        self.log_text.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        log_scroll.pack(side=tk.RIGHT, fill=tk.Y, in_=self.log_text)
-
-        btn_row = ttk.Frame(self.tab_log)
-        btn_row.pack(fill=tk.X, pady=(6, 0))
-        ttk.Button(btn_row, text="Open Log File", command=self._open_log_file).pack(side=tk.LEFT, padx=4)
-        ttk.Button(btn_row, text="Clear Log View", command=lambda: self.log_text.delete("1.0", tk.END)).pack(side=tk.LEFT, padx=4)
-
-    # -----------------------------------------------------------------------
-    # Tab 6: Advanced (Backup)
-    # -----------------------------------------------------------------------
-
-    def _init_advanced_tab(self):
-        warn_frame = ttk.LabelFrame(self.tab_advanced, text="CRITICAL HARDWARE WARNING", padding=10)
-        warn_frame.pack(fill=tk.X, pady=(0, 10))
-
-        warn_text = (
-            "NOTICE (recon/07):\n"
-            "The pedal's USB port is a delicate hand-soldered repair.\n"
-            "DO NOT power-cycle the pedal if a backup or transfer stalls or times out!\n"
-            "If stopped: Leave the pedal powered, re-plug USB only, then re-run to resume.\n"
-            "Only backup_g1.py (read-only file dump) is offered here. No MIDI write functions exist."
+        self.lbl_build_sha = ttk.Label(
+            self.res_card,
+            text="SHA-256: (No build completed in this session)",
+            style="Panel.TLabel",
+            foreground=TEXT_WHITE,
+            font=("Consolas", 9),
         )
-        ttk.Label(warn_frame, text=warn_text, foreground="#aa0000", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
+        self.lbl_build_sha.pack(anchor="w", pady=(0, 4))
 
-        self.confirm_backup_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            self.tab_advanced,
-            text="I understand the DO-NOT-POWER-CYCLE rule and have a stable USB cable connected",
-            variable=self.confirm_backup_var,
-        ).pack(anchor=tk.W, pady=6)
+        self.tree_stages = ttk.Treeview(self.res_card, columns=("op", "addr", "target"), show="headings", height=5)
+        self.tree_stages.heading("op", text="Operation")
+        self.tree_stages.heading("addr", text="Flash Address")
+        self.tree_stages.heading("target", text="Target / Size")
+        self.tree_stages.column("op", width=120, anchor="center")
+        self.tree_stages.column("addr", width=160, anchor="center")
+        self.tree_stages.column("target", width=250, anchor="w")
+        self.tree_stages.pack(fill=tk.BOTH, expand=True)
 
-        b_row = ttk.Frame(self.tab_advanced)
-        b_row.pack(fill=tk.X, pady=6)
-        ttk.Button(b_row, text="Run Read-Only Backup (backup_g1.py)", command=self._start_backup).pack(side=tk.LEFT, padx=4)
-        self.backup_status_var = tk.StringVar(value="")
-        ttk.Label(b_row, textvariable=self.backup_status_var, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=8)
+        return p
 
     # -----------------------------------------------------------------------
-    # Library Operations
+    # Page 5: Profiles
     # -----------------------------------------------------------------------
+
+    def _build_page_profiles(self, parent: ttk.Frame) -> ttk.Frame:
+        p = ttk.Frame(parent)
+
+        # Header
+        hdr = ttk.Frame(p)
+        hdr.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(hdr, text="Configuration Profiles", style="PageTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            hdr,
+            text="Save and load named installer profiles. Set a default profile so you can update with your chosen effects in one click.",
+            style="SubTitle.TLabel",
+        ).pack(anchor="w")
+
+        # Profile selection & action bar
+        bar = ttk.Frame(p, style="Panel.TFrame", padding=(10, 10))
+        bar.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(bar, text="Selected Profile:", style="Panel.TLabel").pack(side=tk.LEFT, padx=(0, 6))
+        self.combo_profiles = ttk.Combobox(bar, textvariable=self.selected_profile_name, state="readonly", width=25)
+        self.combo_profiles.pack(side=tk.LEFT, padx=(0, 10))
+        self.combo_profiles.bind("<<ComboboxSelected>>", self._on_profile_combo_selected)
+
+        self.btn_load_profile = ttk.Button(bar, text="Load Profile", command=self._on_load_selected_profile)
+        self.btn_load_profile.pack(side=tk.LEFT, padx=4)
+
+        self.btn_save_profile = ttk.Button(bar, text="Save Current Settings", command=self._on_save_current_profile)
+        self.btn_save_profile.pack(side=tk.LEFT, padx=4)
+
+        self.btn_set_default_profile = ttk.Button(bar, text="★ Set as Default", command=self._on_set_default_profile)
+        self.btn_set_default_profile.pack(side=tk.LEFT, padx=4)
+
+        self.btn_delete_profile = ttk.Button(bar, text="Delete Profile", command=self._on_delete_profile)
+        self.btn_delete_profile.pack(side=tk.RIGHT, padx=4)
+
+        # Profile details card
+        self.card_prof_details = ttk.Labelframe(p, text="Profile Summary", padding=12)
+        self.card_prof_details.pack(fill=tk.BOTH, expand=True)
+
+        self.lbl_prof_name = ttk.Label(self.card_prof_details, text="Name: Default", style="Panel.TLabel", font=("Segoe UI", 10, "bold"))
+        self.lbl_prof_name.pack(anchor="w", pady=2)
+
+        self.lbl_prof_default = ttk.Label(self.card_prof_details, text="Status: (Default Profile)", style="Panel.TLabel", foreground=ACCENT_GOLD)
+        self.lbl_prof_default.pack(anchor="w", pady=2)
+
+        self.lbl_prof_effects_count = ttk.Label(self.card_prof_details, text="Effects Selected: 0", style="Panel.TLabel")
+        self.lbl_prof_effects_count.pack(anchor="w", pady=2)
+
+        self.lbl_prof_fw = ttk.Label(self.card_prof_details, text="Firmware: Stock", style="Panel.TLabel")
+        self.lbl_prof_fw.pack(anchor="w", pady=2)
+
+        self.lbl_prof_backup = ttk.Label(self.card_prof_details, text="Auto-backup: Enabled", style="Panel.TLabel")
+        self.lbl_prof_backup.pack(anchor="w", pady=2)
+
+        return p
+
+    # -----------------------------------------------------------------------
+    # Data Initialization
+    # -----------------------------------------------------------------------
+
+    def _initialize_data(self):
+        """Load initial state across all tabs."""
+        # 1. Backups
+        self._refresh_backups_list()
+
+        # 2. Effects Catalog
+        self.rescan_library()
+
+        # 3. Patches
+        self._load_patches_from_active_backup()
+
+        # 4. Firmware & Build setup
+        self._init_build_config()
+
+        # 5. Profiles
+        self._refresh_profiles_list()
+
+    def _refresh_backups_list(self):
+        """Scan existing backups and populate tree."""
+        self.backups_list = core.scan_backups()
+        for item in self.tree_backups.get_children():
+            self.tree_backups.delete(item)
+
+        for b in self.backups_list:
+            self.tree_backups.insert(
+                "",
+                "end",
+                iid=str(b.path),
+                values=(b.date_str, b.effects_count, b.patches_count, b.display_size, str(b.path)),
+            )
+
+        # Preselect newest backup if available
+        if self.backups_list and not self.active_backup:
+            self.active_backup = self.backups_list[0]
+            self.lbl_nav_status.configure(text=f"Source Backup:\n{self.active_backup.name}")
 
     def rescan_library(self):
-        """Scan build/*.ZD2 and refresh the library tree."""
-        self.scanned_effects = core.scan_library()
-        self.status_data = core.load_status()
+        """Assemble unified stock and CF effects catalog."""
+        backup_path = self.active_backup.path if self.active_backup else None
+        self.effects_catalog = core.assemble_unified_catalog(backup_dir=backup_path)
+        self._filter_effects_display()
 
-        # Preserve valid selections
-        valid_filenames = {e.filename for e in self.scanned_effects if e.valid_for_selection}
-        self.selected_filenames = self.selected_filenames.intersection(valid_filenames)
+    def _filter_effects_display(self):
+        """Filter effects table based on search text and source toggle."""
+        query = self.effects_filter_text.get().strip().lower()
+        src_filter = self.effects_source_filter.get()
 
-        # Clear tree
-        for item in self.lib_tree.get_children():
-            self.lib_tree.delete(item)
+        for item in self.tree_effects.get_children():
+            self.tree_effects.delete(item)
 
-        for eff in self.scanned_effects:
-            is_sel = eff.filename in self.selected_filenames
-            sel_mark = "[x]" if is_sel else "[ ]"
+        self.displayed_effects = []
+        for e in self.effects_catalog:
+            if src_filter != "all" and e.source != src_filter:
+                continue
+            if query and query not in e.name.lower() and query not in e.filename.lower() and query not in e.group.lower():
+                continue
+            self.displayed_effects.append(e)
 
-            size_str = f"{eff.size / 1024:.1f}K"
-            text_str = f"{eff.report.text_bytes / 1024:.1f}K" if eff.report.text_bytes else "-"
-            state_str = str(eff.report.state_bytes) if eff.report.state_bytes else "-"
-
-            if eff.has_oversize_sibling:
-                slot_str = "OVERSIZE sibling"
-            elif not eff.slot_ok:
-                slot_str = f"OVER ({eff.slot_used} B)"
-            else:
-                slot_str = f"OK ({eff.slot_free} free)"
-
-            stage = self.status_data.get(eff.filename, {}).get("stage", "built")
-
-            iid = eff.filename
-            self.lib_tree.insert(
+            check_sym = "[X]" if e.is_checked else "[  ]"
+            pedal_sym = "Yes" if e.on_pedal else "No"
+            self.tree_effects.insert(
                 "",
-                tk.END,
-                iid=iid,
-                values=(sel_mark, eff.filename, eff.name, eff.id_hex, size_str, text_str, state_str, slot_str, stage),
-                tags=self._row_tags(eff, stage, is_sel),
+                "end",
+                iid=e.filename,
+                values=(check_sym, e.name, e.filename, e.group, e.source, f"{e.dspload:.1f}", pedal_sym),
             )
 
-        self._update_lib_summary()
+        self._update_space_meter()
 
-        # Update test combo box
-        eff_names = [e.filename for e in self.scanned_effects]
-        self.test_effect_combo["values"] = eff_names
-        if eff_names and not self.test_effect_combo.get():
-            self.test_effect_combo.current(0)
-            self._on_test_effect_selected(None)
-
-        self.refresh_preflight()
-
-    @staticmethod
-    def _row_tags(eff, stage, is_sel):
-        tags = []
-        if not eff.valid_for_selection:
-            tags.append("rejected")
-        elif eff.slot_free < TIGHT_SLOT_FREE:
-            tags.append("tight")
-        if stage in TESTED_STAGES:
-            tags.append("tested")
-        if is_sel:
-            tags.append("selected_row")
-        return tuple(tags)
-
-    def _update_lib_summary(self):
-        sel = [e for e in self.scanned_effects if e.filename in self.selected_filenames]
-        bad = sum(1 for e in self.scanned_effects if not e.valid_for_selection)
-        self.lib_summary_var.set(
-            f"{len(self.scanned_effects)} effects, {len(sel)} selected, {bad} rejected"
-            + (f"; tightest selected slot: {min(e.slot_free for e in sel):,} B free" if sel else "")
-        )
-
-    def _on_tree_double_click(self, event):
-        self._toggle_selected_row()
-
-    def _on_tree_space_toggle(self, event):
-        self._toggle_selected_row()
-
-    def _toggle_selected_row(self):
-        sel = self.lib_tree.selection()
-        if not sel:
-            return
-        filename = sel[0]
-        eff = next((e for e in self.scanned_effects if e.filename == filename), None)
-        if not eff:
-            return
-
-        if filename in self.selected_filenames:
-            self.selected_filenames.remove(filename)
+    def _update_space_meter(self):
+        """Update filesystem capacity gauge."""
+        checked = [e for e in self.effects_catalog if e.is_checked]
+        tot_bytes, tot_blocks, free_blocks, fits, msg = core.calculate_filesystem_usage(checked)
+        self.lbl_space_summary.configure(text=msg)
+        if not fits:
+            self.lbl_space_summary.configure(foreground=DANGER_RED)
         else:
-            if not eff.valid_for_selection:
-                reasons = "\n- ".join(eff.rejection_reasons)
-                messagebox.showerror(
-                    "Selection Refused",
-                    f"Effect '{eff.filename}' cannot be selected:\n- {reasons}",
-                )
-                return
-            self.selected_filenames.add(filename)
+            self.lbl_space_summary.configure(foreground=ACCENT_GOLD)
 
-        # Refresh row display
-        is_sel = filename in self.selected_filenames
-        vals = list(self.lib_tree.item(filename, "values"))
-        vals[0] = "[x]" if is_sel else "[ ]"
-        stage = self.status_data.get(filename, {}).get("stage", "built")
-        self.lib_tree.item(filename, values=vals, tags=self._row_tags(eff, stage, is_sel))
-        self._update_lib_summary()
+        self.prog_space.configure(value=tot_bytes)
 
-        self.refresh_preflight()
+    def _load_patches_from_active_backup(self):
+        """Load 50 patches from active backup."""
+        bpath = self.active_backup.path if self.active_backup else None
+        self.patches_list = core.scan_backup_patches(backup_dir=bpath)
+        for item in self.tree_patches.get_children():
+            self.tree_patches.delete(item)
 
-    def _on_tree_select_changed(self, event):
-        sel = self.lib_tree.selection()
-        if not sel:
-            return
-        filename = sel[0]
-        stage = self.status_data.get(filename, {}).get("stage", "built")
-        self.stage_info_var.set(
-            f"Effect: {filename} | Stage: {stage.upper()} (built -> in image -> audio-pass -> cost-measured -> ok-save)"
-        )
-        self.safety_banner_var.set(
-            f"[!] Save approval for '{filename}' is pending calibrated CPU and exact-artifact checks."
-        )
-        self.safety_banner_lbl.configure(foreground="#bb0000")
-
-    def _show_effect_details(self):
-        sel = self.lib_tree.selection()
-        if not sel:
-            messagebox.showinfo("Details", "Select an effect in the list first.")
-            return
-        filename = sel[0]
-        eff = next((e for e in self.scanned_effects if e.filename == filename), None)
-        if not eff:
-            return
-
-        status_entry = self.status_data.get(filename, {})
-        lines = [
-            f"File: {eff.filename} ({eff.path})",
-            f"Effect Name: {eff.name}",
-            f"Effect ID: {eff.id_hex}",
-            f"Target: 0x{eff.target:x} (G1: {eff.is_g1_target})",
-            f"Size: {eff.size:,} bytes",
-            f"CRC32 valid: {eff.crc_ok}",
-            f"Slot Memory: {eff.slot_used:,} / {core.SLOT_HEAP:,} bytes ({eff.slot_free:,} free, OK={eff.slot_ok})",
-            f"Oversize sibling: {eff.has_oversize_sibling}",
-            f".text budget: {eff.report.text_bytes or 'unknown'} bytes",
-            f"State: {eff.report.state_bytes or 'unknown'} bytes",
-            f"Lifecycle Stage: {status_entry.get('stage', 'built')}",
-            f"Audio Passed: {status_entry.get('audio_passed', False)}",
-            f"Cost Measured: {status_entry.get('cost_measured', False)} ({status_entry.get('measured_cost')} cycles)",
-        ]
-        if eff.rejection_reasons:
-            lines.append("\nRejection Reasons:")
-            for r in eff.rejection_reasons:
-                lines.append(f"  * {r}")
-
-        messagebox.showinfo(f"Details: {eff.filename}", "\n".join(lines))
-
-    # -----------------------------------------------------------------------
-    # Build Image & Pre-Flight
-    # -----------------------------------------------------------------------
-
-    def _browse_official_updater(self):
-        path = filedialog.askopenfilename(
-            title="Select Official Zoom G1X Four v2.00 Updater",
-            filetypes=[("Executable", "*.exe"), ("All Files", "*.*")],
-        )
-        if path:
-            self.official_updater_var.set(path)
-            self.config_data["official_updater"] = path
-            core.save_config(self.config_data)
-            self.refresh_preflight()
-
-    def _browse_splash(self):
-        path = filedialog.askopenfilename(
-            title="Select 128x32 1-bit Splash PNG",
-            filetypes=[("PNG Image", "*.png"), ("All Files", "*.*")],
-        )
-        if path:
-            self.splash_path_var.set(path)
-            self.config_data["splash_path"] = path
-            core.save_config(self.config_data)
-
-    def refresh_preflight(self):
-        """Run the 7 pre-flight checks and update UI."""
-        updater_path = self.official_updater_var.get().strip() or None
-        if updater_path:
-            v = core.verify_official_updater(updater_path)
-            if v.valid:
-                self.updater_status_var.set(f"[PASS] {v.message} ({v.size:,} B, CRC32 {v.crc32})")
-                self.updater_status_lbl.configure(foreground="#007700")
-            else:
-                self.updater_status_var.set(f"[FAIL] {v.message}")
-                self.updater_status_lbl.configure(foreground="#cc0000")
-        else:
-            self.updater_status_var.set("No official updater selected")
-            self.updater_status_lbl.configure(foreground="#666666")
-
-        selected_effs = [e for e in self.scanned_effects if e.filename in self.selected_filenames]
-        clean = self.clean_mode_var.get()
-
-        keep_raw = self.keep_stock_var.get().strip()
-        keep_tuple = tuple(x.strip().upper() for x in keep_raw.split(",") if x.strip())
-
-        checks = core.run_preflight_checks(
-            updater_path, selected_effs, clean=clean, keep_stock=keep_tuple,
-            add_probe10=self.add_probe10_var.get()
-        )
-
-        all_ok = core.all_preflight_passed(checks)
-
-        # Update text view
-        self.preflight_text.configure(state=tk.NORMAL)
-        self.preflight_text.delete("1.0", tk.END)
-        for c in checks:
-            tag = "pass" if c.passed else "fail"
-            mark = "[PASS]" if c.passed else "[FAIL]"
-            self.preflight_text.insert(tk.END, f"{mark} Check {c.check_num}: {c.title}\n", tag)
-            self.preflight_text.insert(tk.END, f"       {c.message}\n")
-        self.preflight_text.configure(state=tk.DISABLED)
-
-        # Enable/disable Build button
-        if self.busy:
-            self.btn_build.configure(state=tk.DISABLED)
-        elif all_ok:
-            self.btn_build.configure(state=tk.NORMAL)
-            self.build_status_var.set("All pre-flight checks green. Ready to build.")
-        else:
-            self.btn_build.configure(state=tk.DISABLED)
-            self.build_status_var.set("Build blocked: one or more pre-flight checks failed.")
-
-    def _cancel_build(self):
-        self.worker_cancel_requested = True
-        self.build_status_var.set("Cancelling...")
-        self.rec_status_var.set("Cancelling...")
-
-    def _set_busy(self, busy: bool):
-        """One worker at a time: lock the start buttons, unlock Cancel, animate."""
-        self.busy = busy
-        self.btn_restore.configure(state=tk.DISABLED if busy else tk.NORMAL)
-        if busy:
-            self.btn_build.configure(state=tk.DISABLED)
-        for b in (self.btn_cancel_build, self.btn_cancel_restore):
-            b.configure(state=tk.NORMAL if busy else tk.DISABLED)
-        for pb in (self.build_progress, self.restore_progress):
-            if busy:
-                pb.start(12)
-            else:
-                pb.stop()
-
-    def _start_build_image(self):
-        """Start building image in worker thread."""
-        if self.active_worker and self.active_worker.is_alive():
-            messagebox.showwarning("Busy", "A build task is already running.")
-            return
-
-        updater_path = self.official_updater_var.get().strip()
-        selected_effs = [e for e in self.scanned_effects if e.filename in self.selected_filenames]
-        clean = self.clean_mode_var.get()
-        keep_raw = self.keep_stock_var.get().strip()
-        keep_tuple = tuple(x.strip().upper() for x in keep_raw.split(",") if x.strip())
-        probe10 = self.add_probe10_var.get()
-        empty_patches = self.empty_patches_var.get()
-        splash = self.splash_path_var.get().strip() or None
-
-        self.worker_cancel_requested = False
-        self._set_busy(True)
-        self.build_status_var.set("Building image and patched updater...")
-
-        def worker():
-            try:
-                out_dir = core.build_image_and_updater(
-                    official_updater_path=updater_path,
-                    selected_effects=selected_effs,
-                    clean=clean,
-                    keep_stock=keep_tuple,
-                    add_probe10=probe10,
-                    empty_patches=empty_patches,
-                    splash_png=splash,
-                    on_output=lambda l: self.log_queue.put(l),
-                    is_cancelled=lambda: self.worker_cancel_requested,
-                )
-                self.log_queue.put(f"[COMPLETE] Build succeeded: {out_dir}")
-                self.after(0, lambda: self._on_build_completed(out_dir))
-            except Exception as e:
-                self.log_queue.put(f"[ERROR] Build failed: {e}")
-                self.after(0, lambda error=str(e): self._on_build_failed(error))
-
-        self.active_worker = threading.Thread(target=worker, daemon=True)
-        self.active_worker.start()
-
-    def _on_build_completed(self, out_dir: Path):
-        self._set_busy(False)
-        self.rescan_library()
-        self.build_status_var.set(f"Built successfully: {out_dir.name}")
-        messagebox.showinfo(
-            "Build Complete",
-            f"Patched updater built successfully in:\n{out_dir}\n\n"
-            "The app will NEVER launch the updater automatically.\n"
-            "Open the folder, put pedal in update mode, and flash manually following the checklist in the Test tab.",
-        )
-        # Open Explorer
-        try:
-            os.startfile(str(out_dir))
-        except Exception:
-            pass
-
-    def _on_build_failed(self, err_msg: str):
-        self._set_busy(False)
-        self.refresh_preflight()
-        self.build_status_var.set("Build failed.")
-        messagebox.showerror("Build Error", f"Failed to build image:\n{err_msg}")
-
-    # -----------------------------------------------------------------------
-    # Test Tab Operations
-    # -----------------------------------------------------------------------
-
-    def _refresh_wizard(self):
-        """Enable each checklist step only after the previous one is ticked."""
-        prev_done = True
-        for var, cb in zip(self.wizard_vars, self.wizard_checks):
-            if not prev_done:
-                var.set(False)
-            cb.configure(state=tk.NORMAL if prev_done else tk.DISABLED)
-            prev_done = prev_done and var.get()
-        eff_name = self.test_effect_combo.get()
-        stage = self.status_data.get(eff_name, {}).get("stage", "built") if eff_name else "built"
-        if not eff_name:
-            hint, ok = "Select an effect under test.", False
-        elif stage == "built":
-            hint, ok = f"{eff_name} has not been packaged into an image yet (stage: built).", False
-        elif not prev_done:
-            hint, ok = "Complete steps 1-5 in order to unlock the audio check.", False
-        else:
-            hint, ok = "Steps 1-5 complete: listen, then record the audio pass.", True
-        self.wizard_hint_var.set(hint)
-        self.btn_audio_pass.configure(state=tk.NORMAL if ok else tk.DISABLED)
-
-    def _on_test_effect_selected(self, event):
-        eff_name = self.test_effect_combo.get()
-        if not eff_name:
-            self._refresh_wizard()
-            return
-        if event is not None:                     # a different effect: start the checklist over
-            for var in self.wizard_vars:
-                var.set(False)
-        status_entry = self.status_data.get(eff_name, {})
-        stage = status_entry.get("stage", "built")
-
-        # Audio status
-        if status_entry.get("audio_passed"):
-            self.audio_status_lbl.configure(text="[PASS] Audio verified", foreground="#007700")
-        else:
-            self.audio_status_lbl.configure(text="Not passed", foreground="#888888")
-
-        # Cost status
-        cost = status_entry.get("measured_cost")
-        if cost is not None:
-            self.cost_result_var.set(f"Measured: {cost:,} cycles")
-        else:
-            self.cost_result_var.set("No reading recorded")
-
-        # Approval button state
-        self.btn_mark_ok.configure(state=tk.DISABLED)
-        self.test_warning_lbl.configure(
-            text="[!] Save approval pending calibrated CPU and exact-artifact checks.",
-            foreground="#cc0000",
-        )
-        self._refresh_wizard()
-
-    def _record_audio_pass(self):
-        eff_name = self.test_effect_combo.get()
-        if not eff_name:
-            messagebox.showwarning("Test", "Select an effect under test first.")
-            return
-
-        core.update_effect_stage(eff_name, "audio-pass", notes="Audio check passed on pedal")
-        self.status_data = core.load_status()
-        self._on_test_effect_selected(None)
-        self.rescan_library()
-        messagebox.showinfo("Audio Pass", f"Recorded 'audio-pass' for {eff_name}.")
-
-    def _mark_ok_save(self):
-        eff_name = self.test_effect_combo.get()
-        if not eff_name:
-            return
-
-        try:
-            core.update_effect_stage(eff_name, "ok-save", notes="Fully verified on hardware")
-            self.status_data = core.load_status()
-            self._on_test_effect_selected(None)
-            self.rescan_library()
-            messagebox.showinfo(
-                "Authorized",
-                f"Effect '{eff_name}' is now marked OK to save in patches on the pedal!",
+        for p in self.patches_list:
+            self.tree_patches.insert(
+                "",
+                "end",
+                iid=str(p.index),
+                values=(f"{p.index:02d}", p.name, p.slots_summary),
             )
-        except ValueError as e:
-            messagebox.showerror("Gating Error", str(e))
 
-    # -----------------------------------------------------------------------
-    # Recovery Operations
-    # -----------------------------------------------------------------------
+    def _init_build_config(self):
+        """Initialize firmware and build tab options."""
+        # Default official updater
+        if not self.official_updater_var.get():
+            upd = core.find_default_official_updater()
+            if upd:
+                self.official_updater_var.set(str(upd))
 
-    def _start_build_restore(self):
-        if self.active_worker and self.active_worker.is_alive():
-            messagebox.showwarning("Busy", "A build task is already running.")
-            return
-        self.worker_cancel_requested = False
-        updater_path = self.official_updater_var.get().strip()
-        if not updater_path:
-            messagebox.showerror("Recovery", "Select the official Zoom updater in the 'Build image' tab first.")
-            return
+        # Scan candidate firmware bins in build/cf_header
+        fw_bins = []
+        default_fw = core.find_default_firmware_bin()
+        if (REPO_ROOT / "build" / "cf_header").is_dir():
+            for f in (REPO_ROOT / "build" / "cf_header").glob("*.bin"):
+                if f.stat().st_size > 100000:
+                    fw_bins.append(str(f))
+        self.combo_fw["values"] = fw_bins
+        if default_fw:
+            self.firmware_bin_var.set(str(default_fw))
+        elif fw_bins:
+            self.firmware_bin_var.set(fw_bins[0])
 
-        self._set_busy(True)
-        self.rec_status_var.set("Building factory restore updater...")
+        # Default presets
+        cf_preset = REPO_ROOT / "build" / "fw" / "cfupd_res85.bin"
+        if cf_preset.exists():
+            self.presets_bin_var.set(str(cf_preset))
 
-        def worker():
-            try:
-                out_dir = core.build_factory_restore_updater(
-                    official_updater_path=updater_path,
-                    on_output=lambda l: self.log_queue.put(l),
-                    is_cancelled=lambda: self.worker_cancel_requested,
-                )
-                self.log_queue.put(f"[COMPLETE] Factory restore updater built: {out_dir}")
-                self.after(0, lambda: self._on_restore_completed(out_dir))
-            except Exception as e:
-                self.log_queue.put(f"[ERROR] Restore build failed: {e}")
-                self.after(0, lambda error=str(e): self._on_restore_failed(error))
+        # Auto-detect version
+        ver = core.parse_next_version()
+        self.version_var.set(ver)
 
-        self.active_worker = threading.Thread(target=worker, daemon=True)
-        self.active_worker.start()
+    def _refresh_profiles_list(self):
+        """Load profiles and select default."""
+        self.profiles = core.load_profiles()
+        names = list(self.profiles.keys())
+        self.combo_profiles["values"] = names
 
-    def _on_restore_completed(self, out_dir: Path):
-        self._set_busy(False)
-        self.refresh_preflight()
-        self.rec_status_var.set("Restore updater ready.")
-        messagebox.showinfo(
-            "Restore Updater Ready",
-            f"Factory restore updater created in:\n{out_dir}\n\n"
-            "Hold both footswitches while connecting USB, then run the restore updater by hand.",
+        default_p = core.get_default_profile()
+        self.active_profile = default_p
+        self.selected_profile_name.set(default_p.name)
+        self._update_profile_display(default_p)
+
+    def _update_profile_display(self, prof: core.Profile):
+        """Update profile details card."""
+        self.lbl_prof_name.configure(text=f"Name: {prof.name}")
+        self.lbl_prof_default.configure(
+            text="★ Default Profile (Preselected on start)" if prof.is_default else "Custom Profile"
         )
-        try:
-            os.startfile(str(out_dir))
-        except Exception:
-            pass
-
-    def _on_restore_failed(self, err_msg: str):
-        self._set_busy(False)
-        self.refresh_preflight()
-        self.rec_status_var.set("Restore build failed.")
-        messagebox.showerror("Recovery Error", f"Failed to build restore updater:\n{err_msg}")
+        self.lbl_prof_effects_count.configure(
+            text=f"Effects Configured: {len(prof.checked_effects) if prof.checked_effects else 'All active'}"
+        )
+        fw_name = Path(prof.firmware_path).name if prof.firmware_path else "Default"
+        self.lbl_prof_fw.configure(text=f"Firmware: {fw_name}")
+        self.lbl_prof_backup.configure(
+            text=f"Auto-backup: {'Enabled' if prof.backup_before_build else 'Disabled'}"
+        )
 
     # -----------------------------------------------------------------------
-    # Advanced (Backup) Operations
+    # Event Handlers & User Actions
     # -----------------------------------------------------------------------
 
-    def _start_backup(self):
-        if not self.confirm_backup_var.get():
-            messagebox.showerror(
-                "Confirmation Required",
-                "You must check the confirmation box acknowledging the DO-NOT-POWER-CYCLE rule before running a backup.",
-            )
+    def _on_backup_selected(self, event=None):
+        sel = self.tree_backups.selection()
+        has_sel = bool(sel)
+        st = "normal" if has_sel else "disabled"
+        self.btn_use_backup.configure(state=st)
+        self.btn_open_backup_folder.configure(state=st)
+        self.btn_delete_backup.configure(state=st)
+
+    def _on_use_backup_as_source(self):
+        sel = self.tree_backups.selection()
+        if not sel:
             return
+        path_str = sel[0]
+        for b in self.backups_list:
+            if str(b.path) == path_str:
+                self.active_backup = b
+                self.lbl_nav_status.configure(text=f"Source Backup:\n{b.name}")
+                self.log(f"> Active source backup set to: {b.path}")
+                self.rescan_library()
+                self._load_patches_from_active_backup()
+                break
 
-        if not messagebox.askyesno(
-            "Confirm Read-Only Backup",
-            "This opens the pedal connection for a read-only backup. "
-            "DO NOT power-cycle the pedal if the backup stalls or times out. Continue?",
-        ):
-            return
-
-        out_dir = core.create_output_folder("backup_")
-
-        py = str(core.get_python_exe())
-        cmd = [py, str(REPO_ROOT / "tools" / "backup_g1.py"), str(out_dir)]
-
-        self.backup_status_var.set("Running backup_g1.py...")
-
-        def worker():
-            try:
-                res = core.run_tool(cmd, on_output=lambda l: self.log_queue.put(l), timeout=600.0)
-                if res.exit_code == 0:
-                    self.after(0, lambda: messagebox.showinfo("Backup", f"Backup completed successfully in:\n{out_dir}"))
-                elif res.exit_code == 1:
-                    self.after(
-                        0,
-                        lambda: messagebox.showerror(
-                            "Backup Error",
-                            "Backup failed: No 'ZOOM G' port found (line 105).\n"
-                            "Is ToneLib or another editor open, or is the USB cable disconnected?",
-                        ),
-                    )
-                elif res.exit_code == 2:
-                    self.after(
-                        0,
-                        lambda: messagebox.showerror(
-                            "Backup Error",
-                            "Backup failed: Invalid argument count (line 95-97).",
-                        ),
-                    )
-                elif res.exit_code == 3:
-                    self.after(
-                        0,
-                        lambda: messagebox.showerror(
-                            "Backup Incomplete",
-                            "Backup incomplete: Registered effects missing from walk.",
-                        ),
-                    )
-                elif res.exit_code == 4:
-                    self.after(
-                        0,
-                        lambda: messagebox.showerror(
-                            "Backup Timeout",
-                            "Backup stopped: Pedal stopped replying.\n"
-                            "DO NOT power-cycle the pedal! Leave it powered, re-plug USB only, and re-run.",
-                        ),
-                    )
+    def _on_open_backup_folder(self):
+        sel = self.tree_backups.selection()
+        if sel:
+            p = Path(sel[0])
+            if p.exists():
+                if sys.platform == "win32":
+                    os.startfile(p)
                 else:
-                    self.after(0, lambda: messagebox.showerror("Backup", f"Backup finished with exit code {res.exit_code}."))
+                    subprocess.run(["xdg-open", str(p)])
+
+    def _on_delete_backup(self):
+        sel = self.tree_backups.selection()
+        if not sel:
+            return
+        p = Path(sel[0])
+        confirm = messagebox.askyesno(
+            "Confirm Delete",
+            f"Are you sure you want to permanently delete the backup '{p.name}'?",
+            parent=self,
+        )
+        if confirm:
+            core.delete_backup(p)
+            if self.active_backup and self.active_backup.path == p:
+                self.active_backup = None
+                self.lbl_nav_status.configure(text="Source Backup:\nNone (Factory)")
+            self._refresh_backups_list()
+            self.rescan_library()
+            self._load_patches_from_active_backup()
+
+    def _on_backup_now(self):
+        """Run complete backup in worker thread."""
+        if self.busy:
+            return
+        self._set_busy(True, "Backing up pedal...")
+        dest_dir = core.create_backup_destination()
+        py = core.get_python_exe()
+        cmds = core.build_backup_commands(dest_dir, python_exe=py)
+
+        def worker():
+            try:
+                self.log(f"> Starting complete pedal backup to: {dest_dir}")
+                for cmd in cmds:
+                    self.log(f"EXEC: {' '.join(cmd)}")
+                    res = core.run_tool(
+                        cmd,
+                        on_output=self.log,
+                        is_cancelled=lambda: self.worker_cancel_requested,
+                    )
+                    self.log(f"Tool exited with code {res.exit_code}")
+                self.log("\nBackup completed.")
             except Exception as e:
-                self.after(0, lambda error=str(e): messagebox.showerror("Backup Error", error))
+                self.log(f"\nERROR during backup: {e}")
             finally:
-                self.after(0, lambda: self.backup_status_var.set(""))
+                self.after(0, self._on_backup_worker_finished)
+
+        self.worker_cancel_requested = False
+        self.active_worker = threading.Thread(target=worker, daemon=True)
+        self.active_worker.start()
+
+    def _on_backup_worker_finished(self):
+        self._set_busy(False)
+        self._refresh_backups_list()
+        self.rescan_library()
+        self._load_patches_from_active_backup()
+
+    # Effects Page Actions
+    def _on_toggle_effect_checked(self, event=None):
+        sel = self.tree_effects.selection()
+        if not sel:
+            return
+        fn = sel[0]
+        for e in self.effects_catalog:
+            if e.filename == fn:
+                e.is_checked = not e.is_checked
+                break
+        self._filter_effects_display()
+
+    def _on_click_effect_row(self, event=None):
+        # Clicked on install column or double click
+        sel = self.tree_effects.selection()
+        if not sel:
+            return
+        col = self.tree_effects.identify_column(event.x) if event else "#1"
+        if col == "#1":
+            self._on_toggle_effect_checked()
+
+    def _on_select_all_effects(self):
+        for e in self.displayed_effects:
+            e.is_checked = True
+        self._filter_effects_display()
+
+    def _on_select_none_effects(self):
+        for e in self.displayed_effects:
+            e.is_checked = False
+        self._filter_effects_display()
+
+    # Patches Page Actions
+    def _on_patch_selected(self, event=None):
+        sel = self.tree_patches.selection()
+        has_sel = bool(sel)
+        st = "normal" if has_sel else "disabled"
+        self.btn_backup_patch.configure(state=st)
+        self.btn_load_patch.configure(state=st)
+        self.btn_remove_patch.configure(state=st)
+        self.btn_write_midi_patch.configure(state=st)
+
+    def _on_backup_single_patch(self):
+        sel = self.tree_patches.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        patch = next((p for p in self.patches_list if p.index == idx), None)
+        if not patch:
+            return
+        fn = filedialog.asksaveasfilename(
+            title=f"Save Patch {idx:02d}",
+            initialfile=f"PATCH_{idx:03d}.ZPTC",
+            defaultextension=".ZPTC",
+            filetypes=[("Zoom Patch", "*.ZPTC"), ("All Files", "*.*")],
+            parent=self,
+        )
+        if fn:
+            Path(fn).write_bytes(patch.raw_data)
+            self.log(f"> Exported Patch {idx:02d} to {fn}")
+
+    def _on_load_single_patch(self):
+        sel = self.tree_patches.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        fn = filedialog.askopenfilename(
+            title=f"Load .ZPTC into Patch {idx:02d}",
+            filetypes=[("Zoom Patch", "*.ZPTC"), ("All Files", "*.*")],
+            parent=self,
+        )
+        if fn:
+            data = Path(fn).read_bytes()
+            new_patch = core.decode_patch_bytes(data, index=idx, file_path=Path(fn))
+            for i, p in enumerate(self.patches_list):
+                if p.index == idx:
+                    self.patches_list[i] = new_patch
+                    break
+            self.tree_patches.item(str(idx), values=(f"{idx:02d}", new_patch.name, new_patch.slots_summary))
+            self.log(f"> Loaded {Path(fn).name} into Patch {idx:02d}")
+
+    def _on_blank_single_patch(self):
+        sel = self.tree_patches.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        raw = core.make_blank_patch(index=idx, name="Empty")
+        new_patch = core.decode_patch_bytes(raw, index=idx)
+        for i, p in enumerate(self.patches_list):
+            if p.index == idx:
+                self.patches_list[i] = new_patch
+                break
+        self.tree_patches.item(str(idx), values=(f"{idx:02d}", "Empty", "(Empty patch)"))
+        self.log(f"> Reset Patch {idx:02d} to empty patch")
+
+    def _on_write_live_patch_midi(self):
+        sel = self.tree_patches.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        patch = next((p for p in self.patches_list if p.index == idx), None)
+        if not patch:
+            return
+
+        confirm = messagebox.askyesno(
+            "Write Live Patch to Pedal",
+            f"WARNING: This writes Patch {idx:02d} ('{patch.name}') directly to the connected pedal over USB MIDI right now!\n\n"
+            "(Marked as UNTESTED IN GUI)\n\n"
+            "Do you wish to proceed?",
+            parent=self,
+            icon="warning",
+        )
+        if not confirm:
+            return
+
+        if self.busy:
+            return
+        self._set_busy(True, f"Writing Patch {idx:02d} over MIDI...")
+
+        def worker():
+            try:
+                self.log(f"> Attempting MIDI write for Patch {idx:02d}...")
+                core.write_patch_live(idx, patch.raw_data)
+                self.log(f"\nSUCCESS: Patch {idx:02d} written and verified over MIDI.")
+            except BaseException as e:
+                self.log(f"\nERROR writing patch over MIDI: {e}")
+            finally:
+                self.after(0, lambda: self._set_busy(False))
 
         threading.Thread(target=worker, daemon=True).start()
 
+    # Firmware & Build Actions
+    def _browse_official_updater(self):
+        fn = filedialog.askopenfilename(
+            title="Select Official Zoom Updater .exe",
+            filetypes=[("Executable", "*.exe"), ("All Files", "*.*")],
+            parent=self,
+        )
+        if fn:
+            self.official_updater_var.set(fn)
+
+    def _browse_firmware_bin(self):
+        fn = filedialog.askopenfilename(
+            title="Select Firmware Binary (.bin)",
+            filetypes=[("Binary", "*.bin"), ("All Files", "*.*")],
+            parent=self,
+        )
+        if fn:
+            self.firmware_bin_var.set(fn)
+
+    def _browse_presets_bin(self):
+        fn = filedialog.askopenfilename(
+            title="Select Presets Region (.bin)",
+            filetypes=[("Binary", "*.bin"), ("All Files", "*.*")],
+            parent=self,
+        )
+        if fn:
+            self.presets_bin_var.set(fn)
+
+    def _on_build_installer(self):
+        """Execute full safe installer build in worker thread."""
+        if self.busy:
+            return
+
+        upd = self.official_updater_var.get().strip()
+        fw = self.firmware_bin_var.get().strip()
+        ver = self.version_var.get().strip()
+        if not upd or not Path(upd).exists():
+            messagebox.showerror("Build Error", "Please specify a valid official Zoom updater .exe", parent=self)
+            return
+        if not fw or not Path(fw).exists():
+            messagebox.showerror("Build Error", "Please specify a valid firmware .bin", parent=self)
+            return
+        if not ver:
+            messagebox.showerror("Build Error", "Please specify a build version (e.g. 0.34.5)", parent=self)
+            return
+
+        # Check capacity
+        checked = [e for e in self.effects_catalog if e.is_checked]
+        _, _, _, fits, msg = core.calculate_filesystem_usage(checked)
+        if not fits:
+            messagebox.showerror("Capacity Exceeded", msg, parent=self)
+            return
+
+        stock_keep = [e.filename for e in checked if e.source == "Zoom"]
+        cf_effects = [e for e in checked if e.source == "CF"]
+        presets = self.presets_bin_var.get().strip() or None
+        do_backup = self.auto_backup_var.get()
+
+        self._set_busy(True, "Building installer...")
+        self.btn_cancel_build.configure(state="normal")
+
+        def worker():
+            try:
+                res = core.execute_cf_installer_build(
+                    official_updater_path=upd,
+                    firmware_bin_path=fw,
+                    selected_stock_effects=stock_keep,
+                    selected_cf_effects=cf_effects,
+                    version=ver,
+                    presets_bin_path=presets,
+                    patch_records=self.patches_list,
+                    do_backup=do_backup,
+                    on_output=self.log,
+                    is_cancelled=lambda: self.worker_cancel_requested,
+                )
+                self.after(0, lambda: self._on_build_completed(res))
+            except Exception as e:
+                err_text = str(e)
+                self.log(f"\nBUILD FAILED: {err_text}")
+                self.after(0, lambda msg=err_text: messagebox.showerror("Build Failed", msg, parent=self))
+            finally:
+                self.after(0, lambda: self._set_busy(False))
+
+        self.worker_cancel_requested = False
+        self.active_worker = threading.Thread(target=worker, daemon=True)
+        self.active_worker.start()
+
+    def _on_cancel_build(self):
+        self.worker_cancel_requested = True
+        self.log("\n[User requested build cancellation...]")
+
+    def _on_build_completed(self, result: dict):
+        sha = result.get("sha256", "")
+        sha_short = result.get("sha256_short", "")
+        exe_path = result.get("exe_path", "")
+        stages = result.get("stages", [])
+
+        self.lbl_build_sha.configure(text=f"SHA-256: {sha} (short: {sha_short})\nFile: {exe_path}")
+
+        for item in self.tree_stages.get_children():
+            self.tree_stages.delete(item)
+
+        for st in stages:
+            parts = st.split()
+            op = parts[0] if parts else ""
+            addr = parts[1] if len(parts) > 1 else ""
+            target = " ".join(parts[2:]) if len(parts) > 2 else ""
+            self.tree_stages.insert("", "end", values=(op, addr, target))
+
+        messagebox.showinfo(
+            "Build Complete",
+            f"Comet Flower Installer successfully built!\n\n"
+            f"File: {Path(exe_path).name}\n"
+            f"SHA-256: {sha_short}\n\n"
+            "To install:\n"
+            "1. Hold both footswitches while connecting USB (Update Mode).\n"
+            "2. Run the generated .exe on your PC and click Execute.",
+            parent=self,
+        )
+
+    # Profiles Actions
+    def _on_profile_combo_selected(self, event=None):
+        name = self.selected_profile_name.get()
+        if name in self.profiles:
+            self._update_profile_display(self.profiles[name])
+
+    def _on_load_selected_profile(self):
+        name = self.selected_profile_name.get()
+        if name not in self.profiles:
+            return
+        prof = self.profiles[name]
+        self._apply_profile(prof)
+        self.log(f"> Loaded profile: '{prof.name}'")
+
+    def _apply_profile(self, prof: core.Profile):
+        """Apply profile settings to UI."""
+        if prof.firmware_path:
+            self.firmware_bin_var.set(prof.firmware_path)
+        if prof.version:
+            self.version_var.set(prof.version)
+        self.auto_backup_var.set(prof.backup_before_build)
+
+        # Apply effect selection
+        if prof.checked_effects:
+            target_set = set(f.upper() for f in prof.checked_effects)
+            for e in self.effects_catalog:
+                e.is_checked = (e.filename in target_set)
+            self._filter_effects_display()
+
+        self._update_profile_display(prof)
+
+    def _on_save_current_profile(self):
+        name = self.selected_profile_name.get().strip() or "Custom Profile"
+        checked = [e.filename for e in self.effects_catalog if e.is_checked]
+        prof = core.Profile(
+            name=name,
+            is_default=self.active_profile.is_default if self.active_profile.name == name else False,
+            checked_effects=checked,
+            default_patch_names={str(p.index): p.name for p in self.patches_list},
+            firmware_path=self.firmware_bin_var.get(),
+            version=self.version_var.get(),
+            backup_before_build=self.auto_backup_var.get(),
+        )
+        core.save_profile(prof)
+        self._refresh_profiles_list()
+        self.selected_profile_name.set(name)
+        self.log(f"> Saved profile: '{name}'")
+        messagebox.showinfo("Profile Saved", f"Profile '{name}' saved successfully.", parent=self)
+
+    def _on_set_default_profile(self):
+        name = self.selected_profile_name.get()
+        if name in self.profiles:
+            core.set_default_profile(name)
+            self._refresh_profiles_list()
+            self.log(f"> Profile '{name}' marked as default.")
+
+    def _on_delete_profile(self):
+        name = self.selected_profile_name.get()
+        if len(self.profiles) <= 1:
+            messagebox.showwarning("Delete Refused", "Cannot delete the only remaining profile.", parent=self)
+            return
+        confirm = messagebox.askyesno("Delete Profile", f"Delete profile '{name}'?", parent=self)
+        if confirm:
+            core.delete_profile(name)
+            self._refresh_profiles_list()
+
+    def _on_quick_update_with_default(self):
+        """One-click update with default profile."""
+        default_p = core.get_default_profile()
+        self._apply_profile(default_p)
+        self._switch_page("Firmware & Build")
+        self._on_build_installer()
+
     # -----------------------------------------------------------------------
-    # Log Operations
+    # Logging and Concurrency Helpers
     # -----------------------------------------------------------------------
+
+    def log(self, line: str):
+        """Enqueue line to thread-safe log queue."""
+        self.log_queue.put(line)
 
     def _poll_log_queue(self):
-        """Poll incoming log lines from worker threads."""
+        """Drain log queue into log Text widget."""
         while not self.log_queue.empty():
-            line = self.log_queue.get_nowait()
-            self.log_text.insert(tk.END, line + "\n")
-            self.log_text.see(tk.END)
-        self.after(100, self._poll_log_queue)
-
-    def _open_log_file(self):
-        log_path = REPO_ROOT / "build" / "loader" / "loader.log"
-        if log_path.exists():
             try:
-                os.startfile(str(log_path))
+                line = self.log_queue.get_nowait()
+                self.log_text.configure(state="normal")
+                self.log_text.insert(tk.END, line + "\n")
+                self.log_text.see(tk.END)
+                self.log_text.configure(state="disabled")
+            except queue.Empty:
+                break
+        self._poll_timer = self.after(50, self._poll_log_queue)
+
+    def destroy(self):
+        """Cleanly cancel timers on shutdown."""
+        if hasattr(self, "_poll_timer") and self._poll_timer:
+            try:
+                self.after_cancel(self._poll_timer)
             except Exception:
-                messagebox.showinfo("Log", f"Log file located at: {log_path}")
-        else:
-            messagebox.showinfo("Log", "Log file does not exist yet.")
+                pass
+            self._poll_timer = None
+        super().destroy()
+
+    def _on_clear_log(self):
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", tk.END)
+        self.log_text.configure(state="disabled")
+
+    def _on_copy_log(self):
+        content = self.log_text.get("1.0", tk.END)
+        self.clipboard_clear()
+        self.clipboard_append(content)
+
+    def _set_busy(self, busy: bool, message: str = ""):
+        self.busy = busy
+        st = "disabled" if busy else "normal"
+        self.btn_backup_now.configure(state=st)
+        self.btn_build_installer.configure(state=st)
+        self.btn_quick_update.configure(state=st)
+        self.lbl_worker_busy.configure(text=message if busy else "")
+        if not busy:
+            self.btn_cancel_build.configure(state="disabled")
 
 
 def main():
