@@ -149,7 +149,9 @@ class Link:
     def dump(self, addr, length):
         out = bytearray()
         while len(out) < length:
-            n = min(PEEK_MAX, length - len(out))
+            a = addr + len(out)
+            # the firmware refuses a request that crosses a 256 KiB boundary (cfp_range_ok)
+            n = min(PEEK_MAX, length - len(out), 0x40000 - (a & 0x3FFFF))
             out += self.peek(addr + len(out), n)
         return bytes(out)
 
