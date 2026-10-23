@@ -149,3 +149,14 @@ ZG1X4 MIDI" --usb-audio-name "Comet Flower Audio Bridge"` -> `make_usb_audio_fw.
    flashing through, no garbage, other effects look stock.
 If anything looks wrong, reflash Updater 30.
 **Result (owner, 2026-10-23):** flashed Updater 31, checked the screens on the pedal: header good.
+
+## 11. Updater 32: CF WattL next to CF Watt (replaces 31; TEST build, 2026-10-23)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 32 - CF edit header + CF WattL TEST.exe`
+**SHA-256 (short):** `7015a3cb`. Firmware = Updater 31's (`8ee11e29`, edit header + CF Probe link +
+watchdog). File system `fs_bench32.bin` (`541cd63f`) = fs_bench30 + `DR103L.ZD2` (`0d7155ad`, CF WattL,
+id 04000f8a): the cheaper Hiwatt core (`effects/common/hiwatt_lite.h`, commit f232dee), same knobs and
+sound as CF Watt (host bench: output within 8e-6, 36/36), static estimate -18 %.
+1. Flash. Owner's CN patch as before: CFM Pre, CF Delay, CF Watt, CF Rotary, CF Delay. In USB audio mode,
+   `tools/ua_bench.py run`: slot medians and peak (baseline: CF Watt slot 23.4k, peak 107 %).
+2. Same patch with CF WattL in slot 3 (same knob values): bench again. Pass = lower slot median and peak.
+3. By ear: Watt vs WattL, same settings, clean and cranked; they should be indistinguishable.
