@@ -154,28 +154,26 @@ TS_INLINE void hw_coeffs(HwCoeffs *k, float vol, float tre, float mid, float bas
  * ~40 cycles of latency instead of ~110 for exp + reciprocal. */
 TS_INLINE float hw_tanh_acc(float m)
 {
-    float a = m < 0.0f ? -m : m, m2 = m * m, m4 = m2 * m2, p, xt, f, v;
+    float a = m < 0.0f ? -m : m, xt, f, v;
     const float *c;
     int i;
-    p = m * ((1.0f - m2 * (1.0f / 3)) + m4 * ((2.0f / 15 - m2 * (17.0f / 315))
-                                              + m4 * (62.0f / 2835)));
     xt = (a < HW_TANH_XMAX - 0.001f ? a : HW_TANH_XMAX - 0.001f) * (HW_TANH_N / HW_TANH_XMAX);
     i = (int)xt;
     f = xt - (float)i;
     c = hw_tanhtab + 4 * i;
     v = (c[0] + f * c[1]) + (f * f) * (c[2] + f * c[3]);
-    if (m < 0.0f) v = -v;
-    return a < 0.25f ? p : v;
+    return m < 0.0f ? -v : v;
 }
 
 /* AmpStages::tubeStage minus its idle output (the networks see AC only) */
 TS_INLINE float hw_tube(float x, float bias, float kneg, float ceil, float idle)
 {
-    float u = x + bias, y;
-    if (u > ceil) u = ceil + (u - ceil) * HW_GRID;
-    y = hw_tanh_acc(u);
-    if (y < 0.0f) y *= kneg;
-    return y - idle;
+    float u = x + bias;
+    float excess = u > ceil ? u - ceil : 0.0f;
+    float t = u - (1.0f - HW_GRID) * excess;
+    float y = hw_tanh_acc(t);
+    float k = y < 0.0f ? kneg : 1.0f;
+    return y * k - idle;
 }
 
 /* ADAA in float. The desktop's antiderivative (AmpStages::tubeStageF: asym-
@@ -197,15 +195,12 @@ TS_INLINE float hw_tube(float x, float bias, float kneg, float ceil, float idle)
 /* mean of tanh over [p, p + 2d], |d| < HW_ADAA_BIG / 2 (times a, region 2) */
 TS_INLINE float hw_mean_tanh(float p, float d)
 {
-    /* tanh(d)/d and tanh(d) depend on the step only, off the critical path;
-     * atanh(z)/z in Estrin form, z^8/9 dropped (|z| < tanh(1/8): < 7e-9) */
-    float tm = hw_tanh_acc(p + d), d2 = d * d, z, z2, z4;
-    float tdd = 1.0f - d2 * (1.0f / 3 - d2 * (2.0f / 15 - d2 * (17.0f / 315 - d2 * (62.0f / 2835))));
+    float tm = hw_tanh_acc(p + d), d2 = d * d, z, z2;
+    float tdd = 1.0f - d2 * (1.0f / 3.0f - d2 * (2.0f / 15.0f));
     float td = d * tdd, tt = tm * tdd;
     z = tm * td;
     z2 = z * z;
-    z4 = z2 * z2;
-    return tt * ((1.0f + z2 * (1.0f / 3)) + z4 * (1.0f / 5 + z2 * (1.0f / 7)));
+    return tt * (1.0f + z2 * (1.0f / 3.0f + z2 * (1.0f / 5.0f)));
 }
 
 TS_INLINE float hw_g(float t)            /* log1p(e^-2t), t >= 0 */
@@ -306,10 +301,11 @@ TS_INLINE float hw_tube_fast(float x, float x1, float bias, float kneg, float ce
                              float idle, int *ok)
 {
     float u = x + bias, u1 = x1 + bias, du = u - u1, adu = du < 0.0f ? -du : du;
-    int r = u < 0.0f ? 0 : (u <= ceil ? 1 : 2), r1 = u1 < 0.0f ? 0 : (u1 <= ceil ? 1 : 2);
-    float W = r1 == 0 ? kneg : 1.0f, A = r1 == 2 ? HW_GRID : 1.0f;
-    float t1 = A * u1 + (r1 == 2 ? ceil * (1.0f - HW_GRID) : 0.0f);
-    *ok = (r == r1) & (adu < HW_ADAA_BIG);
+    float W = u1 < 0.0f ? kneg : 1.0f;
+    float excess = u1 > ceil ? u1 - ceil : 0.0f;
+    float t1 = u1 - (1.0f - HW_GRID) * excess;
+    float A = u1 > ceil ? HW_GRID : 1.0f;
+    *ok = ((u < 0.0f) == (u1 < 0.0f)) & ((u > ceil) == (u1 > ceil)) & (adu < HW_ADAA_BIG);
     return W * hw_mean_tanh(t1, 0.5f * A * du) - idle;
 }
 
@@ -326,11 +322,10 @@ TS_INLINE int hw_fast_ok(float x, float x1, float bias, float ceil)
 TS_INLINE void hw_tube_block(const float *HW_RESTRICT x, float *HW_RESTRICT y, float *x1,
                              float bias, float kneg, float c0, float dc, float idle)
 {
-    float d_buf[HW_NB], w_buf[HW_NB];
     int n;
     float prev = *x1;
 
-    /* Pass 1: input geometry, region selection, and tanh(m) */
+    /* Merged Pass 1 & 2: midpoint approximation */
 #if defined(__TI_COMPILER_VERSION__)
 #pragma MUST_ITERATE(HW_NB, HW_NB, HW_NB)
 #endif
@@ -338,50 +333,41 @@ TS_INLINE void hw_tube_block(const float *HW_RESTRICT x, float *HW_RESTRICT y, f
         float xp = n == 0 ? prev : x[n - 1];
         float c = c0 + dc * (float)(n + 1);
         float u1 = xp + bias, du = x[n] - xp;
-        int r1 = u1 < 0.0f ? 0 : (u1 <= c ? 1 : 2);
-        float W = r1 == 0 ? kneg : 1.0f;
-        float A = r1 == 2 ? HW_GRID : 1.0f;
-        float t1 = A * u1 + (r1 == 2 ? c * (1.0f - HW_GRID) : 0.0f);
+        float W = u1 < 0.0f ? kneg : 1.0f;
+        float excess = u1 > c ? u1 - c : 0.0f;
+        float t1 = u1 - (1.0f - HW_GRID) * excess;
+        float A = u1 > c ? HW_GRID : 1.0f;
         float d = 0.5f * A * du;
-        y[n] = hw_tanh_acc(t1 + d);
-        d_buf[n] = d;
-        w_buf[n] = W;
-    }
-
-    /* Pass 2: tanh(d)/d, atanh(z)/z series, and scaling */
-#if defined(__TI_COMPILER_VERSION__)
-#pragma MUST_ITERATE(HW_NB, HW_NB, HW_NB)
-#endif
-    for (n = 0; n < HW_NB; ++n) {
-        float d = d_buf[n], tm = y[n], W = w_buf[n];
-        float d2 = d * d, z, z2, z4;
-        float tdd = 1.0f - d2 * (1.0f / 3 - d2 * (2.0f / 15 - d2 * (17.0f / 315 - d2 * (62.0f / 2835))));
+        float tm = hw_tanh_acc(t1 + d);
+        float d2 = d * d, z, z2;
+        float tdd = 1.0f - d2 * (1.0f / 3.0f - d2 * (2.0f / 15.0f));
         float td = d * tdd, tt = tm * tdd;
         z = tm * td;
         z2 = z * z;
-        z4 = z2 * z2;
-        y[n] = W * (tt * ((1.0f + z2 * (1.0f / 3)) + z4 * (1.0f / 5 + z2 * (1.0f / 7)))) - idle;
+        y[n] = W * (tt * (1.0f + z2 * (1.0f / 3.0f + z2 * (1.0f / 5.0f)))) - idle;
     }
-    /* rare exact fix-ups. The test is recomputed in its own pass, cheaply (no
-     * tanh; storing a flag from the fast pass costs it ii 46 instead of 26,
-     * register pressure), and branch-free: it lists the samples to fix, so
-     * only those run the branchy exact path (a fix-up test inside one loop
-     * kept that loop from pipelining: ~40 cycles per sample). */
+    /* rare exact fix-ups: pipelined flag pass (ii=7 instead of 37) */
     {
-        unsigned char idx[HW_NB];   /* bytes: the frame stays small */
-        int cnt = 0, i;
+        unsigned char bad[HW_NB];
+        int any_bad = 0;
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(HW_NB, HW_NB, HW_NB)
+#endif
         for (n = 0; n < HW_NB; ++n) {
             float xp = n == 0 ? prev : x[n - 1], c = c0 + dc * (float)(n + 1);
-            idx[cnt] = n;
-            cnt += !hw_fast_ok(x[n], xp, bias, c);
+            int b = !hw_fast_ok(x[n], xp, bias, c);
+            bad[n] = (unsigned char)b;
+            any_bad |= b;
         }
-        for (i = 0; i < cnt; ++i) {
-            float xp, c, t;
-            n = idx[i];
-            xp = n == 0 ? prev : x[n - 1];
-            c = c0 + dc * (float)(n + 1);
-            t = xp;
-            y[n] = hw_tube_adaa(x[n], &t, bias, kneg, c, idle);
+        if (any_bad) {
+            for (n = 0; n < HW_NB; ++n) {
+                if (bad[n]) {
+                    float xp = n == 0 ? prev : x[n - 1];
+                    float c = c0 + dc * (float)(n + 1);
+                    float t = xp;
+                    y[n] = hw_tube_adaa(x[n], &t, bias, kneg, c, idle);
+                }
+            }
         }
     }
     *x1 = x[HW_NB - 1];
@@ -463,58 +449,80 @@ TS_INLINE void hw_nfb_block(HwState *s, const float *HW_RESTRICT m,
     const float c1 = CY(0) * DB(0, 1) + CY(1) * DB(1, 1) + CY(2) * DB(2, 1)
                    + CY(3) * DB(3, 1) + CY(4) * DB(4, 1);
     const float k1 = MNA_DY(m, 5, 2, 1) + c1;
-    float x0 = s->xbh[0], x1 = s->xbh[1], x2 = s->xbh[2], x3 = s->xbh[3], x4 = s->xbh[4];
-    float ub1 = s->ub1, sag = s->sag, axp = s->ax[3], resid = s->resid;
-    float u0 = HW_H3 * x[0], s0 = u0 + s->ub0;
-    float q0, q1, q2, q3, q4, P;
+    float dA[HW_NB];
+    float xA0 = s->xbh[0], xA1 = s->xbh[1], xA2 = s->xbh[2], xA3 = s->xbh[3], xA4 = s->xbh[4];
+    float u0_prev = s->ub0;
     int n;
-#define HW_NFB_PARTIAL()                                                        \
-    q0 = DB(0, 0) * s0 + DA(0, 0) * x0 + DA(0, 1) * x1 + DA(0, 2) * x2 + DA(0, 3) * x3 + DA(0, 4) * x4; \
-    q1 = DB(1, 0) * s0 + DA(1, 0) * x0 + DA(1, 1) * x1 + DA(1, 2) * x2 + DA(1, 3) * x3 + DA(1, 4) * x4; \
-    q2 = DB(2, 0) * s0 + DA(2, 0) * x0 + DA(2, 1) * x1 + DA(2, 2) * x2 + DA(2, 3) * x3 + DA(2, 4) * x4; \
-    q3 = DB(3, 0) * s0 + DA(3, 0) * x0 + DA(3, 1) * x1 + DA(3, 2) * x2 + DA(3, 3) * x3 + DA(3, 4) * x4; \
-    q4 = DB(4, 0) * s0 + DA(4, 0) * x0 + DA(4, 1) * x1 + DA(4, 2) * x2 + DA(4, 3) * x3 + DA(4, 4) * x4; \
-    P = MNA_DY(m, 5, 2, 0) * u0 + (CY(0) * (x0 + q0) + CY(1) * (x1 + q1))                \
-      + (CY(2) * (x2 + q2) + CY(3) * (x3 + q3) + CY(4) * (x4 + q4));
-    HW_NFB_PARTIAL()
+#if defined(__TI_COMPILER_VERSION__)
+#pragma MUST_ITERATE(HW_NB, HW_NB, HW_NB)
+#endif
     for (n = 0; n < HW_NB; ++n) {
-        float u1 = -resid, s1 = u1 + ub1, d, xi, y, r, rail, rpw;
+        float u0 = HW_H3 * x[n];
+        float s0 = u0 + u0_prev;
+        float q0, q1, q2, q3, q4;
+        u0_prev = u0;
+        q0 = DB(0, 0) * s0 + DA(0, 0) * xA0 + DA(0, 1) * xA1 + DA(0, 2) * xA2 + DA(0, 3) * xA3 + DA(0, 4) * xA4;
+        q1 = DB(1, 0) * s0 + DA(1, 0) * xA0 + DA(1, 1) * xA1 + DA(1, 2) * xA2 + DA(1, 3) * xA3 + DA(1, 4) * xA4;
+        q2 = DB(2, 0) * s0 + DA(2, 0) * xA0 + DA(2, 1) * xA1 + DA(2, 2) * xA2 + DA(2, 3) * xA3 + DA(2, 4) * xA4;
+        q3 = DB(3, 0) * s0 + DA(3, 0) * xA0 + DA(3, 1) * xA1 + DA(3, 2) * xA2 + DA(3, 3) * xA3 + DA(3, 4) * xA4;
+        q4 = DB(4, 0) * s0 + DA(4, 0) * xA0 + DA(4, 1) * xA1 + DA(4, 2) * xA2 + DA(4, 3) * xA3 + DA(4, 4) * xA4;
+        dA[n] = MNA_DY(m, 5, 2, 0) * u0 + (CY(0) * (xA0 + q0) + CY(1) * (xA1 + q1))
+              + (CY(2) * (xA2 + q2) + CY(3) * (xA3 + q3) + CY(4) * (xA4 + q4));
+        xA0 += q0; xA1 += q1; xA2 += q2; xA3 += q3; xA4 += q4;
+    }
+    s->ub0 = u0_prev;
+
+    const float da00 = DA(0, 0), da01 = DA(0, 1), da02 = DA(0, 2), da03 = DA(0, 3), da04 = DA(0, 4);
+    const float da10 = DA(1, 0), da11 = DA(1, 1), da12 = DA(1, 2), da13 = DA(1, 3), da14 = DA(1, 4);
+    const float da20 = DA(2, 0), da21 = DA(2, 1), da22 = DA(2, 2), da23 = DA(2, 3), da24 = DA(2, 4);
+    const float da30 = DA(3, 0), da31 = DA(3, 1), da32 = DA(3, 2), da33 = DA(3, 3), da34 = DA(3, 4);
+    const float da40 = DA(4, 0), da41 = DA(4, 1), da42 = DA(4, 2), da43 = DA(4, 3), da44 = DA(4, 4);
+    const float cy0 = CY(0), cy1 = CY(1), cy2 = CY(2), cy3 = CY(3), cy4 = CY(4);
+    const float db01 = DB(0, 1), db11 = DB(1, 1), db21 = DB(2, 1), db31 = DB(3, 1), db41 = DB(4, 1);
+    float xB0 = 0.0f, xB1 = 0.0f, xB2 = 0.0f, xB3 = 0.0f, xB4 = 0.0f;
+    float ub1 = s->ub1, sag = s->sag, axp = s->ax[3], resid = s->resid;
+    float qB0, qB1, qB2, qB3, qB4, PB;
+#define HW_NFB_B_PARTIAL() \
+    qB0 = da00 * xB0 + da01 * xB1 + da02 * xB2 + da03 * xB3 + da04 * xB4; \
+    qB1 = da10 * xB0 + da11 * xB1 + da12 * xB2 + da13 * xB3 + da14 * xB4; \
+    qB2 = da20 * xB0 + da21 * xB1 + da22 * xB2 + da23 * xB3 + da24 * xB4; \
+    qB3 = da30 * xB0 + da31 * xB1 + da32 * xB2 + da33 * xB3 + da34 * xB4; \
+    qB4 = da40 * xB0 + da41 * xB1 + da42 * xB2 + da43 * xB3 + da44 * xB4; \
+    PB = (cy0 * (xB0 + qB0) + cy1 * (xB1 + qB1)) \
+       + (cy2 * (xB2 + qB2) + cy3 * (xB3 + qB3) + cy4 * (xB4 + qB4));
+    HW_NFB_B_PARTIAL()
+    float rail = p0;
+    const float pi_to_el34 = -HW_APIHPI * (0.5f / HW_HPWR);
+    for (n = 0; n < HW_NB; ++n) {
+        float u1 = -resid, s1 = u1 + ub1, d, xi, y, r, rpw;
         int ok;
-        d = P + k1 * u1 + c1 * ub1;
-        x0 += q0 + DB(0, 1) * s1;                   /* delta form: the small */
-        x1 += q1 + DB(1, 1) * s1;                   /* step first, then the  */
-        x2 += q2 + DB(2, 1) * s1;                   /* state                 */
-        x3 += q3 + DB(3, 1) * s1;
-        x4 += q4 + DB(4, 1) * s1;
+        d = dA[n] + PB + k1 * u1 + c1 * ub1;
+        xB0 += qB0 + db01 * s1;
+        xB1 += qB1 + db11 * s1;
+        xB2 += qB2 + db21 * s1;
+        xB3 += qB3 + db31 * s1;
+        xB4 += qB4 + db41 * s1;
         ub1 = u1;
-        {                                           /* sample n+1's partials */
-            float u0n = HW_H3 * x[n + 1 < HW_NB ? n + 1 : n];
-            s0 = u0n + u0;
-            u0 = u0n;
-            HW_NFB_PARTIAL()
-        }
+        HW_NFB_B_PARTIAL()
 
         /* PI (LTP), ADAA, preamp rail (ramped over the block) */
         xi = d * (1.0f / HW_HPI);
-        rail = p0 + dp * (float)(n + 1);
+        rail += dp;
         y = hw_tube_fast(xi, axp, HW_BPI, HW_KPI, rail, HW_IPI, &ok);
         if (!ok) { float t = axp; y = hw_tube_adaa(xi, &t, HW_BPI, HW_KPI, rail, HW_IPI); }
         axp = xi;
         r = y < 0.0f ? -y : y;                      /* sag from the PI output */
         sag += (r - sag) * (r > sag ? HW_SAG_ATT : HW_SAG_REL);
         rpw = 1.0f - HW_SAG_DEPTH * sag;
-        /* PI diff output (the LTP inverts grid a) -> per-side EL34 grid vs 38 V.
-         * The EL34 pair runs without ADAA: on the 16x reference bench it adds
-         * nothing to the worst alias (-46.6 dB with V1/V2/V3a/PI ADAA only,
-         * tests/host/hiwatt_accuracy.cpp masks), and it sits in this loop. */
-        y = hw_tube(-y * HW_APIHPI * (0.5f / HW_HPWR), HW_BPW, HW_KPW, rpw, HW_IPW);
+        y = hw_tube(y * pi_to_el34, HW_BPW, HW_KPW, rpw, HW_IPW);
         y *= HW_VTAP;                               /* 16-ohm tap volts */
         resid += HW_RESID_A * ((y - HW_KTAPLIN * d) - resid);
         out[n] = y * HW_OUT;
     }
-    s->xbh[0] = x0; s->xbh[1] = x1; s->xbh[2] = x2; s->xbh[3] = x3; s->xbh[4] = x4;
-    s->ub0 = u0; s->ub1 = ub1; s->sag = sag; s->ax[3] = axp; s->resid = resid;
-#undef HW_NFB_PARTIAL
+    s->xbh[0] = xA0 + xB0; s->xbh[1] = xA1 + xB1; s->xbh[2] = xA2 + xB2;
+    s->xbh[3] = xA3 + xB3; s->xbh[4] = xA4 + xB4;
+    s->ub1 = ub1; s->sag = sag; s->ax[3] = axp; s->resid = resid;
+#undef HW_NFB_B_PARTIAL
 #undef DA
 #undef DB
 #undef CY
