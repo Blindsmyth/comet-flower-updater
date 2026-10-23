@@ -327,5 +327,98 @@ here).
 
 ## Q5
 
+### Recommendation
+
+**(A) Per-patch CF data (routing, wet/dry/wet, split/mix points per patch):
+add a custom `"CFRT"` chunk inside the existing 736-byte `PTCF` record.**
+
+This is the lowest-risk option because the chunk-walk mechanism that would
+host it is *already* generic and tolerant (Q1) — nothing in the read side
+needs to change, and every write site (AUTO SAVE, manual STORE/SWAP, factory
+reset copy) already funnels through the one `pack()`/`c0131128` choke point
+PATCH_STORE_ARGON identified, so there is exactly one write path to patch.
+Exact hooks:
+
+1. **`c013150c` (unpack):** after the existing `EDTB`/`PPRM` tag-compare
+   block (`c01315a8..c0131624`), add a third compare against a new 4-byte
+   constant `"CFRT"` (store it in flash near the existing `0xc01810f2`-family
+   strings); on match, `CALLP` a new small routine that copies the chunk's
+   payload (bounded by its own declared length, read the same way `B15[2]`/
+   `B15[67]` are already read for `EDTB`/`PPRM`) into the 904-byte struct's
+   reserved area at `+0x1A4` (slots 5..9, confirmed unused for
+   `slot_count<=5`, Q2). If the chunk is absent (old patch, or a factory
+   record), leave that area zeroed (already the default from `c0131518`'s
+   full-struct memset) — fully backward compatible with every existing
+   patch.
+2. **`c0130e04` (pack):** after the existing `TXJ1`/`TXE1` emission
+   (`c0130ee0..c0130f94`), add a fourth `CALLP 0xc0169fc0` that writes a
+   `"CFRT"` chunk whose payload is read back out of the 904-byte struct's
+   `+0x1A4` area, same pattern as the existing `EDTB` emission at
+   `c0131060..c01310a8`. Update `active_length` accordingly (the existing
+   `c0131118 STW A0,*+A4[1]` already recomputes it generically from
+   wherever the chunk-emission cursor ends up — no separate change needed
+   there).
+3. No change needed in `c01312c4` (validator) — already tolerates the extra
+   chunk (Q1).
+
+A ~64-byte payload (72 bytes with header) fits even in the worst-case
+116-byte-free record (Q1); typical factory-pattern records have 300-500+
+bytes free. **No change to the 53-record table, the DataStore log format,
+or the flash map is required for (A).**
+
+**(B) Global CF settings (~32 bytes: mode, menu prefs, routing defaults):
+add DataStore record `53`, not a flash range (none exists, Q4) and not a
+hand-identified "spare" field in record 50/52 (likely full / unresolved).**
+
+This is `medium` risk but **fully enumerated**, which is why it beats the
+alternatives: Q4 found *every* hardcoded `53` site by direct instruction
+search, so the patch list is closed, not open-ended:
+
+1. Append one `u32` entry (`= 32`, or whatever byte count is settled on) to
+   the end of the record-size table at `0x11819be8..0x11819cbc` (append-only,
+   to avoid shifting anything after it in the `.cinit` stream — same
+   `.cinit`-editing technique PATCH_STORE_ARGON's section 1.1 already used
+   to read the flash-region table).
+2. Change `53 -> 54` at the five sites in Q4's table: the bounds-check
+   accessor (`c01371e0`/`c01371e4`), the boot bank-size-sum loop
+   (`c0136a40`/`A8`-init), the two `SPLOOPD ILC=49->50` cache-array
+   initializers (`c0136ab0`, `c0137304`), and the compaction/migration copy
+   loop (`c01368a8`/`A12`-init).
+3. Use the existing generic single-record read/write primitives
+   (`c0136744` writer, `118092a0`/`c016f510` reader — both already take
+   `record_idx` as a plain argument with no `53` baked into *them*
+   specifically, only into the table-bounds accessor they call through) with
+   `record_idx=53`. No new flash primitive is needed.
+
+**Rejected alternative for (B):** repurposing record 50's 20 bytes — Q4's
+reference-count check suggests (not `confirmed`) all five of its words are
+already live Zoom settings; colliding with one would silently corrupt a real
+user-facing setting (e.g. AUTO SAVE at `+0x10`) in a way that would be hard
+to notice until the owner complained about a totally unrelated menu
+setting. Not worth the risk when (B)'s own job is fully bounded.
+
+**(C) Slot count growth beyond 5:** Q3 shows the storage format itself
+needs **no change** (pack/unpack/validate are already generic in
+`slot_count`). The concrete, bounded patch is the sanitize clamp
+`11806450` (two `CMPGTU` immediates `0x5`/`0x6` and two `MVK 5` stores) plus
+the ~9 sibling `CMPGT.L1 5,A<n>` loops found inside the
+`c012f878->118075e4->1180738c` patch-load call tree (Q3's table). **This
+report deliberately stops at the storage/load boundary** — it did not search
+the DSP audio-dispatch engine or the LCD/menu UI task (`UpdateUI`/
+`LooperUI` per `FWMAP.md`) for their own hardcoded-5 assumptions, and those
+are very likely the larger share of the real effort for a usable 6/7-slot
+feature. **Recommend a dedicated follow-up pass over those two subsystems
+before committing to a slot-count increase**, using this report's confirmed
+"format is generic, only the post-unpack clamp and ~9 loader-loops are
+hardcoded" finding as the starting boundary.
+
+**Sequencing suggestion:** build and ship (A) first (self-contained, no
+`53`-table risk, immediately unlocks per-patch routing/mix data). Add (B)
+once (A) is proven on real hardware (same `.cinit`-editing risk profile as
+work PATCH_STORE_ARGON already executed successfully for the region table,
+so precedent exists in this project). Treat (C) as a separate, larger
+research task gated on a DSP+UI hardcoded-5 inventory this report did not
+perform.
+
 ## Status
-In progress.
+STATUS: done
