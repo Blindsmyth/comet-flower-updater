@@ -193,3 +193,9 @@ region 0x28000 = `build/fw/cfupd_res85.bin` (the CF presets, same as before) wit
 Version list: `docs/BUILDS.md`. Live patches (0x0C0000) are not touched.
 1. Flash; at power-on the screen after the logo reads "CF-ZGX4 / TEST 0.34.2".
 2. Then section 12's steps and the ceiling test with PROBE 10 / PROBE 30.
+3. Ceiling test, automated read-out: `tools/ceiling_test.py watch --csv build/ceiling.csv` reads the meter
+   over MIDI (~4 per second: peak %, mean %, per-slot kcycles) while the owner turns PROBE Load by hand;
+   it stops and reports by itself on a freeze (AUDIO STALL = MIDI alive, audio counter stopped; NO REPLY =
+   pedal frozen) with the highest reading and the last readings. Hands-free: `ceiling_test.py set 3 2 50`
+   (Zoom param-edit SysEx, unconfirmed on this pedal: check the knob moves), then
+   `ceiling_test.py ramp <slot> --step 5 --hold 2`.
