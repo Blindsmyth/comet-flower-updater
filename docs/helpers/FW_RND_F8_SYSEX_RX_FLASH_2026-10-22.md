@@ -91,6 +91,51 @@ When a complete Zoom SysEx message terminates with `0xf7`, the MIDI task execute
   - Model ID is `0x6e` (110 decimal).
   - Confirmed by `tools/midi_listen_g1.py:21` (`HDR = [0x52, 0x00, 0x6e]`), `tools/ua_bench.py:277`, and `mainapp_model_detect` (`c015d7e0`) which matches flash string "G1X IV" and initializes the global model ID at `0xc0183b48` to `0x6e` via `c0129600`.
 
+### 4. Proposed Hook for CF Probe SysEx (confirmed & likely implementation options)
+To allow a TEST-only CF Probe feature to intercept incoming host requests (`peek`, `watch`, LCD screenshot) before stock processing, the hook should be placed at the point of complete SysEx arrival.
+- **Hook Location A (Recommended Call Hook)**:
+  - Instruction address: `0xc0129324` in `midi_task_entry` (`c0129118`).
+  - Current 32-bit word: `0xa18ab35b` (file offset `0x0001d2a0` in `res1_493412.bin`).
+    - Lower 16 bits: `0xb35b` = `CALLP.S2 0xc0128e54, B3`.
+    - Upper 16 bits: `0xa18a` = `BNOP.S1 0xc012932c, 5`.
+  - Task/Context: **MIDI task** (`c0129118`), running at SYS/BIOS Task level.
+  - Calling convention / Data locations:
+    - Registers do not carry buffer arguments at `c0129324`. All SysEx fields reside in known global memory:
+      - Command byte: halfword at `0xc0183b60` (`*(volatile uint16_t *)0xc0183b60`).
+      - Model ID: byte at `*+B14[166]` (`0x6e`).
+      - Manufacturer ID: byte at `*+B14[165]` (`0x52`).
+      - Device ID: byte at `*+B14[168]` (`0x00`).
+      - Payload buffer pointer: `0x1180ff20` (in L2 SRAM).
+      - Payload length: `*+B14[43] - 1` (where `B14[43]` is the count of bytes in state 3: 1 command byte + payload).
+      - Stock internal command ID: `*+B14[38]` (0 for unrecognized commands).
+  - Hook handler protocol:
+    ```c
+    void cf_probe_sysex_hook(void) {
+        uint16_t cmd = *(volatile uint16_t *)0xc0183b60;
+        if (cmd == CF_PROBE_CMD) {  /* e.g. 0x70 */
+            uint8_t *payload = (uint8_t *)0x1180ff20;
+            uint32_t len = *(volatile uint32_t *)(B14_BASE + 43*4) - 1;
+            cf_probe_handle_command(payload, len);
+            /* consumed: return directly to caller without calling c0128e54 */
+            return;
+        }
+        /* not mine: invoke stock dispatcher */
+        stock_midi_cmd_dispatch();
+    }
+    ```
+- **Hook Location B (Dispatcher Entry Replacement)**:
+  - Instruction address: `0xc0128e54` (`midi_cmd_dispatch`).
+  - Current 32-bit word: `0x01bc54f6` (`STW.D2T2 B3, *B15--[2]`, file offset `0x0001cdd4` in `res1`).
+  - Next word: `0x0100266e` (`LDW.D2T2 *+B14[38], B2`, file offset `0x0001cdd8`).
+  - Because `c0129324` is the SOLE caller of `c0128e54` in the whole firmware, replacing the opening instructions of `c0128e54` with a 32-bit branch/veneer avoids touching the compact fetch packet at `c0129324`.
+- **Free Command Byte Choice**:
+  - `0x70` (112 decimal):
+    - Completely unused by stock firmware.
+    - Command parser `c0127df0` leaves `*+B14[38] = 0`.
+    - Subsequent payload bytes automatically route through `c0127d78` into buffer `0x1180ff20` up to 1024 bytes.
+    - If CF Probe is inactive, stock firmware safely and silently drops it at `c01290ec`.
+
+
 
 
 
