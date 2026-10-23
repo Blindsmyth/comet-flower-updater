@@ -21,7 +21,11 @@ Background: `docs/FW_RND_ANSWERS_2026-10-22.md`.
   keeps calling a bypassed effect, so delay tails need no firmware patch (CF Delay `Tail`, Updater 27).
 - **CF Rotary:** good alone in slot 1, good after a comp and a RAT, sound stable, and **passes the
   crash case**: CFM Pre, CF Delay, CF Hiwatt, CF Rotary, CF Delay (an effect after the rotary) runs with
-  USB audio intact. RA200X's crash is solved by replacement. Still open: bench numbers.
+  USB audio intact. RA200X's crash is solved by replacement.
+- **Bench of that patch** (`ua_bench.py measure`, 6 s, 16,530 blocks, 0 lost; `build/bench/manual.md`):
+  slot medians 29.2k / 5.7k / 23.4k / 5.1k / 7.4k cycles (CFM Pre, CF Delay, CF Hiwatt, CF Rotary,
+  CF Delay + end-of-chain), maxima 43.7k / 17.0k / 37.5k / 15.9k / 19.1k; CPU 83.2 % average, peak 106.6 %
+  of the 132,354-cycle block. CF Rotary costs about an empty slot's framework overhead.
 
 ## 1. Flash
 Same as Updater 25: hold both footswitches while connecting USB, run the updater, Execute, wait for
