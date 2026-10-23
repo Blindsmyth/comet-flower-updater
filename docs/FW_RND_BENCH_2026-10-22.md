@@ -108,3 +108,16 @@ bench timing frames). The firmware streams 32 looper/drum/master values live (CF
 2. I run `tools/cf_probe.py watch --seconds 10 --csv ...` while you: start/stop the drum machine, change
    pattern and tempo, record/play/stop/overdub/undo a loop. Each action shows up as values changing.
 3. All Updater 27 checks (CF Delay tail, CFM Pre labels, watchdog on RA200X) also apply here.
+
+## 8. Updater 29: CF Probe link, SysEx + watch (replaces 28; TEST build)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 29 - CF Probe link (SysEx peek + watch) + watchdog + 27 effects TEST.exe`
+**SHA-256:** `b8979b5211f85b904c801b3e6afd829051d29c268cd2a2c45ee84f5ce3ae5030` (short `b8979b52`).
+Firmware `d2af52c7` = Updater 28's firmware plus the SysEx hook (c0129324 -> cfp_sysex_thunk, header
+c012933c), file system `fs_bench27.bin`. Everything in 27/28 works the same. New: the pedal answers
+`tools/cf_probe.py` over USB MIDI:
+- `ping` (link check), `peek <addr> [len]` / `dump <addr> <len> <file>` (RAM only), `watch-set <addr>...`
+  (changes what channel 7 streams, no reflash), `watch` (records channel 7).
+1. Flash, connect, close any editor that holds the MIDI port.
+2. I run `tools/cf_probe.py ping`, then peeks and watches while you work the looper and the drum machine.
+If MIDI stops answering or the pedal misbehaves on a stock editor action, reflash Updater 27: the hook
+sits only in the MIDI task's end-of-SysEx path; audio does not pass through it.

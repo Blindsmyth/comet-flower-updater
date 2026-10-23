@@ -170,8 +170,12 @@ def strip_usb_audio(old_fw, new_fw):
     # The bench layer (--bench) also re-aims the slot veneer 11818eb0.
     o = ua.vma_offset(old_fw, ua.SLOT_VENEER)
     bench = stems and new_fw[o:o + 4] != old_fw[o:o + 4]
+    # The CF Probe layer (--probe) also takes the SysEx dispatch call c0129324; it is
+    # accepted only as the complete pair (CALLP into the section + packet header word).
+    o = ua.vma_offset(old_fw, ua.PROBE_PATCHES[0][0])
+    probe = bench and new_fw[o:o + 4] != old_fw[o:o + 4]
     mvk, veneer = {}, {}
-    for vma, stock, kind, ref, sym in (ua.BENCH_PATCHES if bench else ua.STEM_PATCHES if stems else ua.TAP_PATCHES if tap else ua.PATCHES):
+    for vma, stock, kind, ref, sym in (ua.BENCH_PATCHES + (ua.PROBE_PATCHES if probe else []) if bench else ua.STEM_PATCHES if stems else ua.TAP_PATCHES if tap else ua.PATCHES):
         o = ua.vma_offset(old_fw, vma)
         old = struct.unpack_from("<I", old_fw, o)[0]
         new = struct.unpack_from("<I", new_fw, o)[0]
