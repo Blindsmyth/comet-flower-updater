@@ -74,3 +74,17 @@ After stopping playback (snapshot `looper_stopped`; screen shows a large STOPPED
 | 0x11813250 | 0xf0 -> 0xfc when the loop started, 0xfc -> 0xf0 at stop | **looper state field** (0xf0 stopped, 0xfc playing) | likely |
 | 0x11f03c80 | 0x7fffffff while playing -> 0 at stop | playing level / gate | guess |
 | No undo | the G1X Four looper has no undo (owner) | the "undo pointer" of watch list v1 is wrong | seen |
+
+Loop buffer (live reads after stop):
+
+| address | seen | meaning | confidence |
+|---|---|---|---|
+| 0xc011acac | 0xc04d7100 | **loop buffer start** | likely (the loop audio is there) |
+| 0xc011acc0 | 0xc075d0f0 | loop buffer end: 0xc04d7100 + 2,646,000 B = the 30 s maximum | likely |
+| 0xc011aca8 | 0xc04abff0 | start of a 176,400 B (2 s) region before the loop buffer, right after the five effect work buffers; all zero after stop | guess (pre-roll / crossfade?) |
+| 0xc011acb0 | 0x2b110 = 176,400 | size of that 2 s region | seen |
+
+The 4.62 s loop (407,584 B at 0xc04d7100) dumps as a smooth 16-bit mono waveform at a very low
+level (peak 25 of 32,767, about -62 dBFS): `build/probe/loop_take1.wav`, and +56 dB louder
+`build/probe/loop_take1_normalised.wav`. Whether the level is a storage scale (0x11f03c7c = 2.0?) or
+the take was quiet is open; the owner's ear decides if it is the loop.
