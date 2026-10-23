@@ -11,13 +11,16 @@ State at snapshot `drums_on_blues2_124_v80` (owner: drums on, pattern Blues 2, 1
 
 | address | seen | meaning | confidence |
 |---|---|---|---|
-| 0x11812f78 | 124 | tempo, BPM | likely (matches; to confirm by changing tempo) |
+| 0x11812f78, 0x11812f0c | 124 -> 90 when the owner set 90 | **tempo, BPM** (two copies) | confirmed (seen) |
+| 0x118130a4, 0x118130a8 | 30 -> 41 | ms per 16th note (60000 / BPM / 16) | likely (both values fit) |
+| 0x118133b8, 0x118133c0 | 744 -> 540 | BPM x 6 (internal tempo unit) | likely (both fit exactly) |
+| 0x118133b0, 0x118133bc | recomputed on the tempo change | timing accumulators | guess |
 | 0x11812f50, 0x11812fbc | 80 -> 60 when the owner set volume 60 | **drum volume setting, 0..100** (two copies, 0x6c apart) | confirmed (seen) |
 | 0x11f03d14 | float 0.8 -> 0.6 at the same time | drum gain used by the audio path = volume / 100 | confirmed (seen) |
 | 0x11812f5c | 80, unchanged by the volume change | something else that was 80 | seen |
 | 0x11812f4c | 44 | pattern number (Blues 2?) | guess |
 | 0x11812fb8..fc8 | 44, 80, .., 80 | second copy of the f4c..f5c block, 0x6c later | guess |
-| 0x11812f0c, 0xc01181e8 | 124 | other tempo copies | guess |
+| 0xc01181e8 | 124 at the first snapshot | another tempo copy? (not in the diff) | guess |
 | 0x1181320c | +~1 per ms, continuous | millisecond clock | likely |
 | 0x118130ac, 0x118131bc, 0x11813230 | +0x1e4 (484) every beat | ms time of the latest beat (124 BPM = 484 ms) | likely |
 | 0x11813098, 0x11813120 | 0 -> 1 -> 0 pulses, beat-spaced | hit/trigger flags | guess |
