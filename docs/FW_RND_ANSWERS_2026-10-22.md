@@ -231,7 +231,8 @@ re-checked the key instructions marked **(Claude)**.
 - **Bypass (CF BYPT, Updater 26b):** beep heard while OFF, clean while ON: **the firmware keeps calling a
   bypassed effect with coef[0] near 0** (the default-callback path c0165e80 is not the on/off path).
   Delay tails work with no firmware patch; CF Delay `Tail` (F7) relies on this.
-- **CF Rotary (S6):** good alone and after comp + RAT on the pedal.
+- **CF Rotary (S6):** good alone, after comp + RAT, and in the full chain CFM Pre, CF Delay, CF Hiwatt,
+  CF Rotary, CF Delay (an effect after it, RA200X's crash case): stable, USB audio intact.
 
 ## Follow-up done 2026-10-22 (Updater 26, not flashed)
 `docs/FW_RND_BENCH_2026-10-22.md`: CF M3 / CF M4 probes (header 3 / 4, job F3),

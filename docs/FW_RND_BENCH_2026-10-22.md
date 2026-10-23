@@ -19,8 +19,9 @@ Background: `docs/FW_RND_ANSWERS_2026-10-22.md`.
   `MuffSust / MuffTone / Muff Vol` run together.
 - **CF BYPT (26b): the beep is heard while the effect is OFF; ON passes the guitar clean.** The firmware
   keeps calling a bypassed effect, so delay tails need no firmware patch (CF Delay `Tail`, Updater 27).
-- **CF Rotary:** good alone in slot 1, and good after a comp and a RAT; owner: "rotary sound stable". Still open: an effect placed
-  AFTER CF Rotary (the RA200X crash case) and bench numbers.
+- **CF Rotary:** good alone in slot 1, good after a comp and a RAT, sound stable, and **passes the
+  crash case**: CFM Pre, CF Delay, CF Hiwatt, CF Rotary, CF Delay (an effect after the rotary) runs with
+  USB audio intact. RA200X's crash is solved by replacement. Still open: bench numbers.
 
 ## 1. Flash
 Same as Updater 25: hold both footswitches while connecting USB, run the updater, Execute, wait for
