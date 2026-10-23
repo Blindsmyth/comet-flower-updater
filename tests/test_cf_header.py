@@ -124,7 +124,7 @@ class CfHeader(unittest.TestCase):
         self.cpu(83)
         self.draw([CFMPRE, DELAY, DELAY, DELAY, DELAY], 0, 1)
         self.assertEqual(self.bar_text(19, 102, True), "PRE>MUFF FUZZ")
-        self.assertEqual(self.bar_text(102, 128, False), "83%")
+        self.assertEqual(self.bar_text(103, 128, False), "83%")
         OUT.mkdir(parents=True, exist_ok=True)
         ui_mock.show(self.image()).save(OUT / "cfh_meter.png")
 
@@ -132,12 +132,12 @@ class CfHeader(unittest.TestCase):
         self.cpu(64)
         self.draw([DELAY] * 5, 2, 0)
         self.assertTrue(all(self.lcd[x] == 0x55 for x in range(0, 102)))
-        self.assertEqual(self.bar_text(102, 128, False), "64%")
+        self.assertEqual(self.bar_text(103, 128, False), "64%")
 
     def test_meter_inverted_when_high(self):
         self.cpu(107)
         self.draw([DELAY] * 5, 0, 0)
-        self.assertEqual(self.bar_text(102, 128, True), "107%")
+        self.assertEqual(self.bar_text(103, 128, True), "107%")
 
     def test_tick_refreshes_only_on_change_and_only_while_shown(self):
         self.cpu(70)
@@ -146,7 +146,7 @@ class CfHeader(unittest.TestCase):
         self.cpu(81)
         self.assertEqual(self.lib.host_tick(), 1)
         self.assertEqual(self.u32("host_flushes")[0], 1)
-        self.assertEqual(self.bar_text(102, 128, False), "81%")
+        self.assertEqual(self.bar_text(103, 128, False), "81%")
         self.lcd[110] ^= 0xFF                                  # another screen drew there
         self.cpu(90)
         self.assertEqual(self.lib.host_tick(), 0)
@@ -154,7 +154,7 @@ class CfHeader(unittest.TestCase):
         self.assertEqual(self.lib.host_tick(), 0)             # stays off until the next edit draw
         self.assertEqual(self.u32("host_flushes")[0], 1)
         self.draw([DELAY] * 5, 0, 0)
-        self.assertEqual(self.bar_text(102, 128, False), "91%")
+        self.assertEqual(self.bar_text(103, 128, False), "91%")
 
     def test_selected_slot_and_out_of_range(self):
         self.draw([DELAY, CFMPRE, DELAY, DELAY, DELAY], 0, 1)

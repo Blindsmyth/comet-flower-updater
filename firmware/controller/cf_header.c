@@ -134,7 +134,8 @@ static void draw_meter(u32 pct)
         t[n++] = (char)('0' + x);
     t[n++] = (char)('0' + d);
     t[n++] = '%';
-    text_box(METER_X0, 128u, t, n, pct >= 95u);
+    column(METER_X0, 0, 0);          /* one dark column: keeps an inverted meter off the bar */
+    text_box(METER_X0 + 1u, 128u, t, n, pct >= 95u);
     for (x = 0; x < METER_W; x++) {
         meter_sig[x] = LCD_COLS[METER_X0 + x];
         meter_sig[METER_W + x] = (u8)(LCD_COLS[128u + METER_X0 + x] & 0x0fu);

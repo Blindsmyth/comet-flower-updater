@@ -163,7 +163,7 @@ sound as CF Watt (host bench: output within 8e-6, 36/36), static estimate -18 %.
 
 ## 12. Updater 33: CPU budget meter (replaces 32; TEST build, 2026-10-23)
 **Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 33 - CF header + CPU meter + CF WattL TEST.exe`
-**SHA-256 (short):** `8592a180`. Firmware `33c214f7` = `make_controller_fw.py ... --ui --cf-header` ->
+**SHA-256 (short):** `b29f89c8`. Firmware `a64a9e62` = `make_controller_fw.py ... --ui --cf-header` ->
 `make_usb_audio_fw.py --probe --watchdog --cpu-meter`; file system `fs_bench32.bin` (CF WattL included).
 Design: `docs/BUDGET_MODEL_2026-10-23.md`. Without the two new options the recipe still gives `d2af52c7`.
 1. Flash. On the edit page of any effect the top right corner shows "NN%": the worst audio-block load of
