@@ -139,6 +139,14 @@ class CfHeader(unittest.TestCase):
         self.draw([DELAY] * 5, 0, 0)
         self.assertEqual(self.bar_text(103, 128, True), "107%")
 
+    def test_meter_warning_starts_at_88(self):
+        self.cpu(87)
+        self.draw([DELAY] * 5, 0, 0)
+        self.assertEqual(self.bar_text(103, 128, False), "87%")
+        self.cpu(88)
+        self.draw([DELAY] * 5, 0, 0)
+        self.assertEqual(self.bar_text(103, 128, True), "88%")
+
     def test_tick_refreshes_only_on_change_and_only_while_shown(self):
         self.cpu(70)
         self.draw([DELAY] * 5, 0, 0)
@@ -154,7 +162,7 @@ class CfHeader(unittest.TestCase):
         self.assertEqual(self.lib.host_tick(), 0)             # stays off until the next edit draw
         self.assertEqual(self.u32("host_flushes")[0], 1)
         self.draw([DELAY] * 5, 0, 0)
-        self.assertEqual(self.bar_text(103, 128, False), "91%")
+        self.assertEqual(self.bar_text(103, 128, True), "91%")   # 88 % and above: inverted
 
     def test_selected_slot_and_out_of_range(self):
         self.draw([DELAY, CFMPRE, DELAY, DELAY, DELAY], 0, 1)

@@ -79,6 +79,27 @@ CF_HEADER_HOOKS = [
 ]
 
 
+# PROCESS OVERFLOW gate (--gate, TEST builds): the patch's declared dspload sum must be below
+# 230.0f, loaded by this one MVKH 0x4366,B4 (c0141ad8..c0141b60: ADDSP over slots 0..4,
+# CMPLTSP; docs/DSP_RULES.md 4). --gate N rewrites only its 16-bit constant (N must have a
+# zero low half as a float, as 230.0 does). Ceiling test 2026-10-23 (docs/FW_RND_BENCH
+# section 14): ~340 keeps a patch below ~88 % of the block on Zoom's 7 + 3 x kcycles scale.
+GATE_SITE = (0xc0141b54, 0x35ad0, 0x0221b36a)
+GATE_RANGE = (230.0, 400.0)
+
+
+def gate_word(load):
+    """The MVKH word that loads `load` (float) instead of 230.0."""
+    bits = struct.unpack("<I", struct.pack("<f", float(load)))[0]
+    if bits & 0xffff or not GATE_RANGE[0] <= load <= GATE_RANGE[1]:
+        raise ValueError("gate %r: needs %g..%g with a zero low half as a float (e.g. 340)" % (
+            load, GATE_RANGE[0], GATE_RANGE[1]))
+    return (GATE_SITE[2] & ~(0xffff << 7)) | ((bits >> 16) << 7)
+
+
+def gate_value(word):
+    return struct.unpack("<f", struct.pack("<I", ((word >> 7) & 0xffff) << 16))[0]
+
 def callp_target(addr, word):
     cst = (word >> 7) & 0x1fffff
     if cst & 0x100000:
@@ -259,7 +280,7 @@ def usb_product_patch(data, name, addr):
 
 
 def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=None, usb_audio_name=None,
-          cf_header=False):
+          cf_header=False, gate=None):
     base = Path(base_path).read_bytes()
     try:
         kind = base_kind(base, Path(stock_path).read_bytes())
@@ -298,6 +319,14 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
         if word != stock or callp_target(vma, word) != target:
             sys.exit("hook site %#x does not hold the stock CALLP" % vma)
         struct.pack_into("<I", data, off, callp_retarget(vma, word, syms[sym]))
+    if gate is not None:
+        vma, off, stock = GATE_SITE
+        if struct.unpack_from("<I", data, off)[0] != stock:
+            sys.exit("gate site %#x does not hold the stock MVKH 0x4366" % vma)
+        try:
+            struct.pack_into("<I", data, off, gate_word(gate))
+        except ValueError as exc:
+            sys.exit(str(exc))
     product_off = None
     if product_addr is not None:
         usb_product_patch(data, usb_product, product_addr)
@@ -313,6 +342,8 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
     # Verify: stock bytes unchanged except the hooks; walk the new AIS.
     changed = [i for i in range(close_off) if data[i] != base[i]]
     allowed = {off + k for _, off, _, _, _ in hooks for k in range(4)}
+    if gate is not None:
+        allowed |= set(range(GATE_SITE[1], GATE_SITE[1] + 4))
     if product_off is not None:
         allowed |= set(range(product_off, product_off + 8))
     if str3_off is not None:
@@ -339,6 +370,8 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
     for vma, off, stock, _, sym in hooks:
         print("hook %#x: %08x -> %08x CALLP %s (%#x)" % (
             vma, stock, struct.unpack_from("<I", data, off)[0], sym, syms[sym]))
+    if gate is not None:
+        print("PROCESS OVERFLOW gate %#x: 230.0 -> %g" % (GATE_SITE[0], gate))
     if product_addr is not None:
         print("USB product string %r at %#x" % (usb_product, product_addr))
     if str3_addr is not None:
@@ -370,5 +403,8 @@ if __name__ == "__main__":
     ap.add_argument("--cf-header", action="store_true",
                     help="TEST: CF edit-page stage header (firmware/controller/cf_header.c; hooks c013c050, "
                          "c0135b08 -> cf_edit_draw)")
+    ap.add_argument("--gate", type=float,
+                    help="TEST: PROCESS OVERFLOW limit instead of 230.0 (e.g. 340; c0141b54 MVKH)")
     a = ap.parse_args()
-    build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product, a.usb_audio_name, a.cf_header)
+    build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product, a.usb_audio_name, a.cf_header,
+          a.gate)

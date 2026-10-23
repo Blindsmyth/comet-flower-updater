@@ -13,4 +13,5 @@ Updater files: `build/fw_rnd_2026-10-22/`. Steps and details: `docs/FW_RND_BENCH
 | 0.33.0 | 33 | b29f89c8 | a64a9e62 | fs_bench32 | + CPU meter | superseded (no probes) |
 | 0.34.0 | 34 | f7fe7443 | a64a9e62 | (broken) | + PROBE10/30 files, no effect-list entry | deleted |
 | 0.34.1 | 34b | d11591f9 | a64a9e62 | fs_bench34 | probes listed | superseded by 0.34.2 |
-| 0.34.2 | 0.34.2 | 1907a6e2 | a64a9e62 | fs_bench34 | 34b + build-number start-up screen | **flash this** |
+| 0.34.2 | 0.34.2 | 1907a6e2 | a64a9e62 | fs_bench34 | 34b + build-number start-up screen | flashed; ceiling test (~90 %) |
+| 0.34.3 | 0.34.3 | 69b52f9d | 55ae7d48 | fs_bench343 | meter inverted from 88 %, PROCESS OVERFLOW gate 230 -> 340, CF effects declare measured load | **flash this** |

@@ -80,6 +80,9 @@ not by analysis alone. Solo-only effects are the exception, not the aim.
   the 2026-10-18 bench: **dspload = 7 + 3 x measured kcycles** (HW100 21.9k -> 72.7 vs 71.16 declared;
   TS Drive 10.3k -> 37.9 vs 39.37; COMP 2.3k -> 13.9 vs 13.94). Change a released effect's number with
   `tools/zd2_set_dspload.py` (only the float and the CRC change), never by rebuilding its code.
+- **Ceiling (pedal, 2026-10-23):** controls lock up at ~92 % mean busy (audio itself keeps running); ~90 %
+  is usable. TEST builds from 0.34.3 move the gate to **340** (`make_controller_fw.py --gate 340`), which on
+  the 7 + 3 x kcycles scale keeps any patch at or below ~88 % (docs/FW_RND_BENCH_2026-10-22.md section 15).
 - The declared `dspload` is bookkeeping for "Process Overflow"; it does not
   reserve or limit real CPU.
 - **Static cycle counts (`tools/c6x_cycles.py`) are trustworthy only for

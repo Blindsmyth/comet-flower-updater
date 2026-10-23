@@ -217,3 +217,26 @@ screen and knobs get no CPU time once the audio Swi + other interrupts leave non
 (~90.6 % mean) the pedal was still usable.
 **Usable ceiling: about 90 % on the meter (busy mean ~90 %); 92 % = control lock-up.** Next: meter warning
 from 88-90 %; re-declare CF dspload from measured cost so Zoom's gate stops a patch before ~88 %.
+
+## 15. 0.34.3: meter warning 88 %, gate 340, CF effects declare measured load (TEST build, 2026-10-23)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 0.34.3 - meter 88 + gate 340 + CF loads TEST.exe`
+**SHA-256 (short):** `69b52f9d`. Owner decision after the ceiling test: raise Zoom's gate to match it.
+- **Firmware `55ae7d48`** = 0.34.2's (`a64a9e62`, recipe re-checked byte for byte) with two changes:
+  `cf_header.c` METER_WARN 88 (the "NN%" turns inverted from 88 % instead of 95 %), and
+  `make_controller_fw.py --gate 340`: the single `MVKH 0x4366,B4` at c0141b54 (file 0x35ad0, the only 230.0f
+  in the firmware) loads 340.0f (word 0221b36a -> 0221d56a). Diff against 0.34.2's stock part: that one word.
+  The packager accepts only the constant changing, 230..400 (`validate_controller_fw`, TEST builds).
+- **FS `fs_bench343.bin` (`dc28fc1b`)** = fs_bench34 with 11 CF effects re-declared, 7 + 3 x measured kcycles
+  rounded up (`zd2_set_dspload.py`, only the float + CRC; files in `dspload_0.34.3/`): CFM Pre 35 -> 102
+  (31.4k), CF Delay 20 -> 30 (7.4k), CF Watt 69 -> 82 (24.7k), CF Rotary 16 -> 23 (5.1k), CF RA200 30 -> 50
+  (14.1k on the pedal; static said 4k), CF Dyna 32, CF 808 58, CF Muff 53, CF Mistrss 29, CF CE2 21, CF RAT 57.
+  CF WattL stays 69 (est. ~20k, not measured). Probes, G1 Gain, CF Tone, CF M2-M5, CF BypTest unchanged.
+  Effect list unchanged. Start-up screen "TEST 0.34.3".
+- Gate 340 = n x 7 + 3 x kcycles: 5 effects -> 102k effect cycles (~82 % mean), 2 effects -> 109k (~88 %).
+  CN patch now sums 102 + 30 + 82 + 23 + 30 = 267 (was 154 declared; Zoom's 230 would have refused 267).
+1. Flash; the start-up screen reads TEST 0.34.3.
+2. CN patch loads and plays as before; the meter reads ~80 % and is not inverted at idle.
+3. Gate: build up CFM Pre + CF Watt + CF RA200 + CF 808 + CF RAT (102 + 82 + 50 + 58 + 57 = 349): adding the
+   last one must give PROCESS OVERFLOW. Stock patches load as before.
+4. Probes still bypass the gate (they declare 10 / 30): keep them for tests only.
+5. Looper / rhythm on a heavy (~80 %) patch: does the pedal stay responsive? (They add load we have not measured.)

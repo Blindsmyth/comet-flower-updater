@@ -8,7 +8,7 @@
  *    this page ("PRE>MUFF FUZZ"; "CFM PRE>MUFF FUZZ" when there is no meter);
  *  - if the audio code publishes the CPU record (make_usb_audio_fw.py
  *    --cpu-meter, docs/BUDGET_MODEL_2026-10-23.md), the top right corner shows
- *    the worst audio-block load of the last ~0.74 s as "NN%" (inverted at 95 %
+ *    the worst audio-block load of the last ~0.74 s as "NN%" (inverted at METER_WARN = 88 %
  *    and above).
  * Same frame, before UpdateUI's flush, so the stock name never shows.
  * Between redraws, cf_header_tick (UpdateUI's idle wake-ups in FX mode,
@@ -52,6 +52,8 @@ typedef struct { u32 magic, seq, busy_avg, busy_peak, slot[5]; } UaCpu;
 #define METER_W (128u - METER_X0)
 /* pct = busy * 100 / 132354 (one 16-frame block at 364.8 MHz,
    docs/CF_BENCH_RESULTS_2026-10-18.md), without a division: 3169 / 2^22. */
+/* inverted from here: 2026-10-23 ceiling test, controls lock up at ~92 % mean */
+#define METER_WARN 88u
 #define PCT_MUL 3169u
 #define PCT_SHIFT 22u
 
@@ -135,7 +137,7 @@ static void draw_meter(u32 pct)
     t[n++] = (char)('0' + d);
     t[n++] = '%';
     column(METER_X0, 0, 0);          /* one dark column: keeps an inverted meter off the bar */
-    text_box(METER_X0 + 1u, 128u, t, n, pct >= 95u);
+    text_box(METER_X0 + 1u, 128u, t, n, pct >= METER_WARN);
     for (x = 0; x < METER_W; x++) {
         meter_sig[x] = LCD_COLS[METER_X0 + x];
         meter_sig[METER_W + x] = (u8)(LCD_COLS[128u + METER_X0 + x] & 0x0fu);

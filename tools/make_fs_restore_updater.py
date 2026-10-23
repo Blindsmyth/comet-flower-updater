@@ -228,7 +228,7 @@ def validate_controller_fw(old_fw, new_fw, test=False):
     The on-pedal screen hook (make_controller_fw UI_HOOKS, run on hardware
     2026-10-15) is optional in every build; test=True (--test-controller-fw)
     also accepts the diag hook rows (DIAG_HOOKS) and the CF edit-header hooks
-    (CF_HEADER_HOOKS). Each optional hook is either
+    (CF_HEADER_HOOKS) and the PROCESS OVERFLOW gate constant (GATE_SITE). Each optional hook is either
     untouched or redirected into the controller section; the seven lifecycle
     hooks are still required."""
     import os
@@ -265,6 +265,19 @@ def validate_controller_fw(old_fw, new_fw, test=False):
         if not base <= ctl.callp_target(vma, new) < base + size:
             raise ValueError("--controller-fw: optional hook %#x leaves the controller section" % vma)
     allowed_hook_words = set(hooks) | set(optional)
+    if test:
+        # --gate (make_controller_fw GATE_SITE): only the MVKH constant, within GATE_RANGE
+        vma, goff, gstock = ctl.GATE_SITE
+        old = struct.unpack_from("<I", old_fw, goff)[0]
+        new = struct.unpack_from("<I", new_fw, goff)[0]
+        if old != gstock:
+            raise ValueError("--controller-fw: gate site %#x is not the stock MVKH" % vma)
+        if new != old:
+            if (old ^ new) & ~(0xffff << 7):
+                raise ValueError("--controller-fw: gate %#x changed more than its constant" % vma)
+            if not ctl.GATE_RANGE[0] <= ctl.gate_value(new) <= ctl.GATE_RANGE[1]:
+                raise ValueError("--controller-fw: gate value %g out of range" % ctl.gate_value(new))
+            allowed_hook_words.add(goff)
     for i in range(close):
         if (new_fw[i] != old_fw[i] and i & ~3 not in allowed_hook_words
                 and not FW_CONST[0] <= i < FW_CONST[1]):
