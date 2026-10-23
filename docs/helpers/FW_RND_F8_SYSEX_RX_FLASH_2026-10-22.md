@@ -135,6 +135,33 @@ To allow a TEST-only CF Probe feature to intercept incoming host requests (`peek
     - Subsequent payload bytes automatically route through `c0127d78` into buffer `0x1180ff20` up to 1024 bytes.
     - If CF Probe is inactive, stock firmware safely and silently drops it at `c01290ec`.
 
+### 5. Reply Transmission Path via c01274cc (confirmed)
+The reply path `c01274cc` is the standard raw MIDI/SysEx transmission entry used by stock reply builders.
+- **Signature & Calling Convention**:
+  ```c
+  void c01274cc(const uint8_t *buf /* A4 */, uint32_t len /* B4 */);
+  ```
+  - `A4` holds the source byte buffer pointer.
+  - `B4` holds the byte length.
+  - Calling convention: Standard TI C6000 EABI register assignment.
+  - Return value: Discarded (the routine restores callee-saved registers across the final semaphore release and does not return a status code to the caller).
+- **Synchronization and Mutex**:
+  - Takes semaphore `*+B14[161]` (`0xc0185084`) with timeout `-1` (`0xffffffff`, `BIOS_WAIT_FOREVER`):
+    - `c01274d4 CALLP 0xc0150b20, B3; c01274d8 LDW *+B14[161], A4; c01274e0 MVK -1, B4`.
+  - Calls internal transport: `c01274e4 CALLP.S2 0xc0144dc8, B3` with `A4=0` (port 0), `B4=buf`, `A6=len`.
+  - Releases semaphore: `c01274f0 CALLP 0xc01628e0, B3; c01274f4 LDW *+B14[161], A4`.
+- **Limits (Max Bytes & Backpressure)**:
+  - Transport `c0144dc8` copies caller bytes into a **1025-byte circular ring** at `0xc0117b28` via `c0149de4`.
+  - Because 1 byte is reserved for full detection (`c0149d84 SET A0,10,10,A0; c0149d8e CMPEQ B1,B0,B0`), the maximum capacity in one call is **1024 bytes**.
+  - If the ring is full, `c0149de4` appends what fits and drops the remainder.
+  - Blocking behavior: `c01274cc` blocks on the mutex `B14[161]` if another task is transmitting, but it does **not** block on USB wire completion. It queues bytes into the TX ring and signals worker `c0149d40` via event bit 1 on `B14[90]`.
+- **Allowed Calling Context**:
+  - **SYS/BIOS Task context ONLY**.
+  - It must **never** be called from Hwi or Swi context, because `Semaphore_pend` with an unbounded timeout is illegal at interrupt level.
+  - Stock callers are all Task-level: MIDI task (`c0129118`), UpdateUI task (`c013c754`), and MainApp task (`c0134e10`).
+  - Calling `c01274cc` directly from the proposed CF Probe hook inside the MIDI task context (`c0129118`) is completely valid, thread-safe, and matches stock behavior.
+
+
 
 
 
