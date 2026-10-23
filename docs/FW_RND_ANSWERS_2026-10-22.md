@@ -225,8 +225,11 @@ re-checked the key instructions marked **(Claude)**.
   **PROCESS OVERFLOW!! CHANGE EFFECT**. Static cause (Claude, partial): the header byte is stored per catalogue
   entry at 0xc0064528 (c0129ab4); c012b260(id) returns it (unlike the width stub c012b2c0); c013b8c0
   combines it with the used-slot count and the first free slot and fails when the result is above 7
-  (`CMPLTU 7` at c013b8ec), and the UI reports that as a process overflow. So S8's "header > 1 has no
-  effect" is wrong for 3 and 4; the exact formula is not fully traced. Rule unchanged: declare 1.
+  (`CMPLTU 7` at c013b8ec). **S11 (Sonnet) correction:** the formula is confirmed, but the routine that
+  places an effect in a slot (c013f9f0) never calls c013b8c0, so this is probably NOT the trigger; the
+  real PROCESS OVERFLOW path for header 3/4 is not located (lead: c012ed70, tried by c012fb9c before
+  c01297a0). `docs/helpers/FW_RND_S11_SLOTFIT_2026-10-22.md`. S8's "header > 1 has no effect" is still
+  wrong for 3 and 4. Rule unchanged: declare 1.
 
 - **Bypass (CF BYPT, Updater 26b):** beep heard while OFF, clean while ON: **the firmware keeps calling a
   bypassed effect with coef[0] near 0** (the default-callback path c0165e80 is not the on/off path).

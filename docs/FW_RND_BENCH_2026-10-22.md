@@ -96,3 +96,15 @@ until you pick another effect for it or reload the patch. `tools/ua_bench.py` sh
 4. **CF Delay tail** (only meaningful if step 5's CF BYPT beeped while OFF): CF Delay, Tail 1 (new default),
    Regen ~60. Play a note, switch the delay OFF: the repeats should ring out instead of stopping. Tail 0 =
    the old behaviour. Old saved patches with CF Delay load Tail 0.
+
+## 7. Updater 28: CF Probe watch stream (replaces 27; TEST build)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 28 - CF Probe watch + watchdog + 27 effects TEST.exe`
+**SHA-256:** `e9e26f1e1e89f22a136a7ef4c8f88b748c880b555554f5b0416aca1f7b566985` (short `e9e26f1e`).
+Firmware `efbf4466` = the bench firmware plus the watchdog and the **watch stream** (`make_usb_audio_fw.py
+--probe --watchdog`); file system `fs_bench27.bin` (same effects as Updater 27). Everything in 27 works the
+same, except USB channel 7 now carries the watch stream instead of the DI (channel 8 still carries the
+bench timing frames). The firmware streams 32 looper/drum/master values live (CF Probe watch list v1).
+1. Flash, connect, open nothing else on the USB audio device.
+2. I run `tools/cf_probe.py watch --seconds 10 --csv ...` while you: start/stop the drum machine, change
+   pattern and tempo, record/play/stop/overdub/undo a loop. Each action shows up as values changing.
+3. All Updater 27 checks (CF Delay tail, CFM Pre labels, watchdog on RA200X) also apply here.
