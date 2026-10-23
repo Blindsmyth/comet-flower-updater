@@ -240,3 +240,25 @@ from 88-90 %; re-declare CF dspload from measured cost so Zoom's gate stops a pa
    last one must give PROCESS OVERFLOW. Stock patches load as before.
 4. Probes still bypass the gate (they declare 10 / 30): keep them for tests only.
 5. Looper / rhythm on a heavy (~80 %) patch: does the pedal stay responsive? (They add load we have not measured.)
+
+## 16. 0.34.4: bloom start-up animation (TEST build, 2026-10-23)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 0.34.4 - bloom start-up animation + 0.34.3 TEST.exe`
+**SHA-256 (short):** `826fd075`. = 0.34.3 + `make_controller_fw.py --boot-anim` (firmware `f37ff113`).
+Owner asked to replace the ZOOM start-up logo with a flower bloom.
+- **What can change:** the boot program (flash 0x0..0x28000) draws its own ZOOM logo first; that region is
+  never written (recon/25), so that brief flash stays. The main firmware then draws the start-up logo
+  (c014dc08 -> c014db64 -> `c014db78 CALLP c011c508(ctx, 18, 8, 92, 16, c017bf38)`); that CALLP now goes to
+  `cf_boot_logo` (firmware/controller/cf_boot.c), which draws the stock logo, then the whole 128x32 buffer
+  with frame 0. Each UpdateUI idle wake-up (controller_ui_pend, UI_TICKS) shows the next frame while ours is
+  still on screen (<= 32 bytes differ); a redraw of the screen puts the current frame back; the next stock
+  screen or the last frame (held) ends it for good. First call after power-on only (ctx 0).
+- Frames: `tools/make_boot_anim.py` (16 frames: stem, leaves, bud, 6 petals opening with a twist, then
+  "COMET / FLOWER" letter by letter), run-length coded 1464 bytes (8192 raw) in `boot_anim.h`; preview
+  `build/boot_anim.gif`. Controller payload now ends at ~0xc01a3d32 of its 16 KiB (c01a0000..c01a4000).
+- Every changed stock word vs 0.34.3 is a known hook (11 re-pointed, plus c014db78). Host test:
+  `tests/test_cf_boot.py` (the real cf_boot.c against the generated frames).
+1. Flash. At power-on: ZOOM (boot program, brief), then the bloom, then "CF-ZGX4 / TEST 0.34.4".
+2. Unknowns: how long the logo screen lasts (one frame per UI tick, period unproven): if only the stem or a
+   bud shows, tell Claude (fix: fewer frames, or start on a fuller frame). If the screen freezes or looks
+   wrong, reflash 0.34.3.
+3. Then the 0.34.3 checks (section 15).

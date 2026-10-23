@@ -228,7 +228,7 @@ def validate_controller_fw(old_fw, new_fw, test=False):
     The on-pedal screen hook (make_controller_fw UI_HOOKS, run on hardware
     2026-10-15) is optional in every build; test=True (--test-controller-fw)
     also accepts the diag hook rows (DIAG_HOOKS) and the CF edit-header hooks
-    (CF_HEADER_HOOKS) and the PROCESS OVERFLOW gate constant (GATE_SITE). Each optional hook is either
+    (CF_HEADER_HOOKS), the start-up animation hook (BOOT_HOOKS) and the PROCESS OVERFLOW gate constant (GATE_SITE). Each optional hook is either
     untouched or redirected into the controller section; the seven lifecycle
     hooks are still required."""
     import os
@@ -252,7 +252,7 @@ def validate_controller_fw(old_fw, new_fw, test=False):
         raise ValueError("--controller-fw: unexpected image length")
     hooks = {off: (vma, target) for vma, off, _, target, _ in ctl.HOOKS}
     optional = {off: (vma, target) for vma, off, _, target, _ in
-                (ctl.UI_HOOKS + (ctl.DIAG_HOOKS + ctl.CF_HEADER_HOOKS if test else []))}
+                (ctl.UI_HOOKS + (ctl.DIAG_HOOKS + ctl.CF_HEADER_HOOKS + ctl.BOOT_HOOKS if test else []))}
     for off, (vma, stock_target) in optional.items():
         old = struct.unpack_from("<I", old_fw, off)[0]
         new = struct.unpack_from("<I", new_fw, off)[0]

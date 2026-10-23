@@ -100,6 +100,14 @@ def gate_word(load):
 def gate_value(word):
     return struct.unpack("<f", struct.pack("<I", ((word >> 7) & 0xffff) << 16))[0]
 
+# Start-up bloom animation (--boot-anim, TEST builds, needs --ui; firmware/controller/cf_boot.c,
+# frames from tools/make_boot_anim.py): the start-up screen's logo draw c014db64 calls
+# gfx_set_bit_range c011c508 once, at c014db78 (logo c017bf38, x 18, y 8, 92 x 16).
+BOOT_HOOKS = [
+    (0xc014db78, 0x41af4, 0x1f9d3513, 0xc011c508, "cf_boot_logo"),
+]
+
+
 def callp_target(addr, word):
     cst = (word >> 7) & 0x1fffff
     if cst & 0x100000:
@@ -149,13 +157,15 @@ def run(*cmd):
     return r.stdout
 
 
-def build_payload(diag=False, ui=False, cf_header=False):
+def build_payload(diag=False, ui=False, cf_header=False, boot_anim=False):
     """diag=True builds the OFFLINE teardown-diagnostic candidate, ui=True the
     OFFLINE on-pedal status screen; each variant gets its own directory under
     build/controller so the lifecycle outputs are untouched."""
     out = OUT / ("diag" if diag else "") / ("ui" if ui else "") if (diag or ui) else OUT
     if cf_header:
         out = out / "cfh"
+    if boot_anim:
+        out = out / "boot"
     out.mkdir(parents=True, exist_ok=True)
     stem = "controller_diag" if diag else "controller"
     srcs = [SRC / "controller.c", SRC / "controller_hooks.asm"]
@@ -169,15 +179,20 @@ def build_payload(diag=False, ui=False, cf_header=False):
     if cf_header:
         srcs += [SRC / "cf_header.c"]
         objs += [out / "cf_header.obj"]
+    if boot_anim:
+        srcs += [SRC / "cf_boot.c"]
+        objs += [out / "cf_boot.obj"]
     cmd_file = SRC / ("controller_diag.cmd" if diag else "controller.cmd")
     run(CGT / "bin/cl6x", "--silicon_version=6740", "--abi=eabi", "--c99",
         "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
         "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
         "--compile_only", *(["--define=CTL_DIAG"] if diag else []),
-        *(["--define=CTL_UI"] if ui else []), *(["--define=CTL_CF_HEADER"] if cf_header else []), *srcs)
+        *(["--define=CTL_UI"] if ui else []), *(["--define=CTL_CF_HEADER"] if cf_header else []),
+        *(["--define=CTL_BOOT_ANIM"] if boot_anim else []), *srcs)
     elf = out / (stem + ".elf")
     run(CGT / "bin/lnk6x", "--ram_model", "--map_file=%s" % (out / (stem + ".map")),
         *(["--retain=cf_edit_draw"] if cf_header else []),
+        *(["--retain=cf_boot_logo"] if boot_anim else []),
         "--output_file=%s" % elf, *objs, cmd_file)
     run(CGT / "bin/dis6x", elf, out / (stem + ".dis"))
     return elf
@@ -280,13 +295,15 @@ def usb_product_patch(data, name, addr):
 
 
 def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=None, usb_audio_name=None,
-          cf_header=False, gate=None):
+          cf_header=False, gate=None, boot_anim=False):
     base = Path(base_path).read_bytes()
     try:
         kind = base_kind(base, Path(stock_path).read_bytes())
     except ValueError as exc:
         sys.exit(str(exc))
-    lo, img, syms = elf_image(build_payload(diag, ui, cf_header))
+    if boot_anim and not ui:
+        sys.exit("--boot-anim needs --ui (its frames advance on the UI ticks)")
+    lo, img, syms = elf_image(build_payload(diag, ui, cf_header, boot_anim))
     product_addr = None
     if usb_product is not None:
         img += b"\0" * (-len(img) % 4)
@@ -298,6 +315,7 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
         str3_addr = lo + len(img)
         img += usb_audio_name.encode("ascii") + b"\0"
     hooks = HOOKS + (DIAG_HOOKS if diag else []) + (UI_HOOKS if ui else []) + (CF_HEADER_HOOKS if cf_header else [])
+    hooks += BOOT_HOOKS if boot_anim else []
     if lo != CTL_BASE or len(img) > CTL_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (FREE_SDRAM[0] <= lo and lo + len(img) <= FREE_SDRAM[1]):
@@ -405,6 +423,9 @@ if __name__ == "__main__":
                          "c0135b08 -> cf_edit_draw)")
     ap.add_argument("--gate", type=float,
                     help="TEST: PROCESS OVERFLOW limit instead of 230.0 (e.g. 340; c0141b54 MVKH)")
+    ap.add_argument("--boot-anim", action="store_true",
+                    help="TEST: Comet Flower bloom animation in place of the start-up logo "
+                         "(firmware/controller/cf_boot.c; hook c014db78; needs --ui)")
     a = ap.parse_args()
     build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product, a.usb_audio_name, a.cf_header,
-          a.gate)
+          a.gate, a.boot_anim)
