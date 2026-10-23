@@ -88,3 +88,20 @@ The 4.62 s loop (407,584 B at 0xc04d7100) dumps as a smooth 16-bit mono waveform
 level (peak 25 of 32,767, about -62 dBFS): `build/probe/loop_take1.wav`, and +56 dB louder
 `build/probe/loop_take1_normalised.wav`. Whether the level is a storage scale (0x11f03c7c = 2.0?) or
 the take was quiet is open; the owner's ear decides if it is the loop.
+
+After CLEAR (snapshot `looper_cleared`; screen back to the settings page, `docs/img/lcd_looper_cleared_2026-10-23.png`):
+
+| address | seen | meaning | confidence |
+|---|---|---|---|
+| 0x11f03c58 | 1 -> 0 | looper active off | likely |
+| 0x11f03c6c | 407,584 -> 2,646,000 | length back to the 30 s maximum (ready to record) | likely |
+| 0x11f03c7c | 2.0 -> 0 | set at record, reset at clear | guess |
+| 0x11f03c94, 9c, a0, cc | -> 256 / 254 / 256 / 256 | positions reset to the start | likely |
+| 0x11f03e38.. | -> 0x666665ff (17 words) | refilled with a fixed pattern | seen |
+| loop buffer 0xc04d7100 | old audio still there (peak 17) | clear resets counters only; it does not erase the buffer | seen |
+
+## Looper state machine (summary)
+0x11813250: 0xf0 idle/stopped, 0xfc playing (record/overdub states not yet caught: they last only
+while the footswitch action runs; a poll during record would catch them). 0x11f03c58 active flag;
+0x11f03c6c length in bytes (max 2,646,000 = 30 s of 16-bit mono at 44.1 kHz); positions advance 2 bytes
+per sample; buffer 0xc04d7100..0xc075d0f0.
