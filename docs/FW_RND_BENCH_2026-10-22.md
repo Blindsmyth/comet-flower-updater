@@ -303,3 +303,5 @@ logo installer of section 17 had not been run; it is replaced by the bud version
   changed inside the 184-byte logo; same checks and procedure as section 17.
 Expected power-on: bud (boot program) -> bloom opens -> "COMET FLOWER" -> "CF-ZGX4 / TEST 0.34.7".
 Preview: build/boot_anim.gif. If the start-up hangs or the screen stays dark: update mode, reflash 0.34.6.
+**Result (owner, 2026-10-23):** 0.34.7 flashed: the bloom plays at start-up. ZOOM still shows for about a
+second before it (the boot program's logo; the bud boot-logo installer is the step that replaces it).
