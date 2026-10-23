@@ -173,11 +173,14 @@ Design: `docs/BUDGET_MODEL_2026-10-23.md`. Without the two new options the recip
 3. Ceiling test (when convenient, USB audio mode for `ua_bench.py`): add probe10/probe30, raise Load until
    frames are lost or the screen freezes; note the meter just before.
 
-## 13. Updater 34: Updater 33 + PROBE10 / PROBE30 (replaces 33; TEST build, 2026-10-23)
-**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 34 - Updater 33 + PROBE10 PROBE30 TEST.exe`
-**SHA-256 (short):** `f7fe7443`. Firmware = Updater 33's (`a64a9e62`, `build/cf_header/res1_cf_meter.bin`;
-the recipe reproduces 33 `b29f89c8` byte for byte). File system `fs_bench34.bin` (`819edd94`) = fs_bench32 +
-`build/PROBE10.ZD2` (id 07000f83, dspload 10) + `build/PROBE30.ZD2` (id 07000f82, dspload 30), 57 files,
-ids unique. 33 had no probes, so the ceiling test (section 12 step 3) could not run.
+## 13. Updater 34b: Updater 33 + PROBE10 / PROBE30 (replaces 33; TEST build, 2026-10-23)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 34b - Updater 33 + PROBE10 PROBE30 listed TEST.exe`
+**SHA-256 (short):** `d11591f9`. Firmware = Updater 33's (`a64a9e62`, `build/cf_header/res1_cf_meter.bin`;
+the recipe reproduces 33 `b29f89c8` byte for byte). File system `fs_bench34.bin` (`8565379b`) =
+`make_g1_image.py fs_bench32.bin fs_bench34.bin build/PROBE10.ZD2 build/PROBE30.ZD2`: both files AND their
+effect-list entries (FLST_SEQ.ZT2, 149 -> 151; PROBE 10 id 07000f83 dspload 10, PROBE 30 id 07000f82
+dspload 30, SFX group next to CF BypTest).
+**Updater 34 (`f7fe7443`, deleted) was broken:** files added with g1fs.build_image alone, no effect-list
+entry, so the pedal did not list them (owner). Always add effects with `make_g1_image.py`.
 Steps: as section 12, then the ceiling test: PROBE 10 / PROBE 30 "Load" knob = Load x 200 dependent
 multiply-adds per block; raise it until frames are lost / the screen freezes and note the meter.
