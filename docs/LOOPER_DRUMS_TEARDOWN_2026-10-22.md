@@ -21,6 +21,13 @@ State at snapshot `drums_on_blues2_124_v80` (owner: drums on, pattern Blues 2, 1
 | 0x11812f4c, 0x11812fb8 | 44 -> 7 when the owner went Blues 2 -> Rock 1 | **pattern number** (Blues 2 = 44, Rock 1 = 7; two copies) | confirmed (seen) |
 | 0x11812f40..f80 / 0x11812fac..fec | pattern, volume, tempo in both | rhythm settings, two copies 0x6c apart (live + saved?) | likely |
 | 0xc01181e8 | 124 at the first snapshot | another tempo copy? (not in the diff) | guess |
+| 0x11f03d54 | 1 -> 0 when the owner stopped the drums | **drums running** | confirmed (seen) |
+| 0x11f03d0c | float 1.0 -> 0 at stop | playback gain / run fade (not the volume) | likely |
+| 0x118130a0 | 256 -> 0 at stop | timing state (running) | guess |
+| 0x118130a4, a8 | 41 -> 0 at stop | the ms-per-16th cells are zero while stopped | seen |
+| 0x11813098, 0x11813120 | pulsed with hits while playing, 1 when stopped | hit/stop flags | guess |
+| 0x11f03de0..0x11f03e30 | twenty floats 1.0 -> 0 at stop | per-voice or per-step gains | guess |
+| LCD | play indicator circle top right: filled while playing, hollow when stopped | | seen |
 | 0x1181320c | +~1 per ms, continuous | millisecond clock | likely |
 | 0x118130ac, 0x118131bc, 0x11813230 | +0x1e4 (484) every beat | ms time of the latest beat (124 BPM = 484 ms) | likely |
 | 0x11813098, 0x11813120 | 0 -> 1 -> 0 pulses, beat-spaced | hit/trigger flags | guess |
