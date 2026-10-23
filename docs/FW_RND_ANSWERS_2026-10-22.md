@@ -215,6 +215,13 @@ re-checked the key instructions marked **(Claude)**.
 6. Multi-slot resource widening (Q2): not recommended; split chains across
    slots instead.
 
+## Hardware results — CORRECTION 2026-10-23 (live screenshot over CF Probe)
+The effect edit page is **4 columns of 31 px** (three params plus the PAGE column), labels centred in the
+fixed 6 px font (c011d4d8): **at most 5 characters**. `Dyn Sens` was drawn 48 px wide and lost its `D` off
+the left edge ("yn Sens"). So F5 was right; the "7 letters" reading of the photos below was wrong.
+CFMPRE now uses 5-character labels (DSens DOut DynOn | MSust MTone MVol | FRate FRang FColr | MufOn
+FMtx Level) and header 0x58 = 1.
+
 ## Hardware results (owner photos, Updater 26, 2026-10-22) — these override the static guesses
 - **Labels:** the effect edit page shows **3 params per page** (PAGE 1/4..4/4 for 12 params) in a narrow
   proportional font. `Dyn Sens` (8 with a space) reads cleanly; `MuffSust` / `MuffTone` (8 letters) run into
