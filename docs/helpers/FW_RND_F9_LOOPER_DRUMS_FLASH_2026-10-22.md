@@ -1,7 +1,7 @@
 # FW R&D F9: Looper and Drum Machine Prior Knowledge Citation Index
 
 ## Status
-running (Section 2: Drum Machine / Rhythm Subsystem complete)
+done
 
 ## Findings
 
@@ -158,6 +158,73 @@ This section compiles all previously verified facts, addresses, buffers, hooks, 
 - **Pattern Variant Setter Table (`0xc0184020..0xc0184038`)**: 7-entry function pointer table calling `c0153654..c0153722` (`recon/map/chunk_13.md:c0153654..c0153722`).
 - **System Settings BPM Schema Record (`0xc0182408`)**: Record 1 in schema table `0xc01823f8..0xc0182598`. Validates BPM range `40..250` with default `120` (`docs/helpers/MENU_RE_ARGON_2026-10-16.md:197,205`).
 
+---
+
+### 3. Telemetry Watch List v1
+
+This table specifies exactly 32 high-value runtime variables suitable for live streaming over USB MIDI SysEx probe packets or real-time USB audio telemetry frames.
+
+| Index | Target Address | Size & Type | Name / Field | Expected Value Range | Telemetry Rationale |
+|---|---|---|---|---|---|
+| **1** | `0x11f03c58` | 4 B uint32 | `looper_active` | `0` (bypassed) or `1` (active) | Immediate verification of looper DSP engine engagement |
+| **2** | `0x11f03c54` | 4 B float | `looper_fade` | `0.0f` to `1.0f` | Tracks stop/fade-out envelope transitions |
+| **3** | `0x11f03e38` | 4 B float | `looper_vol_ramp` | `0.0f` to `1.0f` | Active playback level after smoothing |
+| **4** | `0x11f03c64` | 4 B float | `looper_vol_target` | `0.0f` to `1.0f` | Target looper playback level from UI/SysEx |
+| **5** | `0x11f03cd8` | 4 B uint32 | `looper_vol_param` | `0` to `100` | Raw knob/setting value for looper level |
+| **6** | `0x11f03ed0` | 4 B ptr | `looper_ptr_pre` | `0xc016d180` (idle) or `0x118164c0` (active) | Confirms whether Pre-effects looper hook is active |
+| **7** | `0x11f03ed4` | 4 B ptr | `looper_ptr_post` | `0xc016d180` (idle) or `0x118164c0` (active) | Confirms whether Post-effects looper hook is active |
+| **8** | `0xc011aca8` | 4 B ptr | `looper_arena_base` | `0xc04abff0` (fixed) | Verifies base SDRAM allocation pointer integrity |
+| **9** | `0xc011acac` | 4 B ptr | `looper_arena_end` | `0xc04d7100` (fixed) | Verifies allocated loop capacity boundary |
+| **10** | `0xc011acb0` | 4 B uint32 | `looper_capacity` | `0x0002b110` (~32 s) | Declared loop length capacity |
+| **11** | `0xc011acb4` | 4 B ptr | `looper_write_ptr` | `0xc04abff0` .. `0xc04d7100` | Real-time circular record position in SDRAM |
+| **12** | `0xc011acc0` | 4 B ptr | `looper_undo_ptr` | `0xc04abff0` .. `0xc0500000` | Real-time undo/secondary buffer pointer |
+| **13** | `0xc0184fb0` | 2 B uint16 | `looper_transport_state` | `0` (stop), `1` (play), `4` (rec), `5` (arm), `6` (trans) | Tracks internal state machine transitions (`B14[108]`) |
+| **14** | `0xc0184fb4` | 2 B uint16 | `looper_transport_mirror` | `0` .. `6` | Prior transport state (`B14[109]`) |
+| **15** | `0xc0184fb8` | 2 B uint16 | `looper_transport_flags` | `0` .. `0x0100` | Mode/guard bitflags (`B14[110]`) |
+| **16** | `0x11f03d54` | 4 B uint32 | `rhythm_active` | `0` (stopped) or `1` (running) | Immediate check of drum machine DSP playback |
+| **17** | `0x11f03d1c` | 4 B float | `rhythm_gain_master` | `0.0f` to `2.0f` (nominal `1.0f`) | Rhythm master multiplier applied to stereo drum mix |
+| **18** | `0x11f03d08` | 4 B float | `rhythm_mute_mult` | `0.0f` (muted) or `1.0f` (unmuted) | Rhythm mute state multiplier |
+| **19** | `0x11f03d0c` | 4 B float | `rhythm_level_raw` | `0.0f` to `1000.0f` (default `0x44306666`) | Raw drum volume level cell |
+| **20** | `0x11f03d14` | 4 B float | `rhythm_level_ramp` | `0.0f` to `1000.0f` (default `0x44306666`) | Smoothed drum volume level cell |
+| **21** | `0x11f03d58` | 4 B uint32 | `drum_voice0_active` | `0` (idle) or `1` (playing) | Trigger status of Kick/Voice 0 |
+| **22** | `0x11f03d5c` | 4 B uint32 | `drum_voice1_active` | `0` (idle) or `1` (playing) | Trigger status of Snare/Voice 1 |
+| **23** | `0x11f03d60` | 4 B uint32 | `drum_voice2_active` | `0` (idle) or `1` (playing) | Trigger status of Hi-Hat/Voice 2 |
+| **24** | `0x11812f78` | 4 B uint32 | `system_bpm` | `40` to `250` (default `120`) | Active global tempo in BPM |
+| **25** | `0x118133b4` | 1 B uint8 | `transport_run_flag` | `0` (stopped) or `1` (running) | Global transport run flag |
+| **26** | `0x118133bc` | 4 B uint32 | `rhythm_clock_word` | `0` .. `0xffffffff` | Beat clock tick accumulator |
+| **27** | `0xc011ada6` | 1 B uint8 | `rhythm_pattern_idx` | `0` to `67` | Currently selected rhythm pattern index |
+| **28** | `0xc011ada9` | 1 B uint8 | `rhythm_running_flag` | `0` (stopped) or `1` (running) | UI/Service pattern-active flag |
+| **29** | `0x1181191c` | 2 B uint16 | `rhythm_pattern_count` | `68` | Total pattern count reported by firmware configuration |
+| **30** | `0x11f03e34` | 4 B float | `audio_master_gain` | `0.0f` to `2.0f` (nominal `1.0f`) | Swi Step 15 master volume multiplier |
+| **31** | `0x11812f74` | 4 B uint32 | `system_mvol` | `0` to `120` (default `100`) | Global Master Volume setting (MVOL) |
+| **32** | `0x1180312c` | 4 B uint32 | `system_mute_mask` | `0` (unmuted) or `0x80000000` (muted) | Master mute/reload flag bitmask |
+
+---
+
 ## Answers
 
+### Summary for Brief 5 (Job F9)
+1. **Looper Subsystem**:
+   - **State Variables**: Function pointer dispatch table at `0x11f03ed0` (`11f03ed0[0]` Pre, `11f03ed0[1]` Post); bypass flag `0x11f03c58`; fade multiplier `0x11f03c54`; volume ramps and cells `0x11f03e38`, `0x11f03c64`, `0x11f03cd8`; SDRAM arena pointers `0xc011aca8..0xc011acc0` and static global `0xc01834ac`; transport state machine variables `*+B14[108]`, `[109]`, `[110]`, `[76]`, and queue handle `B14[172]`.
+   - **Buffers**: Circular SDRAM buffer at `0xc04abff0` (size `0x2b1100` B, ~32 s 16-bit 44.1 kHz mono PCM); dual-mono input capture at `11f03730`/`11f03770`; isolated playback stack buffers at `B15 + 8` (`int32_t[16]`) and `B15 + 72` (`float[16]`); summed output mix bus at `11f037b0` (L) and `11f037f0` (R).
+   - **Audio-Path Hooks**: DSP engine `118164c0` called via dispatcher `11818e60` at Step 6 (`11818bc0`, Pre) or Step 14 (`11818c50`, Post); USB stem tap installed via padding veneer `11818e84..11818e90`.
+   - **UI / Task Entry Points**: `LooperUI` task entry `c013b38c`; event receiver `c013abc0`; action dispatchers `c013ac04`, `c013ad78`, `c013ae48`, `c013af08`; state guards `c013b1f4..c013b280`.
+   - **Tables**: 21-entry button jump table at `0xc0183fcc..0xc0184020`.
+
+2. **Drum Machine / Rhythm Subsystem**:
+   - **State Variables**: Rhythm enable flag `0x11f03d54`; 9-voice trigger array `0x11f03d58..0x11f03d78`; 9-voice read pointers `0xc0183840..0xc0183860` and sample descriptors `0xc0183424..0xc0183468`; per-voice pan/gain `0x11f03d24..0x11f03d48`; master gain cell `0x11f03d1c`; mute multiplier `0x11f03d08`; level ramps `0x11f03d0c`, `0x11f03d14`, `0x11f03d20`; global BPM at `0x11812f78`; transport flag `0x118133b4` and clock word `0x118133bc`; UI state block `0xc011ada4..0xc011adad`; render flags `B14[184]`, `[208]`, `[209]`.
+   - **Buffers**: Planar 9-voice raw PCM buffer at `0x11f039b0..0x11f03acf` (288 B); sample ROM at `0xc075d0f0`; stereo output bus at `11f037b0` (L) and `11f037f0` (R).
+   - **Audio-Path Hooks**: Swi Step 15 `11818c54` calls `11818d60`, which calls mixer `11817640` at `11818d64`; USB stem tap installed via padding veneer `11818d4c..11818d58`.
+   - **UI / Task Entry Points**: `RhythmService` task entry `c016aac0`; dispatchers `11806ce0`, `11806eb4`, `11809f00`, `1180a0a0`; menu handlers `c0150844`, `c015402c`, `c0154180`, `c0156430`, `c01565b8..c0156660`, `c0158dc0`.
+   - **Tables**: 68-pattern descriptor table at `0xc0182730` (beats per bar at offset 117, beat unit at offset 118, flags at 119); time-signature lookup words `0xc0183960..0xc0183974`; dispatch table `0xc0183f6c..0xc0183fc8`; variant setters `0xc0184020..0xc0184038`; BPM schema record `0xc0182408`.
+
+3. **Telemetry Watch List v1**:
+   - 32 prioritized live streamable addresses compiled in Section 3, spanning looper state machine flags, buffer pointers, volume ramps, drum voice triggers, global tempo, transport accumulators, and master levels, with explicit expected ranges.
+
+---
+
 ## Not checked / open leads
+- Internal binary layouts of individual drum sample PCM waveforms inside sample ROM `0xc075d0f0` (start offsets and lengths are known via descriptor table `c0183424`, but raw sample rates, loop points, and compression format if any were not examined).
+- Exact event payload encoding passed inside mailbox `B14[172]` from the footswitch/pad drivers into `LooperUI` (`c013abc0`).
+- Detailed bitmask definitions of `*+B14[110]` beyond the tested state masks `{0, 4, 5, 8}`.
+- Telemetry streaming packet transport protocol: whether watch list v1 addresses will be polled over USB MIDI SysEx queries (e.g. `F0 52 00 6e <cmd> <addr> <len> F7`) or packed into high-speed USB audio frames on unused channels.
