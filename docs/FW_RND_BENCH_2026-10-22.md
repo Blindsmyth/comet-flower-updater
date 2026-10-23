@@ -262,3 +262,20 @@ Owner asked to replace the ZOOM start-up logo with a flower bloom.
    bud shows, tell Claude (fix: fewer frames, or start on a fuller frame). If the screen freezes or looks
    wrong, reflash 0.34.3.
 3. Then the 0.34.3 checks (section 15).
+
+## 17. One-time boot logo: ZOOM -> flower (owner decision 2026-10-23)
+Owner: the start-up is fine except the first ZOOM logo; 0.34.4's bloom replaced the CF logo, which was not
+wanted (0.34.4 shelved; flash 0.34.3). Owner chose a small static CF flower in place of ZOOM after the risk
+was explained (boot-area write = update mode; an interrupted/bad write needs a hardware programmer).
+**Installer:** `build/fw_rnd_2026-10-22/COMET FLOWER BOOT LOGO - flower - run once.exe` (`85176b9e`),
+`tools/make_boot_logo_updater.py` + `assets/boot_logo_flower.png` (92x16, six solid petals).
+- Stages: exactly Zoom's own stages 4-5 (erase 0x0 size 0x28000, write 0x0 resource 0x8E), nothing else.
+- Resource 0x8E = stock v2.00 boot program (SHA-256 pinned 5ee756a5) with 163 bytes changed, all inside the
+  184-byte logo (file 0x1be60, load c0229720, one AIS section load, no CRC commands, AIS walk identical).
+- The .exe differs from Zoom's official updater in 194 bytes: 31 in the stage table, 163 in the logo.
+- `tools/check_updater_stages.py` REFUSES it on purpose (its job is to keep boot writes out of normal builds).
+- The pedal RAM copy of the boot logo is overwritten after boot (peek c0229720 = zeros), so the pedal's
+  current boot program could not be compared; Zoom's updater writes this same v2.00 program anyway.
+Procedure: laptop on mains power, direct USB port, no other USB/MIDI app open, pedal in update mode, run
+once, do not touch anything until it reports done. Expected: flower briefly, then the CF logo and screen
+as before. Undo: Zoom's official v2.00 updater (rewrites the stock boot program with ZOOM).
