@@ -5,6 +5,7 @@
     python tools/cf_probe.py dump <address> <length> <out.bin>  (any length, 512 B per request)
     python tools/cf_probe.py watch-set <address>...              (replace the watch list, <= 64)
     python tools/cf_probe.py watch [--seconds 4] [--csv out.csv]
+    python tools/cf_probe.py screenshot [--png out.png]          (the pedal's LCD, 128 x 32)
     python tools/cf_probe.py poll [--seconds 10] [--region ADDR:LEN]... [--out run.json]
 
 poll: works over MIDI alone (no USB audio mode needed): reads whole regions round after
@@ -192,6 +193,25 @@ def changes(times, snaps):
     return out
 
 
+LCD_FB = 0x11800000      # 128 x 32 mono, 4 pages of 128 column bytes, bit 0 = top row (seen 2026-10-22)
+
+
+def lcd_rows(fb):
+    """The framebuffer as 32 strings of 128 characters ('#' = lit)."""
+    return ["".join("#" if fb[(r // 8) * 128 + x] >> (r % 8) & 1 else "." for x in range(128))
+            for r in range(32)]
+
+
+def lcd_png(fb, path, scale=4):
+    from PIL import Image
+    img = Image.new("L", (128, 32), 255)
+    for r, row in enumerate(lcd_rows(fb)):
+        for x, ch in enumerate(row):
+            if ch == "#":
+                img.putpixel((x, r), 0)
+    img.resize((128 * scale, 32 * scale), Image.NEAREST).save(path)
+
+
 def hexdump(addr, data):
     for i in range(0, len(data), 16):
         row = data[i:i + 16]
@@ -260,6 +280,8 @@ def main():
     dp.add_argument("out")
     ws = sub.add_parser("watch-set")
     ws.add_argument("addresses", nargs="+")
+    sc = sub.add_parser("screenshot")
+    sc.add_argument("--png")
     po = sub.add_parser("poll")
     po.add_argument("--seconds", type=float, default=10)
     po.add_argument("--region", action="append", default=[], help="ADDR:LEN (hex or decimal)")
@@ -285,6 +307,13 @@ def main():
             Path(a.out).write_text(json.dumps({"times": times, "regions": {
                 "%08x" % k: [r.hex() for r in v] for k, v in snaps.items()}}), encoding="utf-8")
             print("wrote", a.out)
+        return
+    if a.cmd == "screenshot":
+        fb = Link().dump(LCD_FB, 512)
+        print(chr(10).join(lcd_rows(fb)))
+        if a.png:
+            lcd_png(fb, a.png)
+            print("wrote", a.png)
         return
     if a.cmd in ("ping", "peek", "dump", "watch-set"):
         link = Link()

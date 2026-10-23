@@ -18,8 +18,8 @@ State at snapshot `drums_on_blues2_124_v80` (owner: drums on, pattern Blues 2, 1
 | 0x11812f50, 0x11812fbc | 80 -> 60 when the owner set volume 60 | **drum volume setting, 0..100** (two copies, 0x6c apart) | confirmed (seen) |
 | 0x11f03d14 | float 0.8 -> 0.6 at the same time | drum gain used by the audio path = volume / 100 | confirmed (seen) |
 | 0x11812f5c | 80, unchanged by the volume change | something else that was 80 | seen |
-| 0x11812f4c | 44 | pattern number (Blues 2?) | guess |
-| 0x11812fb8..fc8 | 44, 80, .., 80 | second copy of the f4c..f5c block, 0x6c later | guess |
+| 0x11812f4c, 0x11812fb8 | 44 -> 7 when the owner went Blues 2 -> Rock 1 | **pattern number** (Blues 2 = 44, Rock 1 = 7; two copies) | confirmed (seen) |
+| 0x11812f40..f80 / 0x11812fac..fec | pattern, volume, tempo in both | rhythm settings, two copies 0x6c apart (live + saved?) | likely |
 | 0xc01181e8 | 124 at the first snapshot | another tempo copy? (not in the diff) | guess |
 | 0x1181320c | +~1 per ms, continuous | millisecond clock | likely |
 | 0x118130ac, 0x118131bc, 0x11813230 | +0x1e4 (484) every beat | ms time of the latest beat (124 BPM = 484 ms) | likely |
@@ -28,6 +28,10 @@ State at snapshot `drums_on_blues2_124_v80` (owner: drums on, pattern Blues 2, 1
 | 0x11f03d64, 6c, 78 | count up steadily | voice sample addresses or long counters | guess |
 | 0x118133ac | counts up fast, always | free-running counter (not drum specific) | seen |
 | 0xc011ada4 | changes every read, idle too | counter (NOT the pattern index of watch list v1) | seen |
+
+**LCD framebuffer: 0x11800000, 512 B** (128 x 32, 4 pages x 128 column bytes, bit 0 = top row). It
+redraws when the screen changes; `tools/cf_probe.py screenshot [--png f]` renders it. First shot (rhythm
+screen): `RHYTHM` title, `PATTERN Count BPM VOLUME` / `Rock 1 On 090 60` — matches the pedal.
 
 Side effects of the probe itself (ignore in diffs): MIDI TX ring around 0xc0117d60 holds our
 CFPR replies; 0x11815a00.. is stack; 0x11f039b0.. audio buffers.
