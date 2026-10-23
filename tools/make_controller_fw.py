@@ -69,6 +69,15 @@ UI_HOOKS = [
     (0xc013c76c, 0x306e8, 0x100fc413, 0xc0144580, "controller_ui_pend"),
 ]
 
+# CF edit-page header (--cf-header, TEST builds; firmware/controller/cf_header.c,
+# docs/EDIT_SCREEN_TRACE_2026-10-23.md): both 32-bit CALLPs of the stock edit-page
+# renderer c012e5a8 (UpdateUI row dispatch c013c050, MainApp c0135b08) go through
+# cf_edit_draw, which runs the stock renderer and then draws the stage header.
+CF_HEADER_HOOKS = [
+    (0xc013c050, 0x2ffcc, 0x1fe4ad13, 0xc012e5a8, "cf_edit_draw"),
+    (0xc0135b08, 0x29a84, 0x1ff15513, 0xc012e5a8, "cf_edit_draw"),
+]
+
 
 def callp_target(addr, word):
     cst = (word >> 7) & 0x1fffff
@@ -119,11 +128,13 @@ def run(*cmd):
     return r.stdout
 
 
-def build_payload(diag=False, ui=False):
+def build_payload(diag=False, ui=False, cf_header=False):
     """diag=True builds the OFFLINE teardown-diagnostic candidate, ui=True the
     OFFLINE on-pedal status screen; each variant gets its own directory under
     build/controller so the lifecycle outputs are untouched."""
     out = OUT / ("diag" if diag else "") / ("ui" if ui else "") if (diag or ui) else OUT
+    if cf_header:
+        out = out / "cfh"
     out.mkdir(parents=True, exist_ok=True)
     stem = "controller_diag" if diag else "controller"
     srcs = [SRC / "controller.c", SRC / "controller_hooks.asm"]
@@ -134,6 +145,9 @@ def build_payload(diag=False, ui=False):
     if ui:
         srcs += [SRC / "controller_ui.c", SRC / "controller_menu.c"]
         objs += [out / "controller_ui.obj", out / "controller_menu.obj"]
+    if cf_header:
+        srcs += [SRC / "cf_header.c"]
+        objs += [out / "cf_header.obj"]
     cmd_file = SRC / ("controller_diag.cmd" if diag else "controller.cmd")
     run(CGT / "bin/cl6x", "--silicon_version=6740", "--abi=eabi", "--c99",
         "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
@@ -142,6 +156,7 @@ def build_payload(diag=False, ui=False):
         *(["--define=CTL_UI"] if ui else []), *srcs)
     elf = out / (stem + ".elf")
     run(CGT / "bin/lnk6x", "--ram_model", "--map_file=%s" % (out / (stem + ".map")),
+        *(["--retain=cf_edit_draw"] if cf_header else []),
         "--output_file=%s" % elf, *objs, cmd_file)
     run(CGT / "bin/dis6x", elf, out / (stem + ".dis"))
     return elf
@@ -243,13 +258,14 @@ def usb_product_patch(data, name, addr):
     return text + b"\0"
 
 
-def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=None, usb_audio_name=None):
+def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=None, usb_audio_name=None,
+          cf_header=False):
     base = Path(base_path).read_bytes()
     try:
         kind = base_kind(base, Path(stock_path).read_bytes())
     except ValueError as exc:
         sys.exit(str(exc))
-    lo, img, syms = elf_image(build_payload(diag, ui))
+    lo, img, syms = elf_image(build_payload(diag, ui, cf_header))
     product_addr = None
     if usb_product is not None:
         img += b"\0" * (-len(img) % 4)
@@ -260,7 +276,7 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
         img += b"\0" * (-len(img) % 4)
         str3_addr = lo + len(img)
         img += usb_audio_name.encode("ascii") + b"\0"
-    hooks = HOOKS + (DIAG_HOOKS if diag else []) + (UI_HOOKS if ui else [])
+    hooks = HOOKS + (DIAG_HOOKS if diag else []) + (UI_HOOKS if ui else []) + (CF_HEADER_HOOKS if cf_header else [])
     if lo != CTL_BASE or len(img) > CTL_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (FREE_SDRAM[0] <= lo and lo + len(img) <= FREE_SDRAM[1]):
@@ -351,5 +367,8 @@ if __name__ == "__main__":
     ap.add_argument("--usb-audio-name",
                     help="USB string 3, the USB-audio interface name Windows shows for the audio "
                          "input (1..62 characters, not 31); stored in the controller section")
+    ap.add_argument("--cf-header", action="store_true",
+                    help="TEST: CF edit-page stage header (firmware/controller/cf_header.c; hooks c013c050, "
+                         "c0135b08 -> cf_edit_draw)")
     a = ap.parse_args()
-    build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product, a.usb_audio_name)
+    build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product, a.usb_audio_name, a.cf_header)

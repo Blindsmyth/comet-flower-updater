@@ -129,3 +129,22 @@ Same firmware as 29 (`d2af52c7`, CF Probe link + watchdog); file system `fs_benc
 CFMPRE relabelled (DSens DOut DynOn | MSust MTone MVol | FRate FRang FColr | MufOn FMtx Level) and
 header 0x58 = 1. Owner results on 29: CF Delay tail works; CFM Pre labels unreadable (live screenshot: 31 px
 columns, 6 px font, so 5 characters max).
+
+## 10. Updater 31: CF edit-page header (replaces 30; TEST build, 2026-10-23)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 31 - CF Probe link + CF edit header TEST.exe`
+**SHA-256:** `5299566686b3d21a67ac7a8fcb567b0c3b3f8bbc23179704af83b200003dbf1b` (short `52995666`).
+Firmware `8ee11e29` = Updater 30's firmware (`d2af52c7`, reproduced byte for byte) plus `--cf-header`
+(`make_controller_fw.py`): both CALLPs of the stock edit-page renderer c012e5a8 (c013c050, c0135b08) go
+through `cf_edit_draw` (firmware/controller/cf_header.c), which runs the stock renderer, then replaces
+the effect-name box with an inverted bar "CFM PRE><stage>" (pages DYNA COMP / MUFF FUZZ / MISTRESS /
+OUTPUT). Only CFM Pre has a stage table; every other effect is drawn exactly as stock. File system
+`fs_bench30.bin` (same effects as 30). Background: `docs/EDIT_SCREEN_TRACE_2026-10-23.md`. Recipe:
+`make_controller_fw.py --base build/fw/res1_cf_usbname.bin --ui --cf-header --usb-product "Comet Flower
+ZG1X4 MIDI" --usb-audio-name "Comet Flower Audio Bridge"` -> `make_usb_audio_fw.py --probe --watchdog` ->
+`make_fs_restore_updater.py <v2.00 updater> "<name> TEST.exe" --test-controller-fw <fw> --image fs_bench30.bin`
+(without `--cf-header` the same recipe gives Updater 30, `243884b7`).
+1. Flash, select CFM Pre, page through 1/4..4/4: the header names the stage; screenshot each page
+   (`tools/cf_probe.py screenshot`).
+2. Turn knobs, switch effects and back, open/close Settings, Tuner, Rhythm/Looper: no stock "CFM Pre" box
+   flashing through, no garbage, other effects look stock.
+If anything looks wrong, reflash Updater 30.
