@@ -48,6 +48,50 @@ The MIDI task (`c0129118`) parses incoming bytes with a 5-state machine driven b
     ```
   - This proves the SysEx payload is assembled in L2 SRAM at `0x1180ff20`, bounded strictly at **1024 bytes** (1 KiB).
 
+### 3. Zoom SysEx Command Dispatcher, Command Map, and Unknown Command Behavior (confirmed)
+When a complete Zoom SysEx message terminates with `0xf7`, the MIDI task executes `c0129324 CALLP.S2 0xc0128e54, B3` to invoke the top-level command dispatcher `c0128e54` (`midi_cmd_dispatch`).
+- **Internal Command Code Loading**:
+  - `c0128e58 LDW.D2T2 *+B14[38], B2` loads the internal command ID assigned during inbound parsing by `c0127df0..c0127f58` (which inspects the command byte stored at `0xc0183b60`).
+- **20-Way CMPEQ Cascade**:
+  - `c0128e54..c0128f74` evaluates `B2` against 20 distinct internal codes:
+    - `B2 == 1`  -> `c0128dd4` (Device Inquiry / Identity reply builder)
+    - `B2 == 2`  -> `c01290ec` (no-op)
+    - `B2 == 3`  -> `c012906c` -> `c0127500(0)` (status reply 0)
+    - `B2 == 4` or `23` -> `c0128788` (error report builder)
+    - `B2 == 6`  -> `c012890c` (simple reply forwarder)
+    - `B2 == 8` or `22` -> `c0128474` (edit transaction coordinator 1)
+    - `B2 == 9`  -> `c01290b8`: `STW 1, *+B14[26]`, `c0127500(0)` (PC mode / editor ON)
+    - `B2 == 10` -> `c01290a8`: `STW 0, *+B14[26]`, `c0127500(0)` (PC mode / editor OFF)
+    - `B2 == 11` -> `c0128b48` (parameter edit coordinator)
+    - `B2 == 12` -> `c01289ec` (apply parameter edit into live effect state)
+    - `B2 == 13` -> `c0128c88` (edit transaction coordinator 4)
+    - `B2 == 14` -> `c0128d14` (bulk edit transaction)
+    - `B2 == 15` -> `c0128c48` (send channel message dispatch)
+    - `B2 == 16` or `17` -> `c0129084` -> `c0127500(11)` (error code 11 reply)
+    - `B2 == 19` -> `c0128954` (edit transaction coordinator 3)
+    - `B2 == 20` -> `c012906c` -> `c0127500(0)` (status reply 0)
+    - `B2 == 21` -> `c0128210` (status reply builder 1)
+    - `B2 == 24` -> `c0128134` (reply template builder 1898)
+    - `B2 == 26` -> `c0128070` (subsystem init gate)
+    - `B2 == 27` -> `c01438b0` / `c0127500(0)`
+    - `B2 == 28` -> `c01437f0` / `c0127500(0)`
+    - `B2 == 29` -> `c012d9e0`
+    - `B2 == 30` -> `c016f6a0`
+- **External Command Bytes Handled**:
+  - The external command bytes mapping to these handlers are: `0x01`, `0x03`, `0x04`, `0x05`, `0x06`, `0x08`, `0x09`, `0x0e`, `0x28` (40), `0x29` (41), `0x2d` (45), `0x2e` (46), `0x33` (51), `0x44` (68), `0x45` (69), `0x46` (70), `0x48` (72), `0x50` (80), `0x51` (81), `0x52` (82), `0x53` (83), `0x55` (85), `0x56` (86), `0x57` (87), `0x60` (96), and `0x64` (100).
+- **Unknown Command Behavior (confirmed silent drop)**:
+  - If a command byte is not recognized (e.g. `0x70`), `c0127df0` leaves `*+B14[38] = 0`.
+  - In `c0128e54`, `B2 == 0` fails all 20 `CMPEQ` checks and lands at `c0128f74 [!B0] BNOP.S1 0xc01290ec, 5`.
+  - Common exit `c01290ec`:
+    - Clears internal command ID: `c012910c STW.D2T2 B0, *+B14[38]` (`B0 = 0`).
+    - Posts event 64 to `*+B14[139]`: `c0129100 CALLP 0xc0155ac0, B3; MVK 64, B4`.
+    - Returns via `c0129114 BNOP.S2 B3, 5`.
+  - **No error reply is sent**. The unrecognized message is dropped completely silently without affecting firmware state.
+- **Model Byte for G1X Four**:
+  - Model ID is `0x6e` (110 decimal).
+  - Confirmed by `tools/midi_listen_g1.py:21` (`HDR = [0x52, 0x00, 0x6e]`), `tools/ua_bench.py:277`, and `mainapp_model_detect` (`c015d7e0`) which matches flash string "G1X IV" and initializes the global model ID at `0xc0183b48` to `0x6e` via `c0129600`.
+
+
 
 
 ## Answers
