@@ -5,6 +5,12 @@
     python tools/cf_probe.py dump <address> <length> <out.bin>  (any length, 512 B per request)
     python tools/cf_probe.py watch-set <address>...              (replace the watch list, <= 64)
     python tools/cf_probe.py watch [--seconds 4] [--csv out.csv]
+    python tools/cf_probe.py poll [--seconds 10] [--region ADDR:LEN]... [--out run.json]
+
+poll: works over MIDI alone (no USB audio mode needed): reads whole regions round after
+round (about 15 ms per request) and reports every 32-bit word that changed, with its values
+and times. Default regions cover watch list v1 and their neighbourhoods; --region adds or
+replaces them. --out keeps every round for later diffing.
 
 SysEx (docs/helpers/FW_RND_S12_SYSEX_HOOK_2026-10-22.md): F0 52 00 6E 64 'CFPR' <op> ... F7,
 the reply carries the same header and the op in lower case ('e' = refused). Numbers are 7-bit
@@ -147,6 +153,45 @@ class Link:
         return bytes(out)
 
 
+DEFAULT_REGIONS = [(0x11F03C00, 0x300), (0xC011AC80, 0x140), (0xC0184F80, 0x80),
+                   (0x11812F60, 0x40), (0x118133A0, 0x40), (0x11811900, 0x40), (0x11803120, 0x20)]
+
+
+def name_of(addr):
+    for a, n in DEFAULT_LIST:
+        if a == addr:
+            return n
+    return ""
+
+
+def poll(link, regions, seconds):
+    """Read the regions round after round. Returns (times, {region start: [bytes per round]})."""
+    import time
+    t0, times, snaps = time.time(), [], {a: [] for a, _ in regions}
+    while time.time() - t0 < seconds:
+        times.append(time.time() - t0)
+        for a, n in regions:
+            snaps[a].append(link.dump(a, n))
+    return times, snaps
+
+
+def changes(times, snaps):
+    """[(address, [(time, value), ...])] for every aligned word whose value changed."""
+    import struct
+    out = []
+    for a, rounds in snaps.items():
+        for off in range(0, len(rounds[0]) - 3, 4):
+            seq, last = [], None
+            for t, r in zip(times, rounds):
+                v = struct.unpack_from("<I", r, off)[0]
+                if v != last:
+                    seq.append((t, v))
+                    last = v
+            if len(seq) > 1:
+                out.append((a + off, seq))
+    return out
+
+
 def hexdump(addr, data):
     for i in range(0, len(data), 16):
         row = data[i:i + 16]
@@ -215,10 +260,32 @@ def main():
     dp.add_argument("out")
     ws = sub.add_parser("watch-set")
     ws.add_argument("addresses", nargs="+")
+    po = sub.add_parser("poll")
+    po.add_argument("--seconds", type=float, default=10)
+    po.add_argument("--region", action="append", default=[], help="ADDR:LEN (hex or decimal)")
+    po.add_argument("--only", action="store_true", help="use only the --region regions")
+    po.add_argument("--out")
     w = sub.add_parser("watch")
     w.add_argument("--seconds", type=float, default=4)
     w.add_argument("--csv")
     a = ap.parse_args()
+    if a.cmd == "poll":
+        import json
+        regions = [] if a.only else list(DEFAULT_REGIONS)
+        for r in a.region:
+            x, n = r.split(":")
+            regions.append((int(x, 0), int(n, 0)))
+        times, snaps = poll(Link(), regions, a.seconds)
+        print("%d rounds in %.1f s over %d regions" % (len(times), a.seconds, len(regions)))
+        for addr, seq in changes(times, snaps):
+            vals = " ".join("%.2f:%08x" % (t, v) for t, v in seq[:12])
+            more = " ... (%d changes)" % (len(seq) - 1) if len(seq) > 12 else ""
+            print("%08x %-26s %s%s" % (addr, name_of(addr), vals, more))
+        if a.out:
+            Path(a.out).write_text(json.dumps({"times": times, "regions": {
+                "%08x" % k: [r.hex() for r in v] for k, v in snaps.items()}}), encoding="utf-8")
+            print("wrote", a.out)
+        return
     if a.cmd in ("ping", "peek", "dump", "watch-set"):
         link = Link()
         if a.cmd == "ping":
