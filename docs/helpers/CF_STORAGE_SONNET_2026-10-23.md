@@ -251,6 +251,80 @@ dedicated pass over `c013cxxx`/`c016xxxx` before attempting 6/7 slots.**
 
 ## Q4
 
+### The 53-entry record table: what exists, and is it hard-capped? (`confirmed`)
+
+Per PATCH_STORE_ARGON (not redone): `0x11819be8..0x11819cbc`, 53 × u32.
+Records `0..49` = 736-byte `PTCF` patches. Record `50` = 20 bytes. Record
+`51` = 4 bytes, `confirmed` here and previously as the current-patch-index
+(`c0131296 MVK 51,A4; CALLP 0xc016f510`, read at boot by `c01342ac`, written
+by `c0130a80` on every patch load/select). Record `52` = 4 bytes; this
+report did not independently re-derive record 52's semantic content within
+budget (two grep leads for a literal `52` near `CALLP 0xc016f510` turned out
+to be false positives — unrelated numeric constants, not `record_idx`
+arguments — so record 52's purpose stays at PATCH_STORE_ARGON's existing
+"likely settings record C" characterization, not newly confirmed or refuted).
+
+**`53` is a hardcoded literal in at least five separate places, not a value
+read from anywhere** (`confirmed`, all five read directly):
+
+| Address | Role |
+|---|---|
+| `c01371e0`/`c01371e4` | bounds-check accessor: `record_idx < 53` (unsigned) else return size `0`, else `LDW *0x11819be8[record_idx]` — this is the function every other size lookup calls through |
+| `c0136a40..c0136a6c` | boot-time bank-size-sum loop: `A8=53`, decremented once per record, accumulating `36 + sum(table[i]+24)` to locate where descriptors end / payloads begin |
+| `c0136ab0..c0136ac0` | `SPLOOPD` with `ILC = 53-4 = 49` -> 53 iterations (per `FWMAP.md`'s delayed-SPLOOP pitfall), writing `-1` into all 53 entries of the in-RAM cached-address array `0x11811ff0` during boot init |
+| `c0137304..c0137318` | the same `SPLOOPD ILC=49` -> 53-iteration `-1` reset, inside the bank-**format** function `c0137204` (re-initializes the cache after formatting a bank) |
+| `c01368a8..c01368b4` | the bank-**compaction/migration** copy loop: `A12=53`, iterates `record_idx=0..52`, copies every non`-1`-cached record into the standby bank |
+
+**This means growing the table to a 54th logical record (e.g. a new
+"CF global settings" record 53) is a multi-site patch, not a one-line data
+edit**: all five sites above need their `53` changed to `54` (or a symbolic
+constant), *and* the table itself (`0x11819be8..`, 53×u32, almost certainly
+materialized from the compressed `.cinit` RLE stream the same way the flash
+region table at `0xc0183660` was — PATCH_STORE_ARGON section 1.1 — since it
+is plain compile-time-constant data, not computed) needs a 54th `u32` entry
+inserted, which risks shifting every address *after* it in that `.cinit`
+image unless care is taken (append-only, not insert-in-middle, would avoid
+that). **This is a fully enumerated, bounded job (5 code sites + 1 data
+table append) — call it `medium`, not `large`, but it is categorically
+riskier and touches more places than simply reusing an existing record.**
+
+### Is there spare room in an existing settings record? (`likely`, not fully resolved)
+
+Grepping every address formation of the global-settings RAM mirror at
+`0x11812f74` (record 50's 20-byte payload, 5 × u32 at `+0x00/+0x04/+0x08/
++0x0C/+0x10`) found **at least one reference to each of the five words**
+somewhere in the firmware (`+0x10` already independently confirmed by
+PATCH_STORE_ARGON as the AUTO SAVE flag, read by `118060e4`). This is
+`likely` evidence that record 50 is already fully packed with five distinct
+Zoom global settings and has **no obviously free word** — but this is a
+coarse signal (reference counts, not full read/write-site tracing of each
+field), so treat "record 50 is full" as `likely`, not `confirmed`. Record
+52 (4 bytes, 1 word) was not pinned down (above) so whether it has spare
+bits within its single u32 is unknown.
+
+### Flash range nobody writes? **None exists on this hardware** (`confirmed`, new finding, answers the brief's "alternatively" option negatively)
+
+The SPI flash primitives' own bound check (`c01453e8`/`c014558a`,
+`addr+len < 0x800000` = 8 MiB) is **not** the chip's real capacity — it is
+just a generous software ceiling. `recon/07_hardware.md` (physical teardown,
+two independent sources: silkscreen read + part lookup) identifies the
+actual installed chip as **IS25LP032, 32 Mbit = 4 MiB (`0x400000`)**, matching
+a second, independently-reported `MX25L3233F` (also 4 MB) — both hardware
+sources agree on 4 MiB, not 8. PATCH_STORE_ARGON's region table (section
+1.1/1.2, re-verified arithmetically there) already accounts for the full
+`0x00000000..0x00400000` range with **no gap**: boot/update program
+(`0x28000`) + splash/factory-presets (`0xB000`) + main firmware
+(`0x8C000`) + signature sector (`0x1000`) + DataStore banks ×2 (`0x42000`)
++ effect FFS (`0x2FE000`) = exactly `0x400000`. **There is no second 4 MiB
+of real flash behind the 8 MiB software ceiling, and no gap inside the real
+4 MiB — every byte of the actual chip is already claimed by a documented
+region.** This option is therefore not viable on stock hardware: the only
+real candidates for new persistent CF data are (a) spare bytes inside
+existing 736-byte `PTCF` records (Q1/Q2, confirmed generous headroom), or
+(b) a new DataStore record id (this section, confirmed feasible but
+multi-site), or (c) finding genuine slack inside record 50/52 (not resolved
+here).
+
 ## Q5
 
 ## Status
