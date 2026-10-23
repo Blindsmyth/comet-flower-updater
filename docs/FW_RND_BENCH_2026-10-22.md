@@ -199,3 +199,11 @@ Version list: `docs/BUILDS.md`. Live patches (0x0C0000) are not touched.
    pedal frozen) with the highest reading and the last readings. Hands-free: `ceiling_test.py set 3 2 50`
    (Zoom param-edit SysEx, unconfirmed on this pedal: check the knob moves), then
    `ceiling_test.py ramp <slot> --step 5 --hold 2`.
+
+### 0.34.2 ceiling test, first result (owner, 2026-10-23)
+PROBE 10: Load 33 -> meter 49-50 %; at Load ~40 it "froze" and the meter fell to 8 %. PROBE 30: Load ~40 ->
+55-60 %, then the same. Reading: the slot **watchdog** (64k cycles/block for 16 blocks = 48 % of the 132354-cycle
+block) cut the probe slot to dry; 8 % = the rest of the patch still running. So this is our watchdog limit,
+not the hardware ceiling (the bench saw a 107 % peak on the CN patch without a crash). Load -> about 1.27 %
+per step (~1.7k cycles). Next: PROBE 10 + PROBE 30 in two slots, each below Load ~35, raised in turns, with
+`ceiling_test.py watch`; open question: did screen/knobs stay alive (watchdog) or did the pedal lock up?
