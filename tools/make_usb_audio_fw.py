@@ -112,8 +112,11 @@ TAP_RETAIN = ["--retain=ua_tx_pack_tap", "--retain=usb_audio_sof_tick_tap"]
 CALLP_S2_TEMPLATE = 0x1050c512
 
 
-def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False, pairs8=False, watchdog=False, probe=False):
+def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False, pairs8=False, watchdog=False, probe=False,
+                  cpu_meter=False):
     out = (TAP_OUT / "pattern") if pattern else (TAP_OUT / "pairs8") if pairs8 else (TAP_OUT / "probe") if probe else (TAP_OUT / "bench_wd") if watchdog else (TAP_OUT / "bench") if bench else (TAP_OUT / "ch10") if nch == 10 else (TAP_OUT / "stems_fx") if fx else (TAP_OUT / "stems") if stems else (TAP_OUT / "ch8") if nch == 8 else TAP_OUT if tap else OUT
+    if cpu_meter:
+        out = out / "cpu"
     out.mkdir(parents=True, exist_ok=True)
     main = PROTO / ("usb_audio_tap.c" if tap else "usb_audio.c")
     srcs = [main, PROTO / "usb_audio_hooks.asm",
@@ -129,6 +132,7 @@ def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=
             *(["--define=UA_BENCH"] if bench else []),
             *(["--define=UA_WATCHDOG"] if watchdog else []),
             *(["--define=UA_PROBE"] if probe else []),
+            *(["--define=UA_CPU_METER"] if cpu_meter else []),
             *(["--define=UA_PAIRS8"] if pairs8 else []),
             "--compile_only", *srcs)
     elf = out / "usb_audio.elf"
@@ -193,7 +197,8 @@ def decode(vma, word, kind):
     return mvk_field(word)
 
 
-def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False, pairs8=False, watchdog=False, probe=False):
+def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=False, bench=False, pairs8=False, watchdog=False, probe=False,
+          cpu_meter=False):
     bench = bench or watchdog or probe
     fx = fx or bench or pairs8 or nch == 10        # the 10-channel layout is the FX layout (stems hooks)
     stems = stems or fx
@@ -207,7 +212,7 @@ def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=
         off = ctl.CONST_DATA[0] + ctl.USB_STR3_RECORD - 0xc016f780
         if int.from_bytes(base[off:off + 4], "little") == ctl.USB_STR3_STOCK_HDR:
             sys.exit("--tap8 needs a base built with make_controller_fw.py --usb-audio-name")
-    lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch, stems, fx, bench, pairs8, watchdog, probe), (UA_BASE, UA_SIZE))
+    lo, img, syms = ctl.elf_image(build_payload(tap, pattern, nch, stems, fx, bench, pairs8, watchdog, probe, cpu_meter), (UA_BASE, UA_SIZE))
     if lo != UA_BASE or len(img) > UA_SIZE:
         sys.exit("payload %#x+%#x does not match the reservation" % (lo, len(img)))
     if not (ctl.FREE_SDRAM[0] <= lo and lo + len(img) <= ctl.FREE_SDRAM[1]):
@@ -304,7 +309,10 @@ if __name__ == "__main__":
     ap.add_argument("--tap-pattern", action="store_true",
                     help="diagnostic tap build: counter (L) + 1002 Hz sine (R) instead of the "
                          "pedal audio; analyse captures with tools/ua_capture.py")
+    ap.add_argument("--cpu-meter", action="store_true",
+                    help="with --bench/--probe: publish the CPU budget record at 0xc01a8020 for the CF screen meter "
+                         "(docs/BUDGET_MODEL_2026-10-23.md)")
     a = ap.parse_args()
     out = a.out or str(ROOT / ("build/usb_audio_tap/DO_NOT_FLASH_usb_audio_tap.bin" if a.tap or a.tap_pattern or a.tap8 or a.stems or a.fx or a.bench or a.watchdog or a.probe or a.tap10 or a.pairs8
                                else "build/usb_audio/DO_NOT_FLASH_usb_audio_silence.bin"))
-    build(a.base, out, a.tap, a.tap_pattern, 10 if a.tap10 else 8 if a.tap8 else 2, a.stems, a.fx, a.bench, a.pairs8, a.watchdog, a.probe)
+    build(a.base, out, a.tap, a.tap_pattern, 10 if a.tap10 else 8 if a.tap8 else 2, a.stems, a.fx, a.bench, a.pairs8, a.watchdog, a.probe, a.cpu_meter)

@@ -18,6 +18,7 @@ MEMORY {
 }
 SECTIONS {
     .ua_mode  > 0xc01a8000   /* fixed: controller_start writes it (UA_MODE) */
+    .ua_cpu   > 0xc01a8020   /* fixed: the CF screen code reads it (UA_CPU_METER, cf_header.c) */
     .ua_state > CTL2
     .text     > CTL2
     .text:ua_map > CTL2

@@ -752,6 +752,36 @@ static void ua_watch_build(void)
 }
 #endif
 
+#ifdef UA_CPU_METER
+/* CPU budget meter (docs/BUDGET_MODEL_2026-10-23.md). Written once per block in
+   the audio Swi, read by the CF screen code (firmware/controller/cf_header.c)
+   at the fixed address 0xc01a8020 (ua.cmd). busy = TX pack - Pre looper (the
+   bench's CPU figure); avg is an exponential mean over ~64 blocks, peak the
+   worst block of the last full window of 2048 blocks (~0.74 s); slot[k] the
+   mean cost of slot k. magic says the record is live (no initialised data). */
+typedef struct { u32 magic, seq, busy_avg, busy_peak, slot[5], win_max, win_n; } UaCpu;
+#pragma DATA_SECTION(ua_cpu, ".ua_cpu")
+UaCpu ua_cpu;
+
+static void ua_cpu_update(const u32 *v, u32 ran)
+{
+    u32 b = v[5], k;
+    ua_cpu.busy_avg = (u32)((int)ua_cpu.busy_avg + (((int)b - (int)ua_cpu.busy_avg) >> 6));
+    if (b > ua_cpu.win_max)
+        ua_cpu.win_max = b;
+    if (++ua_cpu.win_n >= 2048u) {
+        ua_cpu.busy_peak = ua_cpu.win_max;
+        ua_cpu.win_max = 0;
+        ua_cpu.win_n = 0;
+    }
+    for (k = 0; k < 5u; k++)
+        if (ran >> k & 1u)
+            ua_cpu.slot[k] = (u32)((int)ua_cpu.slot[k] + (((int)v[k] - (int)ua_cpu.slot[k]) >> 6));
+    ua_cpu.seq++;
+    ua_cpu.magic = 0x4d555043u;          /* "CPUM" */
+}
+#endif
+
 static void ua_bench_build(void)
 {
     u32 v[7], k, *t = ua_bench_t;
@@ -762,6 +792,9 @@ static void ua_bench_build(void)
     v[5] = t[UA_B_TX] - t[UA_B_PRE];
     v[6] = t[UA_B_PRE] - ua_bench_prev_pre;
     ua_bench_prev_pre = t[UA_B_PRE];
+#ifdef UA_CPU_METER
+    ua_cpu_update(v, ua_bench_mask);
+#endif
 #ifdef UA_WATCHDOG
     ua_wd_check(v, ua_bench_mask);
     v[6] = (v[6] & 0x07ffffffu) | (ua_wd_tripped & 0x1fu) << 27;

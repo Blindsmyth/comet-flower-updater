@@ -45,6 +45,10 @@ class CfHeader(unittest.TestCase):
             self.lcd[i] = 0x55            # pattern: the stock frame underneath
         (ctypes.c_ubyte * 2).in_dll(L, "host_dirty")[0] = 0
         self.u32("host_stock_calls").__setitem__(0, 0)
+        self.u32("host_flushes")[0] = 0
+        cpu = self.u32("host_cpu", 9)
+        for i in range(9):
+            cpu[i] = 0                    # no meter unless a test publishes the record
 
     def draw(self, ids, sel, page):
         ids_a, pages = self.u32("host_ids", 5), self.u32("host_page", 5)
@@ -93,6 +97,64 @@ class CfHeader(unittest.TestCase):
             self.assertEqual((ctypes.c_ubyte * 2).in_dll(self.lib, "host_dirty")[0], 3)
             OUT.mkdir(parents=True, exist_ok=True)
             ui_mock.show(self.image()).save(OUT / f"cfh_page{page + 1}.png")
+
+    def cpu(self, pct):
+        cpu = self.u32("host_cpu", 9)
+        cpu[0] = 0x4D555043
+        cpu[3] = (pct * 132354 + 50) // 100
+
+    def bar_text(self, x0, x1, inv):
+        """Decode the text centred between x0 and x1 (as cf_header.c centres it) with the firmware font."""
+        glyphs = {bytes(self.font[6 * i:6 * i + 6]): chr(0x20 + i) for i in range(94, -1, -1)}
+        cols = []
+        for x in range(x0, x1):
+            b = self.lcd[x] | (self.lcd[128 + x] & 3) << 8
+            if inv:
+                b = ~b & 0x3FE
+            cols.append((b >> 2) & 0x7F)
+        for n in range((x1 - x0) // 6, 0, -1):
+            left = (x1 - x0 - 6 * n) >> 1
+            text = "".join(glyphs.get(bytes(cols[left + 6 * i:left + 6 * i + 6]), "?") for i in range(n))
+            pad = cols[:left] + cols[left + 6 * n:]
+            if "?" not in text and not any(pad) and text.strip() == text and text:
+                return text
+        return None
+
+    def test_meter_and_short_header(self):
+        self.cpu(83)
+        self.draw([CFMPRE, DELAY, DELAY, DELAY, DELAY], 0, 1)
+        self.assertEqual(self.bar_text(19, 102, True), "PRE>MUFF FUZZ")
+        self.assertEqual(self.bar_text(102, 128, False), "83%")
+        OUT.mkdir(parents=True, exist_ok=True)
+        ui_mock.show(self.image()).save(OUT / "cfh_meter.png")
+
+    def test_meter_on_stock_effect_leaves_name_box(self):
+        self.cpu(64)
+        self.draw([DELAY] * 5, 2, 0)
+        self.assertTrue(all(self.lcd[x] == 0x55 for x in range(0, 102)))
+        self.assertEqual(self.bar_text(102, 128, False), "64%")
+
+    def test_meter_inverted_when_high(self):
+        self.cpu(107)
+        self.draw([DELAY] * 5, 0, 0)
+        self.assertEqual(self.bar_text(102, 128, True), "107%")
+
+    def test_tick_refreshes_only_on_change_and_only_while_shown(self):
+        self.cpu(70)
+        self.draw([DELAY] * 5, 0, 0)
+        self.assertEqual(self.lib.host_tick(), 0)            # same value: nothing to do
+        self.cpu(81)
+        self.assertEqual(self.lib.host_tick(), 1)
+        self.assertEqual(self.u32("host_flushes")[0], 1)
+        self.assertEqual(self.bar_text(102, 128, False), "81%")
+        self.lcd[110] ^= 0xFF                                  # another screen drew there
+        self.cpu(90)
+        self.assertEqual(self.lib.host_tick(), 0)
+        self.cpu(91)
+        self.assertEqual(self.lib.host_tick(), 0)             # stays off until the next edit draw
+        self.assertEqual(self.u32("host_flushes")[0], 1)
+        self.draw([DELAY] * 5, 0, 0)
+        self.assertEqual(self.bar_text(102, 128, False), "91%")
 
     def test_selected_slot_and_out_of_range(self):
         self.draw([DELAY, CFMPRE, DELAY, DELAY, DELAY], 0, 1)

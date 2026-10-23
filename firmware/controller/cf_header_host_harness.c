@@ -9,6 +9,11 @@
 
 EXPORT unsigned int host_sel, host_page[5], host_ids[5], host_stock_calls, host_stock_args[6];
 EXPORT unsigned char host_lcd[512], host_dirty[2], host_font[95 * 6];
+EXPORT unsigned int host_cpu[9];          /* UaCpu: magic, seq, busy_avg, busy_peak, slot[5] */
+EXPORT unsigned int host_flushes, host_gate;
+static unsigned int h_enter(unsigned int g) { host_gate = g; return 77u; }
+static void h_flush(unsigned int ctx) { (void)ctx; host_flushes++; }
+static void h_leave(unsigned int g, unsigned int k) { (void)g; (void)k; }
 
 static unsigned int host_stock(unsigned int a, unsigned int b, unsigned int c,
                                unsigned int d, unsigned int e, unsigned int f)
@@ -26,7 +31,13 @@ static unsigned int host_stock(unsigned int a, unsigned int b, unsigned int c,
 #define LCD_COLS host_lcd
 #define LCD_DIRTY host_dirty
 #define FONT5 ((const unsigned char *)host_font)
+#define UA_CPU ((volatile const UaCpu *)host_cpu)
+#define GATE_ENTER h_enter
+#define LCD_FLUSH h_flush
+#define GATE_LEAVE h_leave
+#define LCD_GATE 5u
 
 #include "cf_header.c"
 
 EXPORT unsigned int host_edit_draw(void) { return cf_edit_draw(0, 1, 2, 3, 4, 5); }
+EXPORT unsigned int host_tick(void) { return cf_header_tick(); }

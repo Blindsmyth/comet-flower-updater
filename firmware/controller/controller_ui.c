@@ -52,6 +52,9 @@ extern State ctl_state;
 #endif
 
 u32 controller_hold_ticks(void);   /* controller.c: mode button held, 0 if not */
+#ifdef CTL_CF_HEADER
+u32 cf_header_tick(void);          /* cf_header.c */
+#endif
 
 #define CTX 0u
 #define UI_TICKS 50           /* Clock ticks per UI tick (period unproven; see TICKS) */
@@ -380,5 +383,10 @@ u32 controller_ui_pend(u32 event, u32 and_mask, u32 or_mask, int timeout)
             copy_frame(anim_old, LCD_COLS + (CTX << 9));   /* the MIDI page */
             return 1u;
         }
+#ifdef CTL_CF_HEADER
+        else {
+            cf_header_tick();          /* CPU meter on the edit page (cf_header.c) */
+        }
+#endif
     }
 }

@@ -153,7 +153,7 @@ def build_payload(diag=False, ui=False, cf_header=False):
         "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
         "--keep_asm", "--asm_directory=%s" % out, "--obj_directory=%s" % out,
         "--compile_only", *(["--define=CTL_DIAG"] if diag else []),
-        *(["--define=CTL_UI"] if ui else []), *srcs)
+        *(["--define=CTL_UI"] if ui else []), *(["--define=CTL_CF_HEADER"] if cf_header else []), *srcs)
     elf = out / (stem + ".elf")
     run(CGT / "bin/lnk6x", "--ram_model", "--map_file=%s" % (out / (stem + ".map")),
         *(["--retain=cf_edit_draw"] if cf_header else []),

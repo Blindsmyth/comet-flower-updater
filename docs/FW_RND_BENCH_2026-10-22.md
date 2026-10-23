@@ -160,3 +160,15 @@ sound as CF Watt (host bench: output within 8e-6, 36/36), static estimate -18 %.
    `tools/ua_bench.py run`: slot medians and peak (baseline: CF Watt slot 23.4k, peak 107 %).
 2. Same patch with CF WattL in slot 3 (same knob values): bench again. Pass = lower slot median and peak.
 3. By ear: Watt vs WattL, same settings, clean and cranked; they should be indistinguishable.
+
+## 12. Updater 33: CPU budget meter (replaces 32; TEST build, 2026-10-23)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 33 - CF header + CPU meter + CF WattL TEST.exe`
+**SHA-256 (short):** `8592a180`. Firmware `33c214f7` = `make_controller_fw.py ... --ui --cf-header` ->
+`make_usb_audio_fw.py --probe --watchdog --cpu-meter`; file system `fs_bench32.bin` (CF WattL included).
+Design: `docs/BUDGET_MODEL_2026-10-23.md`. Without the two new options the recipe still gives `d2af52c7`.
+1. Flash. On the edit page of any effect the top right corner shows "NN%": the worst audio-block load of
+   the last ~0.74 s (the bench's CPU % figure). CFM Pre's bar reads "PRE>DYNA COMP" etc. next to it.
+2. Build the CN patch slot by slot and watch the number rise; open Settings/Tuner/Rhythm and come back: the
+   meter must not draw on other screens, and must come back on the edit page.
+3. Ceiling test (when convenient, USB audio mode for `ua_bench.py`): add probe10/probe30, raise Load until
+   frames are lost or the screen freezes; note the meter just before.
