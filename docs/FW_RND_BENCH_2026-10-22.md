@@ -148,3 +148,4 @@ ZG1X4 MIDI" --usb-audio-name "Comet Flower Audio Bridge"` -> `make_usb_audio_fw.
 2. Turn knobs, switch effects and back, open/close Settings, Tuner, Rhythm/Looper: no stock "CFM Pre" box
    flashing through, no garbage, other effects look stock.
 If anything looks wrong, reflash Updater 30.
+**Result (owner, 2026-10-23):** flashed Updater 31, checked the screens on the pedal: header good.
