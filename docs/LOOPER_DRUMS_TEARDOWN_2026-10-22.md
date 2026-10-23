@@ -54,8 +54,15 @@ After recording a loop and letting it play (snapshot `looper_playing`, poll 4 s)
 | address | seen | meaning | confidence |
 |---|---|---|---|
 | 0x11f03c58 | 0 -> 1 | **looper active** | likely |
-| 0x11f03c6c | 2,646,000 (= 60 s x 44,100) -> 407,584 | max length, then this loop's length (samples 9.24 s, or bytes 4.6 s) | likely; unit open |
+| 0x11f03c6c | 2,646,000 -> 407,584 for a ~5 s loop | **loop length in bytes** of 16-bit mono (407,584 B = 4.62 s); 2,646,000 B = the 30 s maximum | likely (owner: about 5 s) |
 | 0x11f03c9c, 0x11f03ca0, 0x11f03ccc | advance ~88,000 per s (2 x 44,100) | byte offsets of play/record positions in a 16-bit buffer | likely |
 | 0x11f03c94, 0x11f03cb0 | same rate, wrap sooner (~176 k, ~55 k) | positions inside a chunk / DMA window | guess |
 | 0x11f03c7c, c80, 0x11f03d08 | 2.0f, 0x7fffffff, 0x7ffffffe | scale / limits set at record | guess |
 | 0x11f03cd8..cec | random-looking, change every read | audio samples / filter state (NOT a volume parameter as watch list v1 had) | seen |
+
+After an overdub pass (snapshot `looper_overdub`):
+
+| address | seen | meaning | confidence |
+|---|---|---|---|
+| 0xc011ac08.. | every byte 0x14 -> 0x17 | loop waveform overview, one amplitude byte per screen column (louder after the overdub) | likely |
+| 0x11f03e38..0x11f03e78 | 17 words 0x7fffffff -> 0 | meters / limits re-armed by the overdub | guess |
