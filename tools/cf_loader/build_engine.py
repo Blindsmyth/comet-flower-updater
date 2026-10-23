@@ -40,8 +40,24 @@ def parse_next_version(builds_md_path: Optional[Path] = None) -> str:
         return fallback
 
 
-def find_default_firmware_bin() -> Optional[Path]:
-    """Find newest firmware binary under build/cf_header/."""
+def approved_firmware_hash(builds_md_path: Optional[Path] = None) -> Optional[str]:
+    """Short firmware hash of the docs/BUILDS.md row marked "flash this" (the approved build).
+
+    Newest-by-date is not safe: a shelved experiment can be the newest file (0.34.5 was
+    packaged with the shelved 0.34.4 bloom firmware that way, 2026-10-23)."""
+    p = builds_md_path or BUILDS_MD_PATH
+    if not p.exists():
+        return None
+    for line in p.read_text(encoding="utf-8").splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 7 and "flash this" in cells[-1].lower() and re.fullmatch(r"[0-9a-f]{8}", cells[3]):
+            return cells[3]
+    return None
+
+
+def find_default_firmware_bin(builds_md_path: Optional[Path] = None) -> Optional[Path]:
+    """The approved firmware under build/cf_header/: the res1_*.bin whose SHA-256 starts with the
+    firmware hash of the "flash this" row in docs/BUILDS.md; newest res1_*.bin only if none is marked."""
     cf_header_dir = REPO_ROOT / "build" / "cf_header"
     if not cf_header_dir.is_dir():
         return None
@@ -51,6 +67,11 @@ def find_default_firmware_bin() -> Optional[Path]:
     bins = [f for f in cf_header_dir.glob("res1_*.bin") if f.is_file() and f.stat().st_size > 100000]
     if not bins:
         return None
+    want = approved_firmware_hash(builds_md_path)
+    if want:
+        for f in bins:
+            if calculate_sha256(f).startswith(want):
+                return f
     bins.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return bins[0]
 

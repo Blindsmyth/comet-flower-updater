@@ -413,3 +413,22 @@ def test_firmware_default_is_a_finished_res1(tmp_path, monkeypatch):
     (d / "ctl_b.bin").write_bytes(bytes(200000))       # newer, but intermediate
     monkeypatch.setattr(build_engine, "REPO_ROOT", tmp_path)
     assert build_engine.find_default_firmware_bin().name == "res1_a.bin"
+
+
+def test_default_firmware_is_the_flash_this_row(tmp_path, monkeypatch):
+    import hashlib
+    from tools.cf_loader import build_engine
+    d = tmp_path / "build" / "cf_header"
+    d.mkdir(parents=True)
+    good, shelved = bytes([1]) * 200000, bytes([2]) * 200000
+    (d / "res1_good.bin").write_bytes(good)
+    (d / "res1_newer_shelved.bin").write_bytes(shelved)       # newest file, not approved
+    h = hashlib.sha256(good).hexdigest()[:8]
+    md = tmp_path / "BUILDS.md"
+    md.write_text("| Version | Updater | SHA-256 | Firmware | FS image | What | Status |\n"
+                  "|---|---|---|---|---|---|---|\n"
+                  "| 0.1.0 | 1 | aaaaaaaa | %s | fs | x | **flash this** |\n"
+                  "| 0.1.1 | 2 | bbbbbbbb | %s | fs | y | not wanted |\n"
+                  % (h, hashlib.sha256(shelved).hexdigest()[:8]), encoding="utf-8")
+    monkeypatch.setattr(build_engine, "REPO_ROOT", tmp_path)
+    assert build_engine.find_default_firmware_bin(md).name == "res1_good.bin"

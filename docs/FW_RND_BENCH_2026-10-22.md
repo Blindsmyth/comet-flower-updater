@@ -279,3 +279,12 @@ was explained (boot-area write = update mode; an interrupted/bad write needs a h
 Procedure: laptop on mains power, direct USB port, no other USB/MIDI app open, pedal in update mode, run
 once, do not touch anything until it reports done. Expected: flower briefly, then the CF logo and screen
 as before. Undo: Zoom's official v2.00 updater (rewrites the stock boot program with ZOOM).
+
+## 18. 0.34.5 (flashed by mistake) and 0.34.6 (2026-10-23)
+The owner built 0.34.5 with the new Comet Flower Installer app; its firmware default was "newest res1_*.bin"
+= the shelved 0.34.4 bloom firmware. Result on the pedal: ZOOM, then a blank screen where the CF logo was
+(bloom frame 0 = a short stem), then "TEST 0.34.5". Finding: **the bloom never advanced**, so UpdateUI does
+not get idle ticks while the start-up logo shows (the animation idea would need another clock).
+Effects in 0.34.5 = fs_bench343 exactly (checked). Fixes: the app now defaults to the firmware of the
+docs/BUILDS.md row marked "flash this" (`approved_firmware_hash`, test added); the 0.34.4 binaries moved to
+`build/cf_header/shelved/`. **0.34.6** (`cf4a8b9a`) = 0.34.3 firmware `55ae7d48` + fs_bench343 + "TEST 0.34.6".
