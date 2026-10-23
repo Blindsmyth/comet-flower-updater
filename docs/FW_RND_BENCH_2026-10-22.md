@@ -184,3 +184,12 @@ dspload 30, SFX group next to CF BypTest).
 entry, so the pedal did not list them (owner). Always add effects with `make_g1_image.py`.
 Steps: as section 12, then the ceiling test: PROBE 10 / PROBE 30 "Load" knob = Load x 200 dependent
 multiply-adds per block; raise it until frames are lost / the screen freezes and note the meter.
+
+## 14. 0.34.2: 34b + build number on the start-up screen (TEST build, 2026-10-23)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 0.34.2 - Updater 33 + probes + build-number splash TEST.exe`
+**SHA-256 (short):** `1907a6e2`. Same firmware (`a64a9e62`) and FS (`fs_bench34.bin`) as 34b, plus the presets
+region 0x28000 = `build/fw/cfupd_res85.bin` (the CF presets, same as before) with the start-up screen
+"CF-ZGX4 / TEST 0.34.2" (`tools/make_splash.py`). Stages: 0x28000 presets, 0x102000 FS, 0x33000 firmware.
+Version list: `docs/BUILDS.md`. Live patches (0x0C0000) are not touched.
+1. Flash; at power-on the screen after the logo reads "CF-ZGX4 / TEST 0.34.2".
+2. Then section 12's steps and the ceiling test with PROBE 10 / PROBE 30.
