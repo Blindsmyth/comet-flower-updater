@@ -45,4 +45,17 @@ CFPR replies; 0x11815a00.. is stack; 0x11f039b0.. audio buffers.
 
 ## Looper
 
-Not started yet.
+Screen (screenshot `docs/img/lcd_looper_open_2026-10-22.png`): `LOOPER` / `Time StopMode Post VOL` /
+`MANUAL Instant Post 80`. Opening it set 0x11813098 / 0x11813120 to 64 and the ms-per-16th cells
+0x118130a4/a8 back to 41 (the looper runs on the rhythm tempo clock).
+
+After recording a loop and letting it play (snapshot `looper_playing`, poll 4 s):
+
+| address | seen | meaning | confidence |
+|---|---|---|---|
+| 0x11f03c58 | 0 -> 1 | **looper active** | likely |
+| 0x11f03c6c | 2,646,000 (= 60 s x 44,100) -> 407,584 | max length, then this loop's length (samples 9.24 s, or bytes 4.6 s) | likely; unit open |
+| 0x11f03c9c, 0x11f03ca0, 0x11f03ccc | advance ~88,000 per s (2 x 44,100) | byte offsets of play/record positions in a 16-bit buffer | likely |
+| 0x11f03c94, 0x11f03cb0 | same rate, wrap sooner (~176 k, ~55 k) | positions inside a chunk / DMA window | guess |
+| 0x11f03c7c, c80, 0x11f03d08 | 2.0f, 0x7fffffff, 0x7ffffffe | scale / limits set at record | guess |
+| 0x11f03cd8..cec | random-looking, change every read | audio samples / filter state (NOT a volume parameter as watch list v1 had) | seen |
