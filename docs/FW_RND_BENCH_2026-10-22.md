@@ -288,3 +288,18 @@ not get idle ticks while the start-up logo shows (the animation idea would need 
 Effects in 0.34.5 = fs_bench343 exactly (checked). Fixes: the app now defaults to the firmware of the
 docs/BUILDS.md row marked "flash this" (`approved_firmware_hash`, test added); the 0.34.4 binaries moved to
 `build/cf_header/shelved/`. **0.34.6** (`cf4a8b9a`) = 0.34.3 firmware `55ae7d48` + fs_bench343 + "TEST 0.34.6".
+
+## 19. 0.34.7: timed bloom + bud boot logo (2026-10-23)
+Owner, on 0.34.6: CF part back, but ZOOM still first; "I would rather the flower blooming". (The flower boot
+logo installer of section 17 had not been run; it is replaced by the bud version below.)
+- **0.34.7** (`f3e9beae`, firmware `d8068692`) = 0.34.6 + `--boot-anim`, now **timed inside the hook**:
+  `cf_boot_logo` draws the stock logo, then plays frames 4..15 (bud -> petals -> "COMET / FLOWER"), each
+  flushed (gate B14[149], not held at that point) and held 70 ms of TSCL (25.5M cycles); the last frame is left
+  for UpdateUI's flush. If TSCL is not counting, a write starts it; each wait is also capped (2M loop passes),
+  so a stopped counter cannot hang the start-up. Adds ~0.8 s to boot. UI tick path removed (it never ran at boot).
+  Changed stock words vs 0.34.3: known hooks only (dispatch, worker_wait, c014db78, the two USB records).
+- **Boot logo:** `COMET FLOWER BOOT LOGO - bud - run once.exe` (`052c94b2`): stock v2.00 boot program with the
+  logo = frame 4 cropped to the logo box (`assets/boot_logo_bud.png`, `make_boot_anim.py --boot-logo`), 166 bytes
+  changed inside the 184-byte logo; same checks and procedure as section 17.
+Expected power-on: bud (boot program) -> bloom opens -> "COMET FLOWER" -> "CF-ZGX4 / TEST 0.34.7".
+Preview: build/boot_anim.gif. If the start-up hangs or the screen stays dark: update mode, reflash 0.34.6.

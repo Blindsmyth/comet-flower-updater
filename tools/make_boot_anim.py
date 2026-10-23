@@ -9,7 +9,10 @@ opening with a slight twist, then "COMET / FLOWER" letter by letter) and writes
     (4 pages x 128 columns, bit 0 = top row, as make_fs_restore_updater.splash_bytes),
     run-length coded: token t < 0x80 = t + 1 literal bytes follow, t >= 0x80 =
     (t & 0x7f) + 1 zero bytes;
-  - a 4x GIF preview.
+  - a 4x GIF preview;
+  - the boot program's logo (--boot-logo, 92x16 for tools/make_boot_logo_updater.py): frame
+    BOOT_FIRST cropped to the logo box (x 18..109, y 8..23), so the main firmware's bloom
+    (cf_boot.c, frames BOOT_FIRST..) appears to continue from it.
 The decoder in cf_boot.c and rle_decode() below must stay the same.
 """
 import argparse
@@ -26,7 +29,7 @@ from make_splash import FONT  # noqa: E402
 W, H = 128, 32
 CX, CY = 22, 13            # flower centre
 PETALS = 6
-FRAME_MS = 60              # preview only; the pedal advances one frame per UI tick
+FRAME_MS = 70              # cf_boot.c FRAME_CYCLES: 70 ms per frame
 
 
 def petal(d, ang, length, width):
@@ -78,6 +81,12 @@ def frame(n):
 
 
 BOOT_FRAMES = 16
+BOOT_FIRST = 4             # the bud; must match cf_boot.c BOOT_FIRST
+LOGO_BOX = (18, 8, 18 + 92, 8 + 16)
+
+
+def boot_logo():
+    return frame(BOOT_FIRST).crop(LOGO_BOX)
 
 
 def pages(im):
@@ -155,10 +164,16 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--gif", default=str(ROOT / "build/boot_anim.gif"))
     ap.add_argument("--header", default=str(ROOT / "firmware/controller/boot_anim.h"))
+    ap.add_argument("--boot-logo", default=str(ROOT / "assets/boot_logo_bud.png"))
     a = ap.parse_args(argv)
     frames, raw, codes = build()
     Path(a.header).write_text(header(codes), encoding="utf-8")
-    big = [f.convert("L").resize((W * 4, H * 4), Image.NEAREST) for f in frames]
+    boot_logo().convert("1").save(a.boot_logo)
+    # preview as on the pedal: the boot logo (bud in the logo box), then frames BOOT_FIRST..
+    bud = Image.new("L", (W, H), 0)
+    bud.paste(boot_logo(), LOGO_BOX[:2])
+    seq = [bud] * 8 + frames[BOOT_FIRST:]
+    big = [f.convert("L").resize((W * 4, H * 4), Image.NEAREST) for f in seq]
     big[0].save(a.gif, save_all=True, append_images=big[1:] + [big[-1]] * 12,
                 duration=FRAME_MS, loop=0)
     print("%d frames, %d bytes coded (%d raw) -> %s, preview %s"

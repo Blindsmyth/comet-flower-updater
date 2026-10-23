@@ -1,5 +1,6 @@
 /* Host-only harness for cf_boot.c (tests/test_cf_boot.py). Never link into the pedal.
-   The LCD is a host array; the stock blitter is a recorder that writes a marker. */
+   The LCD is a host array, the stock blitter a recorder, the cycle counter a host
+   variable that advances host_step per read (0 = a stopped counter). */
 #ifdef _MSC_VER
 #define EXPORT __declspec(dllexport)
 #else
@@ -8,10 +9,20 @@
 #define CFB_HOST
 
 EXPORT unsigned char host_lcd[512], host_dirty[2];
-EXPORT unsigned int host_blits, host_flushes;
+EXPORT unsigned int host_blits, host_flushes, host_clock, host_step = 1000000u, host_starts;
+EXPORT unsigned char host_seen[16][512];          /* the buffer at each flush */
 static unsigned int h_enter(unsigned int g) { (void)g; return 1u; }
-static void h_flush(unsigned int ctx) { (void)ctx; host_flushes++; }
+static void h_flush(unsigned int ctx)
+{
+    unsigned int i;
+    (void)ctx;
+    if (host_flushes < 16u)
+        for (i = 0; i < 512u; i++)
+            host_seen[host_flushes][i] = host_lcd[i];
+    host_flushes++;
+}
 static void h_leave(unsigned int g, unsigned int k) { (void)g; (void)k; }
+static unsigned int h_now(void) { host_clock += host_step; return host_clock; }
 
 static unsigned int host_blit(unsigned int ctx, unsigned int x, unsigned int y,
                               unsigned int w, unsigned int h, unsigned int buf)
@@ -24,6 +35,9 @@ static unsigned int host_blit(unsigned int ctx, unsigned int x, unsigned int y,
     return ctx + 0x100u;
 }
 
+#define NOW() h_now()
+#define START_CLOCK() (host_starts++)
+#define WAIT_CAP 1000u
 #define STOCK_BLIT host_blit
 #define LCD_COLS host_lcd
 #define LCD_DIRTY host_dirty
@@ -35,7 +49,5 @@ static unsigned int host_blit(unsigned int ctx, unsigned int x, unsigned int y,
 #include "cf_boot.c"
 
 EXPORT unsigned int host_logo(unsigned int ctx) { return cf_boot_logo(ctx, 18u, 8u, 92u, 16u, 0xc017bf38u); }
-EXPORT unsigned int host_tick(void) { return cf_boot_tick(); }
-EXPORT unsigned int host_state(void) { return boot_state; }
-EXPORT unsigned int host_n(void) { return boot_n; }
+EXPORT unsigned int host_first(void) { return BOOT_FIRST; }
 EXPORT unsigned int host_nframes(void) { return BOOT_NFRAMES; }

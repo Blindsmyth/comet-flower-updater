@@ -100,7 +100,7 @@ def gate_word(load):
 def gate_value(word):
     return struct.unpack("<f", struct.pack("<I", ((word >> 7) & 0xffff) << 16))[0]
 
-# Start-up bloom animation (--boot-anim, TEST builds, needs --ui; firmware/controller/cf_boot.c,
+# Start-up bloom animation (--boot-anim, TEST builds; firmware/controller/cf_boot.c, timed in the call,
 # frames from tools/make_boot_anim.py): the start-up screen's logo draw c014db64 calls
 # gfx_set_bit_range c011c508 once, at c014db78 (logo c017bf38, x 18, y 8, 92 x 16).
 BOOT_HOOKS = [
@@ -301,8 +301,6 @@ def build(base_path, out_path, stock_path, diag=False, ui=False, usb_product=Non
         kind = base_kind(base, Path(stock_path).read_bytes())
     except ValueError as exc:
         sys.exit(str(exc))
-    if boot_anim and not ui:
-        sys.exit("--boot-anim needs --ui (its frames advance on the UI ticks)")
     lo, img, syms = elf_image(build_payload(diag, ui, cf_header, boot_anim))
     product_addr = None
     if usb_product is not None:
@@ -425,7 +423,7 @@ if __name__ == "__main__":
                     help="TEST: PROCESS OVERFLOW limit instead of 230.0 (e.g. 340; c0141b54 MVKH)")
     ap.add_argument("--boot-anim", action="store_true",
                     help="TEST: Comet Flower bloom animation in place of the start-up logo "
-                         "(firmware/controller/cf_boot.c; hook c014db78; needs --ui)")
+                         "(firmware/controller/cf_boot.c; hook c014db78)")
     a = ap.parse_args()
     build(a.base, a.out, a.stock, a.diag_teardown, a.ui, a.usb_product, a.usb_audio_name, a.cf_header,
           a.gate, a.boot_anim)
