@@ -207,3 +207,13 @@ block) cut the probe slot to dry; 8 % = the rest of the patch still running. So 
 not the hardware ceiling (the bench saw a 107 % peak on the CN patch without a crash). Load -> about 1.27 %
 per step (~1.7k cycles). Next: PROBE 10 + PROBE 30 in two slots, each below Load ~35, raised in turns, with
 `ceiling_test.py watch`; open question: did screen/knobs stay alive (watchdog) or did the pedal lock up?
+
+### 0.34.2 ceiling test, two slots (owner + probe link, 2026-10-23)
+PROBE 30 slot 1 Load 35 (58.5k cycles) + PROBE 10 slot 2, turned up slowly: at Load 33 (55.3k) the pedal
+stopped responding (owner: screen, knobs, everything). Probe link at the same time (`build/ceiling.csv`,
+3 min): MIDI still answers, audio loop runs at the full 2756 blocks/s (44.1 kHz / 16), busy mean 91.9 %,
+peak 93-95 % (max 95.3 %), no watchdog trip. So the DSP keeps up; the **control side starves** (UI task:
+screen and knobs get no CPU time once the audio Swi + other interrupts leave none). At PROBE 10 = 32
+(~90.6 % mean) the pedal was still usable.
+**Usable ceiling: about 90 % on the meter (busy mean ~90 %); 92 % = control lock-up.** Next: meter warning
+from 88-90 %; re-declare CF dspload from measured cost so Zoom's gate stops a patch before ~88 %.
