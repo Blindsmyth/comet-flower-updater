@@ -1,0 +1,425 @@
+{
+ "source": "live read of 0xc0182730 over CF Probe, 2026-10-22 (pattern number shown on the pedal -> 124-byte record at 0xc016f7fc + 124*record)",
+ "order": [
+  {
+   "ui": 0,
+   "record": 0,
+   "name": "GUIDE",
+   "ptr": "c016f7fc"
+  },
+  {
+   "ui": 1,
+   "record": 1,
+   "name": "8Beats1",
+   "ptr": "c016f878"
+  },
+  {
+   "ui": 2,
+   "record": 2,
+   "name": "8Beats2",
+   "ptr": "c016f8f4"
+  },
+  {
+   "ui": 3,
+   "record": 3,
+   "name": "8Beats3",
+   "ptr": "c016f970"
+  },
+  {
+   "ui": 4,
+   "record": 4,
+   "name": "16Beats1",
+   "ptr": "c016f9ec"
+  },
+  {
+   "ui": 5,
+   "record": 5,
+   "name": "16Beats2",
+   "ptr": "c016fa68"
+  },
+  {
+   "ui": 6,
+   "record": 6,
+   "name": "16Beats3",
+   "ptr": "c016fae4"
+  },
+  {
+   "ui": 7,
+   "record": 7,
+   "name": "Rock1",
+   "ptr": "c016fb60"
+  },
+  {
+   "ui": 8,
+   "record": 8,
+   "name": "Rock2",
+   "ptr": "c016fbdc"
+  },
+  {
+   "ui": 9,
+   "record": 9,
+   "name": "Rock3",
+   "ptr": "c016fc58"
+  },
+  {
+   "ui": 10,
+   "record": 34,
+   "name": "ROCKABLY",
+   "ptr": "c0170874"
+  },
+  {
+   "ui": 11,
+   "record": 35,
+   "name": "R'n'R",
+   "ptr": "c01708f0"
+  },
+  {
+   "ui": 12,
+   "record": 10,
+   "name": "HardRock",
+   "ptr": "c016fcd4"
+  },
+  {
+   "ui": 13,
+   "record": 11,
+   "name": "HeavyMtl",
+   "ptr": "c016fd50"
+  },
+  {
+   "ui": 14,
+   "record": 12,
+   "name": "MtlCore",
+   "ptr": "c016fdcc"
+  },
+  {
+   "ui": 15,
+   "record": 13,
+   "name": "Punk",
+   "ptr": "c016fe48"
+  },
+  {
+   "ui": 16,
+   "record": 14,
+   "name": "FastPunk",
+   "ptr": "c016fec4"
+  },
+  {
+   "ui": 17,
+   "record": 15,
+   "name": "Emo",
+   "ptr": "c016ff40"
+  },
+  {
+   "ui": 18,
+   "record": 36,
+   "name": "TomTomBt",
+   "ptr": "c017096c"
+  },
+  {
+   "ui": 19,
+   "record": 16,
+   "name": "Funk1",
+   "ptr": "c016ffbc"
+  },
+  {
+   "ui": 20,
+   "record": 17,
+   "name": "Funk2",
+   "ptr": "c0170038"
+  },
+  {
+   "ui": 21,
+   "record": 18,
+   "name": "FunkRock",
+   "ptr": "c01700b4"
+  },
+  {
+   "ui": 22,
+   "record": 19,
+   "name": "JazzFunk",
+   "ptr": "c0170130"
+  },
+  {
+   "ui": 23,
+   "record": 37,
+   "name": "R&B1",
+   "ptr": "c01709e8"
+  },
+  {
+   "ui": 24,
+   "record": 38,
+   "name": "R&B2",
+   "ptr": "c0170a64"
+  },
+  {
+   "ui": 25,
+   "record": 39,
+   "name": "70s Soul",
+   "ptr": "c0170ae0"
+  },
+  {
+   "ui": 26,
+   "record": 40,
+   "name": "90s Soul",
+   "ptr": "c0170b5c"
+  },
+  {
+   "ui": 27,
+   "record": 20,
+   "name": "Motown",
+   "ptr": "c01701ac"
+  },
+  {
+   "ui": 28,
+   "record": 41,
+   "name": "HipHop",
+   "ptr": "c0170bd8"
+  },
+  {
+   "ui": 29,
+   "record": 42,
+   "name": "Disco",
+   "ptr": "c0170c54"
+  },
+  {
+   "ui": 30,
+   "record": 43,
+   "name": "Pop",
+   "ptr": "c0170cd0"
+  },
+  {
+   "ui": 31,
+   "record": 44,
+   "name": "PopRock",
+   "ptr": "c0170d4c"
+  },
+  {
+   "ui": 32,
+   "record": 45,
+   "name": "IndiePop",
+   "ptr": "c0170dc8"
+  },
+  {
+   "ui": 33,
+   "record": 46,
+   "name": "EuroPop",
+   "ptr": "c0170e44"
+  },
+  {
+   "ui": 34,
+   "record": 47,
+   "name": "NewWave",
+   "ptr": "c0170ec0"
+  },
+  {
+   "ui": 35,
+   "record": 21,
+   "name": "OneDrop",
+   "ptr": "c0170228"
+  },
+  {
+   "ui": 36,
+   "record": 22,
+   "name": "Steppers",
+   "ptr": "c01702a4"
+  },
+  {
+   "ui": 37,
+   "record": 23,
+   "name": "Rockers",
+   "ptr": "c0170320"
+  },
+  {
+   "ui": 38,
+   "record": 48,
+   "name": "Ska",
+   "ptr": "c0170f3c"
+  },
+  {
+   "ui": 39,
+   "record": 24,
+   "name": "2nd Line",
+   "ptr": "c017039c"
+  },
+  {
+   "ui": 40,
+   "record": 25,
+   "name": "Country",
+   "ptr": "c0170418"
+  },
+  {
+   "ui": 41,
+   "record": 49,
+   "name": "Shuffle1",
+   "ptr": "c0170fb8"
+  },
+  {
+   "ui": 42,
+   "record": 50,
+   "name": "Shuffle2",
+   "ptr": "c0171034"
+  },
+  {
+   "ui": 43,
+   "record": 26,
+   "name": "Blues1",
+   "ptr": "c0170494"
+  },
+  {
+   "ui": 44,
+   "record": 27,
+   "name": "Blues2",
+   "ptr": "c0170510"
+  },
+  {
+   "ui": 45,
+   "record": 28,
+   "name": "Jazz1",
+   "ptr": "c017058c"
+  },
+  {
+   "ui": 46,
+   "record": 29,
+   "name": "Jazz2",
+   "ptr": "c0170608"
+  },
+  {
+   "ui": 47,
+   "record": 51,
+   "name": "Fusion",
+   "ptr": "c01710b0"
+  },
+  {
+   "ui": 48,
+   "record": 52,
+   "name": "Swing1",
+   "ptr": "c017112c"
+  },
+  {
+   "ui": 49,
+   "record": 53,
+   "name": "Swing2",
+   "ptr": "c01711a8"
+  },
+  {
+   "ui": 50,
+   "record": 30,
+   "name": "Bossa1",
+   "ptr": "c0170684"
+  },
+  {
+   "ui": 51,
+   "record": 31,
+   "name": "Bossa2",
+   "ptr": "c0170700"
+  },
+  {
+   "ui": 52,
+   "record": 32,
+   "name": "Samba1",
+   "ptr": "c017077c"
+  },
+  {
+   "ui": 53,
+   "record": 33,
+   "name": "Samba2",
+   "ptr": "c01707f8"
+  },
+  {
+   "ui": 54,
+   "record": 57,
+   "name": "Breaks1",
+   "ptr": "c0171398"
+  },
+  {
+   "ui": 55,
+   "record": 58,
+   "name": "Breaks2",
+   "ptr": "c0171414"
+  },
+  {
+   "ui": 56,
+   "record": 59,
+   "name": "Breaks3",
+   "ptr": "c0171490"
+  },
+  {
+   "ui": 57,
+   "record": 55,
+   "name": "12/8 Grv",
+   "ptr": "c01712a0"
+  },
+  {
+   "ui": 58,
+   "record": 56,
+   "name": "Waltz",
+   "ptr": "c017131c"
+  },
+  {
+   "ui": 59,
+   "record": 63,
+   "name": "JzWaltz1",
+   "ptr": "c0171680"
+  },
+  {
+   "ui": 60,
+   "record": 64,
+   "name": "JzWaltz2",
+   "ptr": "c01716fc"
+  },
+  {
+   "ui": 61,
+   "record": 61,
+   "name": "CtWaltz1",
+   "ptr": "c0171588"
+  },
+  {
+   "ui": 62,
+   "record": 62,
+   "name": "CtWaltz2",
+   "ptr": "c0171604"
+  },
+  {
+   "ui": 63,
+   "record": 60,
+   "name": "5/4 Grv",
+   "ptr": "c017150c"
+  },
+  {
+   "ui": 64,
+   "record": 65,
+   "name": "Metro3",
+   "ptr": "c0171778"
+  },
+  {
+   "ui": 65,
+   "record": 66,
+   "name": "Metro4",
+   "ptr": "c01717f4"
+  },
+  {
+   "ui": 66,
+   "record": 67,
+   "name": "Metro5",
+   "ptr": "c0171870"
+  },
+  {
+   "ui": 67,
+   "record": 68,
+   "name": "Metro",
+   "ptr": "c01718ec"
+  },
+  {
+   "ui": 68,
+   "record": null,
+   "name": null,
+   "ptr": "c0181f18"
+  },
+  {
+   "ui": 69,
+   "record": null,
+   "name": null,
+   "ptr": "c0181f18"
+  }
+ ]
+}

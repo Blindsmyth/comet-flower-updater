@@ -455,3 +455,10 @@ checkout (`unittest.skipUnless`).
    they're driven by the event data.
 5. **Whether dry/Amb sample pairs always fire on identical steps** --
    assumed in the renderer, not proven.
+
+## Pattern numbering resolved (live read, Claude, 2026-10-22)
+The pedal's pattern number (0x11812f4c) indexes a RAM pointer table at **0xc0182730** (built at run
+time; not in the image). Each entry points to a 124-byte record at **0xc016f7fc + 124 x record** (the
+records start at 0xc016f7fc; the table offset 0xc016f7e9 above is 0x13 early). The on-screen order is a
+permutation of the record order: `tools/drums/ui_order.json` (68 patterns, 0 GUIDE .. 67 Metro; entries
+68/69 point elsewhere). Checks: pedal 7 -> record 7 Rock1, pedal 44 -> record 27 Blues2 (both seen live).
