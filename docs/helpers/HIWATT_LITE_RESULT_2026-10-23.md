@@ -39,6 +39,10 @@ Steady-state static cost per 16-sample block (2x oversampled, HW_NB = 32 samples
 *Note on static counts*: The count above assumes the fast-path condition (no ADAA fixup branch triggered in preamp tubes or PI stage). When signals trigger the ADAA fixup loop (`hiwatt_lite.h:253`), additional cycles are spent, so 20,380 is a lower bound in steady state.
 
 ## Changes tried
+1. **Disabled preamp tube ADAA fix-up pass entirely**: Reverted. Failed 8 of 36 tests (extreme alias blowout on `cranked_f1760_a070` due to unhandled region boundary crossings).
+2. **Plain waveshaping on V3a**: Reverted. Failed 1 of 36 tests (`cranked_f1760_a070`: alias -28.8 dB vs shipped -35.1 dB, 0.3 dB over tolerance).
+3. **Plain waveshaping on PI**: Reverted. Failed 12 of 36 tests (strong harmonic distortion changes on pushed signals).
+4. **Linear input decomposition of NFB loop (`hw_nfb_block`)**: Kept. Decomposed back-half network into input-driven pass $x_A$ (pipelined over 32 samples) and residual-driven serial loop $x_B$. Removes $u_0, s_0$ partials from serial feedback loop. PASS 36/36, STRETCH 0.00 dB. Slot memory 36368 B (4592 free).
 
 ## Scores
 ### Baseline (Unchanged core)
@@ -47,6 +51,13 @@ STRETCH (worst character deviation, dB): 0.00
 ACCURACY: PASS
 Steady-state cost: 20,380 cycles
 Date/Time: 2026-10-23 01:34:00-07:00
+
+### Change 4: NFB linear split (precomputed xA, dB pass)
+failing tests: 0 of 36
+STRETCH (worst character deviation, dB): 0.00
+ACCURACY: PASS
+Steady-state cost estimate: 19,850 cycles
+Date/Time: 2026-10-23 01:54:00-07:00
 
 ## Cost
 Baseline: 20,380 cycles per 16-sample block (steady-state static estimate).
