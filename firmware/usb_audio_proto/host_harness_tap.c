@@ -96,6 +96,14 @@ EXPORT void host_bench_set(unsigned int tscl, int slot)
     host_tscl = tscl;
     host_slot_index = slot;
 }
+#ifdef UA_PROBE
+/* the watch stream reads a fake memory: value = address ^ host_watch_salt */
+static unsigned int host_watch_salt;
+#define UA_WATCH_READ(a) ((a) ^ host_watch_salt)
+EXPORT void host_watch_salt_set(unsigned int s) { host_watch_salt = s; }
+EXPORT unsigned int ua_watch_set(const unsigned int *addr, unsigned int n);
+EXPORT unsigned int ua_watch_ok(unsigned int a);
+#endif
 #ifdef UA_WATCHDOG
 static void *volatile host_slot_table[5];
 #define UA_SLOT_TABLE host_slot_table
@@ -125,6 +133,9 @@ EXPORT void host_reset(void)
     usb_audio_tap.underruns = usb_audio_tap.packets45 = 0;
     fifo_count = fifo_overflow = 0;
     host_pack_calls = 0;
+#ifdef UA_PROBE
+    ua_watch_pos = ua_watch_seq = 0;
+#endif
 #ifdef UA_WATCHDOG
     for (i = 0; i < 5; ++i) {
         ua_wd_seen[i] = 0;

@@ -331,6 +331,9 @@ enum { UA_B_PRE, UA_B_S0, UA_B_POST = UA_B_S0 + 5, UA_B_TX, UA_B_N };
 static u32 ua_bench_t[UA_B_N];
 static u32 ua_bench_mask, ua_bench_seq, ua_bench_prev_pre;
 static u32 ua_bench_frame[UA_TAP_BLOCK];
+#ifdef UA_PROBE
+static u32 ua_watch_frame[16];        /* built by ua_watch_build, packed on channel 7 */
+#endif
 
 /* Replaces the 11818eb0 veneer's target c01502cc, which only returns the
    shared context table 0x11f03b48 (c01502cc: MVK/MVKH A4; BNOP B3,5). */
@@ -471,6 +474,10 @@ void usb_audio_tap_block(const volatile int *l, const volatile int *r)
         /* 8 channels, every pair usable (fallback if 10 do not open): 7-8 DI on both, no looper */
         f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
         f[3] = ua_tap_float(UA_TAP_BUS_M[i]) * 0x10001u;
+#elif defined(UA_PROBE)
+        /* CF Probe: 7 = watch stream, 8 = bench timing frames */
+        f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
+        f[3] = ua_watch_frame[i] | (ua_bench_frame[i] << 16);
 #elif defined(UA_BENCH)
         f[2] = ua_tap_float(ua_stem_drum_l[i]) | (ua_tap_float(ua_stem_drum_r[i]) << 16);
         f[3] = ua_tap_float(UA_TAP_BUS_M[i]) | (ua_bench_frame[i] << 16);
@@ -548,6 +555,88 @@ static void ua_wd_check(const u32 *v, u32 ran)
 }
 #endif
 
+#ifdef UA_PROBE
+/* CF Probe watch stream (docs/FW_RND_BRIEF5_2026-10-22.md): USB channel 7 carries,
+   every block, one 16-word frame with six 32-bit words read from a list of up
+   to UA_WATCH_MAX addresses, walking the list round-robin:
+     [0] sync 0x7e5b, [1] sequence (8 bits) | list length << 8,
+     [2] index of the first of the six entries, [3..14] six u32 as lo, hi,
+     [15] XOR of words [0..14].
+   Reads are word reads of addresses the list accepted (ua_watch_ok: on-chip L2
+   and L1D RAM and the first 8 MB of SDRAM, word aligned), so a bad list can
+   never touch a peripheral register. The default list is CF Probe watch list v1
+   (looper and drum state, docs/helpers/FW_RND_F9_LOOPER_DRUMS_FLASH_2026-10-22.md). */
+#define UA_WATCH_SYNC 0x7e5bu
+#define UA_WATCH_MAX 64u
+#define UA_WATCH_PER 6u
+static u32 ua_watch_addr[UA_WATCH_MAX] = {
+    0x11f03c58u, 0x11f03c54u, 0x11f03e38u, 0x11f03c64u, 0x11f03cd8u, 0x11f03ed0u,
+    0x11f03ed4u, 0xc011aca8u, 0xc011acacu, 0xc011acb0u, 0xc011acb4u, 0xc011acc0u,
+    0xc0184fb0u, 0xc0184fb4u, 0xc0184fb8u, 0x11f03d54u, 0x11f03d1cu, 0x11f03d08u,
+    0x11f03d0cu, 0x11f03d14u, 0x11f03d58u, 0x11f03d5cu, 0x11f03d60u, 0x11812f78u,
+    0x118133b4u, 0x118133bcu, 0xc011ada4u, 0xc011ada8u, 0x1181191cu, 0x11f03e34u,
+    0x11812f74u, 0x1180312cu
+};
+static u32 ua_watch_n = 32u, ua_watch_pos, ua_watch_seq;
+#ifndef UA_WATCH_READ
+#define UA_WATCH_READ(a) (*(const volatile u32 *)(a))
+#endif
+
+u32 ua_watch_ok(u32 a)
+{
+    if (a & 3u)
+        return 0;
+    return (a >= 0x11800000u && a < 0x11840000u)      /* L2 RAM */
+        || (a >= 0x11f00000u && a < 0x11f08000u)      /* L1D RAM */
+        || (a >= 0xc0000000u && a < 0xc0800000u);     /* SDRAM, first 8 MB */
+}
+
+/* Replace the list (from the SysEx handler, MIDI task): entries that fail
+   ua_watch_ok are dropped. Returns the new length. Runs with the Swi able to
+   preempt: the length is published last, after the addresses. */
+u32 ua_watch_set(const u32 *addr, u32 n)
+{
+    u32 i, k = 0;
+    ua_watch_n = 0;
+    for (i = 0; i < n && k < UA_WATCH_MAX; i++)
+        if (ua_watch_ok(addr[i]))
+            ua_watch_addr[k++] = addr[i];
+    ua_watch_pos = 0;
+    ua_watch_n = k;
+    return k;
+}
+
+static void ua_watch_build(void)
+{
+    u32 k, x = 0, n = ua_watch_n, pos = ua_watch_pos;
+    if (pos >= n)
+        pos = 0;
+    ua_watch_frame[0] = UA_WATCH_SYNC;
+    ua_watch_frame[1] = (ua_watch_seq++ & 0xffu) | (n & 0xffu) << 8;
+    ua_watch_frame[2] = pos;
+    for (k = 0; k < UA_WATCH_PER; k++) {
+        u32 v = 0;
+        if (n) {
+            u32 j = pos + k;                    /* no RTS here: wrap without % */
+            while (j >= n)
+                j -= n;
+            u32 a = ua_watch_addr[j];
+            if (ua_watch_ok(a))
+                v = UA_WATCH_READ(a);
+        }
+        ua_watch_frame[3 + 2 * k] = v & 0xffffu;
+        ua_watch_frame[4 + 2 * k] = v >> 16;
+    }
+    pos += UA_WATCH_PER;
+    while (n && pos >= n)
+        pos -= n;
+    ua_watch_pos = n ? pos : 0;
+    for (k = 0; k < 15u; k++)
+        x ^= ua_watch_frame[k];
+    ua_watch_frame[15] = x & 0xffffu;
+}
+#endif
+
 static void ua_bench_build(void)
 {
     u32 v[7], k, *t = ua_bench_t;
@@ -569,6 +658,9 @@ static void ua_bench_build(void)
         ua_bench_frame[3 + 2 * k] = v[k] >> 16;
     }
     ua_bench_mask = 0;
+#ifdef UA_PROBE
+    ua_watch_build();
+#endif
 }
 #endif
 
