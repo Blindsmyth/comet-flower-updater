@@ -121,3 +121,11 @@ c012933c), file system `fs_bench27.bin`. Everything in 27/28 works the same. New
 2. I run `tools/cf_probe.py ping`, then peeks and watches while you work the looper and the drum machine.
 If MIDI stops answering or the pedal misbehaves on a stock editor action, reflash Updater 27: the hook
 sits only in the MIDI task's end-of-SysEx path; audio does not pass through it.
+
+## 9. Updater 30: CFM Pre 5-character labels (replaces 29; TEST build)
+**Updater:** `build/fw_rnd_2026-10-22/GUITAR AUDIO 30 - CF Probe link + CFM Pre 5-char labels TEST.exe`
+**SHA-256:** `243884b737923274d2f73314b2129b991968a4f9c89fc6ca834ba13388a01bb3` (short `243884b7`).
+Same firmware as 29 (`d2af52c7`, CF Probe link + watchdog); file system `fs_bench30.bin` = fs_bench27 with
+CFMPRE relabelled (DSens DOut DynOn | MSust MTone MVol | FRate FRang FColr | MufOn FMtx Level) and
+header 0x58 = 1. Owner results on 29: CF Delay tail works; CFM Pre labels unreadable (live screenshot: 31 px
+columns, 6 px font, so 5 characters max).
