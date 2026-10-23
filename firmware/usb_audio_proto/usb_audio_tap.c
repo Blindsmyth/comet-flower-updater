@@ -606,6 +606,121 @@ u32 ua_watch_set(const u32 *addr, u32 n)
     return k;
 }
 
+/* ---- CF Probe SysEx commands (docs/helpers/FW_RND_S12_SYSEX_HOOK_2026-10-22.md) ----
+   Host -> pedal: F0 52 00 6E 64 'C' 'F' 'P' 'R' <op> <args> F7. Stock firmware
+   stores the payload of command 0x64 (and only that command) at 0x1180ff20,
+   first byte after the command at index 0; the MIDI task then calls the
+   dispatcher c0128e54 from c0129324, which make_usb_audio_fw.py --probe
+   redirects to cfp_sysex_thunk (ua_thunks.asm): cfp_sysex() runs first. A
+   message with our tag is answered here and its command id B14[38] cleared,
+   so the stock dispatcher takes its "unknown command" exit; anything else is
+   left untouched. Numbers are 7-bit little-endian groups (address: 5 bytes,
+   length: 2 bytes); data is MIDI-packed (each 7 bytes -> 1 byte of top bits,
+   then the 7 low-7-bit bytes). Ops (reply op = lower case):
+     'V'             -> 'v' 0x01                       (ping, protocol 1)
+     'P' addr len    -> 'p' addr len data             (peek, len <= 512, RAM only)
+     'W' n addr...   -> 'w' accepted                  (watch list, n <= 64)
+   A peek that leaves the RAM ranges of ua_watch_ok replies 'e'. */
+#ifndef CFP_CMD
+#define CFP_CMD (*(const volatile u16 *)0xc0183b60u)       /* command byte of this message */
+#define CFP_COUNT (*(const volatile u32 *)0xc0184eacu)     /* B14[43]: bytes after the model */
+#define CFP_BUF ((const volatile u8 *)0x1180ff20u)         /* payload of command 0x64 */
+#define CFP_CMDID (*(volatile u32 *)0xc0184e98u)           /* B14[38]: dispatcher's command id */
+#define CFP_SEND(b, n) ((void (*)(const u8 *, u32))0xc01274ccu)((b), (n))
+#define CFP_READ8(a) (*(const volatile u8 *)(a))
+#endif
+#define CFP_PAYLOAD_MAX 1024u
+#define CFP_PEEK_MAX 512u
+static u8 cfp_reply[1024];
+
+static u32 cfp_num(const volatile u8 *p, u32 n)
+{
+    u32 v = 0, k;
+    for (k = 0; k < n; k++)
+        v |= (u32)(p[k] & 0x7fu) << (7u * k);
+    return v;
+}
+
+static u32 cfp_put_num(u8 *p, u32 v, u32 n)
+{
+    u32 k;
+    for (k = 0; k < n; k++)
+        p[k] = (u8)((v >> (7u * k)) & 0x7fu);
+    return n;
+}
+
+static u32 cfp_range_ok(u32 a, u32 n)
+{
+    u32 last = a + n - 1u;
+    if (!n || last < a)
+        return 0;
+    return ua_watch_ok(a & ~3u) && ua_watch_ok(last & ~3u)
+        && ((a ^ last) & 0xfffc0000u) == 0;                /* same region */
+}
+
+static u32 cfp_pack(u8 *out, u32 a, u32 n)
+{
+    u32 i = 0, o = 0;
+    while (i < n) {
+        u32 k, m = n - i < 7u ? n - i : 7u, hi = 0;
+        u32 h = o++;
+        for (k = 0; k < m; k++) {
+            u8 b = CFP_READ8(a + i + k);
+            hi |= (u32)(b >> 7) << k;
+            out[o++] = b & 0x7fu;
+        }
+        out[h] = (u8)hi;
+        i += m;
+    }
+    return o;
+}
+
+void cfp_sysex(void)
+{
+    u32 len, n = 0;
+    const volatile u8 *b = CFP_BUF;
+    u8 *r = cfp_reply;
+    if ((CFP_CMD & 0xffu) != 0x64u)
+        return;
+    len = CFP_COUNT;
+    len = len ? len - 1u : 0;
+    if (len < 5u || len > CFP_PAYLOAD_MAX)
+        return;
+    if (b[0] != 'C' || b[1] != 'F' || b[2] != 'P' || b[3] != 'R')
+        return;
+    CFP_CMDID = 0;                      /* stock dispatcher: unknown command, no action */
+    r[n++] = 0xf0; r[n++] = 0x52; r[n++] = 0x00; r[n++] = 0x6e; r[n++] = 0x64;
+    r[n++] = 'C'; r[n++] = 'F'; r[n++] = 'P'; r[n++] = 'R';
+    if (b[4] == 'V') {
+        r[n++] = 'v'; r[n++] = 1;
+    } else if (b[4] == 'P' && len >= 12u) {
+        u32 a = cfp_num(b + 5, 5), cnt = cfp_num(b + 10, 2);
+        if (cnt > CFP_PEEK_MAX || !cfp_range_ok(a, cnt)) {
+            r[n++] = 'e';
+        } else {
+            r[n++] = 'p';
+            n += cfp_put_num(r + n, a, 5);
+            n += cfp_put_num(r + n, cnt, 2);
+            n += cfp_pack(r + n, a, cnt);
+        }
+    } else if (b[4] == 'W' && len >= 6u) {
+        u32 cnt = b[5] & 0x7fu, k, got;
+        static u32 list[UA_WATCH_MAX];
+        if (cnt > UA_WATCH_MAX || len < 6u + 5u * cnt) {
+            r[n++] = 'e';
+        } else {
+            for (k = 0; k < cnt; k++)
+                list[k] = cfp_num(b + 6 + 5 * k, 5);
+            got = ua_watch_set(list, cnt);
+            r[n++] = 'w'; r[n++] = (u8)got;
+        }
+    } else {
+        r[n++] = 'e';
+    }
+    r[n++] = 0xf7;
+    CFP_SEND(r, n);
+}
+
 static void ua_watch_build(void)
 {
     u32 k, x = 0, n = ua_watch_n, pos = ua_watch_pos;

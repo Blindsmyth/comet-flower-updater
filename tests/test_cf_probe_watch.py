@@ -132,3 +132,76 @@ class WatchStreamTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SysexTests(unittest.TestCase):
+    """cfp_sysex() against the stock globals (faked by the harness) and the Python client.
+    Fake memory: byte at address a = byte (a & 3) of ((a & ~3) ^ SALT)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = WatchStreamTests.lib if hasattr(WatchStreamTests, "lib") else None
+        if cls.lib is None:
+            WatchStreamTests.setUpClass()
+            cls.lib = WatchStreamTests.lib
+        cls.lib.host_cfp_set.argtypes = [ctypes.c_uint, ctypes.c_char_p, ctypes.c_uint, ctypes.c_uint]
+        cls.lib.host_cfp_take.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        cls.lib.host_cfp_take.restype = ctypes.c_uint
+        cls.lib.host_cfp_cmdid_get.restype = ctypes.c_uint
+
+    def setUp(self):
+        self.lib.host_reset()
+        self.lib.host_watch_salt_set(SALT)
+
+    def send(self, msg, cmd=0x64, cmdid=77):
+        """Feed a full request (F0..F7) as the stock parser would leave it; return the reply."""
+        payload = bytes(msg[len(cf_probe.HEADER) - 4:-1])     # from 'CFPR' on, F7 excluded
+        self.lib.host_cfp_set(cmd, payload, len(payload), cmdid)
+        self.lib.cfp_sysex()
+        buf = (ctypes.c_ubyte * 2048)()
+        n = self.lib.host_cfp_take(buf, 2048)
+        return bytes(buf[:n])
+
+    def mem(self, a, n):
+        out = bytearray()
+        for x in range(a, a + n):
+            w = (x & ~3) ^ SALT
+            out.append((w >> (8 * (x & 3))) & 0xFF)
+        return bytes(out)
+
+    def test_ping(self):
+        r = self.send(cf_probe.request("V"))
+        self.assertEqual(cf_probe.parse_reply(r), ("v", 1))
+        self.assertEqual(self.lib.host_cfp_cmdid_get(), 0)
+
+    def test_peek_round_trip_odd_sizes(self):
+        for a, n in [(0x11f03d1c, 4), (0x11f03d1d, 13), (0xc011aca8, 512), (0x11800001, 1)]:
+            r = self.send(cf_probe.peek_request(a, n))
+            op, (addr, data) = cf_probe.parse_reply(r)
+            self.assertEqual((op, addr), ("p", a))
+            self.assertEqual(data, self.mem(a, n), hex(a))
+            self.assertLessEqual(len(r), 1024)
+
+    def test_peek_refuses_peripherals_oversize_and_straddle(self):
+        for a, n in [(0x01c04000, 4), (0x01e00400, 16), (0x11f03d1c, 513), (0x1183fff0, 32),
+                     (0x11f07ff0, 32), (0xc07ffff0, 32), (0x11f03d1c, 0)]:
+            r = self.send(cf_probe.peek_request(a, n))
+            self.assertEqual(cf_probe.parse_reply(r)[0], "e", hex(a))
+
+    def test_watch_set_via_sysex(self):
+        r = self.send(cf_probe.watch_set_request([0x11f03d1c, 0x01c00000, 0xc011aca8]))
+        self.assertEqual(cf_probe.parse_reply(r), ("w", 2))
+
+    def test_foreign_messages_untouched(self):
+        # another command, or command 0x64 without our tag: no reply, command id kept
+        self.lib.host_cfp_set(0x29, b"CFPRV", 5, 77)
+        self.lib.cfp_sysex()
+        self.assertEqual(self.lib.host_cfp_take(None, 0), 0)
+        self.assertEqual(self.lib.host_cfp_cmdid_get(), 77)
+        self.lib.host_cfp_set(0x64, b"ZOOMXYZ", 7, 77)
+        self.lib.cfp_sysex()
+        self.assertEqual(self.lib.host_cfp_take(None, 0), 0)
+        self.assertEqual(self.lib.host_cfp_cmdid_get(), 77)
+
+    def test_unknown_op_replies_e(self):
+        self.assertEqual(cf_probe.parse_reply(self.send(cf_probe.request("Q")))[0], "e")

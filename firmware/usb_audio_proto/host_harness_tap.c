@@ -103,6 +103,43 @@ static unsigned int host_watch_salt;
 EXPORT void host_watch_salt_set(unsigned int s) { host_watch_salt = s; }
 EXPORT unsigned int ua_watch_set(const unsigned int *addr, unsigned int n);
 EXPORT unsigned int ua_watch_ok(unsigned int a);
+/* SysEx side: the host test fills the stock globals and captures the reply */
+static unsigned short host_cfp_cmd;
+static unsigned int host_cfp_count, host_cfp_cmdid;
+static unsigned char host_cfp_buf[1024];
+static unsigned char host_cfp_sent[2048];
+static unsigned int host_cfp_sent_n;
+static void host_cfp_send(const unsigned char *b, unsigned int n)
+{
+    unsigned int i;
+    for (i = 0; i < n && host_cfp_sent_n < sizeof host_cfp_sent; i++)
+        host_cfp_sent[host_cfp_sent_n++] = b[i];
+}
+#define CFP_CMD host_cfp_cmd
+#define CFP_COUNT host_cfp_count
+#define CFP_BUF host_cfp_buf
+#define CFP_CMDID host_cfp_cmdid
+#define CFP_SEND(b, n) host_cfp_send((b), (n))
+#define CFP_READ8(a) ((unsigned char)(((a) ^ host_watch_salt) >> (8 * ((a) & 3))))
+EXPORT void cfp_sysex(void);
+EXPORT void host_cfp_set(unsigned int cmd, const unsigned char *payload, unsigned int n, unsigned int cmdid)
+{
+    unsigned int i;
+    host_cfp_cmd = (unsigned short)cmd;
+    host_cfp_count = n + 1u;
+    for (i = 0; i < n && i < sizeof host_cfp_buf; i++)
+        host_cfp_buf[i] = payload[i];
+    host_cfp_cmdid = cmdid;
+    host_cfp_sent_n = 0;
+}
+EXPORT unsigned int host_cfp_take(unsigned char *out, unsigned int max)
+{
+    unsigned int i;
+    for (i = 0; i < host_cfp_sent_n && i < max; i++)
+        out[i] = host_cfp_sent[i];
+    return host_cfp_sent_n;
+}
+EXPORT unsigned int host_cfp_cmdid_get(void) { return host_cfp_cmdid; }
 #endif
 #ifdef UA_WATCHDOG
 static void *volatile host_slot_table[5];

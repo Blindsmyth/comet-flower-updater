@@ -1,6 +1,15 @@
 """CF Probe link host tool (TEST firmware only; docs/FW_RND_BRIEF5_2026-10-22.md).
 
+    python tools/cf_probe.py ping
+    python tools/cf_probe.py peek <address> [<length>]          (hex dump, length <= 512)
+    python tools/cf_probe.py dump <address> <length> <out.bin>  (any length, 512 B per request)
+    python tools/cf_probe.py watch-set <address>...              (replace the watch list, <= 64)
     python tools/cf_probe.py watch [--seconds 4] [--csv out.csv]
+
+SysEx (docs/helpers/FW_RND_S12_SYSEX_HOOK_2026-10-22.md): F0 52 00 6E 64 'CFPR' <op> ... F7,
+the reply carries the same header and the op in lower case ('e' = refused). Numbers are 7-bit
+little-endian groups (address 5 bytes, length 2), data MIDI-packed (7 bytes -> top-bit byte +
+7 low bytes). Only RAM can be read (L2 0x11800000.., L1D 0x11f00000.., SDRAM 0xc0000000..+8 MB).
 
 watch: record the pedal's USB audio (8 channels) and decode channel 7's watch frames:
 sync 0x7e5b, sequence (8 bits) | list length << 8, index of the first entry, six u32
@@ -37,6 +46,112 @@ DEFAULT_LIST = [
     (0x1181191C, "rhythm_pattern_count(lo16)"), (0x11F03E34, "audio_master_gain"), (0x11812F74, "system_mvol"),
     (0x1180312C, "system_mute_mask"),
 ]
+
+
+HEADER = bytes([0xF0, 0x52, 0x00, 0x6E, 0x64]) + b"CFPR"
+PEEK_MAX = 512
+
+
+def num7(v, n):
+    return bytes((v >> (7 * k)) & 0x7F for k in range(n))
+
+
+def unnum7(b):
+    return sum((x & 0x7F) << (7 * k) for k, x in enumerate(b))
+
+
+def unpack7(b):
+    """Inverse of the firmware's cfp_pack: groups of (top-bit byte, up to 7 low bytes)."""
+    out = bytearray()
+    i = 0
+    while i < len(b):
+        hi = b[i]
+        grp = b[i + 1:i + 8]
+        for k, x in enumerate(grp):
+            out.append(x | ((hi >> k) & 1) << 7)
+        i += 1 + len(grp)
+    return bytes(out)
+
+
+def request(op, args=b""):
+    return HEADER + op.encode() + bytes(args) + bytes([0xF7])
+
+
+def peek_request(addr, length):
+    return request("P", num7(addr, 5) + num7(length, 2))
+
+
+def watch_set_request(addrs):
+    return request("W", bytes([len(addrs)]) + b"".join(num7(a, 5) for a in addrs))
+
+
+def parse_reply(msg):
+    """Return (op, payload) for a CF Probe reply (F0..F7 included), or None."""
+    msg = bytes(msg)
+    if not msg.startswith(HEADER) or not msg.endswith(bytes([0xF7])) or len(msg) < len(HEADER) + 2:
+        return None
+    op = chr(msg[len(HEADER)])
+    body = msg[len(HEADER) + 1:-1]
+    if op == "p":
+        addr, n = unnum7(body[:5]), unnum7(body[5:7])
+        data = unpack7(body[7:])
+        if len(data) != n:
+            raise ValueError("peek reply length %d != %d" % (len(data), n))
+        return op, (addr, data)
+    if op == "w":
+        return op, body[0]
+    if op == "v":
+        return op, body[0]
+    return op, body
+
+
+class Link:
+    """CF Probe over the pedal's USB MIDI port (mido)."""
+
+    def __init__(self, timeout=2.0):
+        import mido
+        import pedal_ports
+        ins = [n for n in mido.get_input_names() if pedal_ports.is_pedal_port(n)]
+        outs = [n for n in mido.get_output_names() if pedal_ports.is_pedal_port(n)]
+        if not ins or not outs:
+            sys.exit("no 'ZOOM G' / 'Comet Flower' MIDI port (is an editor open?)")
+        self.inp, self.out, self.timeout = mido.open_input(ins[0]), mido.open_output(outs[0]), timeout
+        self.mido = mido
+
+    def call(self, msg):
+        import time
+        for _ in self.inp.iter_pending():
+            pass
+        self.out.send(self.mido.Message("sysex", data=list(msg[1:-1])))
+        end = time.time() + self.timeout
+        while time.time() < end:
+            for m in self.inp.iter_pending():
+                if m.type == "sysex":
+                    r = parse_reply(bytes([0xF0] + list(m.data) + [0xF7]))
+                    if r:
+                        return r
+            time.sleep(0.002)
+        sys.exit("no CF Probe reply (is a CF Probe TEST firmware flashed?)")
+
+    def peek(self, addr, length):
+        op, r = self.call(peek_request(addr, length))
+        if op != "p":
+            sys.exit("peek %#x+%d refused" % (addr, length))
+        return r[1]
+
+    def dump(self, addr, length):
+        out = bytearray()
+        while len(out) < length:
+            n = min(PEEK_MAX, length - len(out))
+            out += self.peek(addr + len(out), n)
+        return bytes(out)
+
+
+def hexdump(addr, data):
+    for i in range(0, len(data), 16):
+        row = data[i:i + 16]
+        print("%08x  %-48s %s" % (addr + i, " ".join("%02x" % x for x in row),
+                                  "".join(chr(x) if 32 <= x < 127 else "." for x in row)))
 
 
 def frames(words):
@@ -90,10 +205,36 @@ def summary(fr, names=DEFAULT_LIST):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("ping")
+    pk = sub.add_parser("peek")
+    pk.add_argument("address")
+    pk.add_argument("length", nargs="?", default="64")
+    dp = sub.add_parser("dump")
+    dp.add_argument("address")
+    dp.add_argument("length")
+    dp.add_argument("out")
+    ws = sub.add_parser("watch-set")
+    ws.add_argument("addresses", nargs="+")
     w = sub.add_parser("watch")
     w.add_argument("--seconds", type=float, default=4)
     w.add_argument("--csv")
     a = ap.parse_args()
+    if a.cmd in ("ping", "peek", "dump", "watch-set"):
+        link = Link()
+        if a.cmd == "ping":
+            print("CF Probe reply:", link.call(request("V")))
+        elif a.cmd == "peek":
+            addr = int(a.address, 0)
+            hexdump(addr, link.peek(addr, int(a.length, 0)))
+        elif a.cmd == "dump":
+            addr, n = int(a.address, 0), int(a.length, 0)
+            Path(a.out).write_bytes(link.dump(addr, n))
+            print("wrote %d bytes from %#x to %s" % (n, addr, a.out))
+        else:
+            addrs = [int(x, 0) for x in a.addresses]
+            op, got = link.call(watch_set_request(addrs))
+            print("watch list:", got if op == "w" else "refused", "of", len(addrs), "accepted")
+        return
     import numpy as np
     import ua_capture8
     data = ua_capture8.record(a.seconds, 8)

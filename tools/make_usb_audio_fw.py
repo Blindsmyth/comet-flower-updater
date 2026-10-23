@@ -96,6 +96,14 @@ BENCH_PATCHES = STEM_PATCHES + [
     (SLOT_VENEER + 0, 0x0f81662a, "retarget_lo", 0x02cc, "ua_slot_enter"),
     (SLOT_VENEER + 4, 0x0fe00aea, "retarget_hi", 0xc015, "ua_slot_enter"),
 ]
+# --probe: the SysEx hook (docs/helpers/FW_RND_S12_SYSEX_HOOK_2026-10-22.md). The compact
+# pair at c0129324 (CALLP c0128e54 | BNOP c012932c,5) becomes one 32-bit CALLP.S2 to
+# cfp_sysex_thunk, and the packet header c012933c marks word 1 as 32-bit
+# (layout 1010010b -> 1010000b; that word's p-bits in the header become unused).
+PROBE_PATCHES = [
+    (0xc0129324, 0xa18ab35b, "callp_over", None, "cfp_sysex_thunk"),
+    (0xc012933c, 0xea40a000, "fixed", 0xea00a000, None),
+]
 TAP_OUT = ROOT / "build" / "usb_audio_tap"
 TAP_RETAIN = ["--retain=ua_tx_pack_tap", "--retain=usb_audio_sof_tick_tap"]
 
@@ -109,7 +117,7 @@ def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=
     out.mkdir(parents=True, exist_ok=True)
     main = PROTO / ("usb_audio_tap.c" if tap else "usb_audio.c")
     srcs = [main, PROTO / "usb_audio_hooks.asm",
-            GLUE / "ua_glue.c", GLUE / "ua_thunks.asm"]
+            GLUE / "ua_glue.c", GLUE / "ua_thunks.asm"] + ([GLUE / "cfp_thunks.asm"] if probe else [])
     objs = [out / (p.stem + ".obj") for p in srcs]
     ctl.run(ctl.CGT / "bin/cl6x", "--silicon_version=6740", "--abi=eabi", "--c99",
             "--opt_level=2", "--mem_model:data=far", "--mem_model:const=data",
@@ -124,7 +132,7 @@ def build_payload(tap=False, pattern=False, nch=2, stems=False, fx=False, bench=
             *(["--define=UA_PAIRS8"] if pairs8 else []),
             "--compile_only", *srcs)
     elf = out / "usb_audio.elf"
-    ctl.run(ctl.CGT / "bin/lnk6x", "--ram_model", *(TAP_RETAIN if tap else []), *(STEM_RETAIN if stems else []), *(["--retain=ua_slot_enter"] if bench else []),
+    ctl.run(ctl.CGT / "bin/lnk6x", "--ram_model", *(TAP_RETAIN if tap else []), *(STEM_RETAIN if stems else []), *(["--retain=ua_slot_enter"] if bench else []), *(["--retain=cfp_sysex_thunk"] if probe else []),
             "--map_file=%s" % (out / "usb_audio.map"),
             "--output_file=%s" % elf, *objs, GLUE / "ua.cmd")
     ctl.run(ctl.CGT / "bin/dis6x", elf, out / "usb_audio.dis")
@@ -216,7 +224,7 @@ def build(base_path, out_path, tap=False, pattern=False, nch=2, stems=False, fx=
 
     data = bytearray(base[:close_off])
     plan = []
-    for vma, stock, kind, ref, sym in (BENCH_PATCHES if bench else STEM_PATCHES if stems else TAP_PATCHES if tap else PATCHES):
+    for vma, stock, kind, ref, sym in (BENCH_PATCHES + (PROBE_PATCHES if probe else []) if bench else STEM_PATCHES if stems else TAP_PATCHES if tap else PATCHES):
         off = vma_offset(base, vma)
         word = struct.unpack_from("<I", data, off)[0]
         if (stock is not None and word != stock) or not stock_ok(vma, word, kind, ref):
