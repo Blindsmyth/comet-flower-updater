@@ -1,7 +1,7 @@
 # F8: Incoming SysEx path and a free command
 
 ## Status
-running
+done
 
 ## Findings
 
@@ -168,8 +168,88 @@ The reply path `c01274cc` is the standard raw MIDI/SysEx transmission entry used
 
 ## Answers
 ### Step 1: USB MIDI OUT receive & SysEx assembly
+- **Where bytes from HOST are received**:
+  - USB endpoint worker `c0159620` (invoked via `c016ab50` from USB service) drains USB packets via `c0144ee4` into a **4096-byte circular ring buffer** in L2 SRAM at **`0xc010f288`** (modulus mask `0x0fff`).
+  - Index pointers: Write index is at `*+B14[40]`; read index is at `*+B14[39]`.
+  - Event signaling: `c01596e8` signals the MIDI task by posting event bit 1 to event handle `*+B14[147]` via `c0155ac0(handle, 1)`.
+- **The parser that collects F0..F7**:
+  - The MIDI task (`c0129118`) wakes on `Event_pend(B14[147], 1, 0, -1)` at `c0129130`, reads bytes from `0xc010f288 + B14[39]`, and advances `B14[39]`.
+  - Status byte detection at `c0129160` separates status (`>= 0x80`) from data. Realtime bytes (`>= 0xf8`) are ignored. Status `0xf0` clears state `B14[167] = 0` and sets `B14[164] = 0xf0`. Status `0xf7` terminates the message and invokes dispatcher `c0128e54`.
+  - Inbound byte state machine at `0xc01844a8`:
+    - State 0 (`c0129242`): manufacturer ID (0x52 Zoom / 0x7E Universal).
+    - State 1 (`c0129214`): device ID (`0x00` in `B14[168]`).
+    - State 2 (`c0129276`): model ID (`0x6e` in `B14[166]`).
+    - State 3 (`c01291f0`): payload streaming via `c0127cf4`.
+- **Buffer address and maximum length**:
+  - Payload buffer address: **`0x1180ff20`** (L2 SRAM).
+  - Maximum payload length: **1024 bytes** (`0x400`), checked strictly at `11803014..11803016` (`SET B0, 10, 10, B0; CMPLT B4, B0, B0`). Excess bytes beyond 1024 are dropped.
+- **Can a firmware patch change it?**:
+  - Yes, but not needed for CF Probe: 1024 bytes is more than enough for host control messages (`peek` address+len, `watch` address lists, LCD capture triggers).
+
 ### Step 2: Zoom SysEx dispatcher & command values
+- **The compare/jump on the command byte**:
+  - When byte 1 of state 3 arrives (the command byte), `c0127df0` stores it at halfword `0xc0183b60` (`STH A1, *+A7[0]`). If recognized, it sets internal command ID `*+B14[38]`.
+  - When `0xf7` (EOX) arrives, `c0129324` executes `CALLP.S2 0xc0128e54, B3` to call top-level dispatcher `c0128e54` (`midi_cmd_dispatch`).
+  - `c0128e54` reads `*+B14[38], B2` and performs a 20-way `CMPEQ` cascade (`codes 1, 2, 14, 13, 15, 9, 10, 11, 12, 16, 17, 19, 20, 3, 6, 4, 23, 8, 22, 21, 24, 26, 27, 28, 29, 30`).
+- **List of command values handled**:
+  - External command bytes recognized by stock firmware: `0x01`, `0x03`, `0x04`, `0x05`, `0x06`, `0x08`, `0x09`, `0x0e`, `0x28` (40), `0x29` (41), `0x2d` (45), `0x2e` (46), `0x33` (51), `0x44` (68), `0x45` (69), `0x46` (70), `0x48` (72), `0x50` (80), `0x51` (81), `0x52` (82), `0x53` (83), `0x55` (85), `0x56` (86), `0x57` (87), `0x60` (96), `0x64` (100). Also Universal SysEx `0x7e` (sub-ID `0x06`).
+- **What happens for an unknown command**:
+  - `c0127df0` leaves `*+B14[38] = 0`.
+  - In `c0128e54`, `B2 == 0` misses all branches and reaches `c0128f74 [!B0] BNOP 0xc01290ec, 5`.
+  - Common exit `c01290ec` clears `*+B14[38] = 0`, posts event 64 to `*+B14[139]`, and returns via `c0129114 BNOP B3, 5`.
+  - **No error reply is sent**; unknown commands are dropped silently with zero side effects.
+- **Model byte for G1X Four**:
+  - **`0x6e`** (decimal 110). Confirmed by `tools/midi_listen_g1.py:21`, `tools/ua_bench.py:277`, and `mainapp_model_detect` (`c015d7e0`) initializing `0xc0183b48` to `0x6e`.
+- **Free command for CF Probe**:
+  - **`0x70`** (112 decimal): Completely unused by stock firmware. When sent, `c0127df0` leaves `B14[38] = 0`, while subsequent payload bytes (up to 1024 B) are safely buffered at `0x1180ff20`. Stock firmware silently drops it if CF Probe is not installed.
+- **Can a firmware patch change it?**:
+  - Yes; intercepting before `c0128e54` allows CF Probe to claim `0x70` cleanly.
+
 ### Step 3: Proposed hook for CF Probe
+- **Target instruction & location**:
+  - **Option A (Call site redirect)**:
+    - Address: **`0xc0129324`** in `midi_task_entry` (`c0129118`).
+    - Current 32-bit word: **`0xa18ab35b`** (file offset `0x0001d2a0` in `build/fw/res1_493412.bin`).
+    - Instruction: `b35b` (`CALLP.S2 0xc0128e54, B3`) paired with `a18a` (`BNOP.S1 0xc012932c, 5`).
+  - **Option B (Dispatcher entry replacement - recommended for patch tool simplicity)**:
+    - Address: **`0xc0128e54`** (`midi_cmd_dispatch`).
+    - Current word: **`0x01bc54f6`** (`STW.D2T2 B3, *B15--[2]`, file offset `0x0001cdd4`).
+    - Next word: **`0x0100266e`** (`LDW.D2T2 *+B14[38], B2`, file offset `0x0001cdd8`).
+    - Advantage: `c0129324` is the sole caller of `c0128e54` in the whole firmware. Patching the 32-bit aligned entry of `c0128e54` avoids modifying the compact 16-bit fetch packet at `c0129324`.
+- **Calling convention & Data registers/globals**:
+  - At the hook site, incoming parameters are not in registers; they reside in global memory:
+    - Command byte: halfword at `0xc0183b60` (`*(volatile uint16_t *)0xc0183b60`).
+    - Model ID: byte at `*+B14[166]` (`0x6e`).
+    - Manufacturer ID: byte at `*+B14[165]` (`0x52`).
+    - Device ID: byte at `*+B14[168]` (`0x00`).
+    - Payload buffer pointer: `0x1180ff20` (in L2 SRAM).
+    - Payload length: `*+B14[43] - 1` (total state 3 bytes minus command byte).
+- **Task/Context**:
+  - Runs in the **MIDI task** (`c0129118`), SYS/BIOS Task context.
+- **Hook protocol**:
+  - If `cmd == CF_PROBE_CMD` (`0x70`): process command, format response, call `c01274cc(reply_buf, reply_len)`, and return directly via `B3`.
+  - If "not mine" (`cmd != 0x70`): jump to / execute stock `midi_cmd_dispatch` (`c0128e54`).
+- **Risk**: Very low. Isolating CF Probe to command `0x70` guarantees zero interference with stock editor SysEx, patch changes, or PC commands.
+
 ### Step 4: Reply path (c01274cc) signature and limits
+- **Signature**:
+  ```c
+  void c01274cc(const uint8_t *buf /* A4 */, uint32_t len /* B4 */);
+  ```
+  - `A4` = byte buffer pointer to raw SysEx (e.g. `F0 52 00 6E 70 ... F7`).
+  - `B4` = total byte length.
+  - Return value is discarded.
+- **Limits**:
+  - **Maximum bytes per call**: **1024 bytes** (limited by the 1025-byte circular TX ring at `0xc0117b28`, which leaves 1 byte empty to distinguish full from empty).
+  - Longer transfers (such as a full LCD framebuffer of 2048 bytes or large RAM dumps) must be chunked across multiple SysEx calls.
+- **Blocking behavior**:
+  - **Blocks on mutex semaphore**: takes semaphore `*+B14[161]` (`0xc0185084`) with timeout `-1` (`BIOS_WAIT_FOREVER`).
+  - **Non-blocking on USB wire transmission**: `c0144dc8` -> `c0149de4` copies bytes into the TX ring and signals the TX worker via event bit 1 on `B14[90]`. It does not wait for USB SOF/bus packets.
+- **Allowed Calling Context**:
+  - **SYS/BIOS Task context ONLY**. Must never be called from Hwi or Swi.
+  - Because our proposed hook runs in the MIDI task (`c0129118`), calling `c01274cc` from the hook is completely valid and safe.
 
 ## Not checked / open leads
+- Exact framing format for CF Probe multi-packet dumps (e.g. LCD screenshot chunks > 1024 B across multiple SysEx calls) is deferred to the CF Probe protocol design.
+- The 5-slot effect parameters and audio watch streaming path (job F9) will define the exact addresses to stream over USB audio.
+
