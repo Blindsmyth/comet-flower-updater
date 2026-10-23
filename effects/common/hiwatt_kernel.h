@@ -28,7 +28,11 @@ static unsigned TSCL;                /* host build: a counter that never moves *
  * mna_derive is not compiled in, small scratch sizes only for its headers */
 #define MNA_MAXN 10
 #define MNA_MAXU 1
-#include "hiwatt_amp.h"
+/* the amp core: hiwatt_amp.h, or another file with the same API (CF WattL: hiwatt_lite.h) */
+#ifndef HW_AMP_FILE
+#define HW_AMP_FILE "hiwatt_amp.h"
+#endif
+#include HW_AMP_FILE
 
 typedef struct {
     HwState dsp;                     /* 292 B */

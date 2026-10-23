@@ -14,7 +14,11 @@
 #include <vector>
 #include "cases/hiwatt.h"
 extern "C" {
+#ifdef HW_LITE   // CF WattL bench: the cheaper core, no reference renders, files L_*
+#include "../../effects/common/hiwatt_lite.h"
+#else
 #include "../../effects/common/hiwatt_amp.h"
+#endif
 }
 
 static const double PI = 3.14159265358979323846;
@@ -138,7 +142,9 @@ int main(int argc, char** argv)
             for (double amp : { 0.05, 0.25, 0.7 }) {
                 char tag[64];
                 std::snprintf(tag, sizeof tag, "%s_f%d_a%03d", kn.name, (int)f0, (int)(amp * 100));
+#ifndef HW_LITE
                 write(dir + "/ref_" + tag + ".f32", reference(f0, amp, kn, secs, 16, 31));
+#endif
                 if (variants) {   // the same double chain at 4x / 8x: what each rate can reach
                     write(dir + "/R4_" + tag + ".f32", reference(f0, amp, kn, secs, 4, 0));
                     write(dir + "/R4A_" + tag + ".f32", reference(f0, amp, kn, secs, 4, 31));
@@ -169,7 +175,11 @@ int main(int argc, char** argv)
                 }
                 {
                     char pre[16];
+#ifdef HW_LITE
+                    std::snprintf(pre, sizeof pre, "L");
+#else
                     std::snprintf(pre, sizeof pre, "G");
+#endif
                     write(dir + "/" + pre + "_" + tag + ".f32", o);
                 }
             }

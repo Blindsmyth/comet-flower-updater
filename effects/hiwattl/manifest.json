@@ -1,0 +1,70 @@
+{
+  "name": "CF WattL",
+  "filename": "DR103L",
+  "id": "04000f8a",
+  "version": "1.00",
+  "display": "CF WattL",
+  "badge": "CF",
+  "description": "CF Watt with a cheaper amp core (hiwatt_lite.h): same knobs and sound target, less CPU so a full 5-slot patch fits.",
+  "dspload": 69,
+  "allow_any_id": true,
+  "kernel": "hiwattl.c",
+  "kernel_section": "text",
+  "text_extra": 12288,
+  "allow_stack": true,
+  "opt_for_space": null,
+  "state_bytes": 320,
+  "scaffold": "cleanroom",
+  "const_blob": {
+    "symbol": "hw_blob",
+    "words": 1024,
+    "init": "blob.bin"
+  },
+  "params": [
+    {
+      "name": "Volume",
+      "max": 100,
+      "default": 50,
+      "explanation": "Normal channel volume, 470k audio taper."
+    },
+    {
+      "name": "Treble",
+      "max": 100,
+      "default": 50,
+      "explanation": "Treble control of the passive tone stack."
+    },
+    {
+      "name": "Middle",
+      "max": 100,
+      "default": 50,
+      "explanation": "Middle control of the passive tone stack."
+    },
+    {
+      "name": "Bass",
+      "max": 100,
+      "default": 50,
+      "explanation": "Bass control of the passive tone stack."
+    },
+    {
+      "name": "Presence",
+      "max": 100,
+      "default": 50,
+      "explanation": "Shunts the negative feedback at high frequencies."
+    },
+    {
+      "name": "Master",
+      "max": 100,
+      "default": 50,
+      "explanation": "Master volume, 220k audio taper, before the phase inverter."
+    },
+    {
+      "name": "Cab",
+      "max": 1,
+      "default": 1,
+      "explanation": "1 = datasheet Fane 4x12 cab, 0 = amp only."
+    }
+  ],
+  "kernel_cflags": [
+    "-k"
+  ]
+}
