@@ -64,5 +64,13 @@ After an overdub pass (snapshot `looper_overdub`):
 
 | address | seen | meaning | confidence |
 |---|---|---|---|
-| 0xc011ac08.. | every byte 0x14 -> 0x17 | loop waveform overview, one amplitude byte per screen column (louder after the overdub) | likely |
+| 0xc011ac00.. | every byte 0x14 -> 0x17 after the overdub, then 0..7 at stop | screen drawing scratch or waveform display data (it changes with the screen) | guess |
 | 0x11f03e38..0x11f03e78 | 17 words 0x7fffffff -> 0 | meters / limits re-armed by the overdub | guess |
+
+After stopping playback (snapshot `looper_stopped`; screen shows a large STOPPED and a Clear hint):
+
+| address | seen | meaning | confidence |
+|---|---|---|---|
+| 0x11813250 | 0xf0 -> 0xfc when the loop started, 0xfc -> 0xf0 at stop | **looper state field** (0xf0 stopped, 0xfc playing) | likely |
+| 0x11f03c80 | 0x7fffffff while playing -> 0 at stop | playing level / gate | guess |
+| No undo | the G1X Four looper has no undo (owner) | the "undo pointer" of watch list v1 is wrong | seen |
