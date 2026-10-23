@@ -161,6 +161,94 @@ fits in the worst-case 116 free bytes computed above.
 
 ## Q3
 
+### Is slot_count=5 a constant baked into the pack/unpack/validate pipeline, or read from the field? **Read from the field everywhere in the storage format itself** (`confirmed`)
+
+Three independent instruction-level confirmations that the PTCF format path
+is already generic in `slot_count`:
+
+1. **Validator** (`c0131304..c0131316`, quoted in Q1): chunk-area start
+   offset is computed as `36 + slot_count*4` from `rec[+0x0C]`, not a literal
+   `56`.
+2. **Pack's EDTB length** (`c0131076..c0131080`): `B1 = dst[+0x0C]`
+   (`slot_count`, itself just written into the record from the 904-byte
+   struct's `num_slots` field at `+0x384` by `c0130e4c..c0130e5a`), then
+   `B0=B1*24` via `SHL B1,0x4,B0 (B1*16); ADDAD.D2 B0,B1,B0 (+B1*8)`. The
+   EDTB chunk's on-disk declared length is **computed from slot_count, not
+   hardcoded**.
+3. **Unpack's EDTB-entry loop bound** (`c0131484`, called from
+   `c01315d6` with `A6` = `c01315cc LDW *+B15[67],A6`, the EDTB chunk's own
+   on-disk length field, e.g. `120` for 5 slots): the per-slot-entry
+   (84-byte struct <-> 24-byte on-disk) copy loop inside `c0131484` is driven
+   by this length argument, which came from the chunk header the firmware
+   itself wrote at save time — **not a literal 5**.
+4. **The 904-byte in-RAM struct already has room for 10 slots** (confirmed
+   independently here: `c0131518 MVK 113,A6;SHL A6,3,A6` = zeroes 904 bytes
+   total = `113*8`; slot stride is `84` bytes everywhere these functions
+   touch it, `9052 MVK 84,A0` recurring literal in `c0131484`/`c0130e04`/etc,
+   consistent with PATCH_STORE_ARGON's offset table: `0x000..0x347` = 10 ×
+   84B). 6 or 7 slots need **zero growth** of this struct or the 736-byte
+   record (worst-case active_len for 7 slots: `56+8+8*2slots+208+208+128+
+   2*24+20 = 676`, still `<736`; see Q1 free-space table).
+
+**The actual hardcoded "5" gate is downstream of unpack, in the post-load
+sanitize/load path** (`confirmed`, function `11806450`, called from the
+patch-load chain `c012f878 -> 118075e4 -> 1180738c`):
+
+```
+11806466  LDHU.D1T1  *A4[0],A1          ; A1 = num_slots (working struct +0x384)
+11806468  CMPGTU.L1  0x5,A1,A0          ; A0 = (num_slots < 5)
+1180646c  [A0] BNOP  0x11806488,5       ; -> force num_slots = 5
+11806470  CMPGTU.L1  0x6,A1,A0          ; A0 = (num_slots < 6), i.e. ==5 given above false
+11806474  [A0] BNOP  0x11806494,5       ; num_slots==5 -> leave unchanged, skip the clamp
+11806478..11806486                     ; (fallthrough, num_slots>5) force num_slots = 5
+11806488  MVK 5,A0; STH A0,*A4[0]       ; one clamp site
+11806492  MVK 5,A0; STH A0,*A4[0]       ; the other clamp site (num_slots<5 branch target)
+```
+This two-comparison / two-store routine forces `num_slots` to exactly `5`
+whenever it isn't already 5, immediately after `unpack` and before anything
+downstream (effect `.ZD2` loading, UI) ever sees the patch. **This is the
+single gate that would need to change (both `CMPGTU` immediates and both
+`MVK 5` immediates) to allow 6 or 7.**
+
+**Sites that loop a literal `5` times downstream of the clamp, inside the
+`c012f878 -> 118075e4 -> 1180738c` call tree** (`confirmed` presence by
+direct grep + spot read of each; not all individually traced to their full
+purpose):
+
+| Address | Instruction | Context |
+|---|---|---|
+| `11806450` region, `11806468`/`11806470`/`11806486`/`11806492` | `CMPGTU 0x5`/`0x6`, `MVK 5` ×2 | the num_slots clamp itself (above) |
+| `118060d4` | `CMPGT.L1 5,A11,A0` | per-slot sanitize loop (calls `1180bcc0`, effect-ID range check per PATCH_STORE_ARGON's `11806450..492` note) |
+| `118061f8` | `CMPGT.L1 5,A2,A0` | a second per-slot sanitize loop (different register, not individually traced) |
+| `11807438` | `CMPGT.L1 5,A10,A0` | loop inside `1180738c`'s slot-resource-check path (calls `11805f14`) |
+| `11807494` | `CMPGT.L1 5,A11,A0` | adjacent resource-table loop (uses record-size-table-style stride `53,SHL 4`... different table, not traced further) |
+| `118074d4` | `CMPGT.L1 5,A10,A0` | adjacent loop, calls `1180b7b0` |
+| `11807504`, `11807570` | `CMPGT.L1 5,A10,A0` | **the effect `.ZD2` binary loader loop** (`CALLP 0x118063c8` per slot, with a conditional unload call `CALLP 0x118072ac` when the slot's effect id changed) — this is the loop that actually loads each slot's DSP effect binary into memory |
+
+A broader grep for the same `CMPGT.L1 5,A<n>` / `CMPGT.L1 5,B<n>` idiom
+inside just the patch-load/DataStore module address ranges
+(`c012f000-c0138000`, `11800000-11809000`) found **24 occurrences total**
+(10 shown above plus 14 more in `c0132xxx`, not individually traced — that
+range is adjacent to the manual UI `STORE`/`SWAP` handlers PATCH_STORE_ARGON
+already located at `c0138ca4..c0138d88`, so these are `likely` UI/menu
+slot-selection loops, a separate subsystem from the storage format).
+
+**Sizing:** the **storage format itself (pack/unpack/validate) is `small`**
+— it is already slot_count-generic, confirmed by instruction trace, no
+patch needed there at all. The **patch-load/sanitize layer is `small` in
+patch-count** (the clamp plus ~9 confirmed sibling loops, each a one- or
+two-immediate edit, same repeated idiom) but **cannot be called `small`
+overall** because this report did not search the DSP audio-processing
+dispatch (which actually runs 5 effects per audio block — a different
+module, not reached from `c012f878`) or the LCD/menu slot-selection UI
+(the `c0132xxx` region above, and `c013cxxx` `UpdateUI`/`LooperUI` task
+code per `FWMAP.md`'s task list) for their own hardcoded-5 loops — those are
+very likely present and are `medium`-to-`large` in scope (rendering, menu
+state machines, DSP scheduling) and were **not inventoried here** (out of
+this report's PTCF/DataStore-storage focus). **Overall Q3 sizing: small for
+storage, unknown-but-likely-medium/large for DSP+UI — recommend a separate,
+dedicated pass over `c013cxxx`/`c016xxxx` before attempting 6/7 slots.**
+
 ## Q4
 
 ## Q5
