@@ -115,7 +115,95 @@ catalog registration, not a per-placement check"; **not found**: proof of when t
 code path actually runs (boot-time scan vs. on-demand), and what B6 (c0129a6c) is used
 for.
 
+### Finding 6: no other header-tied numeric gate exists anywhere in c01297a0 (confirmed, negative result)
+Scanned every `CMPLTU`/`CMPGTU`/`CMPGT`/`CMPLT` instruction in the full body of
+`c01297a0` (c01297a0..c0129db4, confirmed end address via its epilogue `CALLP
+0xc016e000` at `c0129db4`, matching chunk_04's "1560B" size): only 4 compares exist in
+the whole function -- `c01298e6` (an unrelated `A1,A0` compare feeding the ZDLF-tag
+check at c0129900), the already-confirmed `c0129908 CMPLTU 0x4,B0,B0` (the >4 ceiling),
+and two `CMPGTU 0x11,B1,B0` (0x11=17, at `c012984c` and `c0129a44`, both look like an
+unrelated chunk-tag/index range check, not slot-count). **There is no second,
+header-value-scaled comparison inside the loader that could explain "3/4 specifically
+overflow, 1/2 don't"**; whatever causes the observed PROCESS OVERFLOW is either outside
+`c01297a0` entirely (in `c012fb9c`'s caller-selected success/failure path, in
+`c012ed70`=`midi_apply_value_cascade_a` which `c012fb9c` tries first, or in a renderer
+that reacts to a side effect such as the catalog bytes Finding 5 found being written to
+0xc0064500-series addresses), or it is a non-comparison effect (e.g. a value computed
+from the header byte that corrupts/overruns something elsewhere, rather than an explicit
+threshold test). **Confidence: confirmed** (exhaustive compare-instruction scan of the
+whole function); the actual trigger remains **not found**.
+
 ## Answers
-(per question owned: answer, can a firmware patch change it, patch site + plan + risk)
+
+### c013b690 and c013b798: what they return, in what units
+- `c013b798()` (chunk_08 "midi_assign_freelist_count_fixed"): confirmed to call
+  `c013b764` against the fixed table `0x11811598`, which walks a 56-byte scratch buffer
+  (`0xc00be5c8`, rebuilt by `c013b6c8` from the table) for up to 14 entries and returns a
+  loop-iteration counter in A2. **Likely** a count of valid/used entries in that table,
+  but the exact stop condition (a `CMPGTU` on successive entries, chunk_08: "until a stop
+  condition") was not resolved to a clean "count of occupied rows" semantic within budget
+  -- **guess** for the precise unit.
+- `c013b690(idx, table)` (chunk_08 "midi_assign_slot_find_free"): confirmed to scan a
+  4-word (16-bit) window of the bitmap at `table+840` via `c013b660`, and on a hit reads
+  a value from the matched 84-byte record (`table + idx*84`) in a region whose exact
+  provenance (a direct field read vs. `c012b260`'s return) could not be disambiguated
+  from the delay-slot-packed instruction sequence at c013b6b2..c013b6ba -- **likely**
+  returns something like "the record's own stored index, minus 1", **guess** for whether
+  this is truly a "free slot index" in the sense the brief's lead assumed.
+
+### The full formula (confirmed arithmetic, semantics only likely/guess)
+`result = (c013b798() - (c013b690(arg0, 0x11811598) + 1) + c012b260(arg1)) >u 7 ? -1 : 0`
+(Finding 1). What `7` represents and why a patch with N effects would push 2 effects
+through and fail 3/4 was **not resolved**: I could not find a clean reading of Z
+("count") and X ("free+1") that reproduces the hardware-observed behaviour (CFM2P OK,
+CFM3P/CFM4P overflow, tested by the owner **on an empty patch, slot 1**, per
+`docs/FW_RND_BENCH_2026-10-22.md` step 2 -- meaning this is not simply "patch is nearly
+full"). Combined with Finding 4 (the LCD slot-switch path never reaches this function at
+all), my overall assessment is that **this formula is very likely unrelated to the
+observed PROCESS OVERFLOW bug** -- it is MIDI CC/note-assignment table bookkeeping
+(chunk_08's naming), reached only from MIDI-side callers (`c012fd28`, `c012ff14`,
+`c0132b78`=`midi_slot_param_dispatch`), not from the LCD's effect-picker
+(`c013f9f0`=`effect_slot_switch_reload`).
+
+### Who calls c013b8c0, and does -1 show PROCESS OVERFLOW?
+Two callers, both MIDI-side (Finding 2): `c013ba34` (uses -1/0 to pick a "new"/"existing"
+argument for a record-apply call -- reads like a find-or-create flag, not a reject) and
+`c013ba64`/`c0132b78` (sets a bit at global `0x1181_18e4` on -1, via the generic
+bit-setter `c01400a0`). **No code was found that reads `0x1181_18e4` or displays an error
+screen from either path.** Given Finding 4, I do **not** believe -1 from `c013b8c0` is
+what produces "PROCESS OVERFLOW!! CHANGE EFFECT" for CF M3/CF M4 on the LCD. Confidence:
+**likely** (not proven absent, since I did not trace every reader of 0x1181_18e4).
+
+### What does the "7" mean?
+**Not resolved.** Given the formula's likely irrelevance to the actual bug (Finding 4),
+and that I could not pin down the units of `c013b690`/`c013b798` with confidence
+(above), I am not willing to guess what capacity or count "7" bounds. Flagging as open
+rather than filling the gap with a plausible-sounding number.
+
+### Can a firmware patch change the real PROCESS OVERFLOW-for-header-3/4 behaviour?
+**Not answerable yet** -- the triggering code was not located. The one candidate
+single-instruction patch that *is* confirmed and well-understood is `c0129908`'s
+`CMPLTU 0x4` (raise to loosen the *listing* ceiling to allow header 5+), which is
+unrelated to this bug (`docs/helpers/FW_RND_S1_LIST_PARAMS_2026-10-22.md` Finding 5) and
+already a known, separate lever.
 
 ## Not checked / open leads
+- `c012ed70` (`midi_apply_value_cascade_a`), tried first by `c012fb9c` before falling
+  back to `c01297a0` directly -- not read at all this session. If it behaves
+  differently for header 3/4 vs 1/2, this is now the single most promising unexplored
+  function on the actual LCD placement path.
+- The renderer/message-ID path for "PROCESS OVERFLOW!! CHANGE EFFECT" itself: the string
+  is not present as plain ASCII in `build/fw/map/strings.txt` (only stack-overflow
+  messages matched "overflow"), so it is very likely drawn from a numeric message-ID
+  table, not a literal C string -- that table/renderer was not located.
+- Finding 5's catalog-write block (0xc0064500-series arrays, 0xc00644d0/e8): whether it
+  runs once per file at boot/filesystem-scan, or again each time a slot is loaded/
+  switched, was not determined. If it runs per-switch and a fixed-size catalog array is
+  overrun by newly-added custom effects (CFM3P/CFM4P happen to be the two highest-id
+  custom files among this probe set), that would be a capacity-overrun bug with no
+  relation to the header value's *meaning* -- only incidentally correlated with it in
+  this specific 4-file probe set. Not ruled in or out.
+- `c013b690`'s true "free slot" semantics and `c013b798`'s true "count" semantics
+  (which record set they actually describe) were not nailed down byte-for-byte; see
+  Answers above.
+- Did not trace every caller/reader of the global halfword `0x1181_18e4` (Finding 2).
