@@ -1,7 +1,7 @@
 # FW R&D F9: Looper and Drum Machine Prior Knowledge Citation Index
 
 ## Status
-running (Section 1: Looper Subsystem complete)
+running (Section 2: Drum Machine / Rhythm Subsystem complete)
 
 ## Findings
 
@@ -69,6 +69,94 @@ This section compiles all previously verified facts, addresses, buffers, hooks, 
 - **LooperUI Button Event Jump Table (`0xc0183fcc..0xc0184020`)**: 21-entry word array (`0..20`) mapping event codes to handlers: `c013b578` (slot 0), `c013b558` (1), `c013b540` (2), `c013b524` (3), `c013b508` (4), `c013b4ec` (5), `c013b4d0` (6), `c013b4b4` (7), `c013b498` (8), `c013b480` (9), `c013b464` (10), `c013b444` (11), `c013b424` (12), `c013b404` (13), `c013b3fa` (14), `c013b3e4` (15), `c013b3b8` (16) (`recon/map/chunk_08.md:46-64,201`).
 - **Looper Arena Global Init Sequence**: `c0139ae0..c0139b6c` dereferences pointer table entry at `c01834ac` to bind `c011aca8..c011acc0` (`docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:49-55`).
 - **UI Mode Predicates**: `c0150340` (`mode_is_looper_pred`) returns 1 if mode index == 1 (Looper mode); `c0150588` (`ui_loop_rhythm_row_render`) renders looper/rhythm settings rows (`recon/map/chunk_12.md:42,49`).
+
+---
+
+### 2. Drum Machine / Rhythm Subsystem Prior Knowledge
+
+This section compiles all previously verified facts, addresses, buffers, hooks, tasks, and pattern/tempo tables for the G1 Four / G1X Four Drum Machine (Rhythm) engine.
+
+#### A. State Variables
+| Address / Register | Size & Type | Meaning / Role | Confidence | Source File & Line |
+|---|---|---|---|---|
+| `0x11f03d54` | 4 B uint32 | **Rhythm Enable / Active Flag**: `1` = rhythm running/on, `0` = rhythm stopped/off. Set by `c0158d98`, cleared by `c0158dac`. Tested at `11817644`/`1181766c` by `11817640`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:80`; `docs/CF_USB_MODE_2026-10-16.md:479`; `recon/map/chunk_14.md:c0158d98,c0158dac` |
+| `0x11f03d58..0x11f03d78` | 9 × 4 B (36 B) uint32 array | **9-Voice Trigger / Active State Array**: `11f03d58[v]` (`v=0..8`) holds trigger/active state for drum voice `v`. Written by `c0158c30`, checked by `11817550` in PCM sample fetcher `11817520`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:85`; `recon/map/chunk_14.md:c0158c30` |
+| `0xc0183840..0xc0183860` | 9 × 4 B (36 B) ptr array | **9-Voice Current Sample Read Pointers**: `c0183840[v]` (`v=0..8`) tracks current byte address in sample ROM for voice `v`. Advanced by `+2` bytes/sample (`+32` bytes/block) at `1181758c`/`118175a4`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:85-86` |
+| `0xc0183424..0xc0183468` | 9 × 8 B (72 B) struct array | **9-Voice Sample Descriptor Table**: `c0183424 + 8*v` holds `{start_ptr, byte_length}` for voice `v`. Points into sample ROM `0xc075d0f0`. Initialized by `c015f4b8..c015f5e0`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:85` |
+| `0x11f03d24..0x11f03d48` | 9 × 4 B (36 B) float/int array | **9-Voice Pan / Gain Coefficients**: Per-voice pan and volume scalers. Written by `c0158c20`, read by `118176ec`/`11817740`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:100`; `recon/map/chunk_14.md:c0158c20` |
+| `0x11f03d1c` | 4 B float | **Rhythm Master Output Gain Cell**: Multiplier applied to stereo drum mix before adding to audio bus (`A18 = 11f03d54 - 0x48 + 0x38 - 0x24 - 4`, at `118176ec`/`11817718`/`11817720`/`11817740`, multiplied at `118178b0`/`118178d0`). | confirmed | `docs/CF_USB_MODE_2026-10-16.md:476-477,480` |
+| `0x11f03d08` | 4 B float | **Rhythm Mute / Pass Multiplier**: `1.0f` when unmuted, `0.0f` when muted; multiplied at `118178a4`/`118178bc`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:137-139` |
+| `0x11f03d0c` | 4 B float | **Rhythm Level Setting Raw Gain**: Read by `c0158c44`, initialized to float `0x44306666` (~706.0f) by `c0158c84`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:100`; `recon/map/chunk_14.md:c0158c44,c0158c84` |
+| `0x11f03d14` | 4 B float | **Rhythm Field Level Ramp**: Level smoother cell; initialized to float `0x44306666` by `c0158cd0`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:100`; `recon/map/chunk_14.md:c0158cd0` |
+| `0x11f03d20` | 4 B float | **Rhythm Level Scaler Cell**: Scaler read by `B18[0]` in `11817838`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:100` |
+| `0x11812f78` | 4 B uint32 | **System BPM / Tempo Setting**: Range `40..250`, default `120`. Stored at struct offset `+0x04` in persisted system settings block `0x11812f74`. Schema record 1 at `c0182408`. Getter `11805e64`, setter `11805bf8`. | confirmed | `docs/helpers/MENU_RE_ARGON_2026-10-16.md:196-205` |
+| `0x118133b4` | 1 B uint8 | **Transport Run Flag Byte**: Set to `1` by `c0167400` `transport_run_flag_set`, cleared to `0` by `c0167478` `transport_run_flag_clear`, queried by `c01674b8` `transport_run_flag_get` (called by `c013ad54`) and `11809f54` `RepeatEventHandler`. | likely | `recon/map/chunk_16.md:164,168` |
+| `0x118133bc` | 4 B uint32 | **Rhythm Clock Word / Beat Accumulator**: Software beat accumulator; queried by `1180a070` `rhythm_clock_word_bc_get`, updated by `c0167410` `transport_timing_sub`. | likely | `recon/map/chunk_01.md:121`; `recon/map/chunk_16.md:165` |
+| `0xc011ada6` | 1 B uint8 | **Pattern / Category Index**: Active rhythm pattern index; cleared by `c0153f24`, checked by `c01540e4`. | confirmed | `recon/map/chunk_13.md:c0153f24,c01540e4` |
+| `0xc011ada7` | 1 B uint8 | **Rhythm State Byte A**: Queried by `c0153f00`, cleared by `c0153f24`. | confirmed | `recon/map/chunk_13.md:c0153f00` |
+| `0xc011ada8` | 1 B uint8 | **Rhythm State Byte B**: Cleared by `c0153f24`. | confirmed | `recon/map/chunk_13.md:c0153f24` |
+| `0xc011ada9` | 1 B uint8 | **Pattern Active / Transport Running Flag**: `1` = running, `0` = stopped; checked by `c0154180`, cleared by `c0153fbc`, `c0153fe8`. | confirmed | `recon/map/chunk_13.md:c0153fbc,c0153fe8,c0154180` |
+| `0xc011adaa` | 1 B uint8 | **Rhythm Event Latch Byte**: Set by `c015414c`, cleared by `c0153f44`. | confirmed | `recon/map/chunk_13.md:c015414c` |
+| `0xc011adad` | 1 B uint8 | **Rhythm State Byte C**: Queried by `c0153f0c`, cleared by `c0153f24`. | confirmed | `recon/map/chunk_13.md:c0153f0c` |
+| `*+B14[184]` (`c0184e00 + 0x2e0`) | 4 B uint32 | **Rhythm Render-Active Flag**: Written by `c0153f18`, bit 31 tested by `c0158df8`. | confirmed | `recon/map/chunk_13.md:c0153f18,c0158df8` |
+| `*+B14[208]` (`c0184e00 + 0x340`) | 1 B uint8 | **Rhythm Render Flag A**: `1` on start `c0153fa8`/`c0153fbc`, `0` on stop `c0153fe8`. | confirmed | `recon/map/chunk_13.md:c0153fa8,c0153fe8` |
+| `*+B14[209]` (`c0184e00 + 0x344`) | 1 B uint8 | **Rhythm Render Flag B**: `0` on start `c0153fa8`/`c0153fbc`, `1` on `c0154020`, `0` on stop `c0153fe8`. | confirmed | `recon/map/chunk_13.md:c0153fa8,c0154020` |
+| `0x1181191c` | 2 B uint16 | **Configured Pattern Count**: Fetched by `c0156488` via `1181191c`/`c0140258`. | confirmed | `recon/map/chunk_13.md:c0156488` |
+
+#### B. Buffers
+| Buffer Name / Location | Base Address | Size | Format / Structure | Role & Lifecycle | Confidence | Source File & Line |
+|---|---|---|---|---|---|---|
+| **Raw 9-Voice PCM Buffer** | `0x11f039b0..0x11f03acf` | 288 B (9 × 32 B) | Planar signed 16-bit PCM (`int16_t[9][16]`) | Populated every block by `11817520`. Each voice occupies 32 bytes (16 samples). Remains intact at TX pack time `11818c64` because nothing overwrites it after `11817640`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:86-87,134,189` |
+| **Drum Sample ROM** | `0xc075d0f0` | Variable | 16-bit linear PCM | ROM-resident sample library referenced by descriptor table `c0183424`. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:85` |
+| **Output Mix Bus Destination** | `0x11f037b0` (L) & `0x11f037f0` (R) | 64 B each (16 samples) | Planar stereo float (`float[2][16]`) | Panned stereo drum mix is added in place at `11817878` (L) and `11817898` (R) into the active effect/looper bus before master output scaling. | confirmed | `docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:22,100-114` |
+
+#### C. Audio-Path Hooks
+- **Audio Swi Call Point**: Swi Step 15 at `0x11818c54` executes `CALLP.S2 0x11818d60,B3` (`docs/helpers/DRUMS_LOOPER_ARGON_2026-10-17.md:22,79`).
+- **Drum Mixer Invocation (`11818d64`)**: First instruction of `11818d60` is `CALLP.S2 0x11817640,B3`.
+- **Drum Engine Pipeline (`11817640`)**:
+  1. Checks enable flag `*(0x11f03d54)`. If zero, skips processing and returns immediately (`1181766c..118176d8`).
+  2. If non-zero, branches to `11817520` (9-voice sample fetcher), which populates `11f039b0..11f03acf` from sample ROM `c075d0f0` (`11817694`).
+  3. Executes stereo panner and accumulator loop (`118176e8..11817934`): loads 9 voices from `11f039b0` with 32-byte stride, scales by pan/gain cells `11f03d24..11f03d48`, converts to float (`INTSP` × $2^{-31}$), and adds directly into `11f037b0[i]` (`11817878`) and `11f037f0[i]` (`11817898`).
+  4. Multiplies by master rhythm gain `11f03d1c` (`118178b0`/`118178d0`).
+- **USB Audio Stem Tap Hook**: In `--stems` firmware (`tools/make_usb_audio_fw.py`), veneer `ua_drums_tap` at `11818d4c..11818d58` replaces `CALLP 11818d64`. Saves `11f037b0`/`11f037f0`, zeroes them, runs stock mixer `11817640` to render isolated stereo drums, copies drums to USB channels 5-6, and restores `bus = saved + stem` (`docs/CF_USB_MODE_2026-10-16.md:479-490`; `tools/ua_channels_stems.json:ch5-6`).
+
+#### D. UI / Task Entry Points
+- **`c016aac0` (`RhythmService` Task Entry / `event_flag_pump`)**: Dedicated OS task entry for drum machine; drains pending-event bitmask from `B14[165]` via `c0144580` (`docs/FIRMWARE_MAP.md:65`; `docs/helpers/FWMAP.md:24`; `recon/map/chunk_17.md:41`).
+- **`11806ce0` (`rhythm_ui_update_dispatch`)**: 468-byte dispatcher linking RhythmService, MIDI, and MainApp (`recon/map/chunk_00.md:198`).
+- **`11806eb4` (`rhythm_playback_step`)**: 600-byte RhythmService playback routine (`recon/map/chunk_00.md:199`).
+- **`11809f00` (`rhythm_clock_accumulate`)**: Software beat clock driven by hardware timer (`recon/map/chunk_01.md:120`).
+- **`1180a0a0` (`ui_rhythm_display_by_mode`)**: Selects rhythm display based on current mode (`recon/map/chunk_01.md:123`).
+- **`c0150844` / `c015096c` (`rhythm_popup_open_and_notify` / `rhythm_menu_popup_open_flagged`)**: Opens rhythm menu popup (`recon/map/chunk_12.md`).
+- **`c015402c` (`rhythm_pattern_update_step`)**: Steps pattern state; reads event queue results (`recon/map/chunk_13.md:c015402c`).
+- **`c015408c` (`rhythm_pattern_field_copy`)**: Copies pattern fields after fetching queue data (`recon/map/chunk_13.md:c015408c`).
+- **`c0154180` (`rhythm_transport_step`)**: Steps transport when `ada9` flag is set (`recon/map/chunk_13.md:c0154180`).
+- **`c0156430` / `c0156478` (`rhythm_menu_item_render` / `rhythm_menu_item_render_dispatch`)**: Renders rhythm menu items (`recon/map/chunk_13.md:c0156430,c0156478`).
+- **`c01565b8` / `c0156648` / `c0156660` (`rhythm_pattern_menu_draw`, `rhythm_pattern_menu_entry_a/b`)**: Top-level pattern-selection menu render cluster (`recon/map/chunk_13.md:c01565b8..c0156660`).
+- **`c0158dc0` (`rhythm_ui_update_dispatch_gated`)**: Synchronized UI update gated by semaphore `B14[155]` (`recon/map/chunk_14.md:c0158dc0`).
+- **`c0158df8` / `c0158e4c` / `c0158e8c`**: Gated and unconditional UI refresh helpers (`recon/map/chunk_14.md`).
+
+#### E. Pattern / Tempo Tables
+- **Rhythm Patterns Descriptor Table (`0xc0182730`)**: RAM-resident table filled at boot holding descriptors for all 68 built-in patterns. Read by `c01661ac` (`rhythm_pattern_table_get`), `c0166194` (`rhythm_get_field117`), `c0166180` (`rhythm_get_field118`), `c0166258` (`rhythm_get_field119`), `c015408c` / `c0158c58` (`docs/helpers/FWMAP.md:28`; `recon/map/00_library_kernel.md:128,374`; `recon/map/chunk_13.md:169`; `recon/map/chunk_16.md:129-133`).
+  - **Record Structure per Pattern `A4`**:
+    - `table_c0182730[A4] + 117` (`0x75`): Beats per measure (`3`, `4`, `5`, `6`, `8`, `12`).
+    - `table_c0182730[A4] + 118` (`0x76`): Beat unit / note value (`4` for quarter notes, `8` for eighth notes).
+    - `table_c0182730[A4] + 119` (`0x77`): Pattern flags / render mode byte.
+- **Time-Signature Word Table**: Decoded by `c01661b8` (`rhythm_timesig_word_get`) mapping `[118]` and `[117]` to meter configuration words:
+  - `0xc0183960`: 3/4
+  - `0xc0183964`: 4/4 (standard default)
+  - `0xc0183968`: 5/4
+  - `0xc018396c`: 6/8
+  - `0xc0183970`: 8/8
+  - `0xc0183974`: 12/8
+  (`recon/map/chunk_16.md:132`).
+- **Rhythm Field Dispatch Table (`0xc0183f6c..0xc0183fc8`)**: Jump table dispatching tempo/pattern edits:
+  - `c0149556` -> `c0149180` (`rhythm_tempo_scale_apply_locked`)
+  - `c014958a` -> `c01492ac` (`rhythm_tempo_field_apply_locked`)
+  - `c0149592` -> `c01493a8` (`rhythm_tap_tempo_update`)
+  - `c014959a` -> `c0149434` (`rhythm_midi_tempo_apply`)
+  (`recon/map/chunk_10.md:149-169,191`).
+- **Pattern Variant Setter Table (`0xc0184020..0xc0184038`)**: 7-entry function pointer table calling `c0153654..c0153722` (`recon/map/chunk_13.md:c0153654..c0153722`).
+- **System Settings BPM Schema Record (`0xc0182408`)**: Record 1 in schema table `0xc01823f8..0xc0182598`. Validates BPM range `40..250` with default `120` (`docs/helpers/MENU_RE_ARGON_2026-10-16.md:197,205`).
 
 ## Answers
 
