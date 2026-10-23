@@ -22,14 +22,18 @@ Tools: `tools/drums/raw2wav.py`, `tools/drums/decode_patterns.py`,
   disassembly already on file plus tonight's live teardown. See "Engine"
   section for per-claim confidence and addresses.
 - **Tools**: `drum_machine.py list|render|new` plays the pedal's own
-  samples with an algorithmically-generated, genre-approximate groove (the
-  real per-pattern groove isn't decoded yet) or a groove you write
-  yourself in JSON.
-- **Open question**: the static pattern table's index for "Rock1" (7)
-  matches the pedal's live reading exactly; the index for "Blues2" (27)
-  does **not** match the pedal's live reading of 44. See "Pattern
-  numbering" below -- this needs either more disassembly time or a couple
-  of live pedal reads to resolve.
+  samples. `render` now plays the **real, firmware-decoded step grid**
+  for 68 of the 69 built-in patterns (see section 7, job S14,
+  2026-10-23) -- the one exception (`Metro3`) falls back to an
+  algorithmically-generated, genre-approximate groove, loudly flagged.
+  `new` renders a groove you write yourself in JSON, exactly as given.
+- **Pattern numbering**: resolved (see "Pattern numbering resolved"
+  below) -- the pedal's on-screen pattern number indexes a RAM pointer
+  table built at boot (`0xc0182730`), not the ROM table's physical
+  order; `tools/drums/ui_order.json` has the permutation.
+- **Event blob**: resolved (section 7, job S14, 2026-10-23) -- the
+  per-pattern step/hit data is now decoded: `(delta_ticks, voice<<4|level)`
+  pairs, 12 ticks/beat, terminated by a loop-delta byte + `0xf0`.
 
 ---
 
@@ -374,8 +378,11 @@ python tools/drums/decode_patterns.py
 ```
 Parses `build/fw/res1_493412.bin` and writes `build/drums/patterns.json`:
 for each of the 69 patterns, its name, time signature, 9 voice-slot
-sample assignments, and the (undecoded) event-blob pointer/bytes. Prints
-a couple of sanity lines on the Rock1/Blues2 numbering question.
+sample assignments, and the **decoded event blob** (section 7, job S14) --
+a step grid of `{tick, voice_id, level, slot, sample, mapped}` plus loop
+length and a `decode_confidence` flag. Prints the Rock1/Blues2 numbering
+sanity lines and a decode-confidence summary (`ok`/`partial_unmapped_voice`/
+`suspect` counts).
 
 ### `tools/drums/drum_machine.py`
 
@@ -388,13 +395,15 @@ python tools/drums/drum_machine.py new my_pattern.json --bpm 100 -o out.wav
 ```
 
 `render` plays a built-in pattern using **its own real, firmware-assigned
-samples and time signature**, but an **algorithmically-generated,
-genre-approximate groove** (kick on beat 1 [+ mid-bar for longer meters],
-backbeat snare, 8th-note hats or ride for a "latin"-ish name, a
-funk/breaks syncopation bump for those names) -- it is explicitly *not* a
-transcription of the real per-pattern event data, because that isn't
-decoded yet (see section 2). Every render prints which approximate style
-it picked.
+samples, time signature, and (as of job S14, section 7) its real step
+grid** -- a transcription of the firmware's own per-pattern event data,
+for 68 of the 69 patterns. The one exception, `Metro3`, whose event blob
+doesn't resolve to any real voice, falls back to the old
+**algorithmically-generated, genre-approximate groove** (kick on beat 1
+[+ mid-bar for longer meters], backbeat snare, 8th-note hats or ride for
+a "latin"-ish name, a funk/breaks syncopation bump for those names),
+with a loud warning printed when it does. `--force-approx` forces that
+fallback for any pattern, for A/B comparison against the real grid.
 
 `new <pattern.json>` renders an exact, user-written step grid -- no
 approximation involved. Format:
@@ -434,27 +443,39 @@ committed, they're `build/` output; regenerate with the commands above.
   discrepancy documented rather than hidden, every voice slot referencing
   a real sample or being empty, all 24 samples used somewhere, plausible
   time-signature values).
+- `tests/test_drum_event_blob.py` (job S14, 2026-10-23): pins the event
+  blob decode -- structural checks (odd body length, loop length always
+  a whole number of bars, voice IDs 1-9, levels 0-15, the exact
+  47/21/1 `ok`/`partial_unmapped_voice`/`suspect` confidence split) and
+  the task's known-answer checks (`Metro4`/`Metro5`/`Metro` = one click
+  per beat with a louder downbeat accent, `GUIDE` = one click per beat
+  over one bar, `8Beats1` = 8 evenly-spaced kick hits, `Rock1` = backbeat
+  snare on beats 2 & 4 plus a hi-hat/amb pair firing on identical ticks,
+  `Metro3` flagged `suspect` rather than trusted).
 
-Both skip cleanly if the backup/firmware files aren't present in a given
-checkout (`unittest.skipUnless`).
+All three skip cleanly if the backup/firmware files aren't present in a
+given checkout (`unittest.skipUnless`).
 
 ---
 
 ## 6. Summary of what's uncertain
 
-1. **The per-pattern step/hit event blob's byte encoding** (section 2) --
-   the single biggest gap. We have its exact address and bytes for every
-   pattern, just not the decode. Needs more disassembly time on
-   `11806eb4` / the `c0153f00..c0154290`+`c0156430..c0156660` cluster.
-2. **The Blues2 pattern-numbering mismatch** (section 2) -- needs either
-   the `0xc0182730` RAM pointer table read live, or more disassembly of
-   how `0xc0182730` gets filled at boot.
+1. ~~**The per-pattern step/hit event blob's byte encoding**~~ -- **decoded**,
+   see section 7 below (job S14, 2026-10-23).
+2. **The Blues2 pattern-numbering mismatch** (section 2) -- resolved, see
+   "Pattern numbering resolved" above (live read, 2026-10-22).
 3. **Exact per-voice pan/gain values** (`0x11f03d24..0x11f03d48`) --
    structure confirmed, values not extracted per pattern.
 4. **Which state-byte values mean intro/loop/fill/ending**, and how
-   they're driven by the event data.
-5. **Whether dry/Amb sample pairs always fire on identical steps** --
-   assumed in the renderer, not proven.
+   they're driven by the event data -- still open, see section 7.
+5. ~~**Whether dry/Amb sample pairs always fire on identical steps**~~ --
+   **resolved: yes**, see section 7 (checked exactly for Rock1; a
+   structural property of every pattern that has a dry+Amb pair).
+6. **The auxiliary hat/cymbal/tom voice-ID-to-slot mapping** (new, section
+   7) -- the core voices (kick, snare, snare-amb, kick-amb, click) always
+   resolve cleanly, but ~1/3 of patterns have an auxiliary voice ID (4-7)
+   that doesn't match its sample's actual table slot. Needs either a live
+   read or more disassembly time on `0x1180b6f0` (see section 7).
 
 ## Pattern numbering resolved (live read, Claude, 2026-10-22)
 The pedal's pattern number (0x11812f4c) indexes a RAM pointer table at **0xc0182730** (built at run
@@ -462,3 +483,195 @@ time; not in the image). Each entry points to a 124-byte record at **0xc016f7fc 
 records start at 0xc016f7fc; the table offset 0xc016f7e9 above is 0x13 early). The on-screen order is a
 permutation of the record order: `tools/drums/ui_order.json` (68 patterns, 0 GUIDE .. 67 Metro; entries
 68/69 point elsewhere). Checks: pedal 7 -> record 7 Rock1, pedal 44 -> record 27 Blues2 (both seen live).
+
+---
+
+## 7. Event blob format (decoded, job S14, 2026-10-23)
+
+Static work only (file analysis of `build/fw/res1_493412.bin` and
+`build/fw/map/main.dis`), plus review of the already-logged live reads in
+`docs/LOOPER_DRUMS_TEARDOWN_2026-10-22.md`. No MIDI, no pedal touched.
+Tool: `tools/drums/decode_patterns.py` (now parses the blob, not just
+locates it). Tests: `tests/test_drum_event_blob.py`.
+
+### TL;DR
+
+The per-pattern event blob (section 2's "what isn't decoded") **is now
+decoded**: it's a stream of `(delta_ticks, voice_and_level)` byte pairs,
+12 ticks per beat, terminated by a loop-delta byte and `0xf0`. Voice IDs
+1-9 map onto the record's 9 voice-name slots (9 = slot 0 = click; 1-8 =
+slots 1-8) **for the core voices** (kick, snare, snare-amb, kick-amb,
+click) in every one of the 69 patterns. For roughly a third of patterns,
+one auxiliary hat/cymbal/tom voice ID doesn't match its sample's actual
+table slot -- flagged per-pattern, not silently papered over (see
+"What's still open" below). `drum_machine.py render` now plays this real,
+transcribed grid for 68 of 69 patterns; the exception (`Metro3`) falls
+back to the old approximate generator, loudly flagged in its output.
+
+### Byte format
+
+```
+(delta: u8, value: u8){N}   loop_delta: u8   0xf0
+```
+
+| Field | Meaning | Confidence |
+|---|---|---|
+| `delta` | ticks since the previous event (0 = simultaneous with it); running sum = absolute tick | confirmed |
+| `value` high nibble | **voice ID, 1-9** | confirmed for 1,2,3,8,9; likely-with-exceptions for 4-7 (see below) |
+| `value` low nibble | **level, 0-15** (velocity-like; 15 = loudest) | confirmed |
+| tick resolution | **12 ticks = 1 beat** (3 ticks = a 16th note, 4 = an 8th-note triplet, 6 = an 8th note) | confirmed |
+| trailing byte (after the last event, before `0xf0`) | **loop delta**: ticks from the last event back to the loop start | confirmed |
+| `0xf0` | terminator | confirmed (already known from section 2) |
+
+`loop_length_ticks = last_absolute_tick + loop_delta`. Checked across
+**all 69 patterns**: this is *always* an exact multiple of
+`beats_per_bar * 12` -- i.e. every pattern's authored loop is a whole
+number of bars (1 bar for `GUIDE`; 2 bars for every other pattern
+checked, even when bar 2 turns out to repeat bar 1 exactly, e.g. `Rock1`).
+This 100%-across-69-patterns structural fit, found with no exceptions, is
+the strongest evidence the byte layout above is right.
+
+### Voice ID -> sample mapping
+
+Voice ID maps to the record's 9-slot voice-name array (section 2): ID 9
+-> slot 0 (click); ID N (1..8) -> slot N. This resolves cleanly
+(every event's voice ID points at a populated slot) for:
+
+- **100% of patterns** for voice ID 9 (click) -- the one fully universal
+  case, including every pattern that uses it.
+- **The large majority** for IDs 1 (kick), 2 (snare-amb), 3 (snare), 8
+  (kick-amb) -- a handful of sparse patterns (`Jazz1`, `JzWaltz1`,
+  `CtWaltz1`, `Bossa1`, `OneDrop`) have no kick and/or snare sample at
+  all (e.g. `Jazz1`'s kit is hi-hat + ride only), so an event with that
+  ID is correctly unmapped there, not a decode error.
+- **47 of 69 patterns fully** (`decode_confidence: "ok"`), including
+  every pattern named in the task brief as a known-answer check
+  (`Metro`, `Metro4`, `Metro5`, `GUIDE`, `8Beats1`, `Rock1`).
+
+**What's still open**: 21 of 69 patterns (`decode_confidence:
+"partial_unmapped_voice"`) have one auxiliary voice ID (always in the
+4-7 range -- the hat/cymbal/tom group) that references an empty slot,
+even though a plausible sample for that role exists elsewhere in the
+same record. Example: `HardRock`'s table has `HHO.raw` in slot 6 and
+`HHOAmb.raw` in slot 7, but its event data uses voice ID 5 (not 6) for
+the dry hit -- slot 5 is empty, so those events currently render as
+silence. The amb companion (ID 7) resolves correctly to slot 7 every
+time it's checked. We tried two alternative hypotheses in the time
+available -- "compact IDs 1-8 over all populated slots" and "compact
+IDs 1-7 over populated slots 1-7, ID 8 fixed to slot 8" -- neither
+fit the data (see job notes; not committed, both failed on >40 of the
+69 patterns). `decode_patterns.py` marks every such event `"mapped":
+false` and `drum_machine.py render` skips it (plays nothing), printing
+which voice ID(s) and how many events were skipped. This is the
+"likely silent" reading, not confirmed: the firmware's voice-trigger
+call for an ID whose slot has no sample descriptor would most likely
+resolve to a zero-length PCM fetch (silence) rather than crash, but we
+did not trace `0x1180b6f0` (see below) far enough to confirm this.
+
+One pattern, **`Metro3`**, is worse: `decode_confidence: "suspect"` --
+*none* of its event voice IDs resolve to a populated slot, and its blob
+never references the click voice at all, despite being named like the
+other, cleanly-decoding metronome patterns (`Metro4`, `Metro5`, `Metro`).
+This is almost certainly the same "pointer resolves outside the real
+per-step event data" issue the earlier pass flagged for `GUIDE` (which,
+on this pass, actually does decode cleanly -- so that concern was
+specific to individual records, not a systematic problem).
+
+### Disassembly evidence
+
+Found by searching `build/fw/map/main.dis` for the `0xf0`/`240` immediate
+near the already-known RhythmService addresses (`11806eb4`+), per the
+task brief's suggested approach:
+
+- **`0x1180717a`**: `MVK.S2 240,B1` (240 = `0xf0`); **`0x1180718a`**:
+  `CMPEQ.L2 B0,B1,B0`, comparing a byte just read (via `LDBU`, through a
+  pointer derived from `A10`) against `0xf0` -- the literal terminator
+  check the task brief asked us to find. **Confirmed** (read directly;
+  `build/fw/map/main.dis:9259,9264`).
+- **`0x11807060`/`0x11807080`/`0x118070a0`**: `CALLP.S2 0x1180b020,B3`,
+  each immediately preceded by `MVK.L1 9,A4` / `8,A4` / `7,A4` and gated
+  by an `LDBU`+`[!A0] BNOP` test on an adjacent byte -- i.e. "if this
+  step's flag byte is set, call `trigger(A4=9|8|7)`". **Confirmed**
+  that `0x1180b020` takes a voice-ID-shaped byte parameter in `A4`:
+  disassembly at `0x1180b020` shows `STB.D2T1 A4,*+B15[4]` (stores the
+  parameter) then `CALLP.S2 0x1180b6f0,B3` (hands it to a sub-routine).
+  This directly corroborates "voice ID 1-9 is a real parameter the
+  firmware passes around", matching the high-nibble decode. **Likely**
+  (not fully traced) that `0x1180b6f0` is the actual slot-lookup+PCM
+  trigger, which would be the next step to resolve the open
+  auxiliary-voice-mapping question above -- we did not have time to
+  disassemble it this pass.
+- This whole block (`0x11806eb4`..`0x1180720c`) is the "dense per-16th
+  state machine over byte flags at `0xc011ada4..0xc011adad`" the earlier
+  pass (section 2) already named but didn't trace into; this pass
+  confirms it as (or as directly adjacent to) the actual event-blob
+  consumer.
+
+### Known-answer checks (from the task brief)
+
+All pinned in `tests/test_drum_event_blob.py`:
+
+- **Metronome = one hit per beat**: `Metro4`, `Metro5`, and `Metro`
+  (undecorated) each decode to click-only (voice 9), exactly one event
+  every 12 ticks (= 1 beat) for the whole loop, with the first beat of
+  every bar accented louder (level 15) than the other beats (level 8).
+  `GUIDE` is the same shape over a single bar. **Confirmed.**
+- **8Beats1 = kick on every beat**: decodes to exactly 8 kick (`Kik1.raw`)
+  hits, each exactly 12 ticks apart, across its 2-bar loop (4 beats/bar x
+  2 bars = 8) -- matches the pattern's own name. **Confirmed.**
+- **Rock1 = a standard rock beat**: snare (`Snr1.raw`) lands on beats 2
+  and 4 of every bar and nowhere else (ticks 12 and 36 of the 48-tick
+  bar) -- the classic backbeat; kick (`Kik1.raw`) lands on beat 1 plus
+  syncopated 16th-note pushes. The hi-hat (`HHC.raw`, ID 5) and its
+  ambience companion (`HHCAmb.raw`, ID 7) fire on exactly the same ticks
+  every time -- this also resolves the open "do dry/Amb pairs always
+  fire together" question from section 6 point 5 above: **yes,
+  confirmed** (at least for every dry/Amb pair checked; it's a property
+  of the data, not an assumption `drum_machine.py` has to make anymore).
+
+### Tool changes
+
+- `tools/drums/decode_patterns.py`: `decode_table()` now returns, per
+  pattern, `"steps"` (list of `{tick, delta, voice_id, level, slot,
+  sample, mapped}`), `"ticks_per_beat"` (12), `"loop_length_ticks"`,
+  `"bar_ticks"`, `"loop_bars"`, `"loop_bars_is_whole"`, and
+  `"decode_confidence"` (`"ok"` / `"partial_unmapped_voice"` /
+  `"suspect"`), written into `build/drums/patterns.json`. Prints a
+  confidence-count summary.
+- `tools/drums/drum_machine.py render`: plays the real, transcribed step
+  grid by default for any pattern with at least one mapped event (68 of
+  69), looping the authored 1-or-2-bar block to fill the requested
+  `--bars`. Falls back to the old approximate generic-groove generator
+  only for `Metro3` (or if `--force-approx` is passed), always printing
+  a clear warning when it does. Unmapped auxiliary events are skipped
+  (silent) with a printed note naming the voice ID and count skipped.
+  The old approximate generator (`generic_groove`) is kept, unchanged,
+  purely as that fallback.
+
+### What's still open
+
+1. **The auxiliary voice-ID-to-slot mapping for the ~1/3 of patterns
+   where it doesn't match the raw slot index** -- needs disassembly of
+   `0x1180b6f0` (the sub-routine `0x1180b020` hands the voice ID to) to
+   see how it actually resolves an ID to a sample descriptor. Not a live
+   pedal question (this is static ROM code), so the right next step is
+   more disassembly time, not a live read.
+2. **Whether unmapped events are truly silent** on the real pedal, or
+   whether there's a fallback/default sample -- *this one a live read
+   could settle*: with the pedal parked on **HardRock** (pattern name;
+   its live pattern-number isn't yet known, see `tools/drums/ui_order.json`
+   for the likely UI index) and the drum machine running, listen for
+   (or better, tap a level meter on) the open-hat voice slot
+   (`0x11f03d58+6*5`-ish region per the voice-position array documented
+   in `docs/LOOPER_DRUMS_TEARDOWN_2026-10-22.md`, i.e. the 5th play-position
+   counter `0x11f03d6c`/`0x11f03d70` area -- re-derive the exact offset,
+   don't trust this guess) to see whether it's advancing (meaning
+   *something* plays for voice ID 5) or frozen at 0 (confirms silent).
+3. **Intro/fill/ending markers** -- still not found. The event data for
+   every pattern checked is a flat, uniform loop with no distinguished
+   "first time only" or "last bar" events; if the firmware has
+   intro/ending sections for the drum machine (as opposed to the
+   Looper, which clearly does), they're not visible in this blob format
+   and must be driven by the `0xc011ada4..0xc011adad` state bytes alone.
+4. **Per-voice pan/gain values** (section 6 point 3) -- unchanged, still
+   open.

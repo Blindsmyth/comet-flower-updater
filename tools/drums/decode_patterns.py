@@ -1,6 +1,66 @@
 """Decode the rhythm/pattern resource table out of the firmware image and
 write build/drums/patterns.json.
 
+## Event blob format (decoded 2026-10-22, job S14)
+
+Each record's event blob (see below) is a sequence of 2-byte events
+followed by a 1-byte loop delta and the 0xf0 terminator:
+
+    (delta: u8, value: u8){N}  loop_delta: u8  0xf0
+
+- `delta`: ticks since the previous event (0 = simultaneous with it).
+  Running sum gives each event's absolute tick position.
+- `value`: high nibble = **voice ID 1..9** (9 = the click/metronome
+  voice = record voice-slot 0; 1..8 = record voice-slots 1..8, in the
+  same order the record stores them); low nibble = **level 0..15**
+  (velocity-like; 15 is loudest, seen as the downbeat accent in every
+  metronome-style pattern).
+- Tick resolution: **12 ticks = 1 beat** (so 3 ticks = a 16th note, 4 =
+  an 8th-note triplet, 6 = an 8th note -- all exact divisions of 12).
+- After the last event, one more byte is the **loop delta**: ticks from
+  the last event back to the start of the next loop iteration.
+  `loop_length_ticks = last_absolute_tick + loop_delta` and this is
+  *always* an exact multiple of `beats_per_bar * 12` (checked for all
+  69 patterns) -- i.e. every pattern loops on a whole number of bars
+  (1 bar for `GUIDE`, 2 bars for almost everything else checked).
+- Terminator: a single `0xf0` byte.
+
+Confirmed in disassembly (not just inferred from the bytes): the
+firmware's per-16th playback routine (`11806eb4`+, continuing through
+`11807000`..`1180720c`, called once from `1180b020`'s caller chain --
+see docs/DRUM_MACHINE_2026-10-22.md "Event blob" section for the full
+trace) does exactly this:
+  - `11807060`/`11807080`/`118070a0`: `CALLP 0x1180b020,B3` with
+    `A4` = 9, 8, 7 respectively -- a "trigger voice A4" call, gated by
+    `LDBU`+`[!A0] BNOP` tests on adjacent bytes of a small per-step
+    buffer. `0x1180b020` immediately does `STB A4,*+B15[4]` then calls
+    `0x1180b6f0` -- i.e. it stores the voice ID byte and hands it to a
+    sub-routine, matching "voice ID 1..9" as a function parameter.
+  - `1180717a`: `MVK.S2 240,B1` (240 = 0xf0) then `1180718a`:
+    `CMPEQ.L2 B0,B1,B0` against a byte just read via `LDBU` through a
+    pointer derived from `A10` -- the literal 0xf0-terminator compare
+    the task brief asked us to find.
+
+**Caveat (not fully resolved)**: for roughly 1/3 of the 69 patterns,
+one or more event voice IDs in the 4..7 range reference a record voice
+slot that is *empty* for that specific pattern (e.g. `HardRock` has
+events tagged voice ID 5, but its slot 5 is blank -- `HHO.raw` lives in
+slot 6 instead). For the "core" voices (1=kick, 2=snare-amb, 3=snare,
+8=kick-amb, 9=click) this never happens: ID always equals a populated
+slot. It's only the auxiliary hat/cymbal/tom region (slots 4-7) where
+some patterns' IDs don't land on a populated slot. We did not find, in
+the time available, whether this means those events are genuinely
+silent (most likely -- the firmware's voice-trigger call would resolve
+an empty slot's 0-length PCM descriptor to a no-op) or whether there's
+an additional per-pattern remapping we haven't found. `decode_patterns.py`
+marks each such event `"mapped": false` and `drum_machine.py` skips
+unmapped events (plays nothing for them), which matches the "likely
+silent" reading. See docs/DRUM_MACHINE_2026-10-22.md for the full
+per-pattern breakdown and the `Metro3` special case (its blob never
+references the click voice at all and is flagged `"suspect"` --
+almost certainly the same "pointer resolves into non-event data" issue
+seen for a couple of other records).
+
 Where the table is (confirmed by direct inspection of
 build/fw/res1_493412.bin with tools/fwmap/ais.py sections()):
 
@@ -75,6 +135,8 @@ NAME_LEN = 9
 VOICE1_OFF = 0x1C
 N_VOICE_SLOTS = 9  # slot 0 (click) + 8 more
 
+TICKS_PER_BEAT = 12  # see module docstring "Event blob format"
+
 
 def _addr2off_factory(sects):
     def addr2off(addr):
@@ -109,6 +171,76 @@ def read_event_blob(data: bytes, addr2off, addr: int, max_len: int = 4000) -> by
     return chunk[: idx + 1]
 
 
+def voice_id_to_slot(voice_id: int) -> int | None:
+    """Map an event's voice ID (1..9, the high nibble of its value byte)
+    to the record's 0-indexed voice-slot array position. 9 is the fixed
+    click voice (slot 0); 1..8 are record slots 1..8 directly. Anything
+    else is not a valid voice ID (not seen in any of the 69 patterns)."""
+    if voice_id == 9:
+        return 0
+    if 1 <= voice_id <= 8:
+        return voice_id
+    return None
+
+
+def decode_event_blob(blob: bytes, voices: list[str], beats_per_bar: int) -> dict:
+    """Decode one pattern's 0xf0-terminated event blob into a step grid.
+    See the module docstring "Event blob format" section for the byte
+    layout. Returns a dict with the step list plus loop/confidence info.
+    `blob` includes the trailing 0xf0 terminator."""
+    body = blob[:-1]  # drop the 0xf0 terminator
+    n_pairs = len(body) // 2
+    has_trailing = len(body) % 2 == 1
+    steps = []
+    t = 0
+    for i in range(0, n_pairs * 2, 2):
+        delta, val = body[i], body[i + 1]
+        t += delta
+        voice_id = val >> 4
+        level = val & 0x0F
+        slot = voice_id_to_slot(voice_id)
+        sample = voices[slot] if slot is not None and voices[slot] else None
+        steps.append(
+            {
+                "tick": t,
+                "delta": delta,
+                "voice_id": voice_id,
+                "level": level,
+                "slot": slot,
+                "sample": sample or None,
+                "mapped": bool(sample),
+            }
+        )
+    loop_delta = body[n_pairs * 2] if has_trailing else 0
+    loop_length_ticks = t + loop_delta
+    bar_ticks = beats_per_bar * TICKS_PER_BEAT
+    loop_bars = (loop_length_ticks / bar_ticks) if bar_ticks else None
+
+    n_mapped = sum(1 for s in steps if s["mapped"])
+    n_click = sum(1 for s in steps if s["voice_id"] == 9)
+    if n_mapped == 0 and steps:
+        confidence = "suspect"  # e.g. Metro3: no event maps to any real sample
+    elif n_mapped < len(steps):
+        confidence = "partial_unmapped_voice"  # core voices ok, some aux id has no slot
+    else:
+        confidence = "ok"
+
+    return {
+        "ticks_per_beat": TICKS_PER_BEAT,
+        "steps": steps,
+        "has_trailing_loop_byte": has_trailing,
+        "loop_delta_ticks": loop_delta,
+        "loop_length_ticks": loop_length_ticks,
+        "bar_ticks": bar_ticks,
+        "loop_bars": loop_bars,
+        "loop_bars_is_whole": bool(bar_ticks) and loop_length_ticks % bar_ticks == 0,
+        "n_events": len(steps),
+        "n_events_mapped": n_mapped,
+        "n_click_events": n_click,
+        "decode_confidence": confidence,
+    }
+
+
 def decode_table(fw_path: str = FW_IMAGE) -> list[dict]:
     with open(fw_path, "rb") as f:
         data = f.read()
@@ -139,21 +271,23 @@ def decode_table(fw_path: str = FW_IMAGE) -> list[dict]:
         voices = [v.strip() for v in voices]
 
         blob = read_event_blob(data, addr2off, event_ptr)
-        patterns.append(
-            {
-                "index": k,
-                "name": name,
-                "beats_per_bar": bpb,
-                "beat_unit": bu,
-                "flag_byte": flag,
-                "event_ptr": f"0x{event_ptr:08x}",
-                "voices": voices,  # 9 slots, "" = unused
-                "active_voice_count": sum(1 for v in voices if v),
-                "event_blob_hex": blob.hex() if blob else None,
-                "event_blob_len": len(blob) if blob else None,
-                "event_blob_decoded": False,
-            }
-        )
+        decoded = decode_event_blob(blob, voices, bpb) if blob else None
+        entry = {
+            "index": k,
+            "name": name,
+            "beats_per_bar": bpb,
+            "beat_unit": bu,
+            "flag_byte": flag,
+            "event_ptr": f"0x{event_ptr:08x}",
+            "voices": voices,  # 9 slots, "" = unused
+            "active_voice_count": sum(1 for v in voices if v),
+            "event_blob_hex": blob.hex() if blob else None,
+            "event_blob_len": len(blob) if blob else None,
+            "event_blob_decoded": decoded is not None,
+        }
+        if decoded is not None:
+            entry.update(decoded)
+        patterns.append(entry)
     return patterns
 
 
@@ -181,6 +315,17 @@ def main() -> None:
     for p in patterns:
         if p["name"].replace(" ", "") == "Blues2":
             print(f"  'Blues2' actually found at static index {p['index']}")
+
+    # event-blob decode confidence summary (see module docstring)
+    by_conf: dict[str, list[str]] = {}
+    for p in patterns:
+        conf = p.get("decode_confidence", "no_blob")
+        by_conf.setdefault(conf, []).append(p["name"])
+    print("  event blob decode confidence:")
+    for conf in ("ok", "partial_unmapped_voice", "suspect", "no_blob"):
+        names = by_conf.get(conf, [])
+        if names:
+            print(f"    {conf}: {len(names)} pattern(s)" + (f" (e.g. {names[0]})" if conf != "ok" else ""))
 
 
 if __name__ == "__main__":
