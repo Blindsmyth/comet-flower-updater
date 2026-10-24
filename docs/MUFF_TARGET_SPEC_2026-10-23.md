@@ -287,6 +287,45 @@ The following side-by-side comparison aggregates every architectural, electrical
 | **Tone DSP Modeling** | Precomputed 2nd-order IIR Biquad table (`MUFF_TONE`, 5 coeffs) | Decoupled LPF & HPF mixing tables (`Muff_Tone_LPF_Mix/Ftbl`, `Muff_Tone_HPF_Mix`) | CF preserves continuous phase cancelation; Zoom approximates magnitude blend. |
 | **Zoom DSP Load** | 51 cycles (~15.7k cycles on C6745) | 34.86 declared load (optimized pipeline) | CF trades ~16 cycle units for physical circuit accuracy and authentic '74 tone. |
 
+## CF Muff vs. target: resolved (Claude, 2026-10-23)
+
+Followed up the review below by pulling CF Muff's *actual shipped* tone-stage coefficients
+(not a reimplementation) and checking them against both the idealized target above and
+Comet Flower's own internal circuit spec.
+
+- `tests/host/muff_tone_coeffs.cpp` (built via `tests/host/build_muff_tone_coeffs.bat`,
+  no VPBE dependency) compiles `effects/common/muff_g1.h` and dumps `muff_coeffs()`'s real
+  `t_b0..t_a2` biquad at 41 Tone positions. **First pass evaluated these at 44.1 kHz and got
+  a notch at 205 Hz** — a 4x-too-low result that would have wrongly suggested CF Muff doesn't
+  match its own target. Root cause: `muff_out()` runs inside the kernel's 4x-oversampled loop
+  (`muff_process()`), so the tone biquad is designed for **176.4 kHz**, not 44.1 kHz. Confirmed
+  by matching `ToneStackMath::muffTone()` (the documented reference formula, from
+  `VirtualPedalBoardEngine/Source/ToneStackMath.h`) against the compiled coefficients at both
+  rates: 44.1 kHz does not match (the mismatch that produced the wrong notch), 176.4 kHz
+  matches to 9+ significant figures. **The shipped table is exactly what the documented math
+  produces — no bug, my own first analysis pass was wrong until corrected.**
+- At the correct rate, CF Muff's real noon-position notch is **830 Hz, -13.3 dB** — within
+  32 Hz / 1.3 dB of this report's independently-researched Violet target (862 Hz, section
+  3.1.B), and the two curves are visually indistinguishable once plotted.
+- `VirtualPedalBoardEngine/Source/MuffCircuit.h`'s `VioletSpecs` namespace has Comet Flower's
+  own component values (citing Kit Rae, same source family as section 2 above), useful as a
+  cross-check: **R14/R15 39k/39k (matches), C10 10nF (this report's section 2 said 12nF —
+  a real transcription discrepancy worth resolving later), C11 4.0nF (matches), R_POT 100k
+  (matches), RL_Q4 100k marked UNVERIFIED by Comet Flower's own team** (the next-stage
+  loading this report's section 3.1.B and the original Claude review both lacked — explains
+  most of the earlier frequency-match gap).
+- Re-ran the NYC target through the same authoritative `muffTone()` formula (not the cruder
+  3-node model from the review below): noon notch **~1.55 kHz, -13.2 dB** — about 1.9x the
+  Violet's frequency, same depth. Matches this report's original claim (1622 Hz) more closely
+  than my own quick review-pass model did.
+- Chart: https://claude.ai/artifact/TBoANd9YLWoTy3gH7thZyJ (CF Muff's real response vs. both
+  targets, bass/noon/treble, dataviz-skill build, palette-validated).
+- **Still open:** the C10 10nF-vs-12nF discrepancy between this report and Comet Flower's own
+  spec; RL_Q4's real value (flagged unverified by Comet Flower, not resolved here either); no
+  equivalent verification exists for Zoom's *actual* NYC_MUFF DSP output (only its likely
+  target) since its real coefficients were never extracted (recon/11 flagged the resampler
+  chain as unresolved).
+
 ## Claude review (2026-10-23)
 
 Spot-checked before trusting this report, same discipline as the firmware recon docs.
