@@ -320,9 +320,28 @@ Comet Flower's own internal circuit spec.
   than my own quick review-pass model did.
 - Chart: https://claude.ai/artifact/TBoANd9YLWoTy3gH7thZyJ (CF Muff's real response vs. both
   targets, bass/noon/treble, dataviz-skill build, palette-validated).
-- **Still open:** the C10 10nF-vs-12nF discrepancy between this report and Comet Flower's own
-  spec; RL_Q4's real value (flagged unverified by Comet Flower, not resolved here either); no
-  equivalent verification exists for Zoom's *actual* NYC_MUFF DSP output (only its likely
+- **C10 10nF-vs-12nF: resolved (2026-10-24), real discrepancy, Comet Flower's spec is wrong.**
+  Downloaded and read the actual primary source directly (`http://www.bigmuffpage.com/images/
+  KR_1973_V2_Violet_Schematic_2nd_version.jpg`, Kit Rae's traced schematic, "Version 2 BIG
+  MUFF, Violet 2nd Version - 1973 #5"): the tone-stack caps are labeled **C9 = 0.004µF (4nF)**
+  and **C8 = 0.012µF (12nF)** — not C10/C11 as either this report or `VioletSpecs` called
+  them. C10/C11/C12 on the real schematic are the 560pF feedback caps at the *clipping*
+  stages (Q2/Q3/Q4), a different part of the circuit entirely; Kit Rae's own caption warns
+  about exactly this mix-up ("the low pass cap and feedback filter caps are usually 560pF,
+  but I have seen two with 470pF caps at C10, C11, and C12"). Net: this report's *value*
+  (12nF) was right, its *label* was wrong; `VioletSpecs`' label was equally wrong but its
+  *value* (10nF) is a genuine mismatch against the primary source it cites — most likely a
+  10↔12 transcription slip. R5/R8 = 39k and C9 = 4nF both check out as correct in
+  `VioletSpecs` against the real schematic.
+  **Quantified impact:** recomputing `muffTone()` with C10 corrected to 12nF shifts CF Muff's
+  own noon notch from 829 Hz to **766 Hz** (63 Hz lower, notch 1.16 dB deeper) — a small but
+  real, fixable accuracy gap. Fix lives in `VirtualPedalBoardEngine/Source/MuffCircuit.h`
+  (`VioletSpecs::C10 = 10.0e-9` -> `12.0e-9`), a different repo from this one, and would need
+  the `MUFF_TONE` blob (`effects/common/muff_blob.h`) regenerated and the firmware rebuilt to
+  actually ship — not done here, flagged for the owner to decide.
+- RL_Q4's real value is still flagged unverified by Comet Flower's own team, not resolved
+  here either (recon on what Q4's real input impedance is would need its own pass).
+- No equivalent verification exists for Zoom's *actual* NYC_MUFF DSP output (only its likely
   target) since its real coefficients were never extracted (recon/11 flagged the resampler
   chain as unresolved).
 
