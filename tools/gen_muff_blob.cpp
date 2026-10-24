@@ -1,15 +1,18 @@
-#define private public
-#include "ADAAWaveshaper.h"
-#include "ToneStackMath.h"
-#include "MuffCircuit.h"
-#undef private
-
+/* Standard headers first: MSVC's <xkeycheck.h> refuses to compile any std header while
+   "private" is macroized (the trick below), and one of the VPBE headers now pulls one in
+   transitively -- pre-including them lets their include guards absorb that. */
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <cmath>
 #include <algorithm>
 #include <iomanip>
+
+#define private public
+#include "ADAAWaveshaper.h"
+#include "ToneStackMath.h"
+#include "MuffCircuit.h"
+#undef private
 
 using namespace std;
 
