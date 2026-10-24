@@ -400,3 +400,26 @@ Spot-checked before trusting this report, same discipline as the firmware recon 
 4. **Volume Potentiometer Revision in Zoom Hardware:**
    - *Status:* Unconfirmed.
    - *Detail:* Vintage Muffs and early reissues (EC3003 through EC3003-B) used 100k audio volume pots; later revisions (EC3003-C onwards) used 500k log volume pots to remedy low output complaints. Zoom's `Muff_Level_Tbl` spans 0.0 to 0.967, reflecting digital attenuation, but its taper shape cannot be definitively mapped to the 100k vs 500k pot curve without a hardware null test.
+
+## C10 fix: shipped end to end (2026-10-24)
+
+Closed the loop from "CF Muff vs. target: resolved" and the Claude review above.
+`VirtualPedalBoardEngine/Source/MuffCircuit.h::VioletSpecs::C10` was corrected to 12nF in a
+dedicated session in that repo (committed there as `d609174`): audited every consumer of the
+constant (`OCMuffProcessor.h`, `MobileDsp/FuzzMobileCore.h` read it live, no action needed;
+`tools/dsp_validate/cases/muffs.h` had its own independent bare `10e-9` literal the constant
+fix alone wouldn't have caught, fixed to read `VioletSpecs::C10` directly; a gate window in
+`mobile_fuzz.h` retuned to match; `CivilWarMuffProcessor`'s coincidental separate 10nF value in
+its own `CWSpecs` confirmed out of scope, correctly left untouched), full `dsp_validate` suite
+reruns 0 FAIL.
+
+Here: rebuilt and reran `tools/gen_muff_blob.cpp` against the corrected constant (needed one
+build fix first — reordered its includes so MSVC's `<xkeycheck.h>` doesn't choke on the
+file's `#define private public` trick when a VPBE header transitively pulls in a std header;
+see the commit for detail). Regenerated `effects/common/muff_blob.h` / `effects/muffx/blob.bin`
+verified byte-for-byte confined to the `MUFF_TONE` region (clip/tanh/sustain tables untouched),
+and the new shipped coefficients give exactly the predicted **766 Hz** noon notch, down from
+829 Hz. Full test suite: 443 passed. Committed here as the follow-up to `a5125a8`.
+
+**Still not done:** a new firmware build with this blob hasn't been packaged or flashed —
+that's the owner's call, same as every other firmware change in this project.
