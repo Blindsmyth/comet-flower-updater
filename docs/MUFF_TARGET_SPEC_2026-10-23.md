@@ -288,3 +288,16 @@ The following side-by-side comparison aggregates every architectural, electrical
 | **Zoom DSP Load** | 51 cycles (~15.7k cycles on C6745) | 34.86 declared load (optimized pipeline) | CF trades ~16 cycle units for physical circuit accuracy and authentic '74 tone. |
 
 ## 5. Open questions
+
+1. **Exact Downsampler Reconstruction in Zoom's NYC_MUFF:**
+   - *Status:* Unresolved (`recon/11_stock_drives.md` lines 561–566).
+   - *Detail:* The DOWN loop at offset 0x688 in the stock binary accumulates 21 products with clipper outputs written with stride 5. While the 4x oversampling rate is confirmed, whether the true downsampling filter exhibits ripple or aliasing suppression comparable to Comet Flower's half-band polyphase IIR (`os_hbiir.h`) requires hardware sweep verification.
+2. **Diode Spec in Zoom's Physical NYC Hardware Reference:**
+   - *Status:* Likely 1N4148 Silicon, but unverified.
+   - *Detail:* Electro-Harmonix produced early 2000 EC3003 units with 1N6263 Schottky diodes before reverting to 1N4148 in EC3003-A. Zoom's documentation simply states "Models an Electro-Harmonix Big Muff Pi." It is unknown whether the physical benchmark unit Zoom characterized in their Tokyo labs was a Schottky EC3003 or a Silicon EC3003-A.
+3. **Dynamic Sag / Memory in Stock NYC_MUFF Clipping:**
+   - *Status:* Likely memoryless static polynomial.
+   - *Detail:* Static disassembly indicates Zoom uses an inline polynomial evaluation (`SPLOOPD 9`) with coefficient tables. It remains unproven whether Zoom models dynamic DC bias shift across $C_{block}$ (dynamic blocking capacitor sag during heavy attack transients) or if it relies purely on static wave-shaping followed by post-EQ.
+4. **Volume Potentiometer Revision in Zoom Hardware:**
+   - *Status:* Unconfirmed.
+   - *Detail:* Vintage Muffs and early reissues (EC3003 through EC3003-B) used 100k audio volume pots; later revisions (EC3003-C onwards) used 500k log volume pots to remedy low output complaints. Zoom's `Muff_Level_Tbl` spans 0.0 to 0.967, reflecting digital attenuation, but its taper shape cannot be definitively mapped to the 100k vs 500k pot curve without a hardware null test.
