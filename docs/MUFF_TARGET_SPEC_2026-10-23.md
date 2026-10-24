@@ -263,4 +263,28 @@ While back-to-back diode pairs are intrinsically symmetrical, the Big Muff circu
 
 ## 4. Comparison table
 
+The following side-by-side comparison aggregates every architectural, electrical, and DSP parameter difference between the two target hardware units and their respective digital implementations:
+
+| Target Parameter | 1974 "Violet" Ram's Head (CF Muff Target) | 2000 NYC Reissue V9 (Zoom NYC_MUFF Target) | Concrete DSP Impact / Target Metric |
+|---|---|---|---|
+| **Historical Target Era** | 1973–1975 (V2, 5th variant, circa 1974) | 2000–2006 (V9, EC3003 / EC3003-A) | Different hardware voicings; not interchangeable. |
+| **Famous Tonal Reference** | David Gilmour (*Animals*, *The Wall*, *Comfortably Numb* leads); J Mascis | Smashing Pumpkins (*Siamese Dream* era reissue sound), White Stripes | Violet is vocal, singing, and cutting; NYC is scooped, massive, and buzzy. |
+| **Transistor Type** | FS36999 / 2N5133 ($h_{FE} \approx 100\text{--}300$) | 2N5088 ($h_{FE} \approx 500\text{--}900$) | Lower transistor gain requires higher circuit open-loop gain to saturate. |
+| **Stage 1 Collector $R_C$** | 15 kΩ | 10 kΩ | Higher pre-gain and slightly lower headroom in Violet Stage 1 booster. |
+| **Clipping Stage Emitter $R_E$** | **100 Ω** | **390 Ω** | **Critical difference:** Violet has ~12 dB more open-loop gain per clipping stage, giving a harder clipping knee and sharper saturation onset. |
+| **Clipping Stage Gain ($|A_v|$)** | **~38–40 dB** ($A_v \approx 70\text{--}95$) | **~27–28 dB** ($A_v \approx 22\text{--}25$) | NYC Reissue requires +12 dB hotter input signal to achieve equivalent diode clamping. |
+| **Clipping Diodes** | 1N4148 / 1N914 ($V_F \approx 0.65\text{ V}$) | 1N6263 Schottky (0.38V) or 1N4148 (0.65V) | Early NYC has extreme squash (Schottky); standard NYC has silicon. |
+| **Feedback Capacitors ($C_f$)** | **560 pF** | **470 pF** | Violet rolls off ~20% more high-end buzz in feedback loop; smoother violin tone. |
+| **Diode DC Block ($C_{block}$)** | **0.1 µF (100 nF)** film | **1.0 µF** radial electrolytic | Violet has 10x faster recovery from transient sag (livelier attack); NYC sags longer. |
+| **Interstage Coupling Caps** | **0.1 µF (100 nF)** throughout | **1.0 µF** throughout | NYC passes sub-bass down to < 2 Hz; Violet attenuates sub-rumble below 15 Hz. |
+| **Tone Stack LPF ($R_{LP}, C_{LP}$)** | **39 kΩ, 12 nF** ($f_c \approx 340\text{ Hz}$) | **22 kΩ, 10 nF** ($f_c \approx 723\text{ Hz}$) | Violet low-pass cut is over an octave lower. |
+| **Tone Stack HPF ($R_{HP}, C_{HP}$)** | **39 kΩ, 4.0 nF** ($f_c \approx 1020\text{ Hz}$) | **22 kΩ, 3.9 nF** ($f_c \approx 1855\text{ Hz}$) | NYC high-pass cut is shifted high into treble. |
+| **Tone Notch Center ($f_{notch}$ @ Noon)** | **~862 Hz** (with source loading) | **~1622 Hz** (with source loading) | **Critical difference:** Violet preserves 1–3 kHz guitar presence; NYC carves it out. |
+| **Tone Notch Depth @ Noon** | -14.6 dB | -14.8 dB | Both have deep scoops, but centered at totally different octaves. |
+| **Response at 1.5 kHz @ Noon** | **-13.18 dB** (rising) | **-14.71 dB** (at bottom of notch) | **Violet has +1.5 to +3.0 dB more presence** in lead guitar solo frequencies. |
+| **Response at 10 kHz @ Noon** | **-10.88 dB** | **-12.25 dB** | Violet has slightly less treble droop above the notch. |
+| **DSP Implementation** | **Comet Flower State-Space Solver (v2)** | **Zoom Stock FIR/IIR Polynomial & Blend** | CF models true physical differential equations and algebraic feedback loops. |
+| **Tone DSP Modeling** | Precomputed 2nd-order IIR Biquad table (`MUFF_TONE`, 5 coeffs) | Decoupled LPF & HPF mixing tables (`Muff_Tone_LPF_Mix/Ftbl`, `Muff_Tone_HPF_Mix`) | CF preserves continuous phase cancelation; Zoom approximates magnitude blend. |
+| **Zoom DSP Load** | 51 cycles (~15.7k cycles on C6745) | 34.86 declared load (optimized pipeline) | CF trades ~16 cycle units for physical circuit accuracy and authentic '74 tone. |
+
 ## 5. Open questions
