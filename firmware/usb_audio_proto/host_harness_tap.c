@@ -121,6 +121,14 @@ static void host_cfp_send(const unsigned char *b, unsigned int n)
 #define CFP_CMDID host_cfp_cmdid
 #define CFP_SEND(b, n) host_cfp_send((b), (n))
 #define CFP_READ8(a) ((unsigned char)(((a) ^ host_watch_salt) >> (8 * ((a) & 3))))
+/* 'S' (select patch): the real macro calls c012f878 directly, which does not exist on the
+   host. Record the call instead so a test can confirm cfp_sysex() reached it with the right
+   index; the stock patch-load function itself is not something a host test can exercise. */
+static int host_cfp_select_idx = -1, host_cfp_select_calls;
+static void host_cfp_patch_select(int idx) { host_cfp_select_idx = idx; host_cfp_select_calls++; }
+#define CFP_PATCH_SELECT(idx) host_cfp_patch_select((int)(idx))
+EXPORT int host_cfp_select_idx_get(void) { return host_cfp_select_idx; }
+EXPORT int host_cfp_select_calls_get(void) { return host_cfp_select_calls; }
 EXPORT void cfp_sysex(void);
 EXPORT void host_cfp_set(unsigned int cmd, const unsigned char *payload, unsigned int n, unsigned int cmdid)
 {
@@ -172,6 +180,8 @@ EXPORT void host_reset(void)
     host_pack_calls = 0;
 #ifdef UA_PROBE
     ua_watch_pos = ua_watch_seq = 0;
+    host_cfp_select_idx = -1;
+    host_cfp_select_calls = 0;
 #endif
 #ifdef UA_WATCHDOG
     for (i = 0; i < 5; ++i) {

@@ -5,6 +5,7 @@
     python tools/cf_probe.py dump <address> <length> <out.bin>  (any length, 512 B per request)
     python tools/cf_probe.py watch-set <address>...              (replace the watch list, <= 64)
     python tools/cf_probe.py watch [--seconds 4] [--csv out.csv]
+    python tools/cf_probe.py select <patch 1..50>                 (make a stored patch active)
     python tools/cf_probe.py screenshot [--png out.png]          (the pedal's LCD, 128 x 32)
     python tools/cf_probe.py poll [--seconds 10] [--region ADDR:LEN]... [--out run.json]
 
@@ -17,6 +18,12 @@ SysEx (docs/helpers/FW_RND_S12_SYSEX_HOOK_2026-10-22.md): F0 52 00 6E 64 'CFPR' 
 the reply carries the same header and the op in lower case ('e' = refused). Numbers are 7-bit
 little-endian groups (address 5 bytes, length 2), data MIDI-packed (7 bytes -> top-bit byte +
 7 low bytes). Only RAM can be read (L2 0x11800000.., L1D 0x11f00000.., SDRAM 0xc0000000..+8 MB).
+
+select: 'S' <idx 0..49> -> 's' idx. Makes a patch already stored at that location (patch_g1.py
+write / patches.write_patch_live) the pedal's active/playing patch -- the one thing those write
+paths cannot do by themselves (stock firmware drops raw MIDI Program Change silently; there is
+no other SysEx path into the active-patch switch). Needs a TEST firmware with this op compiled
+in (anything built after 2026-10-23); older CF Probe builds (0.34.7 and earlier) reply 'e' to it.
 
 watch: record the pedal's USB audio (8 channels) and decode channel 7's watch frames:
 sync 0x7e5b, sequence (8 bits) | list length << 8, index of the first entry, six u32
@@ -92,6 +99,10 @@ def watch_set_request(addrs):
     return request("W", bytes([len(addrs)]) + b"".join(num7(a, 5) for a in addrs))
 
 
+def select_request(idx):
+    return request("S", bytes([idx & 0x7F]))
+
+
 def parse_reply(msg):
     """Return (op, payload) for a CF Probe reply (F0..F7 included), or None."""
     msg = bytes(msg)
@@ -108,6 +119,8 @@ def parse_reply(msg):
     if op == "w":
         return op, body[0]
     if op == "v":
+        return op, body[0]
+    if op == "s":
         return op, body[0]
     return op, body
 
@@ -282,6 +295,8 @@ def main():
     dp.add_argument("out")
     ws = sub.add_parser("watch-set")
     ws.add_argument("addresses", nargs="+")
+    sl = sub.add_parser("select")
+    sl.add_argument("location", help="patch number 1..50 (same numbering as patch_g1.py write)")
     sc = sub.add_parser("screenshot")
     sc.add_argument("--png")
     po = sub.add_parser("poll")
@@ -317,7 +332,7 @@ def main():
             lcd_png(fb, a.png)
             print("wrote", a.png)
         return
-    if a.cmd in ("ping", "peek", "dump", "watch-set"):
+    if a.cmd in ("ping", "peek", "dump", "watch-set", "select"):
         link = Link()
         if a.cmd == "ping":
             print("CF Probe reply:", link.call(request("V")))
@@ -328,6 +343,14 @@ def main():
             addr, n = int(a.address, 0), int(a.length, 0)
             Path(a.out).write_bytes(link.dump(addr, n))
             print("wrote %d bytes from %#x to %s" % (n, addr, a.out))
+        elif a.cmd == "select":
+            loc = int(a.location, 0)
+            if not 1 <= loc <= 50:
+                sys.exit("location must be 1..50")
+            op, got = link.call(select_request(loc - 1))
+            if op != "s":
+                sys.exit("select refused (older firmware without the 'S' op?)")
+            print("patch %d is now active (idx %d)" % (loc, got))
         else:
             addrs = [int(x, 0) for x in a.addresses]
             op, got = link.call(watch_set_request(addrs))

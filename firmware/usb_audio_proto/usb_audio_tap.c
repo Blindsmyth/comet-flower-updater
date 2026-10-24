@@ -620,7 +620,15 @@ u32 ua_watch_set(const u32 *addr, u32 n)
      'V'             -> 'v' 0x01                       (ping, protocol 1)
      'P' addr len    -> 'p' addr len data             (peek, len <= 512, RAM only)
      'W' n addr...   -> 'w' accepted                  (watch list, n <= 64)
-   A peek that leaves the RAM ranges of ua_watch_ok replies 'e'. */
+     'S' idx         -> 's' idx                       (select patch idx 0..49 as active)
+   A peek that leaves the RAM ranges of ua_watch_ok replies 'e'.
+
+   'S' calls c012f878(idx, -1, 1, 1) directly (docs/helpers/PATCH_STORE_ARGON_2026-10-17.md
+   section 2.3/2.4): the same live-patch-load entry point the UI's own manual STORE action
+   uses, with the same arguments (prev_patch_idx -1 skips auto-saving whatever was active).
+   Stock firmware has no SysEx path to this at all -- raw MIDI Program Change and the
+   speculative `64 12` "current-patch upload" are both silently dropped (confirmed, same
+   doc) -- so switching the active patch remotely was otherwise only possible by hand. */
 #ifndef CFP_CMD
 #define CFP_CMD (*(const volatile u16 *)0xc0183b60u)       /* command byte of this message */
 #define CFP_COUNT (*(const volatile u32 *)0xc0184eacu)     /* B14[43]: bytes after the model */
@@ -628,6 +636,8 @@ u32 ua_watch_set(const u32 *addr, u32 n)
 #define CFP_CMDID (*(volatile u32 *)0xc0184e98u)           /* B14[38]: dispatcher's command id */
 #define CFP_SEND(b, n) ((void (*)(const u8 *, u32))0xc01274ccu)((b), (n))
 #define CFP_READ8(a) (*(const volatile u8 *)(a))
+#define CFP_PATCH_SELECT(idx) \
+    ((void (*)(int, int, int, int))0xc012f878u)((int)(idx), -1, 1, 1)
 #endif
 #define CFP_PAYLOAD_MAX 1024u
 #define CFP_PEEK_MAX 512u
@@ -713,6 +723,14 @@ void cfp_sysex(void)
                 list[k] = cfp_num(b + 6 + 5 * k, 5);
             got = ua_watch_set(list, cnt);
             r[n++] = 'w'; r[n++] = (u8)got;
+        }
+    } else if (b[4] == 'S' && len >= 6u) {
+        u32 idx = b[5] & 0x7fu;
+        if (idx >= 50u) {
+            r[n++] = 'e';
+        } else {
+            CFP_PATCH_SELECT(idx);
+            r[n++] = 's'; r[n++] = (u8)idx;
         }
     } else {
         r[n++] = 'e';

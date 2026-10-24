@@ -205,3 +205,14 @@ class SysexTests(unittest.TestCase):
 
     def test_unknown_op_replies_e(self):
         self.assertEqual(cf_probe.parse_reply(self.send(cf_probe.request("Q")))[0], "e")
+
+    def test_select_patch(self):
+        r = self.send(cf_probe.select_request(49))
+        self.assertEqual(cf_probe.parse_reply(r), ("s", 49))
+        self.assertEqual(self.lib.host_cfp_select_idx_get(), 49)
+        self.assertEqual(self.lib.host_cfp_select_calls_get(), 1)
+
+    def test_select_patch_out_of_range(self):
+        r = self.send(cf_probe.select_request(50))
+        self.assertEqual(cf_probe.parse_reply(r)[0], "e")
+        self.assertEqual(self.lib.host_cfp_select_calls_get(), 0)
