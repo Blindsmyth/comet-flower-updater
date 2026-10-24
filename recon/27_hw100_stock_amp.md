@@ -131,3 +131,59 @@ verified (`tests/host/hiwatt_nets_test.cpp`, `hiwatt_netgen_test.cpp`, both pass
 the real schematic-cross-checked circuit model — see the project memory note on this session's
 DSP verification work). This doc is the Zoom-side counterpart; closing the gap above would let
 the two be plotted against each other the way Muff's were.
+
+## 4. Presence control — comparable, and the result is a real mechanism difference
+
+`HW100_EQ_Calc`'s own math was not fully read (3160 lines; no named frequency/Q tables are
+referenced inside it beyond the four scalar knob lookups passed in by the caller, so the
+tone-stack bands' exact filter shape remains unconfirmed per §3 — see the method note below).
+The **presence** control turned out to be directly comparable without that gap, because both
+sides already have real, sourced numbers:
+
+- **Zoom (computed here):** cascading `Presence_EQ1` and `Presence_EQ2` as standard RBJ-cookbook
+  peaking biquads, fed the real decoded `Freq`/`Gain`/`Q` tables (§2b), **assuming** the gain
+  table units are dB (not confirmed from the code) and EQ2's unlisted Q = 1.0 (no Q table was
+  found for EQ2, a guess), at `fs = 44100` (also unconfirmed — HW100 may run this stage
+  oversampled, but these are low-signal-relative-to-Nyquist frequencies where the bilinear
+  warp difference is small either way): a genuine **forward boost of up to ~17 dB at 5 kHz**
+  at full presence, rising roughly monotonically with the knob.
+- **Comet Flower / the real amp (already derived, not computed here):**
+  `VirtualPedalBoardEngine/documents/REF_HiwattDR103_Deriv_NFB_Presence.md` §4 gives
+  `β(f,presence)` (the global negative-feedback loop's return factor) from a full MNA solve of
+  the real back-half network, cross-checked against the schematic — **confirmed, not a guess**.
+  The presence pot does not add a forward boost at all; it **shunts high-frequency content out
+  of the feedback-summing node**, so turning it up *reduces* negative feedback at HF (β's HF
+  content drops an extra ~8-25 dB as presence goes 0→1 — table below), which lets more of the
+  amplifier's own open-loop HF gain through. The doc explicitly refutes (§5, with numbers 60-70
+  dB apart) an earlier "forward injection" theory of how this control works.
+
+| f/Hz | Zoom boost, pres=0 -> 1 (dB) | Real amp's β HF-rolloff, pres=0 -> 1 (dB, re each curve's own 100 Hz) |
+|---|---|---|
+| 300 | 0.00 -> 0.03 | -0.15 -> -2.17 |
+| 1000 | 0.00 -> 1.53 | -1.04 -> -9.54 |
+| 5000 | 0.00 -> 17.29 | -8.64 -> -22.97 |
+| 10000 | 0.00 -> 4.58 | -13.92 -> -28.70 |
+
+**These two columns are not the same physical quantity** (forward output-gain boost vs. a
+feedback-factor's own HF rolloff) and must not be read as directly subtractable — converting
+the real amp's β-change into an equivalent output-dB boost needs the power-stage's open-loop
+gain, which `REF_HiwattDR103_Deriv_NFB_Presence.md` §9 flags as its single biggest open
+uncertainty (`A_pwr`, recommended default 1.5x, "the task's single biggest uncertainty").
+**The finding that survives that uncertainty: Zoom's presence is a direct forward EQ boost;
+Comet Flower's (and the real amp's) presence is a feedback-depth control with no forward boost
+at all** — two different control topologies that both make the amp sound brighter, verified
+from real sourced data on both sides, not assumed to work the same way because they share a
+knob label.
+
+Chart: https://claude.ai/artifact/QVzz7shQSxNc7Qowun3gWW (presence comparison, dataviz-skill
+build, palette-validated).
+
+**Still open (the tone-stack half of §2a/§3):** `HW100_EQ_Calc`'s own filter math was not read
+to the depth the presence derivation got for free from an already-existing source. Attempting
+it means finding where the 3-band tone stack's implicit center frequencies live (no `_tbl`
+symbol carries them, and `HW100_EQ_Calc` builds no `0x8000xxxx`-range data address itself —
+either the frequencies are plain immediate constants buried in ~3000 lines of mostly `MPYDP`/
+`ADDDP`/`SUBDP` double-precision arithmetic with no `SIN`/`COS`/`RCPSP` special ops visible
+from a quick scan, consistent with an inlined polynomial trig approximation rather than a
+library call, or the tone-stack topology doesn't use per-band center frequencies the way a
+parametric EQ does at all. Left as `guess`, not attempted further this pass.
