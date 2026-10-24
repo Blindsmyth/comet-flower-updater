@@ -287,6 +287,47 @@ The following side-by-side comparison aggregates every architectural, electrical
 | **Tone DSP Modeling** | Precomputed 2nd-order IIR Biquad table (`MUFF_TONE`, 5 coeffs) | Decoupled LPF & HPF mixing tables (`Muff_Tone_LPF_Mix/Ftbl`, `Muff_Tone_HPF_Mix`) | CF preserves continuous phase cancelation; Zoom approximates magnitude blend. |
 | **Zoom DSP Load** | 51 cycles (~15.7k cycles on C6745) | 34.86 declared load (optimized pipeline) | CF trades ~16 cycle units for physical circuit accuracy and authentic '74 tone. |
 
+## Claude review (2026-10-23)
+
+Spot-checked before trusting this report, same discipline as the firmware recon docs.
+
+- **Citations are real, not hallucinated.** Fetched `kitrae.net/music/big_muff_guts.html`
+  directly: it does discuss Big Muff feedback-cap (470/560 pF) and tone-resistor (22k-39k)
+  variation across versions, consistent with section 2. Fetched Zoom's actual PDF
+  (`E_G1FOUR_FX-list.pdf`, p.7) and read it directly (not through a lossy summarizer this
+  time): it says, verbatim, **"NYC Muff — This models an Electro-Harmonix Big Muff Pi. An
+  added parameter allows you to adjust the balance of original sound and distortion."**
+  That matches section 1.2's quote exactly. **Confirmed, independently.**
+  One nuance: the manual's own text does **not** say "NYC Reissue" or name a specific era —
+  that identification rests on the effect's internal name and recon/11's table-frequency
+  match (section 3.1.C), which is a reasonable inference but should stay **likely**, not
+  "Confirmed" as section 1.2 currently labels the whole block. The manufacturer-model part
+  ("models a Big Muff Pi") is confirmed; the specific-era part is not.
+- **The frequency-response table (section 3.1.B) is "Confirmed" but no computation artifact
+  backs that label** — `build/gemini_scratch/` has no simulation script from this session,
+  only older firmware-map leftovers. Built an independent 3-node nodal model myself (same
+  component values from section 2, source impedance driving a shared input node that splits
+  into the R_LP/C_LP and C_HP/R_HP branches, no further pot-loading) and solved it exactly
+  in Python rather than trust either pass blindly:
+  - Violet notch (mine): **630 Hz, -14.60 dB** vs. this report's claimed **862 Hz, -14.63 dB**.
+  - NYC notch (mine): **1320 Hz, -14.75 dB** vs. this report's claimed **1622 Hz, -14.79 dB**.
+  - The **depths match to within 0.04 dB** in both cases — too close to be coincidence, which
+    says the table almost certainly came from a real circuit solve, not an invented-looking
+    table. The **frequencies are consistently ~35% higher** in this report than in my
+    independent model, in the same direction for both units, which points at a topology
+    difference (most likely how the tone pot's own resistance loads the two branches, which
+    neither pass modeled identically) rather than noise or fabrication.
+  - **Net:** the qualitative conclusion — NYC's mid-scoop notch sits roughly twice as high in
+    frequency as the Violet's, at a comparable depth — holds in both models and is safe to
+    build on. The **exact Hz figures in section 3.1.B should not be treated as precise**
+    until checked against the real schematic's pot-loading topology, not just two
+    independently-guessed simplified models. Downgrading 3.1.B's confidence from
+    **Confirmed** to **likely (directionally verified by two independent models; precise
+    values unverified)**.
+- Did not re-verify every component value or every other citation (diode part numbers,
+  transistor gain figures, the Sovtek/EC3003 production history) — those are plausible and
+  well-formed but outside what a quick spot-check pass covered.
+
 ## 5. Open questions
 
 1. **Exact Downsampler Reconstruction in Zoom's NYC_MUFF:**
