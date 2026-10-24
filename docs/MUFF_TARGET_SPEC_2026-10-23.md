@@ -53,6 +53,123 @@
 
 ## 2. Component values
 
+The acoustic signature of a Big Muff Pi is dictated almost entirely by two sub-circuits:
+1. **The Clipping Stages (Stages 2 & 3):** Diode chemistry ($V_F$), emitter degeneration resistance ($R_E$, controlling open-loop gain and clipping knee hardness), and the collector-base feedback capacitors ($C_f$, setting high-frequency roll-off during clipping).
+2. **The Passive Tone Stack (Stage 4):** The bridge RC filter network consisting of $R_{LP}, C_{LP}, R_{HP}, C_{HP}$ and the 100k blend potentiometer, which sets the notch center frequency, notch depth (mid-scoop), and boundary shelving slopes.
+
+Below are the exact component values for both target circuits, cross-referencing Kit Rae's vintage PCB schematics and modern standardized parts numbering (Aion FX).
+
+---
+
+### 2.1 1974 "Violet" Ram's Head Component Values (CF Muff Target)
+*Sources:* Kit Rae Schematic `KR_1973_V2_Violet_Schematic_2nd_version.jpg` ([URL](http://www.bigmuffpage.com/images/KR_1973_V2_Violet_Schematic_2nd_version.jpg)) and Aion FX Compilation ([URL](https://docs.google.com/spreadsheets/d/1w3P91n2c6XolAe49RRIlzV8doR-R-MnS5foYAaRC8VA/)).
+
+#### A. Clipping Stages (Stage 2: Q2 & Stage 3: Q3)
+- **Clipping Diodes:** 4x Silicon planar switching diodes (D1, D2 across Q2; D3, D4 across Q3), original vintage parts marked **1N4148** or **1N914** (or Fairchild house code).
+  - Forward voltage drop: $V_F \approx 0.65\text{ V}$ at 1 mA (threshold onset $\approx 0.55\text{ V}$, saturation $\approx 0.72\text{ V}$).
+  - Diode orientation: Symmetrical back-to-back anti-parallel pairs.
+- **Diode DC Blocking Capacitors ($C_{block}$):** **0.1 µF (100 nF)** film capacitor in series with each diode pair ($C_5, C_{13}$ in Kit Rae; C4, C7 in Aion).
+- **Feedback Capacitors ($C_f$):** **560 pF** ceramic disk ($C_{11}, C_{12}$ in Kit Rae; C5, C8 in Aion).
+  - *Function:* Placed directly in parallel with the clipping diode feedback loop across collector and base. Rolls off treble frequencies with an initial corner around 1.2–1.5 kHz, producing the distinctive warm, fat, singing violin sustain of the '74 Violet.
+- **Emitter Degeneration Resistors ($R_E$):** **100 Ω** ($R_{10}, R_{21}$ in Kit Rae; R11, R16 in Aion).
+  - *Sonic Impact:* Minimal local feedback; yields very high open-loop gain ($|A_v| \approx \frac{R_C}{r_e + R_E} \approx \frac{12000}{26 + 100} \approx 95 \approx 39.5\text{ dB}$). Signal clips hard and abruptly against the diode threshold.
+- **Collector Resistors ($R_C$):** $R_{18} = 10\text{ k}\Omega$ (Q2), $R_{11} = 15\text{ k}\Omega$ (Q3).
+- **Input Series Resistors ($R_{in}$):** $R_{19} = 8.2\text{ k}\Omega$ (into Q2), $R_{12} = 8.2\text{ k}\Omega$ (into Q3).
+- **Transistors:** 4x **FS36999** / **2N5133** NPN Silicon ($h_{FE} \approx 100\text{--}300$).
+
+#### B. Passive Tone Stack (Stage 4)
+- **Topology:** Single-knob bridged low-pass / high-pass passive mixer into high-impedance recovery stage.
+- **Low-Pass Branch:**
+  - Series Resistor ($R_{LP}$ / $R_8$ Kit Rae / R19 Aion): **39 kΩ** (0.25W carbon film/comp).
+  - Shunt Capacitor to GND ($C_{LP}$ / $C_8$ Kit Rae / C11 Aion): **12 nF (0.012 µF)** Mylar film.
+  - Cutoff frequency of isolated LPF: $f_{c, LP} = \frac{1}{2\pi \cdot 39\text{k}\Omega \cdot 12\text{nF}} \approx 340\text{ Hz}$.
+- **High-Pass Branch:**
+  - Series Capacitor ($C_{HP}$ / $C_9$ Kit Rae / C10 Aion): **4.0 nF (0.004 µF)** ceramic/film.
+  - Shunt Resistor to GND ($R_{HP}$ / $R_5$ Kit Rae / R18 Aion): **39 kΩ**.
+  - Cutoff frequency of isolated HPF: $f_{c, HP} = \frac{1}{2\pi \cdot 39\text{k}\Omega \cdot 4\text{nF}} \approx 1020\text{ Hz}$.
+- **Tone Potentiometer:** **100 kΩ Linear** ($R_{pot} = 100\text{k}\Omega$, CTS/Bourns B100k).
+  - Pin 1 (CCW / Bass): Connected to LPF junction ($V_{LP}$).
+  - Pin 3 (CW / Treble): Connected to HPF junction ($V_{HP}$).
+  - Pin 2 (Wiper): Blends between $V_{LP}$ and $V_{HP}$ and drives Q4 recovery stage via 0.1 µF coupling cap.
+
+---
+
+### 2.2 2000 NYC Reissue Component Values (Zoom NYC_MUFF Target)
+*Sources:* Kit Rae Schematic `V9 NYC REISSUE BIG MUFF SCHEMATIC_1st version.jpg` ([URL](http://www.bigmuffpage.com/images/schematics/V9%20NYC%20REISSUE%20BIG%20MUFF%20SCHEMATIC_1st%20version.jpg)), ElectroSmash Analysis ([URL](https://www.electrosmash.com/big-muff-pi-analysis)), and Aion FX Compilation ([URL](https://docs.google.com/spreadsheets/d/1w3P91n2c6XolAe49RRIlzV8doR-R-MnS5foYAaRC8VA/)).
+
+#### A. Clipping Stages (Stage 2: Q2 & Stage 3: Q3)
+- **Clipping Diodes:**
+  - *EC3003 (Initial 2000 run):* 4x **1N6263 Silicon Schottky diodes** ($V_F \approx 0.38\text{ V}$ at 1 mA, threshold onset $\approx 0.28\text{ V}$).
+  - *EC3003-A (2001+ standard USA run):* 4x **1N4148 Silicon switching diodes** ($V_F \approx 0.65\text{ V}$ at 1 mA).
+- **Diode DC Blocking Capacitors ($C_{block}$):** **1.0 µF** 50V radial electrolytic ($C_5, C_{13}$ in Kit Rae; C4, C7 in Aion). (10x larger than vintage Violet; extends clipping bandwidth down to sub-bass DC).
+- **Feedback Capacitors ($C_f$):** **470 pF** ceramic disk ($C_{11}, C_{12}$ in Kit Rae; C5, C8 in Aion).
+  - *Sonic Impact:* Allows more upper-mid sizzle through before feedback clipping roll-off occurs.
+- **Emitter Degeneration Resistors ($R_E$):** **390 Ω** ($R_{10}, R_{21}$ in Kit Rae; R11, R16 in Aion).
+  - *Sonic Impact:* **Substantial difference.** Higher negative feedback drops open-loop gain to $|A_v| \approx \frac{10000}{26 + 390} \approx 24 \approx 27.6\text{ dB}$ (a **~12 dB loss of gain per stage** compared to Violet). Causes a much softer clipping transition with less high-order harmonic spray and reduced total compression.
+- **Collector Resistors ($R_C$):** $R_{18} = 10\text{ k}\Omega$ (Q2), $R_{11} = 10\text{ k}\Omega$ (Q3).
+- **Input Series Resistors ($R_{in}$):** $R_{19} = 10\text{ k}\Omega$ (into Q2), $R_{12} = 10\text{ k}\Omega$ (into Q3).
+- **Transistors:** 4x **2N5088** NPN Silicon ($h_{FE} \approx 500\text{--}900$).
+
+#### B. Passive Tone Stack (Stage 4)
+- **Topology:** Same bridged RC network topology, but with radically altered component values.
+- **Low-Pass Branch:**
+  - Series Resistor ($R_{LP}$ / $R_8$ Kit Rae / R19 Aion): **22 kΩ** (vs 39 kΩ in Violet).
+  - Shunt Capacitor to GND ($C_{LP}$ / $C_8$ Kit Rae / C11 Aion): **10 nF (0.01 µF)**.
+  - Cutoff frequency of isolated LPF: $f_{c, LP} = \frac{1}{2\pi \cdot 22\text{k}\Omega \cdot 10\text{nF}} \approx 723\text{ Hz}$ (more than an octave higher than Violet's 340 Hz).
+- **High-Pass Branch:**
+  - Series Capacitor ($C_{HP}$ / $C_9$ Kit Rae / C10 Aion): **3.9 nF (0.0039 µF)** film.
+  - Shunt Resistor to GND ($R_{HP}$ / $R_5$ Kit Rae / R18 Aion): **22 kΩ** (vs 39 kΩ in Violet).
+  - Cutoff frequency of isolated HPF: $f_{c, HP} = \frac{1}{2\pi \cdot 22\text{k}\Omega \cdot 3.9\text{nF}} \approx 1855\text{ Hz}$.
+- **Tone Potentiometer:** **100 kΩ Linear** ($R_{pot} = 100\text{k}\Omega$, B100k).
+  - Blends between the shifted 723 Hz LPF and 1855 Hz HPF branches, pushing the mid-scoop notch to **~1.4–1.6 kHz** and scooping the core guitar body frequencies.
+
+---
+
+### 2.3 Stage-by-Stage Component Bill of Materials Cross-Reference
+
+| Circuit Stage | Component Function | 1974 Violet Ram's Head (CF Muff) | 2000 NYC Reissue V9 (Zoom NYC_MUFF) |
+|---|---|---|---|
+| **Stage 1 (Booster)** | Input Series Resistor | 39 kΩ | 39 kΩ |
+| | Input Coupling Cap | 0.1 µF (film) | 1.0 µF (electrolytic) |
+| | Base Pull-down / Bias | 100 kΩ | 100 kΩ |
+| | Collector-Base Feedback | 470 kΩ | 510 kΩ |
+| | Collector Load $R_C$ | 15 kΩ | 10 kΩ |
+| | Emitter Resistor $R_E$ | 100 Ω | 100 Ω |
+| | Miller Feedback Cap $C_f$ | 560 pF | 470 pF |
+| | Stage 1 Coupling Out | 0.1 µF (film) | 1.0 µF (electrolytic) |
+| | Sustain Potentiometer | 100 kΩ Linear | 100 kΩ Linear |
+| | Sustain Ground Resistor | 1.0 kΩ | 1.8 kΩ |
+| **Stage 2 (Clipper 1)** | Series Input Resistor | 8.2 kΩ | 10 kΩ |
+| | Base Bias to GND | 100 kΩ | 100 kΩ |
+| | Collector-Base Feedback | 470 kΩ | 470 kΩ |
+| | Collector Load $R_C$ | 10 kΩ | 10 kΩ |
+| | **Emitter Resistor $R_E$** | **100 Ω** (high gain) | **390 Ω** (degenerated) |
+| | **Clipping Diodes** | **1N4148** ($V_F \approx 0.65\text{ V}$) | **1N6263** (0.38V) / **1N4148** |
+| | Diode DC Block Cap | 0.1 µF (film) | 1.0 µF (electrolytic) |
+| | **Feedback Cap $C_f$** | **560 pF** (warm) | **470 pF** (bright) |
+| | Stage 2 Coupling Out | 0.1 µF (film) | 1.0 µF (electrolytic) |
+| **Stage 3 (Clipper 2)** | Series Input Resistor | 8.2 kΩ | 10 kΩ |
+| | Base Bias to GND | 100 kΩ | 100 kΩ |
+| | Collector-Base Feedback | 470 kΩ | 470 kΩ |
+| | Collector Load $R_C$ | 15 kΩ | 10 kΩ |
+| | **Emitter Resistor $R_E$** | **100 Ω** (high gain) | **390 Ω** (degenerated) |
+| | **Clipping Diodes** | **1N4148** ($V_F \approx 0.65\text{ V}$) | **1N6263** (0.38V) / **1N4148** |
+| | Diode DC Block Cap | 0.1 µF (film) | 1.0 µF (electrolytic) |
+| | **Feedback Cap $C_f$** | **560 pF** (warm) | **470 pF** (bright) |
+| | Stage 3 Coupling Out | 0.1 µF (film) | 1.0 µF (electrolytic) |
+| **Stage 4 (Tone Stack)** | **LPF Resistor $R_{LP}$** | **39 kΩ** | **22 kΩ** |
+| | **LPF Cap $C_{LP}$** | **12 nF (0.012 µF)** | **10 nF (0.01 µF)** |
+| | **HPF Cap $C_{HP}$** | **4.0 nF (0.004 µF)** | **3.9 nF (0.0039 µF)** |
+| | **HPF Resistor $R_{HP}$** | **39 kΩ** | **22 kΩ** |
+| | Tone Potentiometer | 100 kΩ Linear | 100 kΩ Linear |
+| **Stage 5 (Recovery)** | Input Coupling Cap | 0.1 µF (film) | 1.0 µF (electrolytic) |
+| | Base Bias to GND | 100 kΩ | 100 kΩ |
+| | Collector-Base Feedback | 390 kΩ | 470 kΩ |
+| | Collector Load $R_C$ | 10 kΩ | 10 kΩ |
+| | Emitter Resistor $R_E$ | 2.7 kΩ | 2.0 kΩ |
+| | Output Coupling Cap | 0.1 µF (film) | 1.0 µF (electrolytic) |
+| | Volume Potentiometer | 100 kΩ Log | 100 kΩ Log |
+
 ## 3. Measured or simulated frequency response / transfer characteristic
 
 ## 4. Comparison table
