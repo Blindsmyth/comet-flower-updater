@@ -39,10 +39,18 @@ def build_flasher_exe(dist_dir: Path = OUTPUT_DIR) -> Path:
         "mido.backends.rtmidi",
         "--hidden-import",
         "rtmidi",
+        "--hidden-import",
+        "tkinter",
+        "--hidden-import",
+        "cf_flasher_gui",
+        "--hidden-import",
+        "cf_keygen_music",
         "--collect-all",
         "mido",
         "--collect-all",
         "rtmidi",
+        "--collect-all",
+        "tkinter",
         str(FLASHER_PY),
     ]
 

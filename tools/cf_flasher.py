@@ -14,6 +14,19 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
 
+# Ensure UTF-8 output on Windows consoles
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+    if hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 # Ensure tools/ directory is in sys.path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT / "tools") not in sys.path:
@@ -391,11 +404,54 @@ def plan_stages_from_files(
     return stages
 
 
+ASCII_BANNER = r"""
+ ██████╗ ██████╗ ███╗   ███╗███████╗████████╗    ███████╗██╗     ██╗    ██╗██████╗ 
+██╔════╝██╔═══██╗████╗ ████║██╔════╝╚══██╔══╝    ██╔════╝██║     ██║    ██║██╔══██╗
+██║     ██║   ██║██╔████╔██║█████╗     ██║       █████╗  ██║     ██║ █╗ ██║██████╔╝
+██║     ██║   ██║██║╚██╔╝██║██╔══╝     ██║       ██╔══╝  ██║     ██║███╗██║██╔══██╗
+╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗   ██║       ██║     ███████╗╚███╔███╔╝██║  ██║
+ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝   ╚═╝       ╚═╝     ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝
+"""
+
+# ANSI Color Codes (Matching ModelerStyle.h)
+C_AMBER = "\033[38;2;255;181;71m"
+C_CYAN = "\033[38;2;82;198;245m"
+C_GREEN = "\033[38;2;63;207;142m"
+C_RED = "\033[38;2;255;93;87m"
+C_DIM = "\033[38;2;169;166;159m"
+C_RESET = "\033[0m"
+
+
+def print_banner():
+    try:
+        print(f"{C_AMBER}{ASCII_BANNER.strip(chr(10))}{C_RESET}")
+        print(f"{C_CYAN}+------------------------------------------------------------------------+{C_RESET}")
+        print(f"{C_CYAN}|  [+] COMET FLOWER LABS 1911 // STANDALONE FIRMWARE FLASHER & UNLOCKER  |{C_RESET}")
+        print(f"{C_CYAN}|  [+] TARGET: ZOOM G1 / G1X FOUR (TMS320C6745 @ 300MHz) [UNLOCKED]      |{C_RESET}")
+        print(f"{C_CYAN}+------------------------------------------------------------------------+{C_RESET}\n")
+    except Exception:
+        print("=== COMET FLOWER LABS 1911 // STANDALONE FIRMWARE FLASHER ===")
+        print("=== TARGET: ZOOM G1 / G1X FOUR (TMS320C6745 @ 300MHz) ===\n")
+
+
 def main(argv=None) -> int:
     import argparse
 
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # Default to GUI when double-clicked or executed with no arguments
+    if len(argv) == 0 or "--gui" in argv:
+        try:
+            import cf_flasher_gui
+
+            cf_flasher_gui.main()
+            return 0
+        except Exception as e:
+            print(f"Notice: GUI unavailable ({e}), defaulting to CLI mode.\n")
+
     parser = argparse.ArgumentParser(
-        description="Comet Flower Standalone Firmware Flasher (Native MIDI SysEx)"
+        description="Comet Flower Standalone Firmware Flasher (Razor 1911 / Modeler Style)"
     )
     parser.add_argument("--firmware", type=Path, help="Path to main firmware image (res1_*.bin)")
     parser.add_argument("--image", type=Path, help="Path to effect filesystem image (fs_*.bin)")
@@ -403,16 +459,16 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=str, help="Substring of the MIDI port name (default: auto-detect)")
     parser.add_argument("--allow-boot-write", action="store_true", help="Allow writing boot partition (HIGH RISK)")
     parser.add_argument("--dry-run", action="store_true", help="Validate files and safety without touching MIDI")
+    parser.add_argument("--gui", action="store_true", help="Launch interactive retro keygen GUI")
 
     args = parser.parse_args(argv)
 
+    print_banner()
+
     if not any([args.firmware, args.image, args.presets]):
         parser.print_help()
-        print("\nError: Please provide at least one of --firmware, --image, or --presets.")
+        print(f"\n{C_RED}[!] Error: Please provide at least one of --firmware, --image, or --presets.{C_RESET}")
         return 2
-
-    print("Comet Flower Standalone Flasher v1.0")
-    print("------------------------------------")
 
     try:
         stages = plan_stages_from_files(
@@ -421,24 +477,24 @@ def main(argv=None) -> int:
             presets_path=args.presets,
         )
     except Exception as e:
-        print(f"Error planning stages: {e}")
+        print(f"{C_RED}[!] Error planning stages: {e}{C_RESET}")
         return 1
 
-    print(f"Planned {len(stages)} stage(s):")
+    print(f"{C_AMBER}[+] Planned {len(stages)} stage(s):{C_RESET}")
     for s in stages:
         size_info = f"size {len(s.data):,} B" if s.data else f"size 0x{s.size:X}"
-        print(f"  - {s.description:30s} : {s.op_name.upper()} 0x{s.addr:06X} ({size_info})")
+        print(f"    - {s.description:30s} : {C_CYAN}{s.op_name.upper()}{C_RESET} 0x{s.addr:06X} ({size_info})")
 
     # Safety check
     try:
         for s in stages:
             check_stage_safety(s, allow_boot_write=args.allow_boot_write)
     except SafetyViolationError as e:
-        print(f"\nSAFETY ABORT: {e}")
+        print(f"\n{C_RED}[!] SAFETY ABORT: {e}{C_RESET}")
         return 1
 
     if args.dry_run:
-        print("\nDry-run complete: all checks passed, no MIDI data sent.")
+        print(f"\n{C_GREEN}[+] Dry-run complete: all checks passed, no MIDI data sent.{C_RESET}")
         return 0
 
     session = FlasherSession(verbose=True)
@@ -447,13 +503,13 @@ def main(argv=None) -> int:
         session.run_stages(stages, allow_boot_write=args.allow_boot_write)
         return 0
     except KeyboardInterrupt:
-        print("\nOperation cancelled by user.")
+        print(f"\n{C_RED}[!] Operation cancelled by user.{C_RESET}")
         return 130
     except FlasherError as e:
-        print(f"\nFLASHER ERROR: {e}")
+        print(f"\n{C_RED}[!] FLASHER ERROR: {e}{C_RESET}")
         return 1
     except Exception as e:
-        print(f"\nUNEXPECTED ERROR: {e}")
+        print(f"\n{C_RED}[!] UNEXPECTED ERROR: {e}{C_RESET}")
         return 1
     finally:
         session.close()
