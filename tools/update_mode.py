@@ -21,9 +21,12 @@ import binascii
 import sys
 from pathlib import Path
 
-MODEL_BYTE = 0x00  # recon/26 section 7: no write site found for this global in the exe;
-                    # assumed 0, matching this project's device-id convention everywhere else.
-HANDSHAKE_CMD = 0x60
+MODEL_BYTE = 0x6E  # recon/26 section 2 & 8: populated at runtime by memcpy(0x44bc0c, id_reply+6, 4)
+                    # at 0x4047dd from the Universal Identity Reply (6e 00 0d 00 for G1X FOUR).
+ENTER_CMD = 0x01
+EXIT_CMD = 0x04
+ACK_CMD = 0x00
+HANDSHAKE_CMD = 0x60  # Flash Read command (0x60 0x30 <addr:5B> <size:5B>)
 ERASE_CMD = 0x0A
 WRITE_CMD = 0x02
 MAX_CHUNK = 0x1000  # the real updater never sends a write-chunk message larger than this
@@ -32,6 +35,15 @@ MAX_CHUNK = 0x1000  # the real updater never sends a write-chunk message larger 
 def num7(v, n):
     """n-byte 7-bit little-endian encoding (recon/26 section 5a)."""
     return bytes((v >> (7 * k)) & 0x7F for k in range(n))
+
+
+def num7_decode(buf):
+    """Inverse of num7 (recon/26 section 5a / 0x403e70): 5-byte 7-bit-LE (top byte masked 0x0F)."""
+    v = 0
+    for k, b in enumerate(buf):
+        mask = 0x0F if k == 4 else 0x7F
+        v |= (b & mask) << (7 * k)
+    return v
 
 
 def pack7(data):
@@ -49,17 +61,98 @@ def pack7(data):
     return bytes(out)
 
 
+def packed_len_for(raw_len):
+    """Exact packed byte length for `raw_len` unpacked bytes (matches 0x40403b..0x40406d)."""
+    q, r = divmod(raw_len, 7)
+    return q * 8 + (r + 1 if r else 0)
+
+
+def unpack7(packed, raw_len=None):
+    """7-bit unpack (matches 0x401180): inverse of pack7."""
+    out = bytearray()
+    i = 0
+    n = len(packed)
+    while i < n:
+        hi = packed[i]
+        group = packed[i + 1:i + 8]
+        for k, b in enumerate(group):
+            out.append((b & 0x7F) | (((hi >> (6 - k)) & 1) << 7))
+            if raw_len is not None and len(out) >= raw_len:
+                return bytes(out)
+        i += 1 + len(group)
+    return bytes(out)
+
+
 def crc_field(data):
     """5-byte 7-bit-LE checksum field (recon/26 section 5c)."""
     return num7(binascii.crc32(data) ^ 0xFFFFFFFF, 5)
 
 
-def build_handshake(model=MODEL_BYTE):
-    """recon/26 section 2. Sent once before any erase/write stage by the real updater.
-    Purpose, the fixed byte at offset 5 (0x30), and the meaning of the two numeric fields
-    are unconfirmed; the bytes match the template read from the exe."""
+def build_identity_inquiry():
+    """Universal MIDI Device Inquiry sent at start of update session (0x4046ac, .data 0x4490a0)."""
+    return bytes([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7])
+
+
+def build_enter_session(model=MODEL_BYTE):
+    """Enter programming / firmware-update session (0x4049a2, .data 0x4490c0)."""
+    return bytes([0xF0, 0x52, 0x00, model, ENTER_CMD, 0xF7])
+
+
+def build_exit_session(model=MODEL_BYTE):
+    """Exit programming / firmware-update session (0x404c15, .data 0x4490e0)."""
+    return bytes([0xF0, 0x52, 0x00, model, EXIT_CMD, 0xF7])
+
+
+def build_flash_read(addr, size, model=MODEL_BYTE):
+    """recon/26 section 2: read `size` bytes from flash `addr` (cmd 0x60, subcmd 0x30)."""
     return (bytes([0xF0, 0x52, 0x00, model, HANDSHAKE_CMD, 0x30])
-            + num7(0x27FFC, 5) + num7(4, 5) + bytes([0xF7]))
+            + num7(addr, 5) + num7(size, 5) + bytes([0xF7]))
+
+
+def build_handshake(model=MODEL_BYTE):
+    """recon/26 section 2: the pre-loop boot-version read at 0x27FFC (4 bytes, '1.00')."""
+    return build_flash_read(0x27FFC, 4, model=model)
+
+
+def parse_reply(msg, model=MODEL_BYTE):
+    """Decode a pedal SysEx reply using the exact dispatch rules of 0x403ee0 (recon/26 section 7).
+
+    Returns a dict with:
+      - 'type': 'identity' | 'status' | 'write_ack' | 'read_data' | 'unknown'
+      - 'status': integer status written to `this+0x2138` (0 = OK, 0x0B = not in update mode,
+                  non-zero = error/NACK)
+      - plus type-specific fields ('device_id' for identity, 'data' for read_data).
+    """
+    msg = bytes(msg)
+    if len(msg) < 6 or msg[0] != 0xF0 or msg[-1] != 0xF7:
+        raise ValueError("not a complete SysEx frame")
+    if msg[1] == 0x7E:
+        if msg[3] == 0x06 and msg[4] == 0x02 and len(msg) >= 11:
+            return {"type": "identity", "status": 0, "device_id": bytes(msg[6:10])}
+        return {"type": "unknown", "status": 1}
+    if msg[1] != 0x52:
+        raise ValueError("unexpected manufacturer byte: %#x" % msg[1])
+    cmd = msg[4]
+    if cmd == ACK_CMD:
+        if len(msg) < 7:
+            raise ValueError("truncated status frame")
+        return {"type": "status", "status": msg[5]}
+    if cmd == WRITE_CMD:
+        return {"type": "write_ack", "status": 0}
+    if cmd == HANDSHAKE_CMD:
+        if len(msg) < 17 or msg[5] != 0x04 or msg[6] != 0x30:
+            return {"type": "read_data", "status": 1, "data": b""}
+        raw_len = msg[9] | (msg[10] << 7)
+        plen = packed_len_for(raw_len)
+        crc_off = 11 + plen
+        if len(msg) < crc_off + 6:
+            return {"type": "read_data", "status": 1, "data": b""}
+        data = unpack7(msg[11:crc_off], raw_len)
+        expected_crc = binascii.crc32(data) ^ 0xFFFFFFFF
+        received_crc = num7_decode(msg[crc_off:crc_off + 5])
+        status = 0 if expected_crc == received_crc else 1
+        return {"type": "read_data", "status": status, "data": data, "crc_ok": status == 0}
+    return {"type": "unknown", "status": 1}
 
 
 def build_erase(addr, size, model=MODEL_BYTE):

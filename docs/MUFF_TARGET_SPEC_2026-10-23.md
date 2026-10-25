@@ -421,5 +421,7 @@ verified byte-for-byte confined to the `MUFF_TONE` region (clip/tanh/sustain tab
 and the new shipped coefficients give exactly the predicted **766 Hz** noon notch, down from
 829 Hz. Full test suite: 443 passed. Committed here as the follow-up to `a5125a8`.
 
-**Still not done:** a new firmware build with this blob hasn't been packaged or flashed —
-that's the owner's call, same as every other firmware change in this project.
+**Packaged into 0.34.9 (`fdbadaf4`, `fs_bench349.bin` `e33c5800`):** also regenerated the
+2093-word compact blob (`tools/gen_compact_muff_blob.py` -> `effects/common/muff_blob_compact.h`,
+`effects/cfm_pre/blob.bin`, `effects/cfmaster/blob.bin`) and updated both `MUFFX.ZD2` (`CF Muff`)
+and `CFMPRE.ZD2` (`CFM Pre`) in `fs_bench349.bin` and Updater `0.34.9`.

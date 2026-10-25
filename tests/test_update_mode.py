@@ -24,20 +24,66 @@ def num7_manual(v, n):
 class HandshakeTests(unittest.TestCase):
     def test_bytes(self):
         msg = um.build_handshake()
-        self.assertEqual(msg[:6], bytes([0xF0, 0x52, 0x00, 0x00, 0x60, 0x30]))
+        self.assertEqual(msg[:6], bytes([0xF0, 0x52, 0x00, 0x6E, 0x60, 0x30]))
         self.assertEqual(msg[6:11], num7_manual(0x27FFC, 5))
         self.assertEqual(msg[11:16], num7_manual(4, 5))
         self.assertEqual(msg[16], 0xF7)
         self.assertEqual(len(msg), 17)
 
     def test_model_byte_at_offset_3(self):
+        self.assertEqual(um.build_handshake(model=0x00)[3], 0x00)
         self.assertEqual(um.build_handshake(model=0x6E)[3], 0x6E)
+
+
+class SessionControlTests(unittest.TestCase):
+    def test_identity_inquiry(self):
+        self.assertEqual(um.build_identity_inquiry(), bytes([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]))
+
+    def test_enter_exit_session(self):
+        self.assertEqual(um.build_enter_session(), bytes([0xF0, 0x52, 0x00, 0x6E, 0x01, 0xF7]))
+        self.assertEqual(um.build_exit_session(), bytes([0xF0, 0x52, 0x00, 0x6E, 0x04, 0xF7]))
+
+
+class ReplyParserTests(unittest.TestCase):
+    def test_identity_reply(self):
+        msg = bytes([0xF0, 0x7E, 0x00, 0x06, 0x02, 0x52, 0x6E, 0x00, 0x0D, 0x00,
+                     0x32, 0x2E, 0x30, 0x30, 0xF7])
+        rep = um.parse_reply(msg)
+        self.assertEqual(rep["type"], "identity")
+        self.assertEqual(rep["status"], 0)
+        self.assertEqual(rep["device_id"], bytes([0x6E, 0x00, 0x0D, 0x00]))
+
+    def test_status_ack_and_errors(self):
+        ack = um.parse_reply(bytes([0xF0, 0x52, 0x00, 0x6E, 0x00, 0x00, 0xF7]))
+        self.assertEqual(ack, {"type": "status", "status": 0})
+        not_upd = um.parse_reply(bytes([0xF0, 0x52, 0x00, 0x6E, 0x00, 0x0B, 0xF7]))
+        self.assertEqual(not_upd, {"type": "status", "status": 0x0B})
+        nack = um.parse_reply(bytes([0xF0, 0x52, 0x00, 0x6E, 0x00, 0x01, 0xF7]))
+        self.assertEqual(nack, {"type": "status", "status": 1})
+
+    def test_read_data_reply_roundtrip(self):
+        payload = b"1.00"
+        packed = um.pack7(payload)
+        crc = um.crc_field(payload)
+        msg = (bytes([0xF0, 0x52, 0x00, 0x6E, 0x60, 0x04, 0x30, 0x00, 0x00])
+               + num7_manual(len(payload), 2) + packed + crc + bytes([0xF7]))
+        rep = um.parse_reply(msg)
+        self.assertEqual(rep["type"], "read_data")
+        self.assertEqual(rep["status"], 0)
+        self.assertTrue(rep["crc_ok"])
+        self.assertEqual(rep["data"], b"1.00")
+        # Corrupt one byte -> status 1
+        bad = bytearray(msg)
+        bad[12] ^= 0x01
+        rep_bad = um.parse_reply(bytes(bad))
+        self.assertEqual(rep_bad["status"], 1)
+        self.assertFalse(rep_bad["crc_ok"])
 
 
 class EraseTests(unittest.TestCase):
     def test_bytes(self):
         msg = um.build_erase(0x0BF000, 0x1000)
-        self.assertEqual(msg[:5], bytes([0xF0, 0x52, 0x00, 0x00, 0x0A]))
+        self.assertEqual(msg[:5], bytes([0xF0, 0x52, 0x00, 0x6E, 0x0A]))
         self.assertEqual(msg[5:10], num7_manual(0x0BF000, 5))
         self.assertEqual(msg[10:15], num7_manual(0x1000, 5))
         self.assertEqual(msg[15], 0xF7)
@@ -57,7 +103,7 @@ class WriteChunkTests(unittest.TestCase):
     def test_small_chunk_layout(self):
         data = bytes([0x00, 0x80, 0x7F, 0xFF, 0x01])  # 5 bytes, under one pack7 group of 7
         msg = um.build_write_chunk(0x33000, data)
-        self.assertEqual(msg[:5], bytes([0xF0, 0x52, 0x00, 0x00, 0x02]))
+        self.assertEqual(msg[:5], bytes([0xF0, 0x52, 0x00, 0x6E, 0x02]))
         self.assertEqual(msg[5:10], num7_manual(0x33000, 5))
         self.assertEqual(msg[10:12], num7_manual(len(data), 2))
         # one collector byte + 5 payload bytes (single group, len(data) < 7)

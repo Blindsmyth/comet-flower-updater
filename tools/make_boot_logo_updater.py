@@ -41,6 +41,15 @@ BOOT_SHA256 = "5ee756a5dee51b4e790a6e6f6b6c0a8a1ea531c245a13124e8a5897530b01622"
 LOGO_OFF, LOGO_LEN = 0x1be60, 184
 LOGO_LOAD = 0xc0229720
 STAGES = [(1, BOOT_ADDR, BOOT_REGION, 0), (2, BOOT_ADDR, 0, BOOT_RES)]
+# recon/26 section 2: at VA 0x403c4f (file 0x304f), the stock updater checks
+# memcmp(res_0x8e + 0x27ffc, flash_0x27ffc, 4) == 0 and sets write_boot = 0
+# (c7 45 e8 00 00 00 00 = mov dword ptr [ebp-0x18], 0), which silently skips
+# any stage with addr == 0 when the pedal already has "1.00" at 0x27ffc.
+# Patching that immediate to 1 forces the boot stages to run while keeping
+# resource 0x8e's "1.00" tag at 0x27ffc stock.
+BOOT_SKIP_VA = 0x403C4F
+BOOT_SKIP_STOCK = bytes.fromhex("c745e800000000")
+BOOT_SKIP_FORCE = bytes.fromhex("c745e801000000")
 
 
 def ais_walk(d):
@@ -96,6 +105,10 @@ def main(src, dst, logo):
         sys.exit("boot stages are not Zoom's own")
     for k, st in enumerate(table):
         struct.pack_into("<4I", data, off + 16 * k, *st)
+    skip_off = pe.get_offset_from_rva(BOOT_SKIP_VA - pe.OPTIONAL_HEADER.ImageBase)
+    if bytes(data[skip_off:skip_off + len(BOOT_SKIP_STOCK)]) != BOOT_SKIP_STOCK:
+        sys.exit("unexpected bytes at %#x (boot-skip check)" % BOOT_SKIP_VA)
+    data[skip_off:skip_off + len(BOOT_SKIP_FORCE)] = BOOT_SKIP_FORCE
     check = pefile.PE(data=bytes(data))
     ce = {r.id: r for t in check.DIRECTORY_ENTRY_RESOURCE.entries if str(t.name) == "BIN"
           for r in t.directory.entries}[BOOT_RES].directory.entries[0].data.struct
