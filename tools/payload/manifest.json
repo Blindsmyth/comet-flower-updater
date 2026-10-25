@@ -1,0 +1,9 @@
+{
+  "version": "0.34.9",
+  "firmware": "firmware_0349.bin",
+  "firmware_sha256": "c0b11d842eb6718025573023543027b191f498d27c99d391b4dc7e2c70c00bd2",
+  "filesystem": "fs_0349.bin",
+  "filesystem_sha256": "e33c580004ff4714dbf55bc1f1437160910f5a70659a5d3f18e97f0ef7771764",
+  "presets": "presets_0349.bin",
+  "description": "Comet Flower Firmware v0.34.9 with Violet Muff 12nF C10 fix, CFM Preamp, CF Delay spillover, and unlocked 340% cycle gate."
+}

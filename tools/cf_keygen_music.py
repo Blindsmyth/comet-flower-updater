@@ -1,7 +1,8 @@
 """Retro Keygen Chiptune Player for Comet Flower Flasher (Razor 1911 Style).
 
 Plays an authentic demoscene-style 8-bit / tracker arpeggiated loop in the background
-using the default Windows MIDI Wavetable Synth (channel 0, synth square lead / synth bass).
+over the Comfortably Numb Solo 2 chord changes (Bm - A - G - Em) using the default
+Windows MIDI Wavetable Synth (channel 0 square wave lead, channel 1 synth bass).
 Zero external audio files required.
 """
 
@@ -77,7 +78,6 @@ class KeygenMusicPlayer:
                 import mido
 
                 for ch in (0, 1):
-                    # All sound off / all notes off
                     self._outport.send(mido.Message("control_change", channel=ch, control=120, value=0))
                     self._outport.send(mido.Message("control_change", channel=ch, control=123, value=0))
                 self._outport.close()
@@ -90,48 +90,65 @@ class KeygenMusicPlayer:
 
         try:
             self._outport = mido.open_output(self._port_name)
-            # Patch 80 = Lead 1 (square wave), Patch 38 = Synth Bass 1
+            # Patch 80 = Lead 1 (square wave chiptune lead), Patch 38 = Synth Bass 1
             self._outport.send(mido.Message("program_change", channel=0, program=80))
             self._outport.send(mido.Message("program_change", channel=1, program=38))
 
-            # Classic demoscene keygen progression: Am -> F -> C -> G
-            # 16th-note arpeggios at ~130 BPM (~115ms per step)
-            step_dur = 0.115
+            # Comfortably Numb Solo 2 Progression: Bm -> A -> G -> Em
+            # Tempo ~125 BPM -> 0.12s per 16th note
+            step = 0.120
 
-            # Patterns: tuples of (lead_note, bass_note)
-            chords = [
-                # Am (A2 bass, A C E A arpeggios)
-                [(69, 45), (72, 45), (76, None), (81, None), (76, None), (72, None), (69, None), (72, 45)],
-                # F (F2 bass, F A C F arpeggios)
-                [(65, 41), (69, 41), (72, None), (77, None), (72, None), (69, None), (65, None), (69, 41)],
-                # C (C2 bass, C E G C arpeggios)
-                [(60, 48), (64, 48), (67, None), (72, None), (67, None), (64, None), (60, None), (64, 48)],
-                # G (G2 bass, G B D G arpeggios)
-                [(67, 43), (71, 43), (74, None), (79, None), (74, None), (71, None), (67, None), (71, 43)],
+            # Bass notes for the 4 bars (Bm=47, A=45, G=43, Em=40)
+            bass_pattern = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0]
+
+            # Cycle 1: Fast keygen arpeggios over Bm - A - G - Em
+            arp_cycle = [
+                # Bar 1: Bm (B, D, F#)
+                (47, [59, 62, 66, 71, 66, 62, 59, 62, 66, 71, 74, 73, 71, 69, 66, 62]),
+                # Bar 2: A (A, C#, E)
+                (45, [57, 61, 64, 69, 64, 61, 57, 61, 64, 69, 73, 71, 69, 67, 64, 61]),
+                # Bar 3: G (G, B, D)
+                (43, [55, 59, 62, 67, 62, 59, 55, 59, 62, 67, 71, 69, 67, 66, 62, 59]),
+                # Bar 4: Em (E, G, B)
+                (40, [52, 55, 59, 64, 59, 55, 52, 55, 59, 64, 67, 66, 64, 62, 59, 55]),
             ]
 
+            # Cycle 2: Soaring B-minor pentatonic lead phrases inspired by the solo
+            lead_cycle = [
+                # Bar 1 (Bm): High B sustained with blues pickup
+                (47, [71, 71, 71, 74, 74, 74, 76, 76, 74, 74, 71, 71, 69, 71, 74, 71]),
+                # Bar 2 (A): Falling to A and C#
+                (45, [69, 69, 69, 73, 73, 73, 71, 69, 69, 69, 64, 64, 67, 69, 71, 69]),
+                # Bar 3 (G): Soaring bend to high D / B
+                (43, [67, 67, 67, 71, 71, 74, 74, 76, 79, 79, 76, 74, 71, 69, 67, 71]),
+                # Bar 4 (Em): Resolving blues lick
+                (40, [64, 64, 64, 67, 67, 69, 71, 74, 71, 69, 67, 64, 62, 64, 67, 64]),
+            ]
+
+            all_bars = arp_cycle + lead_cycle
+
             while not self._stop_event.is_set():
-                for chord in chords:
-                    for lead, bass in chord:
+                for root_note, lead_notes in all_bars:
+                    for i in range(16):
                         if self._stop_event.is_set():
                             break
-                        # Trigger Lead note
-                        if lead:
-                            self._outport.send(mido.Message("note_on", channel=0, note=lead, velocity=88))
-                        # Trigger Bass note
-                        if bass:
-                            self._outport.send(mido.Message("note_on", channel=1, note=bass, velocity=105))
+                        lead_n = lead_notes[i]
+                        bass_on = bass_pattern[i]
+                        bass_n = root_note if bass_on else None
 
-                        # Let ring for most of step
-                        time.sleep(step_dur * 0.85)
+                        if bass_n:
+                            self._outport.send(mido.Message("note_on", channel=1, note=bass_n, velocity=100))
+                        if lead_n:
+                            self._outport.send(mido.Message("note_on", channel=0, note=lead_n, velocity=88))
 
-                        # Note off
-                        if lead:
-                            self._outport.send(mido.Message("note_off", channel=0, note=lead))
-                        if bass:
-                            self._outport.send(mido.Message("note_off", channel=1, note=bass))
+                        time.sleep(step * 0.82)
 
-                        time.sleep(step_dur * 0.15)
+                        if bass_n:
+                            self._outport.send(mido.Message("note_off", channel=1, note=bass_n))
+                        if lead_n:
+                            self._outport.send(mido.Message("note_off", channel=0, note=lead_n))
+
+                        time.sleep(step * 0.18)
         except Exception:
             pass
         finally:

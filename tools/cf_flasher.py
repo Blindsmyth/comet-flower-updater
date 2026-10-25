@@ -440,11 +440,11 @@ def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
+    import cf_flasher_gui
+
     # Default to GUI when double-clicked or executed with no arguments
     if len(argv) == 0 or "--gui" in argv:
         try:
-            import cf_flasher_gui
-
             cf_flasher_gui.main()
             return 0
         except Exception as e:
@@ -465,16 +465,23 @@ def main(argv=None) -> int:
 
     print_banner()
 
-    if not any([args.firmware, args.image, args.presets]):
+    fw = args.firmware or cf_flasher_gui.get_bundled_payload_path("firmware_0349.bin")
+    fs = args.image or cf_flasher_gui.get_bundled_payload_path("fs_0349.bin")
+    pr = args.presets or cf_flasher_gui.get_bundled_payload_path("presets_0349.bin")
+
+    if not any([fw, fs, pr]):
         parser.print_help()
-        print(f"\n{C_RED}[!] Error: Please provide at least one of --firmware, --image, or --presets.{C_RESET}")
+        print(f"\n{C_RED}[!] Error: No baked-in or external files found to flash.{C_RESET}")
         return 2
+
+    if not args.firmware and fw:
+        print(f"{C_AMBER}[+] Using baked-in payload: Comet Flower Firmware v0.34.9{C_RESET}")
 
     try:
         stages = plan_stages_from_files(
-            firmware_path=args.firmware,
-            fs_image_path=args.image,
-            presets_path=args.presets,
+            firmware_path=fw,
+            fs_image_path=fs,
+            presets_path=pr,
         )
     except Exception as e:
         print(f"{C_RED}[!] Error planning stages: {e}{C_RESET}")

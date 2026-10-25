@@ -20,6 +20,9 @@ def build_flasher_exe(dist_dir: Path = OUTPUT_DIR) -> Path:
     work_dir = REPO_ROOT / "build" / "pyinstaller_work"
     work_dir.mkdir(parents=True, exist_ok=True)
 
+    payload_dir = REPO_ROOT / "tools" / "payload"
+    add_data_arg = f"{str(payload_dir)};payload"
+
     cmd = [
         sys.executable,
         "-m",
@@ -27,14 +30,17 @@ def build_flasher_exe(dist_dir: Path = OUTPUT_DIR) -> Path:
         "--noconfirm",
         "--clean",
         "--onefile",
+        "--windowed",  # No command terminal window: purely the graphical application!
         "--name",
-        "cf_flasher",
+        "Comet Flower Flasher",
         "--distpath",
         str(dist_dir),
         "--workpath",
         str(work_dir),
         "--specpath",
         str(work_dir),
+        "--add-data",
+        add_data_arg,
         "--hidden-import",
         "mido.backends.rtmidi",
         "--hidden-import",
@@ -60,7 +66,7 @@ def build_flasher_exe(dist_dir: Path = OUTPUT_DIR) -> Path:
     if result.returncode != 0:
         raise RuntimeError(f"PyInstaller failed with exit code {result.returncode}")
 
-    exe_path = dist_dir / "cf_flasher.exe"
+    exe_path = dist_dir / "Comet Flower Flasher.exe"
     if not exe_path.is_file():
         raise FileNotFoundError(f"Expected executable not found at {exe_path}")
 

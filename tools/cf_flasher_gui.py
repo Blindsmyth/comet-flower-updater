@@ -6,9 +6,11 @@ Implements a classic demogroup keygen/patcher interface with:
 - CRT green/cyan terminal well for live flashing telemetry
 - Retro block-style animated progress bar
 - Continuous bottom marquee / sine scroller
-- Optional 8-bit chiptune synthesizer background music
+- 8-bit chiptune synthesizer background music playing Comfortably Numb Solo 2 chords (Bm - A - G - Em)
+- Latest Comet Flower firmware v0.34.9 payload BAKED IN directly to the executable
 """
 
+import json
 import os
 from pathlib import Path
 import sys
@@ -60,17 +62,20 @@ NFO_TEXT = """
   Target HW ....: Zoom G1X / G1 Four    OS ............: Windows / C6745
   DSP Clock ....: TMS320C6745 @ 300MHz  Protection ....: AIS / CRC / res5
   Cracker ......: Comet Flower Demogroup & AI Synthesis Division
+  Music ........: Comfortably Numb Solo 2 Changes (Bm - A - G - Em)
 
 [RELEASE NOTES]
   Completely independent firmware flashing tool! Zoom's proprietary
   updater is no longer required. Flashes native MIDI SysEx wire protocol:
 
+  * Latest Comet Flower Firmware v0.34.9 BAKED DIRECTLY IN
   * 5 Real Effect Slots with Unlocked Cycle Allocation (Gate 230 -> 340)
   * Circuit-Exact DSP Suite: '74 Violet Big Muff (12nF C10 audited),
-    Hiwatt DR103 Custom 100, CFM Preamp, CF Delay with True Spillover
+    Hiwatt DR103 Custom 100, Comet Flower Preamp, Comet Flower Delay
+    with True Spillover Tail, Comet Flower Rotary, Comet Flower 808
   * Custom Visual Identity: res5 Bootloader Bud Logo, 16-Frame Bloom
     Startup Animation, Comet Flower Edit Header & Realtime CPU Meter
-  * Injected CF Probe SysEx Backdoor: Live RAM peek/poke & telemetry
+  * Injected Comet Flower Probe SysEx Backdoor: Live RAM peek/poke & telemetry
 
 [GREETS]
   Razor 1911 * Fairlight * Paradox * Deviance * Reloaded * Hoodlum * Skid Row
@@ -79,11 +84,38 @@ NFO_TEXT = """
 """
 
 SCROLLER_MESSAGE = (
-    "*** COMET FLOWER LABS 1911 *** ZOOM G1X-FOUR UNLEASHED STANDALONE FLASHER *** "
-    "5 REAL EFFECT SLOTS *** VIOLET MUFF 12nF *** HIWATT DR103 *** CFM PREAMP *** CF DELAY TAIL *** "
-    "CYCLE GATE 340% UNLOCKED *** ZERO ZOOM BINARIES *** "
+    "*** COMET FLOWER LABS 1911 *** COMET FLOWER ZOOM G1X-FOUR UNLEASHED STANDALONE FLASHER *** "
+    "5 REAL EFFECT SLOTS *** VIOLET MUFF 12nF C10 AUDITED *** HIWATT DR103 *** "
+    "COMET FLOWER PREAMP *** COMET FLOWER DELAY TAIL *** CYCLE GATE 340% UNLOCKED *** "
+    "ZERO ZOOM BINARIES *** BAKED-IN FIRMWARE v0.34.9 *** "
+    "MUSIC: COMFORTABLY NUMB SOLO 2 PROGRESSION (Bm - A - G - Em) *** "
     "GREETS TO: RAZOR 1911 * FAIRLIGHT * PARADOX * DEVIANCE * RELOADED * HOODLUM *** "
 )
+
+
+def get_bundled_payload_path(filename: str) -> Optional[Path]:
+    """Resolves a file from PyInstaller bundle, tools/payload, or repo build directories."""
+    # 1. PyInstaller single-file bundle extraction directory
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        meipass_p = Path(sys._MEIPASS) / "payload" / filename
+        if meipass_p.is_file():
+            return meipass_p
+
+    # 2. Local tools/payload directory
+    local_payload = REPO_ROOT / "tools" / "payload" / filename
+    if local_payload.is_file():
+        return local_payload
+
+    # 3. Fallback to build locations
+    fallback_map = {
+        "firmware_0349.bin": REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "res1_0348.bin",
+        "fs_0349.bin": REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "fs_bench349.bin",
+        "presets_0349.bin": REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "res2_0349.bin",
+    }
+    fb = fallback_map.get(filename)
+    if fb and fb.is_file():
+        return fb
+    return None
 
 
 class FlasherApp:
@@ -97,12 +129,16 @@ class FlasherApp:
         self.music = keygen_music.KeygenMusicPlayer()
         self.is_flashing = False
 
+        self._resolve_baked_in_payload()
         self._build_ui()
-        self._detect_default_files()
         self._start_marquee()
 
-        # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _resolve_baked_in_payload(self):
+        self.baked_fw = get_bundled_payload_path("firmware_0349.bin")
+        self.baked_fs = get_bundled_payload_path("fs_0349.bin")
+        self.baked_presets = get_bundled_payload_path("presets_0349.bin")
 
     def _build_ui(self):
         style = ttk.Style()
@@ -125,7 +161,7 @@ class FlasherApp:
 
         sub_lbl = tk.Label(
             header_frame,
-            text="[+] RAZOR 1911 DEMOGROUP STYLE  ///  STANDALONE FIRMWARE FLASHER & LOADER [+]",
+            text="[+] RAZOR 1911 DEMOGROUP STYLE  ///  COMET FLOWER FIRMWARE FLASHER [+]",
             font=("Consolas", 8, "bold"),
             fg=COLOR_CYAN,
             bg=BG_DARK,
@@ -161,29 +197,76 @@ class FlasherApp:
         )
         self.port_status_lbl.pack(side=tk.RIGHT, padx=8)
 
-        # 3. Payloads Box
-        payload_box = tk.LabelFrame(
+        # 3. Payloads Box (Baked-in vs Custom)
+        self.payload_box = tk.LabelFrame(
             self.root,
-            text=" [ TARGET FLASH PARTITIONS (0x000000..0x400000) ] ",
+            text=" [ COMET FLOWER BAKED-IN FIRMWARE PAYLOAD (v0.34.9) ] ",
             font=("Consolas", 8, "bold"),
             fg=COLOR_AMBER,
             bg=BG_PANEL,
             bd=1,
             relief=tk.SOLID,
         )
-        payload_box.pack(fill=tk.X, padx=14, pady=6)
+        self.payload_box.pack(fill=tk.X, padx=14, pady=6)
 
-        # Firmware row
-        self.fw_var = tk.StringVar()
-        self._create_path_row(payload_box, "0x033000 MAIN FW :", self.fw_var, "*.bin")
+        # Baked-in badges
+        self.baked_info_frame = tk.Frame(self.payload_box, bg=BG_PANEL)
+        self.baked_info_frame.pack(fill=tk.X, padx=8, pady=4)
 
-        # Filesystem row
-        self.fs_var = tk.StringVar()
-        self._create_path_row(payload_box, "0x102000 EFFECT FS:", self.fs_var, "*.bin")
+        tk.Label(
+            self.baked_info_frame,
+            text="● FIRMWARE  : Comet Flower Kernel v0.34.9 (523 KB) [Violet Muff 12nF, CFM Pre, 340% Gate]",
+            font=("Consolas", 8, "bold"),
+            fg=COLOR_GREEN,
+            bg=BG_PANEL,
+            anchor="w",
+        ).pack(fill=tk.X, pady=1)
 
-        # Presets/Splash row
-        self.preset_var = tk.StringVar()
-        self._create_path_row(payload_box, "0x028000 PRESETS  :", self.preset_var, "*.bin")
+        tk.Label(
+            self.baked_info_frame,
+            text="● FILESYSTEM: Comet Flower Effect Suite (3.1 MB) [Circuit-Exact Models & Custom Icons]",
+            font=("Consolas", 8, "bold"),
+            fg=COLOR_GREEN,
+            bg=BG_PANEL,
+            anchor="w",
+        ).pack(fill=tk.X, pady=1)
+
+        tk.Label(
+            self.baked_info_frame,
+            text="● PRESETS   : Comet Flower Presets & Bloom Splash (45 KB) [0x028000 Partition]",
+            font=("Consolas", 8, "bold"),
+            fg=COLOR_GREEN,
+            bg=BG_PANEL,
+            anchor="w",
+        ).pack(fill=tk.X, pady=1)
+
+        # Override toggle
+        self.override_var = tk.BooleanVar(value=False)
+        override_chk = tk.Checkbutton(
+            self.payload_box,
+            text="Override with custom external files",
+            variable=self.override_var,
+            font=("Consolas", 8),
+            fg=COLOR_TEXT2,
+            bg=BG_PANEL,
+            selectcolor=BG_WELL,
+            activebackground=BG_PANEL,
+            activeforeground=COLOR_AMBER,
+            command=self._toggle_override_ui,
+        )
+        override_chk.pack(anchor="w", padx=6, pady=(4, 2))
+
+        # Custom inputs container (initially hidden)
+        self.custom_frame = tk.Frame(self.payload_box, bg=BG_PANEL)
+
+        self.fw_var = tk.StringVar(value=str(self.baked_fw) if self.baked_fw else "")
+        self._create_path_row(self.custom_frame, "0x033000 MAIN FW :", self.fw_var, "*.bin")
+
+        self.fs_var = tk.StringVar(value=str(self.baked_fs) if self.baked_fs else "")
+        self._create_path_row(self.custom_frame, "0x102000 EFFECT FS:", self.fs_var, "*.bin")
+
+        self.preset_var = tk.StringVar(value=str(self.baked_presets) if self.baked_presets else "")
+        self._create_path_row(self.custom_frame, "0x028000 PRESETS  :", self.preset_var, "*.bin")
 
         # 4. Action Buttons Bar
         btn_frame = tk.Frame(self.root, bg=BG_DARK)
@@ -336,11 +419,18 @@ class FlasherApp:
         )
         self.marquee_lbl.pack(fill=tk.X, padx=4, pady=2)
 
-        # Log initial intro
+        # Initial logging
         self._log("[+] COMET FLOWER UNLEASHED FLASHER v1.0 [RAZOR 1911 STYLE]")
-        self._log("[+] VirtualPedalBoardEngine Modeler Theme Initialized.")
-        self._log("[+] WINMM MIDI subsystem online.")
+        self._log("[+] VirtualPedalBoardEngine Modeler Palette Active.")
+        self._log("[+] Comfortably Numb Solo 2 Music Synthesizer Engine Ready.")
+        self._log("[+] Baked-in Payload: Comet Flower Firmware v0.34.9.")
         self._rescan_ports()
+
+    def _toggle_override_ui(self):
+        if self.override_var.get():
+            self.custom_frame.pack(fill=tk.X, padx=4, pady=4)
+        else:
+            self.custom_frame.pack_forget()
 
     def _create_path_row(self, parent, label_text, var, filter_ext):
         row = tk.Frame(parent, bg=BG_PANEL)
@@ -391,42 +481,11 @@ class FlasherApp:
         )
         btn.pack(side=tk.RIGHT)
 
-    def _detect_default_files(self):
-        # Look for default files
-        candidates_fw = [
-            REPO_ROOT / "build" / "cf_header" / "res1_0347.bin",
-            REPO_ROOT / "build" / "cf_header" / "res1_0343.bin",
-            REPO_ROOT / "build" / "cf_header" / "res1_cf_meter.bin",
-        ]
-        for c in candidates_fw:
-            if c.is_file():
-                self.fw_var.set(str(c))
-                break
-
-        candidates_fs = [
-            REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "fs_bench349.bin",
-            REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "fs_bench343.bin",
-        ]
-        for c in candidates_fs:
-            if c.is_file():
-                self.fs_var.set(str(c))
-                break
-
-        candidates_preset = [
-            REPO_ROOT / "build" / "fw" / "res2_45056.bin",
-            REPO_ROOT / "build" / "fw" / "cfupd_res85.bin",
-        ]
-        for c in candidates_preset:
-            if c.is_file():
-                self.preset_var.set(str(c))
-                break
-
     def _rescan_ports(self):
         try:
             import mido
 
             inputs = mido.get_input_names()
-            outputs = mido.get_output_names()
             found = False
             for p in inputs:
                 if any(p.startswith(prefix) for prefix in flasher.DEFAULT_PORT_PREFIXES):
@@ -435,14 +494,14 @@ class FlasherApp:
                         text=f"[● DETECTED: {p}]",
                         fg=COLOR_GREEN,
                     )
-                    self._log(f"[+] Found update port: {p}")
+                    self._log(f"[+] Found update-mode port: {p}")
                     break
             if not found:
                 self.port_status_lbl.config(
                     text="[● NO PEDAL DETECTED]",
                     fg=COLOR_RED,
                 )
-                self._log("[!] No pedal port detected. Connect USB while holding footswitches.")
+                self._log("[!] No pedal port detected. Connect USB while holding both footswitches.")
         except Exception as e:
             self.port_status_lbl.config(text="[● MIDI ERROR]", fg=COLOR_RED)
             self._log(f"[!] Port scan error: {e}")
@@ -451,7 +510,7 @@ class FlasherApp:
         playing = self.music.toggle()
         if playing:
             self.music_btn.config(text="♫ MUSIC: ON", fg=COLOR_CYAN)
-            self._log("[♫] Retro chiptune synthesizer loop started.")
+            self._log("[♫] Playing Comfortably Numb Solo 2 Chiptune (Bm - A - G - Em).")
         else:
             self.music_btn.config(text="♫ MUSIC: OFF", fg=COLOR_TEXT3)
             self._log("[♫] Music stopped.")
@@ -502,10 +561,16 @@ class FlasherApp:
         self.prog_label.config(text=f"ACTIVE: {desc} ({op.upper()})")
         self.prog_bar_lbl.config(text=bar_str)
 
-    def _on_dryrun_click(self):
+    def _get_active_payload_paths(self):
+        if not self.override_var.get():
+            return self.baked_fw, self.baked_fs, self.baked_presets
         fw = Path(self.fw_var.get()) if self.fw_var.get() else None
         fs = Path(self.fs_var.get()) if self.fs_var.get() else None
         pr = Path(self.preset_var.get()) if self.preset_var.get() else None
+        return fw, fs, pr
+
+    def _on_dryrun_click(self):
+        fw, fs, pr = self._get_active_payload_paths()
 
         self._log("\n--- [ DRY RUN VALIDATION ] ---")
         try:
@@ -524,9 +589,7 @@ class FlasherApp:
         if self.is_flashing:
             return
 
-        fw = Path(self.fw_var.get()) if self.fw_var.get() else None
-        fs = Path(self.fs_var.get()) if self.fs_var.get() else None
-        pr = Path(self.preset_var.get()) if self.preset_var.get() else None
+        fw, fs, pr = self._get_active_payload_paths()
 
         if not any([fw, fs, pr]):
             messagebox.showwarning("No Files", "Please select at least one file to flash.")
@@ -540,11 +603,13 @@ class FlasherApp:
             messagebox.showerror("Safety Error", f"Cannot flash: {e}")
             return
 
+        source_desc = "BAKED-IN Comet Flower Firmware v0.34.9" if not self.override_var.get() else "Custom External Files"
         confirm = messagebox.askyesno(
             "Confirm Flash",
-            f"Are you sure you want to flash {len(stages)} stage(s) to the pedal?\n\n"
-            "Ensure the pedal is in UPDATE MODE (hold both footswitches at power-on).\n"
-            "DO NOT disconnect USB during transmission.",
+            f"Ready to flash Comet Flower Firmware ({source_desc}) across {len(stages)} stages.\n\n"
+            "Ensure the pedal is in UPDATE MODE (hold both footswitches while connecting USB power).\n"
+            "DO NOT disconnect USB during transmission.\n\n"
+            "Proceed with flash?",
         )
         if not confirm:
             return
