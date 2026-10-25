@@ -18,3 +18,5 @@ __pycache__/
 .venv/
 recon/hexdump_full.txt
 .claude/
+
+tools/cloudflared.exe

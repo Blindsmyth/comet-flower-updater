@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Comet Flower Remote Music Studio</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --di-bg-dark: #0f1217;
+      --di-bg-card: #181d26;
+      --di-bg-well: #0a0c10;
+      --di-border: #2a3444;
+      --di-border-light: #3d4a60;
+      --di-text-main: #e6ebf2;
+      --di-text-dim: #8b99ae;
+      --di-green: #00ff66;
+      --di-cyan: #00d4ff;
+      --di-amber: #ffaa00;
+      --di-red: #ff4455;
+    }
+    body {
+      background-color: var(--di-bg-dark);
+      color: var(--di-text-main);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .retro-border {
+      border: 1px solid var(--di-border);
+      box-shadow: inset 1px 1px 0px rgba(255, 255, 255, 0.08), inset -1px -1px 0px rgba(0, 0, 0, 0.6);
+    }
+    .retro-well {
+      background-color: var(--di-bg-well);
+      border: 1px solid var(--di-border);
+      box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.8);
+    }
+    .retro-btn {
+      transition: all 0.08s ease-in-out;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+    .retro-btn:active {
+      transform: translateY(2px);
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.7);
+    }
+    .step-active {
+      background-color: var(--di-cyan) !important;
+      color: #000000 !important;
+      font-weight: 900 !important;
+      box-shadow: 0 0 10px var(--di-cyan);
+    }
+    select, button, input {
+      min-height: 44px;
+    }
+  </style>
+</head>
+<body class="p-2 sm:p-4 max-w-md mx-auto pb-8">
+
+  <!-- 1. Header Banner (Digital Insanity Sony ACID Keygen Style) -->
+  <header class="retro-border bg-[#181d26] p-3 rounded-lg mb-3">
+    <div class="flex items-center justify-between border-b border-[#2a3444] pb-2 mb-2">
+      <div>
+        <div class="text-[var(--di-cyan)] font-bold text-xs tracking-wider flex items-center gap-1.5">
+          <span class="inline-block w-2 h-2 rounded-full bg-[var(--di-green)] animate-pulse"></span>
+          DIGITAL INSANITY // COMET FLOWER
+        </div>
+        <h1 class="text-white font-black text-sm tracking-wide">SONY ACID CHIPTUNE STUDIO</h1>
+      </div>
+      <div class="text-right">
+        <span class="text-[var(--di-amber)] text-xs font-bold px-2 py-0.5 rounded bg-[#252e3d] border border-[#3d4a60]">REMOTE</span>
+      </div>
+    </div>
+    <div class="flex justify-between items-center text-xs text-[var(--di-text-dim)]">
+      <span>AUDIO: <strong id="synthStatusText" class="text-[var(--di-green)]">PHONE WEB AUDIO</strong></span>
+      <span>OFFLINE: <strong class="text-white">100% STANDALONE</strong></span>
+    </div>
+  </header>
+
+  <!-- 2. Preset & Sound Controls -->
+  <section class="retro-border bg-[#181d26] p-3 rounded-lg mb-3">
+    <div class="text-[var(--di-amber)] text-xs font-bold mb-2 flex items-center justify-between">
+      <span>[ PRODUCT / CHORD PRESET ]</span>
+      <span class="text-xs text-[var(--di-text-dim)]">TOUCH SELECT</span>
+    </div>
+
+    <!-- Product Preset Dropdown -->
+    <div class="mb-3">
+      <select id="presetSelect" class="w-full bg-[#0a0c10] text-[var(--di-green)] retro-border rounded p-2 text-xs font-bold focus:outline-none focus:border-[var(--di-cyan)]">
+        <option value="classic">Classic Outro (Bm - A - G - Em)</option>
+        <option value="anthem">Demoscene Anthem (Am - F - C - G)</option>
+        <option value="cyberpunk">Cyberpunk Minor (Dm - G - C - Am)</option>
+        <option value="hero">8-Bit Adventure (C - G - Am - F)</option>
+        <option value="space">Space Odyssey (Em - C - G - D)</option>
+      </select>
+    </div>
+
+    <!-- Sound & BPM Grid -->
+    <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+      <div>
+        <label class="block text-[var(--di-text-dim)] mb-1">Lead Sound:</label>
+        <select id="leadWaveSelect" class="w-full bg-[#0a0c10] text-white retro-border rounded p-2 text-xs">
+          <option value="square">Square 8-Bit (Prog 80)</option>
+          <option value="sawtooth">Saw Lead (Prog 81)</option>
+          <option value="pulse">Pulse Pluck (Prog 82)</option>
+          <option value="triangle">Pure Chime (Prog 83)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[var(--di-text-dim)] mb-1">Bass Sound:</label>
+        <select id="bassWaveSelect" class="w-full bg-[#0a0c10] text-white retro-border rounded p-2 text-xs">
+          <option value="sawtooth">Synth Bass 1 (Prog 38)</option>
+          <option value="square">Fat Square (Prog 39)</option>
+          <option value="triangle">Deep Sub (Prog 36)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- BPM Control Strip -->
+    <div class="bg-[#0a0c10] p-2 rounded retro-border flex items-center justify-between gap-2">
+      <div class="text-xs text-[var(--di-text-dim)] whitespace-nowrap">
+        TEMPO: <strong id="bpmDisplay" class="text-[var(--di-green)] text-sm">125</strong> BPM
+      </div>
+      <div class="flex items-center gap-1.5 flex-1 max-w-[200px]">
+        <button id="bpmDownBtn" class="retro-btn bg-[#252e3d] text-white text-xs px-2.5 py-1 rounded font-bold">-5</button>
+        <input id="bpmSlider" type="range" min="80" max="160" value="125" class="w-full accent-[var(--di-green)]">
+        <button id="bpmUpBtn" class="retro-btn bg-[#252e3d] text-white text-xs px-2.5 py-1 rounded font-bold">+5</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 4-Bar Chord Progression Customizer -->
+  <section class="retro-border bg-[#181d26] p-3 rounded-lg mb-3">
+    <div class="text-[var(--di-cyan)] text-xs font-bold mb-2 flex items-center justify-between">
+      <span>[ 4-BAR CHORD PROGRESSION ]</span>
+      <span class="text-xs text-[var(--di-text-dim)]">CUSTOMIZE BARS</span>
+    </div>
+
+    <div class="grid grid-cols-4 gap-1.5 mb-2">
+      <!-- Bar 1 -->
+      <div class="bg-[#0a0c10] p-1.5 rounded retro-border text-center">
+        <div class="text-xs text-[var(--di-amber)] font-bold mb-1">BAR 1</div>
+        <select id="chordBar1" class="chord-select w-full bg-[#181d26] text-white text-xs font-bold text-center rounded p-1">
+          <option value="Bm" selected>Bm</option>
+          <option value="A">A</option>
+          <option value="G">G</option>
+          <option value="Em">Em</option>
+          <option value="Am">Am</option>
+          <option value="F">F</option>
+          <option value="C">C</option>
+          <option value="Dm">Dm</option>
+          <option value="D">D</option>
+          <option value="E">E</option>
+        </select>
+      </div>
+      <!-- Bar 2 -->
+      <div class="bg-[#0a0c10] p-1.5 rounded retro-border text-center">
+        <div class="text-xs text-[var(--di-amber)] font-bold mb-1">BAR 2</div>
+        <select id="chordBar2" class="chord-select w-full bg-[#181d26] text-white text-xs font-bold text-center rounded p-1">
+          <option value="Bm">Bm</option>
+          <option value="A" selected>A</option>
+          <option value="G">G</option>
+          <option value="Em">Em</option>
+          <option value="Am">Am</option>
+          <option value="F">F</option>
+          <option value="C">C</option>
+          <option value="Dm">Dm</option>
+          <option value="D">D</option>
+          <option value="E">E</option>
+        </select>
+      </div>
+      <!-- Bar 3 -->
+      <div class="bg-[#0a0c10] p-1.5 rounded retro-border text-center">
+        <div class="text-xs text-[var(--di-amber)] font-bold mb-1">BAR 3</div>
+        <select id="chordBar3" class="chord-select w-full bg-[#181d26] text-white text-xs font-bold text-center rounded p-1">
+          <option value="Bm">Bm</option>
+          <option value="A">A</option>
+          <option value="G" selected>G</option>
+          <option value="Em">Em</option>
+          <option value="Am">Am</option>
+          <option value="F">F</option>
+          <option value="C">C</option>
+          <option value="Dm">Dm</option>
+          <option value="D">D</option>
+          <option value="E">E</option>
+        </select>
+      </div>
+      <!-- Bar 4 -->
+      <div class="bg-[#0a0c10] p-1.5 rounded retro-border text-center">
+        <div class="text-xs text-[var(--di-amber)] font-bold mb-1">BAR 4</div>
+        <select id="chordBar4" class="chord-select w-full bg-[#181d26] text-white text-xs font-bold text-center rounded p-1">
+          <option value="Bm">Bm</option>
+          <option value="A">A</option>
+          <option value="G">G</option>
+          <option value="Em" selected>Em</option>
+          <option value="Am">Am</option>
+          <option value="F">F</option>
+          <option value="C">C</option>
+          <option value="Dm">Dm</option>
+          <option value="D">D</option>
+          <option value="E">E</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Arpeggio Pattern Style -->
+    <div class="flex items-center justify-between text-xs mt-2 pt-2 border-t border-[#2a3444]">
+      <span class="text-[var(--di-text-dim)]">Arp Style:</span>
+      <select id="arpStyleSelect" class="bg-[#0a0c10] text-[var(--di-cyan)] text-xs p-1 rounded retro-border">
+        <option value="fastArp">Fast Keygen Arp (16th)</option>
+        <option value="soaring">Melodic Outro Solo</option>
+        <option value="bouncy">Syncopated Bounce</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- 4. 16-Step Animated Playhead -->
+  <section class="retro-border bg-[#181d26] p-3 rounded-lg mb-3">
+    <div class="text-[var(--di-green)] text-xs font-bold mb-2 flex items-center justify-between">
+      <span>[ 16-STEP CHIPTUNE PLAYHEAD ]</span>
+      <span id="currentBarIndicator" class="text-[var(--di-amber)] text-xs font-bold">BAR 1 / 4</span>
+    </div>
+
+    <div id="stepContainer" class="grid grid-cols-8 gap-1 mb-1">
+      <!-- 16 step pills generated by JS -->
+    </div>
+  </section>
+
+  <!-- 5. Primary Action Buttons -->
+  <div class="flex flex-col gap-2.5 mb-3">
+    <!-- Play / Stop Button -->
+    <button id="playBtn" class="retro-btn w-full bg-[var(--di-green)] text-[#0a0c10] font-black text-sm py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer">
+      <span class="text-base">▶</span> PLAY ON PHONE SPEAKERS
+    </button>
+
+    <!-- Save Directly to Updater (1-Tap Web Sync) -->
+    <button id="saveDirectBtn" class="retro-btn w-full bg-[var(--di-cyan)] text-[#0a0c10] font-black text-xs py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow-lg">
+      <span class="text-sm">⚡</span> SAVE DIRECTLY TO UPDATER (1-TAP)
+    </button>
+
+    <!-- Copy Track Data for Agent (Big Touch Highlight) -->
+    <button id="copyTrackBtn" class="retro-btn w-full bg-[var(--di-amber)] text-[#0a0c10] font-black text-xs py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow-lg">
+      <span class="text-sm">📋</span> COPY TRACK DATA FOR AGENT
+    </button>
+  </div>
+
+  <!-- 6. Raw JSON Area (Instantly visible and easy to copy on phone) -->
+  <section class="retro-border bg-[#181d26] p-3 rounded-lg mb-2">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-[var(--di-cyan)] text-xs font-bold">[ TRACK JSON DATA ]</span>
+      <button id="selectJsonBtn" class="text-xs text-[var(--di-green)] font-bold underline cursor-pointer py-1 px-2">Tap to Select All</button>
+    </div>
+    <textarea id="jsonOutputArea" readonly class="w-full bg-[#0a0c10] text-[var(--di-green)] text-xs p-2 rounded retro-well h-36 font-mono focus:outline-none select-all"></textarea>
+    <div class="text-xs text-[var(--di-text-dim)] mt-2">
+      💡 <strong>How to use:</strong> Tap <em>Copy Track Data for Agent</em> (or <em>Select All</em> above) and paste the JSON directly into your next chat message!
+    </div>
+  </section>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-4 left-4 right-4 max-w-sm mx-auto bg-[var(--di-green)] text-[#0a0c10] font-black text-xs p-3 rounded-lg shadow-2xl text-center transform translate-y-24 opacity-0 transition-all duration-200 pointer-events-none z-50">
+    Copied to clipboard!
+  </div>
+
+  <!-- Audio & Sequencer Engine -->
+  <script>
+    const CHORD_DEFS = {
+      "Bm": { rootBass: 47, triad: [59, 62, 66] },
+      "A":  { rootBass: 45, triad: [57, 61, 64] },
+      "G":  { rootBass: 43, triad: [55, 59, 62] },
+      "Em": { rootBass: 40, triad: [52, 55, 59] },
+      "Am": { rootBass: 45, triad: [57, 60, 64] },
+      "F":  { rootBass: 41, triad: [53, 57, 60] },
+      "C":  { rootBass: 48, triad: [60, 64, 67] },
+      "Dm": { rootBass: 50, triad: [62, 65, 69] },
+      "D":  { rootBass: 50, triad: [62, 66, 69] },
+      "E":  { rootBass: 40, triad: [52, 56, 59] }
+    };
+
+    const PRESETS = {
+      classic:   { bpm: 125, chords: ["Bm", "A", "G", "Em"], arp: "fastArp" },
+      anthem:    { bpm: 130, chords: ["Am", "F", "C", "G"],  arp: "fastArp" },
+      cyberpunk: { bpm: 136, chords: ["Dm", "G", "C", "Am"], arp: "soaring" },
+      hero:      { bpm: 128, chords: ["C", "G", "Am", "F"],  arp: "bouncy" },
+      space:     { bpm: 120, chords: ["Em", "C", "G", "D"],  arp: "fastArp" }
+    };
+
+    let isPlaying = false;
+    let audioCtx = null;
+    let timerId = null;
+    let currentStep = 0;
+    let currentBar = 0;
+    let bpm = 125;
+
+    const playBtn = document.getElementById("playBtn");
+    const copyTrackBtn = document.getElementById("copyTrackBtn");
+    const bpmSlider = document.getElementById("bpmSlider");
+    const bpmDisplay = document.getElementById("bpmDisplay");
+    const bpmUpBtn = document.getElementById("bpmUpBtn");
+    const bpmDownBtn = document.getElementById("bpmDownBtn");
+    const presetSelect = document.getElementById("presetSelect");
+    const chordSelects = [
+      document.getElementById("chordBar1"),
+      document.getElementById("chordBar2"),
+      document.getElementById("chordBar3"),
+      document.getElementById("chordBar4")
+    ];
+    const arpStyleSelect = document.getElementById("arpStyleSelect");
+    const leadWaveSelect = document.getElementById("leadWaveSelect");
+    const bassWaveSelect = document.getElementById("bassWaveSelect");
+    const stepContainer = document.getElementById("stepContainer");
+    const currentBarIndicator = document.getElementById("currentBarIndicator");
+    const jsonOutputArea = document.getElementById("jsonOutputArea");
+    const selectJsonBtn = document.getElementById("selectJsonBtn");
+    const toast = document.getElementById("toast");
+
+    // Populate Step visual indicators
+    for (let i = 0; i < 16; i++) {
+      const stepPill = document.createElement("div");
+      stepPill.id = `step-${i}`;
+      stepPill.className = "text-center text-xs font-bold py-1.5 rounded bg-[#0a0c10] text-[#8b99ae] retro-border transition-colors";
+      stepPill.textContent = (i + 1).toString().padStart(2, "0");
+      stepContainer.appendChild(stepPill);
+    }
+
+    function midiToFreq(note) {
+      return 440 * Math.pow(2, (note - 69) / 12);
+    }
+
+    function initAudio() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+    }
+
+    // Unlock audio on any first user touch anywhere on the page
+    document.addEventListener("touchstart", () => { if (audioCtx && audioCtx.state === "suspended") audioCtx.resume(); }, { once: true });
+    document.addEventListener("click", () => { if (audioCtx && audioCtx.state === "suspended") audioCtx.resume(); }, { once: true });
+
+    function playNote(freq, type = "square", duration = 0.1, gainVal = 0.18, isBass = false) {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+
+      osc.type = type === "pulse" ? "square" : type;
+      osc.frequency.setValueAtTime(freq, now);
+
+      if (isBass) {
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(700, now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(gainVal * 1.2, now + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.95);
+      } else {
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(3200, now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(gainVal, now + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.92);
+      }
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    const BASS_HITS = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0];
+
+    function getBarNotes(chordName, style) {
+      const def = CHORD_DEFS[chordName] || CHORD_DEFS["Bm"];
+      const [r, m3, p5] = def.triad;
+
+      if (style === "soaring") {
+        return [r+12, r+12, r+12, r+15, r+15, r+15, r+17, r+17, r+15, r+15, r+12, r+12, p5+12, r+12, r+15, r+12];
+      } else if (style === "bouncy") {
+        return [r, p5, m3, r+12, p5, m3, r, p5, r+12, m3+12, p5+12, r+12, p5, m3, r, p5];
+      } else {
+        return [r, m3, p5, r+12, p5, m3, r, m3, p5, r+12, r+15, r+14, r+12, p5+12, p5, m3];
+      }
+    }
+
+    function tick() {
+      for (let i = 0; i < 16; i++) {
+        const el = document.getElementById(`step-${i}`);
+        if (i === currentStep) {
+          el.className = "text-center text-xs font-bold py-1.5 rounded step-active retro-border";
+        } else {
+          el.className = "text-center text-xs font-bold py-1.5 rounded bg-[#0a0c10] text-[#8b99ae] retro-border";
+        }
+      }
+
+      currentBarIndicator.textContent = `BAR ${currentBar + 1} / 4`;
+
+      const chordName = chordSelects[currentBar].value;
+      const def = CHORD_DEFS[chordName] || CHORD_DEFS["Bm"];
+      const arpStyle = arpStyleSelect.value;
+      const notes = getBarNotes(chordName, arpStyle);
+
+      const stepDur = (60 / (bpm * 4));
+      const leadNote = notes[currentStep];
+      playNote(midiToFreq(leadNote), leadWaveSelect.value, stepDur * 0.9, 0.16, false);
+
+      if (BASS_HITS[currentStep]) {
+        playNote(midiToFreq(def.rootBass), bassWaveSelect.value, stepDur * 0.9, 0.28, true);
+      }
+
+      currentStep++;
+      if (currentStep >= 16) {
+        currentStep = 0;
+        currentBar = (currentBar + 1) % 4;
+      }
+    }
+
+    function startPlayback() {
+      initAudio();
+      isPlaying = true;
+      playBtn.innerHTML = '<span class="text-base">■</span> STOP';
+      playBtn.className = "retro-btn w-full bg-[var(--di-red)] text-white font-black text-sm py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer";
+      const intervalMs = (60 / (bpm * 4)) * 1000;
+      timerId = setInterval(tick, intervalMs);
+    }
+
+    function stopPlayback() {
+      isPlaying = false;
+      if (timerId) clearInterval(timerId);
+      timerId = null;
+      playBtn.innerHTML = '<span class="text-base">▶</span> PLAY ON PHONE SPEAKERS';
+      playBtn.className = "retro-btn w-full bg-[var(--di-green)] text-[#0a0c10] font-black text-sm py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer";
+      currentStep = 0;
+      currentBar = 0;
+      for (let i = 0; i < 16; i++) {
+        const el = document.getElementById(`step-${i}`);
+        el.className = "text-center text-xs font-bold py-1.5 rounded bg-[#0a0c10] text-[#8b99ae] retro-border";
+      }
+    }
+
+    playBtn.addEventListener("click", () => {
+      if (isPlaying) stopPlayback();
+      else startPlayback();
+    });
+
+    function updateBpm(newVal) {
+      bpm = Math.min(160, Math.max(80, newVal));
+      bpmSlider.value = bpm;
+      bpmDisplay.textContent = bpm;
+      if (isPlaying) {
+        clearInterval(timerId);
+        timerId = setInterval(tick, (60 / (bpm * 4)) * 1000);
+      }
+      refreshJsonOutput();
+    }
+
+    bpmSlider.addEventListener("input", (e) => updateBpm(parseInt(e.target.value)));
+    bpmUpBtn.addEventListener("click", () => updateBpm(bpm + 5));
+    bpmDownBtn.addEventListener("click", () => updateBpm(bpm - 5));
+
+    presetSelect.addEventListener("change", (e) => {
+      const p = PRESETS[e.target.value];
+      if (!p) return;
+      updateBpm(p.bpm);
+      for (let i = 0; i < 4; i++) {
+        chordSelects[i].value = p.chords[i];
+      }
+      arpStyleSelect.value = p.arp;
+      refreshJsonOutput();
+      showToast(`Preset Loaded: ${e.target.options[e.target.selectedIndex].text}`);
+    });
+
+    chordSelects.forEach(sel => sel.addEventListener("change", refreshJsonOutput));
+    arpStyleSelect.addEventListener("change", refreshJsonOutput);
+    leadWaveSelect.addEventListener("change", refreshJsonOutput);
+    bassWaveSelect.addEventListener("change", refreshJsonOutput);
+
+    function generateTrackJson() {
+      const progMap = { "square": 80, "sawtooth": 81, "pulse": 82, "triangle": 83 };
+      const bassMap = { "sawtooth": 38, "square": 39, "triangle": 36 };
+
+      const bars = [];
+      for (let i = 0; i < 4; i++) {
+        const chord = chordSelects[i].value;
+        const def = CHORD_DEFS[chord] || CHORD_DEFS["Bm"];
+        bars.push({
+          chord: chord,
+          root: def.rootBass,
+          notes: getBarNotes(chord, arpStyleSelect.value)
+        });
+      }
+
+      // Add second cycle variation
+      for (let i = 0; i < 4; i++) {
+        const chord = chordSelects[i].value;
+        const def = CHORD_DEFS[chord] || CHORD_DEFS["Bm"];
+        bars.push({
+          chord: chord,
+          root: def.rootBass,
+          notes: getBarNotes(chord, "soaring")
+        });
+      }
+
+      return {
+        title: "Comet Flower Custom Track",
+        bpm: bpm,
+        step_duration: parseFloat((60 / (bpm * 4)).toFixed(3)),
+        lead_program: progMap[leadWaveSelect.value] || 80,
+        bass_program: bassMap[bassWaveSelect.value] || 38,
+        chords: chordSelects.map(c => c.value),
+        bars: bars
+      };
+    }
+
+    function refreshJsonOutput() {
+      const jsonStr = JSON.stringify(generateTrackJson(), null, 2);
+      jsonOutputArea.value = jsonStr;
+    }
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.className = "fixed bottom-4 left-4 right-4 max-w-sm mx-auto bg-[var(--di-green)] text-[#0a0c10] font-black text-xs p-3 rounded-lg shadow-2xl text-center transform translate-y-0 opacity-100 transition-all duration-200 pointer-events-none z-50";
+      setTimeout(() => {
+        toast.className = "fixed bottom-4 left-4 right-4 max-w-sm mx-auto bg-[var(--di-green)] text-[#0a0c10] font-black text-xs p-3 rounded-lg shadow-2xl text-center transform translate-y-24 opacity-0 transition-all duration-200 pointer-events-none z-50";
+      }, 2500);
+    }
+
+    const saveDirectBtn = document.getElementById("saveDirectBtn");
+    saveDirectBtn.addEventListener("click", async () => {
+      refreshJsonOutput();
+      saveDirectBtn.innerHTML = '<span>⏳</span> SAVING TO PC...';
+      try {
+        const resp = await fetch("/api/save_track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: jsonOutputArea.value
+        });
+        if (resp.ok) {
+          saveDirectBtn.innerHTML = '<span>✓</span> SAVED DIRECTLY TO UPDATER!';
+          saveDirectBtn.className = "retro-btn w-full bg-[var(--di-green)] text-[#0a0c10] font-black text-xs py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow-lg";
+          showToast("✓ Track saved directly into PC Updater payload!");
+          setTimeout(() => {
+            saveDirectBtn.innerHTML = '<span class="text-sm">⚡</span> SAVE DIRECTLY TO UPDATER (1-TAP)';
+            saveDirectBtn.className = "retro-btn w-full bg-[var(--di-cyan)] text-[#0a0c10] font-black text-xs py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow-lg";
+          }, 3500);
+        } else {
+          throw new Error("HTTP " + resp.status);
+        }
+      } catch (err) {
+        saveDirectBtn.innerHTML = '<span class="text-sm">⚡</span> SAVE DIRECTLY TO UPDATER (1-TAP)';
+        showToast("Direct save failed. Tap COPY TRACK DATA FOR AGENT instead!");
+      }
+    });
+
+    // Copy Track Data Button
+    copyTrackBtn.addEventListener("click", async () => {
+      refreshJsonOutput();
+      const text = jsonOutputArea.value;
+      let copied = false;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch (e) {
+          copied = false;
+        }
+      }
+
+      if (!copied) {
+        jsonOutputArea.focus();
+        jsonOutputArea.select();
+        try {
+          copied = document.execCommand("copy");
+        } catch (err) {}
+      }
+
+      if (copied) {
+        copyTrackBtn.innerHTML = '<span>✓</span> COPIED! PASTE IN CHAT BELOW';
+        copyTrackBtn.className = "retro-btn w-full bg-[var(--di-green)] text-[#0a0c10] font-black text-xs py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow-lg";
+        showToast("✓ Copied to clipboard! Paste into chat.");
+        setTimeout(() => {
+          copyTrackBtn.innerHTML = '<span class="text-sm">📋</span> COPY TRACK DATA FOR AGENT';
+          copyTrackBtn.className = "retro-btn w-full bg-[var(--di-amber)] text-[#0a0c10] font-black text-xs py-3.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer shadow-lg";
+        }, 3500);
+      } else {
+        jsonOutputArea.focus();
+        jsonOutputArea.select();
+        showToast("Text selected! Tap Copy in your phone menu.");
+      }
+    });
+
+    selectJsonBtn.addEventListener("click", () => {
+      jsonOutputArea.focus();
+      jsonOutputArea.select();
+      showToast("Selected all JSON text!");
+    });
+
+    refreshJsonOutput();
+  </script>
+</body>
+</html>
