@@ -426,11 +426,11 @@ def print_banner():
     try:
         print(f"{C_AMBER}{ASCII_BANNER.strip(chr(10))}{C_RESET}")
         print(f"{C_CYAN}+------------------------------------------------------------------------+{C_RESET}")
-        print(f"{C_CYAN}|  [+] COMET FLOWER LABS 1911 // STANDALONE FIRMWARE FLASHER & UNLOCKER  |{C_RESET}")
+        print(f"{C_CYAN}|  [+] COMET FLOWER LABS 1911 // STANDALONE FIRMWARE UPDATER & UNLOCKER  |{C_RESET}")
         print(f"{C_CYAN}|  [+] TARGET: ZOOM G1 / G1X FOUR (TMS320C6745 @ 300MHz) [UNLOCKED]      |{C_RESET}")
         print(f"{C_CYAN}+------------------------------------------------------------------------+{C_RESET}\n")
     except Exception:
-        print("=== COMET FLOWER LABS 1911 // STANDALONE FIRMWARE FLASHER ===")
+        print("=== COMET FLOWER LABS 1911 // STANDALONE FIRMWARE UPDATER ===")
         print("=== TARGET: ZOOM G1 / G1X FOUR (TMS320C6745 @ 300MHz) ===\n")
 
 
@@ -451,7 +451,7 @@ def main(argv=None) -> int:
             print(f"Notice: GUI unavailable ({e}), defaulting to CLI mode.\n")
 
     parser = argparse.ArgumentParser(
-        description="Comet Flower Standalone Firmware Flasher (Razor 1911 / Modeler Style)"
+        description="Comet Flower Standalone Firmware Updater (Razor 1911 / Modeler Style)"
     )
     parser.add_argument("--firmware", type=Path, help="Path to main firmware image (res1_*.bin)")
     parser.add_argument("--image", type=Path, help="Path to effect filesystem image (fs_*.bin)")
