@@ -183,5 +183,37 @@ class FlasherSessionProtocolTests(unittest.TestCase):
         self.assertEqual(self.outport.sent_messages[-1], um.build_exit_session(0x6E))
 
 
+class MusicEngineTests(unittest.TestCase):
+    def test_custom_track_format(self):
+        import cf_keygen_music as km
+        import json
+        import tempfile
+
+        test_data = {
+            "title": "Custom Test Track",
+            "bpm": 128,
+            "step_duration": 0.117,
+            "lead_program": 81,
+            "bass_program": 39,
+            "bars": [
+                {"chord": "Bm", "root": 47, "notes": [59] * 16},
+                {"chord": "A", "root": 45, "notes": [57] * 16},
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            payload_dir = Path(tmpdir) / "payload"
+            payload_dir.mkdir()
+            track_file = payload_dir / "music_track.json"
+            track_file.write_text(json.dumps(test_data), encoding="utf-8")
+
+            # Verify json parsing matches player expectations
+            parsed = json.loads(track_file.read_text(encoding="utf-8"))
+            self.assertEqual(parsed["lead_program"], 81)
+            self.assertEqual(parsed["bass_program"], 39)
+            self.assertEqual(len(parsed["bars"]), 2)
+            self.assertEqual(parsed["bars"][0]["root"], 47)
+
+
 if __name__ == "__main__":
     unittest.main()

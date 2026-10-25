@@ -1,11 +1,14 @@
-"""Retro Keygen Chiptune Player for Comet Flower Flasher (Razor 1911 Style).
+"""Retro Keygen Chiptune Player for Comet Flower Updater (Razor 1911 Style).
 
 Plays an authentic demoscene-style 8-bit / tracker arpeggiated loop in the background
-over the Comfortably Numb Solo 2 chord changes (Bm - A - G - Em) using the default
-Windows MIDI Wavetable Synth (channel 0 square wave lead, channel 1 synth bass).
+using the default Windows MIDI Wavetable Synth (channel 0 square wave lead, channel 1 synth bass).
+Supports loading custom user compositions from music_track.json with built-in fallback.
 Zero external audio files required.
 """
 
+import json
+from pathlib import Path
+import sys
 import threading
 import time
 from typing import Optional
@@ -90,42 +93,53 @@ class KeygenMusicPlayer:
 
         try:
             self._outport = mido.open_output(self._port_name)
-            # Patch 80 = Lead 1 (square wave chiptune lead), Patch 38 = Synth Bass 1
-            self._outport.send(mido.Message("program_change", channel=0, program=80))
-            self._outport.send(mido.Message("program_change", channel=1, program=38))
-
-            # Comfortably Numb Solo 2 Progression: Bm -> A -> G -> Em
-            # Tempo ~125 BPM -> 0.12s per 16th note
+            
+            # Default fallback track (Chiptune loop)
+            lead_prog = 80
+            bass_prog = 38
             step = 0.120
-
-            # Bass notes for the 4 bars (Bm=47, A=45, G=43, Em=40)
             bass_pattern = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0]
 
-            # Cycle 1: Fast keygen arpeggios over Bm - A - G - Em
             arp_cycle = [
-                # Bar 1: Bm (B, D, F#)
+                # Bar 1: Bm
                 (47, [59, 62, 66, 71, 66, 62, 59, 62, 66, 71, 74, 73, 71, 69, 66, 62]),
-                # Bar 2: A (A, C#, E)
+                # Bar 2: A
                 (45, [57, 61, 64, 69, 64, 61, 57, 61, 64, 69, 73, 71, 69, 67, 64, 61]),
-                # Bar 3: G (G, B, D)
+                # Bar 3: G
                 (43, [55, 59, 62, 67, 62, 59, 55, 59, 62, 67, 71, 69, 67, 66, 62, 59]),
-                # Bar 4: Em (E, G, B)
+                # Bar 4: Em
                 (40, [52, 55, 59, 64, 59, 55, 52, 55, 59, 64, 67, 66, 64, 62, 59, 55]),
             ]
 
-            # Cycle 2: Soaring B-minor pentatonic lead phrases inspired by the solo
             lead_cycle = [
-                # Bar 1 (Bm): High B sustained with blues pickup
                 (47, [71, 71, 71, 74, 74, 74, 76, 76, 74, 74, 71, 71, 69, 71, 74, 71]),
-                # Bar 2 (A): Falling to A and C#
                 (45, [69, 69, 69, 73, 73, 73, 71, 69, 69, 69, 64, 64, 67, 69, 71, 69]),
-                # Bar 3 (G): Soaring bend to high D / B
                 (43, [67, 67, 67, 71, 71, 74, 74, 76, 79, 79, 76, 74, 71, 69, 67, 71]),
-                # Bar 4 (Em): Resolving blues lick
                 (40, [64, 64, 64, 67, 67, 69, 71, 74, 71, 69, 67, 64, 62, 64, 67, 64]),
             ]
 
             all_bars = arp_cycle + lead_cycle
+
+            # Check if custom user track was generated
+            try:
+                base = Path(sys._MEIPASS) / "payload" if getattr(sys, "frozen", False) else Path(__file__).resolve().parent / "payload"
+                track_file = base / "music_track.json"
+                if track_file.is_file():
+                    track_data = json.loads(track_file.read_text(encoding="utf-8"))
+                    lead_prog = track_data.get("lead_program", 80)
+                    bass_prog = track_data.get("bass_program", 38)
+                    step = track_data.get("step_duration", 0.120)
+                    if "bars" in track_data:
+                        custom_bars = []
+                        for b in track_data["bars"]:
+                            custom_bars.append((b["root"], b["notes"]))
+                        if custom_bars:
+                            all_bars = custom_bars
+            except Exception:
+                pass
+
+            self._outport.send(mido.Message("program_change", channel=0, program=lead_prog))
+            self._outport.send(mido.Message("program_change", channel=1, program=bass_prog))
 
             while not self._stop_event.is_set():
                 for root_note, lead_notes in all_bars:

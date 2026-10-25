@@ -6,7 +6,7 @@ Implements a classic demogroup keygen/patcher interface with:
 - CRT green/cyan terminal well for live update telemetry
 - Retro block-style animated progress bar
 - Continuous bottom marquee / sine scroller
-- 8-bit chiptune synthesizer background music playing Comfortably Numb Solo 2 chords (Bm - A - G - Em)
+- 8-bit chiptune synthesizer background music playing Bm - A - G - Em chords
 - Dynamically configures for either Full Firmware Edition or Stereo USB Audio Edition based on baked-in manifest
 """
 
@@ -50,6 +50,47 @@ ASCII_BANNER = r"""
 ╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗   ██║       ██║     ███████╗╚███╔███╔╝██║  ██║
  ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝   ╚═╝       ╚═╝     ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝
 """
+
+NFO_TEXT = """
+┌────────────────────────────────────────────────────────────────────────┐
+│     COMET FLOWER LABS 1911 // 2026 SPECIAL HARDWARE RELEASE            │
+│     ZOOM G1 / G1X FOUR FIRMWARE UNLEASHED & STANDALONE UPDATER         │
+└────────────────────────────────────────────────────────────────────────┘
+
+[RELEASE INFO]
+  Supplier .....: Comet Flower Labs     Release Type ..: Firmware Unlocker
+  Target HW ....: Zoom G1X / G1 Four    OS ............: Windows / C6745
+  DSP Clock ....: TMS320C6745 @ 300MHz  Protection ....: AIS / CRC / res5
+  Cracker ......: Comet Flower Demogroup & AI Synthesis Division
+  Sound System .: Comet Flower Chiptune Synthesizer Engine
+
+[RELEASE NOTES]
+  Completely independent firmware flashing tool! Zoom's proprietary
+  updater is no longer required. Flashes native MIDI SysEx wire protocol:
+
+  * Latest Comet Flower Firmware v0.34.9 BAKED DIRECTLY IN
+  * 5 Real Effect Slots with Unlocked Cycle Allocation (Gate 230 -> 340)
+  * Circuit-Exact DSP Suite: '74 Violet Big Muff (12nF C10 audited),
+    Hiwatt DR103 Custom 100, Comet Flower Preamp, Comet Flower Delay
+    with True Spillover Tail, Comet Flower Rotary, Comet Flower 808
+  * Custom Visual Identity: res5 Bootloader Bud Logo, 16-Frame Bloom
+    Startup Animation, Comet Flower Edit Header & Realtime CPU Meter
+  * Injected Comet Flower Probe SysEx Backdoor: Live RAM peek/poke & telemetry
+
+[GREETS]
+  Razor 1911 * Fairlight * Paradox * Deviance * Reloaded * Hoodlum * Skid Row
+──────────────────────────────────────────────────────────────────────────
+[+] COMET FLOWER LABS - EXPAND YOUR HARDWARE - RESPECT THE SCENE [+]
+"""
+
+SCROLLER_MESSAGE = (
+    "*** COMET FLOWER LABS 1911 *** COMET FLOWER ZOOM G1X-FOUR UNLEASHED STANDALONE UPDATER *** "
+    "5 REAL EFFECT SLOTS *** VIOLET MUFF 12nF C10 AUDITED *** HIWATT DR103 *** "
+    "COMET FLOWER PREAMP *** COMET FLOWER DELAY TAIL *** CYCLE GATE 340% UNLOCKED *** "
+    "ZERO ZOOM BINARIES *** BAKED-IN FIRMWARE v0.34.9 *** "
+    "COMET FLOWER DEMOGROUP SOUND SYSTEM *** "
+    "GREETS TO: RAZOR 1911 * FAIRLIGHT * PARADOX * DEVIANCE * RELOADED * HOODLUM *** "
+)
 
 
 def load_payload_manifest() -> Tuple[dict, Path]:
@@ -461,7 +502,7 @@ class FlasherApp:
         edition_name = "Stereo USB Audio Edition" if self.is_stereo_usb else "Full Firmware Edition (v0.34.9)"
         self._log(f"[+] COMET FLOWER UPDATER v1.0 [{edition_name}]")
         self._log("[+] VirtualPedalBoardEngine Modeler Palette Active.")
-        self._log("[+] Comfortably Numb Solo 2 Music Synthesizer Engine Ready.")
+        self._log("[+] Comet Flower Chiptune Synthesizer Engine Ready.")
         if self.is_stereo_usb:
             self._log("[+] Non-destructive mode: Only flash 0x033000 will be written.")
             self._log("[+] Flash 0x102000 (files) and 0x028000 (presets) remain untouched.")
@@ -553,7 +594,7 @@ class FlasherApp:
         playing = self.music.toggle()
         if playing:
             self.music_btn.config(text="♫ MUSIC: ON", fg=COLOR_CYAN)
-            self._log("[♫] Playing Comfortably Numb Solo 2 Chiptune (Bm - A - G - Em).")
+            self._log("[♫] Comet Flower Demogroup Audio Stream Started.")
         else:
             self.music_btn.config(text="♫ MUSIC: OFF", fg=COLOR_TEXT3)
             self._log("[♫] Music stopped.")
@@ -587,7 +628,7 @@ class FlasherApp:
             "*** COMET FLOWER LABS 1911 *** COMET FLOWER STEREO USB AUDIO UPDATER *** "
             "NON-DESTRUCTIVE PATCH *** PRESERVES ALL STOCK AND DIY EFFECTS *** "
             "LINE AUDIO STREAMING ACTIVATED *** ZERO ZOOM BINARIES *** "
-            "MUSIC: COMFORTABLY NUMB SOLO 2 PROGRESSION (Bm - A - G - Em) *** "
+            "COMET FLOWER DEMOGROUP SOUND SYSTEM *** "
             "GREETS: RAZOR 1911 * FAIRLIGHT * PARADOX * DEVIANCE * RELOADED * HOODLUM *** "
             if self.is_stereo_usb
             else SCROLLER_MESSAGE

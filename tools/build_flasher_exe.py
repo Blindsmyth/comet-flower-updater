@@ -11,7 +11,7 @@ Builds two standalone, windowed executables with no Zoom dependencies:
 Both executables:
 - Pure windowed GUI (no command terminal window appears)
 - Full "Comet Flower" branding (no abbreviations)
-- Demoscene chiptune player using Comfortably Numb Solo 2 chords (Bm - A - G - Em)
+- Demoscene chiptune player (Bm - A - G - Em chords)
 - Embedded baked-in payload ready to update with one click
 """
 
@@ -38,6 +38,11 @@ def build_edition(edition: str = "full", dist_dir: Path = OUTPUT_DIR) -> Path:
     if work_dir.exists():
         shutil.rmtree(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy custom music track if user generated one with cf_music_maker
+    source_music = REPO_ROOT / "tools" / "payload" / "music_track.json"
+    if source_music.is_file():
+        shutil.copyfile(source_music, temp_payload_dir / "music_track.json")
 
     if edition == "full":
         exe_name = "Comet Flower Updater"
