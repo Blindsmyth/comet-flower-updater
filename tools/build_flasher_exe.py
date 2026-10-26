@@ -27,6 +27,18 @@ OUTPUT_DIR = REPO_ROOT / "build" / "flasher"
 PUBLIC_RELEASE_DIR = REPO_ROOT / "build" / "public_release"
 
 
+def find_payload_binary(filename: str, fallback_path: Path) -> Path:
+    candidates = [
+        REPO_ROOT / "tools" / "payload" / filename,
+        REPO_ROOT / "tools" / "web_flasher" / "payload" / filename,
+        fallback_path,
+    ]
+    for c in candidates:
+        if c.is_file():
+            return c
+    raise FileNotFoundError(f"Could not find required binary {filename} in candidates: {candidates}")
+
+
 def build_edition(edition: str = "full", dist_dir: Path = OUTPUT_DIR) -> Path:
     dist_dir.mkdir(parents=True, exist_ok=True)
     temp_payload_dir = REPO_ROOT / "build" / f"payload_{edition}"
@@ -56,9 +68,12 @@ def build_edition(edition: str = "full", dist_dir: Path = OUTPUT_DIR) -> Path:
             "subtitle": "[+] RAZOR 1911 DEMOGROUP STYLE  ///  COMET FLOWER FIRMWARE UPDATER [+]",
         }
         # Copy binaries into temp payload
-        shutil.copyfile(REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "res1_0348.bin", temp_payload_dir / "firmware_0349.bin")
-        shutil.copyfile(REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "fs_bench349.bin", temp_payload_dir / "fs_0349.bin")
-        shutil.copyfile(REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "res2_0349.bin", temp_payload_dir / "presets_0349.bin")
+        fw_src = find_payload_binary("firmware_0349.bin", REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "res1_0348.bin")
+        fs_src = find_payload_binary("fs_0349.bin", REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "fs_bench349.bin")
+        res_src = find_payload_binary("presets_0349.bin", REPO_ROOT / "build" / "fw_rnd_2026-10-22" / "res2_0349.bin")
+        shutil.copyfile(fw_src, temp_payload_dir / "firmware_0349.bin")
+        shutil.copyfile(fs_src, temp_payload_dir / "fs_0349.bin")
+        shutil.copyfile(res_src, temp_payload_dir / "presets_0349.bin")
     elif edition == "stereo_usb":
         exe_name = "Comet Flower Updater - Stereo USB Audio"
         manifest = {
@@ -69,13 +84,15 @@ def build_edition(edition: str = "full", dist_dir: Path = OUTPUT_DIR) -> Path:
             "subtitle": "[+] NON-DESTRUCTIVE STEREO USB AUDIO PATCH  ///  COMET FLOWER UPDATER [+]",
         }
         # Copy binary into temp payload
-        shutil.copyfile(REPO_ROOT / "build" / "fw" / "res1_public_usb_audio_tap.bin", temp_payload_dir / "firmware_stereo_usb.bin")
+        fw_usb = find_payload_binary("firmware_stereo_usb.bin", REPO_ROOT / "build" / "fw" / "res1_public_usb_audio_tap.bin")
+        shutil.copyfile(fw_usb, temp_payload_dir / "firmware_stereo_usb.bin")
     else:
         raise ValueError(f"Unknown edition: {edition}")
 
     (temp_payload_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    add_data_arg = f"{str(temp_payload_dir)};payload"
+    sep = ";" if sys.platform == "win32" else ":"
+    add_data_arg = f"{str(temp_payload_dir)}{sep}payload"
 
     cmd = [
         sys.executable,
@@ -121,11 +138,15 @@ def build_edition(edition: str = "full", dist_dir: Path = OUTPUT_DIR) -> Path:
     if result.returncode != 0:
         raise RuntimeError(f"PyInstaller failed for {exe_name} with exit code {result.returncode}")
 
-    exe_path = dist_dir / f"{exe_name}.exe"
-    if not exe_path.is_file():
+    exe_ext = ".exe" if sys.platform == "win32" else ""
+    exe_path = dist_dir / f"{exe_name}{exe_ext}"
+    if sys.platform == "darwin" and (dist_dir / f"{exe_name}.app").exists():
+        exe_path = dist_dir / f"{exe_name}.app"
+
+    if not exe_path.exists():
         raise FileNotFoundError(f"Expected executable not found at {exe_path}")
 
-    print(f"\nSuccessfully built {exe_name}.exe")
+    print(f"\nSuccessfully built {exe_name}")
     print(f"Path: {exe_path}")
     print(f"File size: {exe_path.stat().st_size:,} bytes")
     return exe_path
@@ -144,8 +165,14 @@ def main():
     if args.edition in ("stereo_usb", "both"):
         usb_exe = build_edition("stereo_usb")
         PUBLIC_RELEASE_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(usb_exe, PUBLIC_RELEASE_DIR / usb_exe.name)
-        print(f"Also copied to public release: {PUBLIC_RELEASE_DIR / usb_exe.name}")
+        dest = PUBLIC_RELEASE_DIR / usb_exe.name
+        if usb_exe.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(usb_exe, dest)
+        else:
+            shutil.copyfile(usb_exe, dest)
+        print(f"Also copied to public release: {dest}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,125 @@
+name: Build Multi-OS Comet Flower Updaters
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      edition:
+        description: 'Edition to build (both, full, stereo_usb)'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - full
+          - stereo_usb
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-native-updaters:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            archive: comet-flower-updater-windows.zip
+          - os: ubuntu-latest
+            archive: comet-flower-updater-linux.tar.gz
+          - os: macos-latest
+            archive: comet-flower-updater-macos.zip
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-dev python3-tk
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mido python-rtmidi pyinstaller
+
+      - name: Verify payload files
+        shell: bash
+        run: |
+          mkdir -p tools/payload
+          echo "[+] Checking payload directory..."
+          ls -la tools/payload/ || true
+
+      - name: Build Standalone Updaters
+        shell: bash
+        run: |
+          EDITION="${{ github.event.inputs.edition || 'both' }}"
+          echo "[+] Building edition: $EDITION on ${{ runner.os }}"
+          python tools/build_flasher_exe.py --edition "$EDITION"
+
+      - name: Package Windows Artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "build\flasher\*" -DestinationPath "build\${{ matrix.archive }}"
+
+      - name: Package Linux Artifacts
+        if: runner.os == 'Linux'
+        run: |
+          tar -czvf "build/${{ matrix.archive }}" -C build/flasher .
+
+      - name: Package macOS Artifacts
+        if: runner.os == 'macOS'
+        run: |
+          cd build/flasher
+          zip -r "../${{ matrix.archive }}" *
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: build/${{ matrix.archive }}
+          if-no-files-found: error
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/${{ matrix.archive }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-web-flasher:
+    name: Deploy Web MIDI Flasher to GitHub Pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Web Flasher Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'tools/web_flasher'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

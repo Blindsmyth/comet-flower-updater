@@ -30,7 +30,7 @@ class KeygenMusicPlayer:
             out_names = mido.get_output_names()
             target_port = None
             for name in out_names:
-                if any(k in name.lower() for k in ("wavetable", "synth", "microsoft")):
+                if any(k in name.lower() for k in ("wavetable", "synth", "microsoft", "dls", "timidity", "fluid")):
                     target_port = name
                     break
             if target_port:
