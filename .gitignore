@@ -22,3 +22,5 @@ recon/hexdump_full.txt
 tools/cloudflared.exe
 
 tools/web_flasher/payload/*.bin
+
+tools/payload/music_track.json
