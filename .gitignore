@@ -20,3 +20,5 @@ recon/hexdump_full.txt
 .claude/
 
 tools/cloudflared.exe
+
+tools/web_flasher/payload/*.bin

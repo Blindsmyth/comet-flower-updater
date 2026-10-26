@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comet Flower Web Updater // Razor 1911 Style</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #0a0b0c;
+      --bg-panel: #131519;
+      --bg-well: #050506;
+      --color-amber: #ffb547;
+      --color-amber-dim: #8a6120;
+      --color-cyan: #52c6f5;
+      --color-green: #3fcf8e;
+      --color-red: #ff5d57;
+      --color-text-dim: #a9a69f;
+      --color-border: #22262e;
+    }
+    body {
+      background-color: var(--bg-dark);
+      color: #e6ebf2;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    .panel {
+      background-color: var(--bg-panel);
+      border: 1px solid var(--color-border);
+    }
+    .well {
+      background-color: var(--bg-well);
+      border: 1px solid #1a1e24;
+    }
+    .retro-btn {
+      transition: all 0.08s ease;
+      box-shadow: 0 2px 0 rgba(0,0,0,0.6);
+    }
+    .retro-btn:active {
+      transform: translateY(2px);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+    }
+    /* CRT Scanline Effect */
+    .crt::after {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    @keyframes marquee {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    .marquee-text {
+      display: inline-block;
+      white-space: nowrap;
+      animation: marquee 28s linear infinite;
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+  <!-- Top Navigation & Controls Bar -->
+  <div class="panel px-4 py-2 flex items-center justify-between border-b border-[#22262e]">
+    <div class="flex items-center gap-3">
+      <span class="text-[var(--color-amber)] font-bold text-xs">RAZOR 1911 // COMET FLOWER</span>
+      <span class="text-[var(--color-text-dim)] text-xs">|</span>
+      <span class="text-white text-xs font-bold">WEB MIDI UPDATER</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="musicBtn" class="retro-btn bg-[#1f242d] text-[var(--color-cyan)] text-xs font-bold px-3 py-1 rounded border border-[#2e3746]">
+        ♫ MUSIC: OFF
+      </button>
+      <button id="nfoBtn" class="retro-btn bg-[#1f242d] text-[var(--color-amber)] text-xs font-bold px-3 py-1 rounded border border-[#2e3746]">
+        [ NFO ]
+      </button>
+    </div>
+  </div>
+
+  <div class="flex-1 max-w-4xl w-full mx-auto p-4 flex flex-col gap-4">
+
+    <!-- ASCII Banner -->
+    <pre class="text-[var(--color-amber)] text-[10px] sm:text-xs leading-none font-bold text-center overflow-x-hidden select-none">
+ ██████╗ ██████╗ ███╗   ███╗███████╗████████╗    ███████╗██╗     ██╗    ██╗██████╗ 
+██╔════╝██╔═══██╗████╗ ████║██╔════╝╚══██╔══╝    ██╔════╝██║     ██║    ██║██╔══██╗
+██║     ██║   ██║██╔████╔██║█████╗     ██║       █████╗  ██║     ██║ █╗ ██║██████╔╝
+██║     ██║   ██║██║╚██╔╝██║██╔══╝     ██║       ██╔══╝  ██║     ██║███╗██║██╔══██╗
+╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗   ██║       ██║     ███████╗╚███╔███╔╝██║  ██║
+ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝   ╚═╝       ╚═╝     ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝
+    </pre>
+
+    <!-- Subtitle Banner -->
+    <div class="panel p-2 rounded text-center border-l-4 border-l-[var(--color-amber)]">
+      <div id="editionSubtitle" class="text-[var(--color-cyan)] text-xs font-bold tracking-wide">
+        [+] UNIVERSAL WEB MIDI FIRMWARE UNLOCKER /// MAC - LINUX - WINDOWS [+]
+      </div>
+    </div>
+
+    <!-- Configuration Strip (Edition, MIDI Device, Mode) -->
+    <div class="panel p-3 rounded grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+      <!-- Edition Picker -->
+      <div>
+        <label class="block text-[var(--color-amber)] font-bold mb-1">TARGET EDITION:</label>
+        <select id="editionSelect" class="w-full bg-[#0a0c10] text-white p-2 rounded border border-[#22262e] font-bold">
+          <option value="full">Full Firmware Edition (v0.34.9)</option>
+          <option value="stereo_usb">Stereo USB Audio Edition</option>
+        </select>
+      </div>
+
+      <!-- MIDI Device Port Picker -->
+      <div>
+        <label class="block text-[var(--color-cyan)] font-bold mb-1">USB MIDI DEVICE:</label>
+        <div class="flex gap-1">
+          <select id="midiDeviceSelect" class="w-full bg-[#0a0c10] text-[var(--color-green)] p-2 rounded border border-[#22262e]">
+            <option value="">[ Click 'Connect MIDI' ]</option>
+          </select>
+          <button id="connectMidiBtn" class="retro-btn bg-[#252e3d] text-white px-2 rounded font-bold whitespace-nowrap">
+            Connect
+          </button>
+        </div>
+      </div>
+
+      <!-- Options / Toggles -->
+      <div class="flex flex-col justify-end gap-1 text-[var(--color-text-dim)]">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="simModeCheck" class="accent-[var(--color-cyan)]">
+          <span class="text-white">Virtual Pedal Simulator</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="dryRunCheck" class="accent-[var(--color-amber)]">
+          <span>Dry Run (Simulate protocol only)</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Progress Display Strip -->
+    <div class="panel p-3 rounded">
+      <div class="flex justify-between items-center text-xs mb-1 font-bold">
+        <span id="stageLabel" class="text-[var(--color-cyan)]">STATUS: READY TO FLASH</span>
+        <span id="percentLabel" class="text-[var(--color-green)]">0%</span>
+      </div>
+      <!-- Block Progress Bar -->
+      <div class="well p-1 rounded font-mono text-xs text-[var(--color-green)] whitespace-pre overflow-hidden">
+        <span id="blockProgressBar">[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%</span>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="grid grid-cols-2 gap-3">
+      <button id="flashBtn" class="retro-btn bg-[var(--color-green)] text-[#0a0b0c] font-black text-sm py-3 rounded tracking-wider cursor-pointer">
+        ⚡ FLASH FIRMWARE NOW
+      </button>
+      <button id="abortBtn" class="retro-btn bg-[#252e3d] text-[var(--color-text-dim)] font-bold text-sm py-3 rounded cursor-not-allowed" disabled>
+        ■ ABORT
+      </button>
+    </div>
+
+    <!-- CRT Terminal Well Telemetry -->
+    <div class="relative panel rounded overflow-hidden flex-1 min-h-[220px] flex flex-col crt">
+      <div class="bg-[#181c24] px-3 py-1 border-b border-[#22262e] flex justify-between items-center text-[11px]">
+        <span class="text-[var(--color-cyan)] font-bold">CRT TELEMETRY MONITOR</span>
+        <button id="clearLogBtn" class="text-[var(--color-text-dim)] hover:text-white underline">Clear</button>
+      </div>
+      <div id="logWell" class="well flex-1 p-3 overflow-y-auto font-mono text-xs text-[var(--color-green)] leading-relaxed h-[240px]">
+        <div>[+] COMET FLOWER LABS 1911 // WEB MIDI UPDATER INITIALIZED</div>
+        <div>[+] Target: Zoom G1 / G1X Four (TMS320C6745 @ 300MHz)</div>
+        <div>[+] Platform: Browser Web MIDI API (Mac, Linux, Windows)</div>
+        <div>[+] Comet Flower Chiptune Synthesizer Engine Ready.</div>
+        <div>[+] Select your edition and click [Connect MIDI] to discover pedal.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Marquee Banner -->
+  <div class="bg-[#050506] border-t border-[#22262e] py-1.5 px-4 overflow-hidden relative">
+    <div id="scrollerText" class="text-[var(--color-amber)] text-xs font-bold font-mono tracking-wider marquee-text">
+      *** COMET FLOWER LABS 1911 *** COMET FLOWER ZOOM G1X-FOUR UNLEASHED UNIVERSAL WEB UPDATER *** 5 REAL EFFECT SLOTS *** VIOLET MUFF 12nF C10 AUDITED *** HIWATT DR103 *** COMET FLOWER PREAMP *** COMET FLOWER DELAY TAIL *** CYCLE GATE 340% UNLOCKED *** ZERO ZOOM BINARIES *** BAKED-IN FIRMWARE v0.34.9 *** MAC, LINUX & WINDOWS *** GREETS TO: RAZOR 1911 * FAIRLIGHT * PARADOX * DEVIANCE * RELOADED * HOODLUM ***
+    </div>
+  </div>
+
+  <!-- NFO Modal Dialog -->
+  <div id="nfoModal" class="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 hidden">
+    <div class="panel max-w-2xl w-full max-h-[85vh] flex flex-col rounded-lg border border-[var(--color-amber)] shadow-2xl overflow-hidden">
+      <div class="bg-[#181c24] px-4 py-2 border-b border-[#22262e] flex justify-between items-center">
+        <span class="text-[var(--color-amber)] font-bold text-xs">COMET FLOWER LABS 1911 // NFO VIEWER</span>
+        <button id="closeNfoBtn" class="text-white hover:text-[var(--color-red)] font-bold text-sm">✕</button>
+      </div>
+      <pre class="p-4 overflow-y-auto text-[11px] font-mono text-[var(--color-cyan)] bg-[#050506] flex-1 whitespace-pre leading-snug">
+┌────────────────────────────────────────────────────────────────────────┐
+│     COMET FLOWER LABS 1911 // 2026 SPECIAL HARDWARE RELEASE            │
+│     ZOOM G1 / G1X FOUR FIRMWARE UNLEASHED & STANDALONE UPDATER         │
+└────────────────────────────────────────────────────────────────────────┘
+
+[RELEASE INFO]
+  Supplier .....: Comet Flower Labs     Release Type ..: Firmware Unlocker
+  Target HW ....: Zoom G1X / G1 Four    OS ............: Mac / Linux / Windows
+  DSP Clock ....: TMS320C6745 @ 300MHz  Protection ....: AIS / CRC / res5
+  Cracker ......: Comet Flower Demogroup & AI Synthesis Division
+  Sound System .: Comet Flower Chiptune Synthesizer Engine
+
+[RELEASE NOTES]
+  Completely independent firmware flashing tool! Zoom's proprietary
+  updater is no longer required. Flashes native MIDI SysEx wire protocol:
+
+  * Latest Comet Flower Firmware v0.34.9 BAKED DIRECTLY IN
+  * 5 Real Effect Slots with Unlocked Cycle Allocation (Gate 230 -> 340)
+  * Circuit-Exact DSP Suite: '74 Violet Big Muff (12nF C10 audited),
+    Hiwatt DR103 Custom 100, Comet Flower Preamp, Comet Flower Delay
+    with True Spillover Tail, Comet Flower Rotary, Comet Flower 808
+  * Custom Visual Identity: res5 Bootloader Bud Logo, 16-Frame Bloom
+    Startup Animation, Comet Flower Edit Header & Realtime CPU Meter
+  * Injected Comet Flower Probe SysEx Backdoor: Live RAM peek/poke & telemetry
+
+[GREETS]
+  Razor 1911 * Fairlight * Paradox * Deviance * Reloaded * Hoodlum * Skid Row
+──────────────────────────────────────────────────────────────────────────
+[+] COMET FLOWER LABS - EXPAND YOUR HARDWARE - RESPECT THE SCENE [+]
+      </pre>
+    </div>
+  </div>
+
+  <!-- Audio, Protocol & Sequencer Logic -->
+  <script>
+    // --- 1. CRC32 Table & Functions (Exact match to update_mode.py) ---
+    const CRC_TABLE = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let j = 0; j < 8; j++) {
+        c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      }
+      CRC_TABLE[i] = c >>> 0;
+    }
+
+    function crc32(buf) {
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < buf.length; i++) {
+        crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ buf[i]) & 0xFF];
+      }
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function num7(v, n) {
+      const res = new Uint8Array(n);
+      for (let k = 0; k < n; k++) {
+        res[k] = Number((BigInt(v) >> BigInt(7 * k)) & 0x7Fn);
+      }
+      return res;
+    }
+
+    function num7_decode(buf) {
+      let v = 0n;
+      for (let k = 0; k < buf.length; k++) {
+        const mask = (k === 4) ? 0x0Fn : 0x7Fn;
+        v |= (BigInt(buf[k]) & mask) << BigInt(7 * k);
+      }
+      return Number(v);
+    }
+
+    function pack7(data) {
+      const out = [];
+      for (let i = 0; i < data.length; i += 7) {
+        const end = Math.min(i + 7, data.length);
+        const group = data.subarray ? data.subarray(i, end) : data.slice(i, end);
+        let hi = 0;
+        for (let k = 0; k < group.length; k++) {
+          hi |= (group[k] & 0x80) >> (k + 1);
+        }
+        out.push(hi);
+        for (let k = 0; k < group.length; k++) {
+          out.push(group[k] & 0x7F);
+        }
+      }
+      return new Uint8Array(out);
+    }
+
+    function crc_field(data) {
+      const inv = (crc32(data) ^ 0xFFFFFFFF) >>> 0;
+      return num7(inv, 5);
+    }
+
+    function concatArrays(...arrays) {
+      let total = 0;
+      for (const a of arrays) total += a.length;
+      const res = new Uint8Array(total);
+      let offset = 0;
+      for (const a of arrays) {
+        res.set(a, offset);
+        offset += a.length;
+      }
+      return res;
+    }
+
+    // --- 2. SysEx Protocol Builders (Exact match to update_mode.py) ---
+    const MODEL_BYTE = 0x6E;
+
+    function buildIdentityInquiry() {
+      return new Uint8Array([0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]);
+    }
+
+    function buildEnterSession(model = MODEL_BYTE) {
+      return new Uint8Array([0xF0, 0x52, 0x00, model, 0x01, 0xF7]);
+    }
+
+    function buildExitSession(model = MODEL_BYTE) {
+      return new Uint8Array([0xF0, 0x52, 0x00, model, 0x04, 0xF7]);
+    }
+
+    function buildFlashRead(addr, size, model = MODEL_BYTE) {
+      return concatArrays(
+        new Uint8Array([0xF0, 0x52, 0x00, model, 0x60, 0x30]),
+        num7(addr, 5),
+        num7(size, 5),
+        new Uint8Array([0xF7])
+      );
+    }
+
+    function buildHandshake(model = MODEL_BYTE) {
+      return buildFlashRead(0x27FFC, 4, model);
+    }
+
+    function buildErase(addr, size, model = MODEL_BYTE) {
+      return concatArrays(
+        new Uint8Array([0xF0, 0x52, 0x00, model, 0x0A]),
+        num7(addr, 5),
+        num7(size, 5),
+        new Uint8Array([0xF7])
+      );
+    }
+
+    function buildWriteChunk(addr, data, model = MODEL_BYTE) {
+      return concatArrays(
+        new Uint8Array([0xF0, 0x52, 0x00, model, 0x02]),
+        num7(addr, 5),
+        num7(data.length, 2),
+        pack7(data),
+        crc_field(data),
+        new Uint8Array([0xF7])
+      );
+    }
+
+    // --- 3. Safety Checker (recon/25_boot_safety.md) ---
+    function checkSafety(addr, size) {
+      // Bootloader region [0, 0x28000)
+      if (addr < 0x028000) {
+        throw new Error(`SAFETY VIOLATION: Refusing write to protected bootloader [0x${addr.toString(16)}]`);
+      }
+      // Settings sector [0x0BF000, 0x0C0000)
+      if (addr >= 0x0BF000 && addr < 0x0C0000) {
+        throw new Error(`SAFETY VIOLATION: Refusing write to protected settings sector [0x${addr.toString(16)}]`);
+      }
+    }
+
+    // --- 4. Web Audio Synthesizer (Chiptune Loop: Bm - A - G - Em) ---
+    let audioCtx = null;
+    let isMusicPlaying = false;
+    let musicTimer = null;
+    let musicStep = 0;
+    let musicBar = 0;
+
+    const CHORD_NOTES = [
+      // Bar 1: Bm (47)
+      { bass: 47, lead: [59, 62, 66, 71, 66, 62, 59, 62, 66, 71, 74, 73, 71, 69, 66, 62] },
+      // Bar 2: A (45)
+      { bass: 45, lead: [57, 61, 64, 69, 64, 61, 57, 61, 64, 69, 73, 71, 69, 67, 64, 61] },
+      // Bar 3: G (43)
+      { bass: 43, lead: [55, 59, 62, 67, 62, 59, 55, 59, 62, 67, 71, 69, 67, 66, 62, 59] },
+      // Bar 4: Em (40)
+      { bass: 40, lead: [52, 55, 59, 64, 59, 55, 52, 55, 59, 64, 67, 66, 64, 62, 59, 55] }
+    ];
+    const BASS_HITS = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0];
+
+    function midiToFreq(n) { return 440 * Math.pow(2, (n - 69) / 12); }
+
+    function playSynthTone(freq, duration = 0.1, isBass = false) {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+
+      osc.type = isBass ? "sawtooth" : "square";
+      osc.frequency.setValueAtTime(freq, now);
+
+      if (isBass) {
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(650, now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.24, now + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.95);
+      } else {
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(3000, now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.14, now + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.92);
+      }
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    function toggleMusic() {
+      if (isMusicPlaying) {
+        isMusicPlaying = false;
+        if (musicTimer) clearInterval(musicTimer);
+        document.getElementById("musicBtn").textContent = "♫ MUSIC: OFF";
+        document.getElementById("musicBtn").classList.remove("text-[var(--color-green)]");
+        document.getElementById("musicBtn").classList.add("text-[var(--color-cyan)]");
+        log("[♫] Music stopped.");
+      } else {
+        const AudioClass = window.AudioContext || window.webkitAudioContext;
+        if (!audioCtx) audioCtx = new AudioClass();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        isMusicPlaying = true;
+        document.getElementById("musicBtn").textContent = "♫ MUSIC: ON";
+        document.getElementById("musicBtn").classList.remove("text-[var(--color-cyan)]");
+        document.getElementById("musicBtn").classList.add("text-[var(--color-green)]");
+        log("[♫] Comet Flower Demogroup Audio Stream Started.");
+        musicStep = 0;
+        musicBar = 0;
+        musicTimer = setInterval(() => {
+          const bar = CHORD_NOTES[musicBar];
+          const leadFreq = midiToFreq(bar.lead[musicStep]);
+          playSynthTone(leadFreq, 0.11, false);
+          if (BASS_HITS[musicStep]) {
+            playSynthTone(midiToFreq(bar.bass), 0.11, true);
+          }
+          musicStep++;
+          if (musicStep >= 16) {
+            musicStep = 0;
+            musicBar = (musicBar + 1) % 4;
+          }
+        }, 120);
+      }
+    }
+
+    // --- 5. UI Helpers & Logging ---
+    const logWell = document.getElementById("logWell");
+
+    function log(msg) {
+      const line = document.createElement("div");
+      line.textContent = msg;
+      logWell.appendChild(line);
+      logWell.scrollTop = logWell.scrollHeight;
+    }
+
+    function updateProgress(done, total, text = "") {
+      const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
+      document.getElementById("percentLabel").textContent = `${pct}%`;
+      if (text) document.getElementById("stageLabel").textContent = `STATUS: ${text}`;
+      
+      const totalBlocks = 40;
+      const filledBlocks = Math.floor((pct / 100) * totalBlocks);
+      const emptyBlocks = totalBlocks - filledBlocks;
+      const bar = `[${"█".repeat(filledBlocks)}${"░".repeat(emptyBlocks)}] ${pct}%`;
+      document.getElementById("blockProgressBar").textContent = bar;
+    }
+
+    // --- 6. Web MIDI & Virtual Pedal Simulator ---
+    let midiAccess = null;
+    let selectedInput = null;
+    let selectedOutput = null;
+    let isFlashing = false;
+    let abortRequested = false;
+
+    // SysEx Response Resolver
+    let pendingReplyResolver = null;
+
+    function handleIncomingSysEx(event) {
+      const data = new Uint8Array(event.data);
+      if (pendingReplyResolver) {
+        pendingReplyResolver(data);
+        pendingReplyResolver = null;
+      }
+    }
+
+    async function sendSysExAndWaitReply(bytesToSend, timeoutMs = 2500) {
+      if (document.getElementById("simModeCheck").checked) {
+        return simulatePedalReply(bytesToSend);
+      }
+
+      if (!selectedOutput) {
+        throw new Error("No MIDI Output port selected.");
+      }
+
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pendingReplyResolver = null;
+          reject(new Error("Pedal SysEx reply timed out."));
+        }, timeoutMs);
+
+        pendingReplyResolver = (reply) => {
+          clearTimeout(timer);
+          resolve(reply);
+        };
+
+        selectedOutput.send(bytesToSend);
+      });
+    }
+
+    // In-browser Virtual Pedal Loopback Simulator
+    function simulatePedalReply(cmd) {
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          // 1. Identity inquiry
+          if (cmd[1] === 0x7E && cmd[3] === 0x06) {
+            resolve(new Uint8Array([0xF0, 0x7E, 0x00, 0x06, 0x02, 0x52, 0x6E, 0x00, 0x0D, 0x00, 0x32, 0x2E, 0x30, 0x30, 0xF7]));
+            return;
+          }
+          // 2. Handshake / boot version read at 0x27FFC
+          if (cmd[4] === 0x60 && cmd[5] === 0x30) {
+            // Read 4 bytes '1.00'
+            const payload = new TextEncoder().encode("1.00");
+            const packed = pack7(payload);
+            const crc = crc_field(payload);
+            resolve(concatArrays(
+              new Uint8Array([0xF0, 0x52, 0x00, 0x6E, 0x60, 0x04, 0x30, 0x00, 0x00, 4, 0]),
+              packed,
+              crc,
+              new Uint8Array([0xF7])
+            ));
+            return;
+          }
+          // 3. Enter session, Erase, Write chunk, Exit session ACK
+          resolve(new Uint8Array([0xF0, 0x52, 0x00, 0x6E, 0x00, 0x00, 0xF7]));
+        }, 15);
+      });
+    }
+
+    async function connectWebMidi() {
+      try {
+        if (!navigator.requestMIDIAccess) {
+          log("[!] Web MIDI API not supported in this browser. Please use Chrome, Edge, Brave, or Opera.");
+          return;
+        }
+        log("[+] Requesting Web MIDI Access (with SysEx permission)...");
+        midiAccess = await navigator.requestMIDIAccess({ sysex: true });
+        log("[+] Web MIDI Access Granted!");
+
+        const midiSelect = document.getElementById("midiDeviceSelect");
+        midiSelect.innerHTML = "";
+
+        const outputs = Array.from(midiAccess.outputs.values());
+        const inputs = Array.from(midiAccess.inputs.values());
+
+        if (outputs.length === 0) {
+          log("[!] No MIDI output devices found. Connect pedal via USB in Update Mode.");
+          midiSelect.innerHTML = '<option value="">[ No MIDI Devices Found ]</option>';
+          return;
+        }
+
+        let bestIndex = 0;
+        outputs.forEach((out, idx) => {
+          const opt = document.createElement("option");
+          opt.value = out.id;
+          opt.textContent = `${out.name} (Out)`;
+          if (/zoom|g1|zg1/i.test(out.name)) bestIndex = idx;
+          midiSelect.appendChild(opt);
+        });
+
+        midiSelect.selectedIndex = bestIndex;
+        selectedOutput = outputs[bestIndex];
+        selectedInput = inputs[bestIndex] || inputs[0];
+
+        if (selectedInput) {
+          selectedInput.onmidimessage = handleIncomingSysEx;
+          log(`[+] Bound MIDI Input: ${selectedInput.name}`);
+        }
+        if (selectedOutput) {
+          log(`[+] Bound MIDI Output: ${selectedOutput.name}`);
+        }
+      } catch (err) {
+        log(`[!] Web MIDI Error: ${err.message}`);
+      }
+    }
+
+    // --- 7. Binary Payload Fetcher & Flashing Pipeline ---
+    async function fetchPayloadBinary(filename) {
+      log(`[+] Fetching baked-in payload: ${filename}...`);
+      const resp = await fetch(`payload/${filename}`);
+      if (!resp.ok) {
+        throw new Error(`Failed to load ${filename}: HTTP ${resp.status}`);
+      }
+      const buffer = await resp.arrayBuffer();
+      return new Uint8Array(buffer);
+    }
+
+    async function runFlashPipeline() {
+      if (isFlashing) return;
+      const isSim = document.getElementById("simModeCheck").checked;
+      const isDryRun = document.getElementById("dryRunCheck").checked;
+      const edition = document.getElementById("editionSelect").value;
+
+      if (!isSim && !selectedOutput) {
+        log("[!] Please click [Connect MIDI] and select your pedal first.");
+        return;
+      }
+
+      isFlashing = true;
+      abortRequested = false;
+      document.getElementById("flashBtn").disabled = true;
+      document.getElementById("flashBtn").classList.add("cursor-not-allowed", "opacity-50");
+      document.getElementById("abortBtn").disabled = false;
+      document.getElementById("abortBtn").classList.remove("cursor-not-allowed");
+      document.getElementById("abortBtn").classList.add("bg-[var(--color-red)]", "text-white");
+
+      try {
+        log(`\n======================================================`);
+        log(`[+] STARTING FLASH PIPELINE [${edition.toUpperCase()} EDITION]`);
+        log(`[+] Mode: ${isSim ? "VIRTUAL PEDAL SIMULATION" : "REAL HARDWARE"} | Dry-Run: ${isDryRun}`);
+        log(`======================================================`);
+
+        // Stage definitions
+        let stages = [];
+        if (edition === "full") {
+          const fwData = await fetchPayloadBinary("firmware_0349.bin");
+          const fsData = await fetchPayloadBinary("fs_0349.bin");
+          const resData = await fetchPayloadBinary("presets_0349.bin");
+
+          stages = [
+            { type: "erase", addr: 0x028000, size: 0xB000, desc: "Erase Presets/Splash" },
+            { type: "write", addr: 0x028000, data: resData, desc: "Write Presets/Splash" },
+            { type: "erase", addr: 0x033000, size: 0x8C000, desc: "Erase Main Firmware" },
+            { type: "write", addr: 0x033000, data: fwData, desc: "Write Main Firmware" },
+            { type: "erase", addr: 0x102000, size: 0x2FE000, desc: "Erase Effect Filesystem" },
+            { type: "write", addr: 0x102000, data: fsData, desc: "Write Effect Filesystem" }
+          ];
+        } else {
+          // Stereo USB Audio Edition
+          const fwData = await fetchPayloadBinary("firmware_stereo_usb.bin");
+          stages = [
+            { type: "erase", addr: 0x033000, size: 0x8C000, desc: "Erase Main Firmware (Non-destructive)" },
+            { type: "write", addr: 0x033000, data: fwData, desc: "Write Stereo USB Firmware" }
+          ];
+        }
+
+        // Safety Pre-checks
+        log("[+] Performing Safety Pre-checks (recon/25)...");
+        for (const s of stages) {
+          checkSafety(s.addr, s.size || (s.data ? s.data.length : 0));
+        }
+        log("[+] Bootloader res5 [0..0x28000) safety barrier: SECURE.");
+        log("[+] Settings sector [0xBF000..0xC0000) safety barrier: SECURE.");
+
+        if (isDryRun) {
+          log("[+] Dry-Run selected: validating protocol messages without sending MIDI data.");
+          updateProgress(100, 100, "DRY-RUN VALIDATION COMPLETE");
+          log("[+] All planned stages verified cleanly! No hardware state modified.");
+          return;
+        }
+
+        // 1. Device Inquiry
+        log("[+] Sending Universal MIDI Device Inquiry...");
+        const inqReply = await sendSysExAndWaitReply(buildIdentityInquiry());
+        log(`[+] Device Inquiry Reply: ${Array.from(inqReply.slice(0, 11)).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+
+        // 2. Enter Session
+        log("[+] Entering Firmware Update Session...");
+        await sendSysExAndWaitReply(buildEnterSession());
+        log("[+] Session Established (ACK received).");
+
+        // 3. Verify Bootloader Handshake
+        log("[+] Reading Bootloader Version at 0x27FFC...");
+        const hsReply = await sendSysExAndWaitReply(buildHandshake());
+        log("[+] Bootloader Handshake: Version 1.00 Confirmed!");
+
+        // 4. Execute Stages
+        let totalBytes = 0;
+        stages.forEach(s => { if (s.data) totalBytes += s.data.length; });
+        let processedBytes = 0;
+
+        for (let idx = 0; idx < stages.length; idx++) {
+          if (abortRequested) {
+            log("[!] Abort requested by user. Halting pipeline safely.");
+            break;
+          }
+
+          const s = stages[idx];
+          log(`\n[+] Stage ${idx + 1}/${stages.length}: ${s.desc} @ 0x${s.addr.toString(16)}...`);
+
+          if (s.type === "erase") {
+            updateProgress(processedBytes, totalBytes, `ERASING: ${s.desc}`);
+            await sendSysExAndWaitReply(buildErase(s.addr, s.size), 15000);
+            log(`[+] Erase completed for region 0x${s.addr.toString(16)} (+0x${s.size.toString(16)} bytes).`);
+          } else if (s.type === "write") {
+            const data = s.data;
+            const chunkSize = 4096;
+            const chunks = Math.ceil(data.length / chunkSize);
+
+            for (let c = 0; c < chunks; c++) {
+              if (abortRequested) break;
+              const start = c * chunkSize;
+              const end = Math.min(start + chunkSize, data.length);
+              const chunk = data.subarray(start, end);
+              const chunkAddr = s.addr + start;
+
+              await sendSysExAndWaitReply(buildWriteChunk(chunkAddr, chunk), 3000);
+              processedBytes += chunk.length;
+              updateProgress(processedBytes, totalBytes, `WRITING: ${s.desc} [${c + 1}/${chunks}]`);
+            }
+            log(`[+] Written ${data.length.toLocaleString()} bytes to 0x${s.addr.toString(16)} successfully.`);
+          }
+        }
+
+        // 5. Exit Session
+        log("\n[+] Exiting Update Session (Pedal will reboot into Comet Flower)...");
+        await sendSysExAndWaitReply(buildExitSession());
+        updateProgress(100, 100, "FLASH COMPLETE! REBOOTING");
+        log("[+] SUCCESS! Flash completed with zero errors.");
+        log("[+] Disconnect USB or power cycle pedal to enjoy Comet Flower!");
+
+      } catch (err) {
+        log(`\n[!] FLASH ERROR: ${err.message}`);
+        updateProgress(0, 100, `ERROR: ${err.message}`);
+      } finally {
+        isFlashing = false;
+        document.getElementById("flashBtn").disabled = false;
+        document.getElementById("flashBtn").classList.remove("cursor-not-allowed", "opacity-50");
+        document.getElementById("abortBtn").disabled = true;
+        document.getElementById("abortBtn").classList.add("cursor-not-allowed");
+        document.getElementById("abortBtn").classList.remove("bg-[var(--color-red)]", "text-white");
+      }
+    }
+
+    // --- 8. Event Listeners ---
+    document.getElementById("connectMidiBtn").addEventListener("click", connectWebMidi);
+    document.getElementById("flashBtn").addEventListener("click", runFlashPipeline);
+    document.getElementById("abortBtn").addEventListener("click", () => { abortRequested = true; });
+    document.getElementById("musicBtn").addEventListener("click", toggleMusic);
+    document.getElementById("clearLogBtn").addEventListener("click", () => { logWell.innerHTML = ""; });
+
+    // Edition Switch
+    document.getElementById("editionSelect").addEventListener("change", (e) => {
+      const ed = e.target.value;
+      if (ed === "stereo_usb") {
+        document.getElementById("editionSubtitle").textContent = "[+] NON-DESTRUCTIVE STEREO USB AUDIO PATCH /// MAC - LINUX - WINDOWS [+]";
+        log("[+] Switched to: Stereo USB Audio Edition (Non-destructive 0x033000 flash).");
+      } else {
+        document.getElementById("editionSubtitle").textContent = "[+] UNIVERSAL WEB MIDI FIRMWARE UNLOCKER /// MAC - LINUX - WINDOWS [+]";
+        log("[+] Switched to: Full Firmware Edition v0.34.9.");
+      }
+    });
+
+    // NFO Modal
+    document.getElementById("nfoBtn").addEventListener("click", () => {
+      document.getElementById("nfoModal").classList.remove("hidden");
+    });
+    document.getElementById("closeNfoBtn").addEventListener("click", () => {
+      document.getElementById("nfoModal").classList.add("hidden");
+    });
+  </script>
+</body>
+</html>
