@@ -100,6 +100,10 @@ class MusicMakerApp:
         self._load_preset("Classic Outro (Bm - A - G - Em)")
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        self.root.after(500, lambda: self.root.attributes("-topmost", False))
+        self.root.focus_force()
 
     def _init_midi(self):
         try:
